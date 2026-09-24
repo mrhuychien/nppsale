@@ -7,8 +7,11 @@
  *   phồng. Luật (`./units`):
  *     - SL cộng dồn / hiện cạnh `base_unit` → quy về đơn vị cơ sở.
  *     - Niêm yết = SL dòng × giá niêm yết CỦA ĐÚNG ĐƠN VỊ DÒNG.
+ *   SL của nhân viên gộp nhiều mặt hàng → `qtyTheoDv` (theo từng đơn vị cơ
+ *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
+import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
 
@@ -36,21 +39,28 @@ export interface HangBanSanPham {
   /** Luôn là đơn vị cơ sở — SL bên cạnh đã quy đổi. */
   unit: string
   qty: number
+  /** Một khoá (`unit`) — cùng số với `qty`. */
+  qtyTheoDv: SLTheoDonVi
   listed: number
   revenue: number
   diff: number
   returnQty: number
+  returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
 }
 
 export interface HangBanNhanVien {
   id: string
+  /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `qtyTheoDv`. */
   qty: number
+  qtyTheoDv: SLTheoDonVi
   listed: number
   revenue: number
   diff: number
+  /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `returnQtyTheoDv`. */
   returnQty: number
+  returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
   products: HangBanSanPham[]
@@ -82,7 +92,10 @@ export function congHangBanNhanVien(input: {
   const dong = (uid: string) => {
     let r = m.get(uid)
     if (!r) {
-      r = { id: uid, qty: 0, listed: 0, revenue: 0, diff: 0, returnQty: 0, returnValue: 0, netRevenue: 0, products: [], _sp: new Map() }
+      r = {
+        id: uid, qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
+        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, products: [], _sp: new Map(),
+      }
       m.set(uid, r)
     }
     return r
@@ -96,7 +109,8 @@ export function congHangBanNhanVien(input: {
         sku: sp?.sku || "—",
         name: sp?.name || "—",
         unit: sp?.base_unit || "",
-        qty: 0, listed: 0, revenue: 0, diff: 0, returnQty: 0, returnValue: 0, netRevenue: 0,
+        qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
+        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0,
       }
       r._sp.set(pid, p)
       r.products.push(p)
@@ -113,10 +127,12 @@ export function congHangBanNhanVien(input: {
     const revenue = Number(line.line_total || 0)
     const r = dong(uid)
     r.qty += qty
+    congSL(r.qtyTheoDv, sp.base_unit, qty)
     r.listed += listed
     r.revenue += revenue
     const p = matHang(r, line.product_id)
     p.qty += qty
+    congSL(p.qtyTheoDv, p.unit, qty)
     p.listed += listed
     p.revenue += revenue
   }
@@ -128,9 +144,11 @@ export function congHangBanNhanVien(input: {
     const value = Number(line.line_total || 0)
     const r = dong(uid)
     r.returnQty += qty
+    congSL(r.returnQtyTheoDv, sp?.base_unit, qty)
     r.returnValue += value
     const p = matHang(r, line.product_id)
     p.returnQty += qty
+    congSL(p.returnQtyTheoDv, p.unit, qty)
     p.returnValue += value
   }
 

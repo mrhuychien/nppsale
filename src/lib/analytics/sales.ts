@@ -80,6 +80,9 @@ export interface SalesOrderRow {
   vat: number
   customer_id: string
   sales_user_id: string
+  /** Người lập đơn (mig 178) — bộ lọc "Người tạo". */
+  created_by?: string | null
+  payment_terms?: string | null
 }
 
 export interface SalesOrderLineRow {
@@ -137,7 +140,8 @@ function canhBaoTran(truncated: boolean, ten: string): void {
   if (truncated) console.warn(`[analytics/sales] ${ten}: ${truncationWarning()}`)
 }
 
-const COT_DON = "id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id"
+const COT_DON =
+  "id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id, created_by, payment_terms"
 
 /**
  * Một hóa đơn bán ĐÃ GHI SỔ — đơn vị của DOANH THU.
@@ -161,6 +165,9 @@ export interface RevenueInvoiceRow {
   customer_id: string
   /** Người được gán hóa đơn (mig 182). Chưa gán → chuỗi rỗng. */
   sales_user_id: string
+  /** Người ghi sổ (lập) hóa đơn — bộ lọc "Người tạo". */
+  posted_by?: string | null
+  payment_terms?: string | null
 }
 
 /** Dòng của hóa đơn đã ghi sổ — doanh thu / số lượng theo mặt hàng. */
@@ -179,7 +186,7 @@ export interface InvoiceLineRow {
 export const REVENUE_INVOICE_STATUS = "posted"
 
 const COT_HOA_DON =
-  "id, invoice_code, invoice_date, order_id, status, total, subtotal, vat, customer_id, sales_user_id"
+  "id, invoice_code, invoice_date, order_id, status, total, subtotal, vat, customer_id, sales_user_id, posted_by, payment_terms"
 
 /**
  * Hóa đơn đã ghi sổ trong kỳ (theo `invoice_date`, tính cả hai đầu).

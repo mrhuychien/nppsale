@@ -14,10 +14,10 @@ import {
 } from "@/components/analytics/report-shell"
 import {
   useFilterCatalogs,
-  PAYMENT_METHOD_OPTIONS,
-  SALES_METHOD_OPTIONS,
 } from "@/lib/analytics/filter-catalogs"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { PAYMENT_TERMS } from "@/lib/constants"
+import { quaLocCuoiNgay } from "@/lib/analytics/loc-cuoi-ngay"
 import {
   fetchAllOrdersDu,
   fetchRevenueInvoicesDu,
@@ -70,7 +70,6 @@ export default function EndOfDayPage() {
   const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
   const [creatorFilter, setCreatorFilter] = useState("")
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("")
-  const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
 
   const range: DateRange = useMemo(() => ({ from: date, to: date }), [date])
 
@@ -133,27 +132,16 @@ export default function EndOfDayPage() {
     load()
   }, [load])
 
-  // Filter helper applied to delivered + raw orders
+  /* Một luật lọc cho cả đơn lẫn hóa đơn — xem `quaLocCuoiNgay`. */
   const passesFilters = useCallback(
-    (o: SalesOrderRow | RevenueInvoiceRow) => {
-      if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
-      if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
-      // creator / payment method / sales method are stored on the order
-      // record where present; we apply best-effort filters.
-      if (creatorFilter && (o as unknown as { created_by?: string }).created_by !== creatorFilter) return false
-      if (
-        paymentMethodFilter &&
-        ((o as unknown as { payment_terms?: string }).payment_terms || "").toLowerCase() !== paymentMethodFilter
-      )
-        return false
-      if (
-        salesMethodFilter &&
-        (o as unknown as { sales_method?: string }).sales_method !== salesMethodFilter
-      )
-        return false
-      return true
-    },
-    [customerFilter, salesUserFilter, creatorFilter, paymentMethodFilter, salesMethodFilter]
+    (o: SalesOrderRow | RevenueInvoiceRow) =>
+      quaLocCuoiNgay(o, {
+        khach: customerFilter,
+        nhanVien: salesUserFilter,
+        nguoiTao: creatorFilter,
+        hinhThuc: paymentMethodFilter,
+      }),
+    [customerFilter, salesUserFilter, creatorFilter, paymentMethodFilter]
   )
 
   const filteredOrders = useMemo(() => orders.filter(passesFilters), [orders, passesFilters])
@@ -212,20 +200,14 @@ export default function EndOfDayPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Phương thức thanh toán">
+          {/* Đơn / hóa đơn ghi HÌNH THỨC thanh toán (COD, công nợ N ngày) — không ghi
+              tiền mặt / chuyển khoản; cái đó nằm ở phiếu thu. */}
+          <FilterField label="Hình thức thanh toán">
             <FilterSelect
               value={paymentMethodFilter}
               onChange={(v) => setPaymentMethodFilter(v)}
-              options={PAYMENT_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
-              placeholder="Chọn phương thức thanh toán"
-            />
-          </FilterField>
-          <FilterField label="Phương thức bán hàng">
-            <FilterSelect
-              value={salesMethodFilter}
-              onChange={(v) => setSalesMethodFilter(v)}
-              options={SALES_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
-              placeholder="Chọn phương thức bán hàng"
+              options={PAYMENT_TERMS.map((t) => ({ key: t.value, label: t.label }))}
+              placeholder="Chọn hình thức thanh toán"
             />
           </FilterField>
         </>

@@ -15,6 +15,7 @@ import {
 import { fetchAllOrdersDu, fetchOrgRows, type SalesOrderLineRow, type SalesOrderRow } from "@/lib/analytics/sales"
 import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
+import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -193,11 +194,13 @@ export default function OrdersReportPage() {
     name: string
     /** Đơn vị cơ sở của mặt hàng; gộp cùng loại mà khác đơn vị thì rỗng. */
     unit: string
+    /** ⚠ Gộp khác đơn vị thì lẫn — chỉ để xuất khi `unit` có. Hiện `qtyTheoDv`. */
     qty: number
+    qtyTheoDv: SLTheoDonVi
     value: number
   }
   type ProductRowOrder = ProductRow & {
-    orderRefs: { id: string; order_code: string; order_date: string; customer: string; qty: number; value: number }[]
+    orderRefs: { id: string; order_code: string; order_date: string; customer: string; qty: number; unit: string; value: number }[]
   }
 
   const byProductRows: ProductRowOrder[] = useMemo(() => {
@@ -221,10 +224,12 @@ export default function OrdersReportPage() {
       }
       const k = groupSameType ? p.name.split(" ")[0] : p.id
       const sku = groupSameType ? "" : p.sku
-      const e = m.get(k) || { id: k, sku, name: p.name, unit: p.base_unit || "", qty: 0, value: 0, orderRefs: [] }
+      const e = m.get(k) || { id: k, sku, name: p.name, unit: p.base_unit || "", qty: 0, qtyTheoDv: {}, value: 0, orderRefs: [] }
       if (e.unit !== (p.base_unit || "")) e.unit = ""
       const slCoSo = slCoSoDong(l, p)
       e.qty += slCoSo
+      // Gộp cùng loại = nhiều mặt hàng → giữ theo từng đơn vị cơ sở.
+      congSL(e.qtyTheoDv, p.base_unit, slCoSo)
       e.value += Number(l.line_total || 0)
       const o = orders.find((x) => x.id === l.order_id)
       if (o) {
@@ -234,6 +239,7 @@ export default function OrdersReportPage() {
           order_date: o.order_date,
           customer: customerMap.get(o.customer_id)?.store_name || "—",
           qty: slCoSo,
+          unit: p.base_unit || "",
           value: Number(l.line_total || 0),
         })
       }
@@ -250,13 +256,17 @@ export default function OrdersReportPage() {
     customer: string
     sales_user: string
     status: string
-    qty: number
+    /** Một đơn nhiều mặt hàng → theo từng đơn vị cơ sở. */
+    qtyTheoDv: SLTheoDonVi
     total: number
   }
   const txRows: TxRow[] = useMemo(() => {
-    const lineQty = new Map<string, number>()
+    const lineQty = new Map<string, SLTheoDonVi>()
     for (const l of lines) {
-      lineQty.set(l.order_id, (lineQty.get(l.order_id) || 0) + slCoSoDong(l, productMap.get(l.product_id)))
+      const p = productMap.get(l.product_id)
+      const q = lineQty.get(l.order_id) || {}
+      congSL(q, p?.base_unit, slCoSoDong(l, p))
+      lineQty.set(l.order_id, q)
     }
     return filteredOrders.map((o) => ({
       id: o.id,
@@ -265,7 +275,7 @@ export default function OrdersReportPage() {
       customer: customerMap.get(o.customer_id)?.store_name || "—",
       sales_user: userMap.get(o.sales_user_id)?.full_name || "—",
       status: STATUS_LABEL[o.status] || o.status,
-      qty: lineQty.get(o.id) || 0,
+      qtyTheoDv: lineQty.get(o.id) || {},
       total: Number(o.total || 0),
     }))
   }, [filteredOrders, lines, customerMap, userMap, productMap])
@@ -273,28 +283,30 @@ export default function OrdersReportPage() {
   const handleExport = () => {
     if (variant === "by_product") {
       const out: (string | number)[][] = [["Mã hàng", "Tên hàng", "ĐV cơ sở", "SL đặt (ĐV cơ sở)", "Giá trị hàng đặt"]]
-      for (const r of byProductRows) out.push([r.sku, r.name, r.unit, r.qty, r.value])
+      // Gộp khác đơn vị (`unit` rỗng): xuất "640 hộp · 12 chai", không cộng lẫn.
+      for (const r of byProductRows) out.push([r.sku, r.name, r.unit, r.unit ? r.qty : hienSLTheoDonVi(r.qtyTheoDv), r.value])
       downloadXlsx(`bao-cao-dathang-hanghoa-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
         ["Mã đơn", "Ngày đặt", "Khách hàng", "Nhân viên", "Trạng thái", "Tổng SL (ĐV cơ sở)", "Tổng tiền"],
       ]
       for (const r of txRows)
-        out.push([r.order_code, r.order_date, r.customer, r.sales_user, r.status, r.qty, r.total])
+        out.push([r.order_code, r.order_date, r.customer, r.sales_user, r.status, hienSLTheoDonVi(r.qtyTheoDv), r.total])
       downloadXlsx(`bao-cao-dathang-giaodich-${range.from}-${range.to}`, out)
     }
   }
 
   if (authLoading) return <Skeleton className="h-64" />
 
-  const totalsByProduct = byProductRows.reduce(
-    (acc, r) => ({ qty: acc.qty + r.qty, value: acc.value + r.value }),
-    { qty: 0, value: 0 }
-  )
-  const totalsTx = txRows.reduce(
-    (acc, r) => ({ qty: acc.qty + r.qty, total: acc.total + r.total }),
-    { qty: 0, total: 0 }
-  )
+  // SL dòng tổng: gộp theo đơn vị cơ sở, không cộng hộp + chai.
+  const totalsByProduct = {
+    qtyTheoDv: tongSLTheoDonVi(byProductRows),
+    value: byProductRows.reduce((s, r) => s + r.value, 0),
+  }
+  const totalsTx = {
+    qtyTheoDv: tongSLTheoDonVi(txRows),
+    total: txRows.reduce((s, r) => s + r.total, 0),
+  }
 
   return (
     <ReportShell
@@ -412,7 +424,7 @@ export default function OrdersReportPage() {
               key: "qty",
               label: "SL đặt (ĐV cơ sở)",
               align: "right",
-              render: (r) => `${r.qty.toLocaleString("vi-VN")}${r.unit ? ` ${r.unit}` : ""}`,
+              render: (r) => hienSLTheoDonVi(r.qtyTheoDv),
             },
             { key: "val", label: "Giá trị hàng đặt", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.value)}</span> },
           ]}
@@ -420,7 +432,7 @@ export default function OrdersReportPage() {
             <TotalsRow
               cells={[
                 { content: `SL mặt hàng: ${byProductRows.length}`, colSpan: 2 },
-                { content: totalsByProduct.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: hienSLTheoDonVi(totalsByProduct.qtyTheoDv), align: "right" },
                 { content: formatCurrency(totalsByProduct.value), align: "right", className: "text-primary" },
               ]}
             />
@@ -452,6 +464,7 @@ export default function OrdersReportPage() {
                         <td className="px-3 py-1.5">{d.customer}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {d.qty.toLocaleString("vi-VN")}
+                          {d.unit ? ` ${d.unit}` : ""}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {formatCurrency(d.value)}
@@ -474,14 +487,14 @@ export default function OrdersReportPage() {
             { key: "cust", label: "Khách hàng", render: (r) => r.customer },
             { key: "user", label: "Nhân viên", render: (r) => r.sales_user },
             { key: "status", label: "Trạng thái", render: (r) => r.status },
-            { key: "qty", label: "Tổng SL (ĐV cơ sở)", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "qty", label: "Tổng SL (ĐV cơ sở)", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
             { key: "total", label: "Tổng tiền", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.total)}</span> },
           ]}
           totalsRow={
             <TotalsRow
               cells={[
                 { content: `SL phiếu: ${txRows.length}`, colSpan: 5 },
-                { content: totalsTx.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: hienSLTheoDonVi(totalsTx.qtyTheoDv), align: "right" },
                 { content: formatCurrency(totalsTx.total), align: "right", className: "text-primary" },
               ]}
             />

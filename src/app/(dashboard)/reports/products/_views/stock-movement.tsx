@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
+import { hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 
 export interface StockMovementRow {
   id: string
@@ -12,6 +13,11 @@ export interface StockMovementRow {
   exportQty: number
   exportValue: number
   endQty: number
+  /** SL theo từng đơn vị cơ sở — số `…Qty` gộp nhóm thì lẫn đơn vị, không hiện. */
+  beginTheoDv: SLTheoDonVi
+  importTheoDv: SLTheoDonVi
+  exportTheoDv: SLTheoDonVi
+  endTheoDv: SLTheoDonVi
 }
 
 interface DetailLine {
@@ -19,6 +25,8 @@ interface DetailLine {
   type: "import" | "export" | "stocktake" | "transfer"
   doc: string
   qty: number
+  /** Đơn vị cơ sở của mặt hàng trên dòng. */
+  unit?: string
   unit_cost: number
 }
 
@@ -29,17 +37,17 @@ interface Props {
 }
 
 export function StockMovementView({ rows, detail = false, detailLines }: Props) {
-  const totals = rows.reduce(
-    (acc, r) => ({
-      beginQty: acc.beginQty + r.beginQty,
-      importQty: acc.importQty + r.importQty,
-      importValue: acc.importValue + r.importValue,
-      exportQty: acc.exportQty + r.exportQty,
-      exportValue: acc.exportValue + r.exportValue,
-      endQty: acc.endQty + r.endQty,
-    }),
-    { beginQty: 0, importQty: 0, importValue: 0, exportQty: 0, exportValue: 0, endQty: 0 }
-  )
+  const totals = {
+    importValue: rows.reduce((s, r) => s + r.importValue, 0),
+    exportValue: rows.reduce((s, r) => s + r.exportValue, 0),
+  }
+  // SL dòng tổng: gộp theo đơn vị cơ sở.
+  const tong = {
+    begin: tongSLTheoDonVi(rows, (r) => r.beginTheoDv),
+    import: tongSLTheoDonVi(rows, (r) => r.importTheoDv),
+    export: tongSLTheoDonVi(rows, (r) => r.exportTheoDv),
+    end: tongSLTheoDonVi(rows, (r) => r.endTheoDv),
+  }
 
   return (
     <ReportTable
@@ -48,23 +56,23 @@ export function StockMovementView({ rows, detail = false, detailLines }: Props) 
       columns={[
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
-        { key: "begin", label: "Tồn đầu", align: "right", render: (r) => r.beginQty.toLocaleString("vi-VN") },
-        { key: "iq", label: "SL nhập", align: "right", render: (r) => r.importQty.toLocaleString("vi-VN") },
+        { key: "begin", label: "Tồn đầu", align: "right", render: (r) => hienSLTheoDonVi(r.beginTheoDv) },
+        { key: "iq", label: "SL nhập", align: "right", render: (r) => hienSLTheoDonVi(r.importTheoDv) },
         { key: "iv", label: "Giá trị nhập", align: "right", render: (r) => formatCurrency(r.importValue) },
-        { key: "eq", label: "SL xuất", align: "right", render: (r) => r.exportQty.toLocaleString("vi-VN") },
+        { key: "eq", label: "SL xuất", align: "right", render: (r) => hienSLTheoDonVi(r.exportTheoDv) },
         { key: "ev", label: "Giá trị xuất", align: "right", render: (r) => formatCurrency(r.exportValue) },
-        { key: "end", label: "Tồn cuối", align: "right", render: (r) => <span className="font-semibold">{r.endQty.toLocaleString("vi-VN")}</span> },
+        { key: "end", label: "Tồn cuối", align: "right", render: (r) => <span className="font-semibold">{hienSLTheoDonVi(r.endTheoDv)}</span> },
       ]}
       totalsRow={
         <TotalsRow
           cells={[
             { content: `SL mặt hàng: ${rows.length}`, colSpan: 2 },
-            { content: totals.beginQty.toLocaleString("vi-VN"), align: "right" },
-            { content: totals.importQty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(tong.begin), align: "right" },
+            { content: hienSLTheoDonVi(tong.import), align: "right" },
             { content: formatCurrency(totals.importValue), align: "right" },
-            { content: totals.exportQty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(tong.export), align: "right" },
             { content: formatCurrency(totals.exportValue), align: "right" },
-            { content: totals.endQty.toLocaleString("vi-VN"), align: "right", className: "text-primary" },
+            { content: hienSLTheoDonVi(tong.end), align: "right", className: "text-primary" },
           ]}
         />
       }
@@ -123,6 +131,7 @@ export function StockMovementView({ rows, detail = false, detailLines }: Props) 
                               <td className="px-3 py-1.5 font-mono text-xs">{l.doc}</td>
                               <td className="px-3 py-1.5 text-right tabular-nums">
                                 {Math.abs(l.qty).toLocaleString("vi-VN")}
+                                {l.unit ? ` ${l.unit}` : ""}
                               </td>
                               <td className="px-3 py-1.5 text-right tabular-nums">
                                 {formatCurrency(l.unit_cost)}

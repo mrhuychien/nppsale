@@ -57,7 +57,8 @@ describe("báo cáo đặt hàng: theo ĐƠN, số lượng quy về đơn vị 
     expect(S).not.toMatch(/\+=\s*Number\(l\.quantity/)
     expect(S).not.toMatch(/\+\s*Number\(l\.quantity/)
     expect(S).toMatch(/slCoSoDong\(l, p\)/)
-    expect(S).toMatch(/slCoSoDong\(l, productMap\.get\(l\.product_id\)\)/)
+    // Tổng SL một đơn nay giữ theo đơn vị cơ sở (sl-theo-don-vi) — vẫn quy đổi từng dòng.
+    expect(S).toMatch(/congSL\(q, p\?\.base_unit, slCoSoDong\(l, p\)\)/)
   })
 })
 

@@ -1,11 +1,14 @@
 import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
+import { hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 
 export interface ProfitByProductRow {
   id: string
   sku: string
   name: string
+  /** ⚠ Gộp theo nhóm thì lẫn đơn vị — không hiện. Hiện `qtyTheoDv`. */
   qty: number
+  qtyTheoDv: SLTheoDonVi
   revenue: number
   cogs: number
   profit: number
@@ -15,12 +18,11 @@ export interface ProfitByProductRow {
 export function ProfitByProductView({ rows }: { rows: ProfitByProductRow[] }) {
   const totals = rows.reduce(
     (acc, r) => ({
-      qty: acc.qty + r.qty,
       revenue: acc.revenue + r.revenue,
       cogs: acc.cogs + r.cogs,
       profit: acc.profit + r.profit,
     }),
-    { qty: 0, revenue: 0, cogs: 0, profit: 0 }
+    { revenue: 0, cogs: 0, profit: 0 }
   )
   const totalMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0
 
@@ -31,7 +33,7 @@ export function ProfitByProductView({ rows }: { rows: ProfitByProductRow[] }) {
       columns={[
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
-        { key: "qty", label: "SL Bán", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+        { key: "qty", label: "SL Bán", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
         { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
         {
@@ -55,7 +57,7 @@ export function ProfitByProductView({ rows }: { rows: ProfitByProductRow[] }) {
         <TotalsRow
           cells={[
             { content: `SL mặt hàng: ${rows.length}`, colSpan: 2 },
-            { content: totals.qty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(tongSLTheoDonVi(rows)), align: "right" },
             { content: formatCurrency(totals.revenue), align: "right" },
             { content: formatCurrency(totals.cogs), align: "right" },
             { content: formatCurrency(totals.profit), align: "right", className: "text-primary" },

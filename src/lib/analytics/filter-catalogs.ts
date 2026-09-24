@@ -247,10 +247,3 @@ export const ORDER_STATUS_OPTIONS: FilterOption[] = [
   { id: "completed", label: "Hoàn thành" },
   { id: "cancelled", label: "Đã huỷ" },
 ]
-
-export const SALES_METHOD_OPTIONS: FilterOption[] = [
-  { id: "direct", label: "Bán tại quầy" },
-  { id: "route", label: "Đi tuyến" },
-  { id: "phone", label: "Đặt qua điện thoại" },
-  { id: "online", label: "Online / app" },
-]

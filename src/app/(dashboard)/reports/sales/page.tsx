@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ReportShell, FilterField, FilterMultiSelect, FilterSelect } from "@/components/analytics/report-shell"
-import { useFilterCatalogs, SALES_METHOD_OPTIONS } from "@/lib/analytics/filter-catalogs"
+import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
+import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
   fetchRevenueInvoicesDu,
@@ -95,7 +95,6 @@ export default function SalesReportPage() {
   const [supplierFilter, setSupplierFilter] = useState<string[]>([])
   const [priceListFilter, setPriceListFilter] = useState<string[]>([])
   const [routeFilter, setRouteFilter] = useState<string[]>([])
-  const [salesMethodFilter, setSalesMethodFilter] = useState<string>("")
   const catalogs = useFilterCatalogs(user?.org_id)
   // Customer → group_id map (for bảng giá / kênh bán filtering on orders)
   const [customerGroupMap, setCustomerGroupMap] = useState<Map<string, string | null>>(new Map())
@@ -198,12 +197,6 @@ export default function SalesReportPage() {
         return ch ? matchVals.has(ch) : false
       })
     }
-    if (salesMethodFilter) {
-      result = result.filter(
-        (o) =>
-          (o as unknown as { sales_method?: string }).sales_method === salesMethodFilter
-      )
-    }
     return result
   }, [
     invoices,
@@ -214,7 +207,6 @@ export default function SalesReportPage() {
     routeFilter,
     catalogs.routes,
     customerRouteMap,
-    salesMethodFilter,
   ])
 
   const customerMap = useMemo(() => {
@@ -489,14 +481,8 @@ export default function SalesReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Phương thức bán hàng">
-            <FilterSelect
-              value={salesMethodFilter}
-              onChange={(v) => setSalesMethodFilter(v)}
-              options={SALES_METHOD_OPTIONS.map((o) => ({ key: o.id, label: o.label }))}
-              placeholder="Chọn phương thức bán hàng"
-            />
-          </FilterField>
+          {/* ⚠ Đã BỎ ô "Phương thức bán hàng" (24/09/2026): sổ không ghi thông tin
+              này ở đâu (không cột `sales_method`) — chọn là ra rỗng. */}
         </>
       }
     >

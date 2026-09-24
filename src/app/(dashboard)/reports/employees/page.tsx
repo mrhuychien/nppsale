@@ -32,6 +32,7 @@ import {
   type HangBanSanPham,
   type SanPhamHangBan,
 } from "@/lib/analytics/hang-ban-nhan-vien"
+import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -372,7 +373,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [invoices, returns, orderByCustomer, userMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, returns, orderByCustomer, userMap, matchSearchUser, customerPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -427,11 +428,15 @@ export default function EmployeesReportPage() {
     name: string
     role: string
     revenue: number
+    /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `qtyTheoDv`. */
     qty: number
+    qtyTheoDv: SLTheoDonVi
     products: {
       id: string
       sku: string
       name: string
+      /** Đơn vị cơ sở — `qty` đã quy về nó. */
+      unit: string
       qty: number
       revenue: number
       customers: { id: string; store_name: string; qty: number; revenue: number }[]
@@ -451,6 +456,7 @@ export default function EmployeesReportPage() {
           role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
           revenue: 0,
           qty: 0,
+          qtyTheoDv: {},
           products: [],
         } as EmployeeProductRow)
       e.revenue += Number(o.total || 0)
@@ -461,7 +467,7 @@ export default function EmployeesReportPage() {
         if (!prod) continue
         let pr = e.products.find((x) => x.id === l.product_id)
         if (!pr) {
-          pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0, customers: [] }
+          pr = { id: l.product_id, sku: prod.sku, name: prod.name, unit: prod.base_unit || "", qty: 0, revenue: 0, customers: [] }
           e.products.push(pr)
         }
         // SL quy về đơn vị cơ sở trước khi cộng (3 thùng + 5 hộp ≠ 8).
@@ -469,6 +475,8 @@ export default function EmployeesReportPage() {
         pr.qty += qty
         pr.revenue += Number(l.line_total || 0)
         e.qty += qty
+        // Nhiều mặt hàng → giữ theo từng đơn vị cơ sở, không cộng hộp + chai.
+        congSL(e.qtyTheoDv, prod.base_unit, qty)
         const c = customerMap.get(o.customer_id)
         let cust = pr.customers.find((x) => x.id === o.customer_id)
         if (!cust) {
@@ -498,14 +506,17 @@ export default function EmployeesReportPage() {
     name: string
     role: string
     revenue: number
+    /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `qtyTheoDv`. */
     qty: number
+    qtyTheoDv: SLTheoDonVi
     customers: {
       id: string
       store_name: string
       orders: number
       qty: number
+      qtyTheoDv: SLTheoDonVi
       revenue: number
-      products: { id: string; sku: string; name: string; qty: number; revenue: number }[]
+      products: { id: string; sku: string; name: string; unit: string; qty: number; revenue: number }[]
     }[]
   }
   const employeeCustomerRows: EmployeeCustomerRow[] = useMemo(() => {
@@ -522,6 +533,7 @@ export default function EmployeesReportPage() {
           role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
           revenue: 0,
           qty: 0,
+          qtyTheoDv: {},
           customers: [],
         } as EmployeeCustomerRow)
       e.revenue += Number(o.total || 0)
@@ -534,6 +546,7 @@ export default function EmployeesReportPage() {
           store_name: c?.store_name || "—",
           orders: 0,
           qty: 0,
+          qtyTheoDv: {},
           revenue: 0,
           products: [],
         }
@@ -550,9 +563,11 @@ export default function EmployeesReportPage() {
         const qty = soLuongCoSoDongHd(l, prod)
         cust.qty += qty
         e.qty += qty
+        congSL(cust.qtyTheoDv, prod.base_unit, qty)
+        congSL(e.qtyTheoDv, prod.base_unit, qty)
         let pr = cust.products.find((x) => x.id === l.product_id)
         if (!pr) {
-          pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0 }
+          pr = { id: l.product_id, sku: prod.sku, name: prod.name, unit: prod.base_unit || "", qty: 0, revenue: 0 }
           cust.products.push(pr)
         }
         pr.qty += qty
@@ -633,24 +648,24 @@ export default function EmployeesReportPage() {
       downloadXlsx(`bao-cao-nv-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "by_customer") {
       const out: (string | number)[][] = [
-        ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "SL", "Doanh thu"],
+        ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "Đơn vị", "SL", "Doanh thu"],
       ]
       for (const e of employeeCustomerRows) {
         for (const c of e.customers) {
           for (const p of c.products) {
-            out.push([e.name, c.store_name, p.sku, p.name, p.qty, p.revenue])
+            out.push([e.name, c.store_name, p.sku, p.name, p.unit, p.qty, p.revenue])
           }
         }
       }
       downloadXlsx(`bao-cao-nv-theo-khach-${range.from}-${range.to}`, out)
     } else if (variant === "products") {
       const out: (string | number)[][] = [
-        ["Nhân viên", "Mã hàng", "Tên hàng", "Khách hàng", "SL", "Doanh thu"],
+        ["Nhân viên", "Mã hàng", "Tên hàng", "Đơn vị", "Khách hàng", "SL", "Doanh thu"],
       ]
       for (const e of employeeProductRows) {
         for (const p of e.products) {
           for (const c of p.customers) {
-            out.push([e.name, p.sku, p.name, c.store_name, c.qty, c.revenue])
+            out.push([e.name, p.sku, p.name, p.unit, c.store_name, c.qty, c.revenue])
           }
         }
       }
@@ -678,11 +693,12 @@ export default function EmployeesReportPage() {
           "",
           "(Tổng hợp)",
           "",
-          r.qty,
+          // Dòng tổng nhiều mặt hàng: xuất "640 hộp · 12 chai", không cộng lẫn đơn vị.
+          hienSLTheoDonVi(r.qtyTheoDv),
           r.listed,
           r.revenue,
           r.diff,
-          r.returnQty,
+          hienSLTheoDonVi(r.returnQtyTheoDv),
           -r.returnValue,
           r.netRevenue,
         ])
@@ -728,18 +744,18 @@ export default function EmployeesReportPage() {
     }),
     { orders: 0, revenue: 0, cogs: 0, profit: 0 }
   )
-  const totalsProducts = employeeProductRows.reduce(
-    (acc, r) => ({ qty: acc.qty + r.qty, revenue: acc.revenue + r.revenue }),
-    { qty: 0, revenue: 0 }
-  )
-  const totalsByCustomer = employeeCustomerRows.reduce(
-    (acc, r) => ({
-      qty: acc.qty + r.qty,
-      revenue: acc.revenue + r.revenue,
-      customers: acc.customers + r.customers.length,
-    }),
-    { qty: 0, revenue: 0, customers: 0 }
-  )
+  // SL dòng tổng: gộp theo đơn vị cơ sở — hộp + chai không cộng thành một số.
+  const totalsProducts = {
+    qtyTheoDv: tongSLTheoDonVi(employeeProductRows),
+    revenue: employeeProductRows.reduce((s, r) => s + r.revenue, 0),
+  }
+  const totalsByCustomer = {
+    qtyTheoDv: tongSLTheoDonVi(employeeCustomerRows),
+    revenue: employeeCustomerRows.reduce((s, r) => s + r.revenue, 0),
+    customers: employeeCustomerRows.reduce((s, r) => s + r.customers.length, 0),
+  }
+  const totalsSummaryQty = tongSLTheoDonVi(employeeSummaryRows)
+  const totalsSummaryReturnQty = tongSLTheoDonVi(employeeSummaryRows, (r) => r.returnQtyTheoDv)
 
   return (
     <ReportShell
@@ -936,7 +952,7 @@ export default function EmployeesReportPage() {
             { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "ck", label: "Số khách", align: "right", render: (r) => r.customers.length },
-            { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "qty", label: "Tổng SL", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
             { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
           ]}
           totalsRow={
@@ -944,7 +960,7 @@ export default function EmployeesReportPage() {
               cells={[
                 { content: `SL người bán: ${employeeCustomerRows.length}`, colSpan: 2 },
                 { content: totalsByCustomer.customers, align: "right" },
-                { content: totalsByCustomer.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: hienSLTheoDonVi(totalsByCustomer.qtyTheoDv), align: "right" },
                 { content: formatCurrency(totalsByCustomer.revenue), align: "right", className: "text-primary" },
               ]}
             />
@@ -968,7 +984,7 @@ export default function EmployeesReportPage() {
                       <div className="text-xs text-muted-foreground">
                         SL:{" "}
                         <span className="font-semibold text-foreground">
-                          {c.qty.toLocaleString("vi-VN")}
+                          {hienSLTheoDonVi(c.qtyTheoDv)}
                         </span>
                         <span className="mx-2">·</span>
                         Doanh thu:{" "}
@@ -1013,6 +1029,7 @@ export default function EmployeesReportPage() {
                               <td className="px-3 py-1.5">{p.name}</td>
                               <td className="px-3 py-1.5 text-right tabular-nums">
                                 {p.qty.toLocaleString("vi-VN")}
+                                {p.unit ? ` ${p.unit}` : ""}
                               </td>
                               <td className="px-3 py-1.5 text-right tabular-nums">
                                 {formatCurrency(p.revenue)}
@@ -1042,7 +1059,7 @@ export default function EmployeesReportPage() {
               key: "qty",
               label: "SL bán",
               align: "right",
-              render: (r) => r.qty.toLocaleString("vi-VN"),
+              render: (r) => hienSLTheoDonVi(r.qtyTheoDv),
             },
             {
               key: "unit",
@@ -1083,7 +1100,7 @@ export default function EmployeesReportPage() {
               key: "rqty",
               label: "SL trả",
               align: "right",
-              render: (r) => (r.returnQty > 0 ? r.returnQty.toLocaleString("vi-VN") : "0"),
+              render: (r) => hienSLTheoDonVi(r.returnQtyTheoDv),
             },
             {
               key: "rval",
@@ -1111,12 +1128,7 @@ export default function EmployeesReportPage() {
             <TotalsRow
               cells={[
                 { content: `SL người bán: ${employeeSummaryRows.length}` },
-                {
-                  content: employeeSummaryRows
-                    .reduce((s, r) => s + r.qty, 0)
-                    .toLocaleString("vi-VN"),
-                  align: "right",
-                },
+                { content: hienSLTheoDonVi(totalsSummaryQty), align: "right" },
                 { content: "" },
                 {
                   content: formatCurrency(
@@ -1136,12 +1148,7 @@ export default function EmployeesReportPage() {
                   ),
                   align: "right",
                 },
-                {
-                  content: employeeSummaryRows
-                    .reduce((s, r) => s + r.returnQty, 0)
-                    .toLocaleString("vi-VN"),
-                  align: "right",
-                },
+                { content: hienSLTheoDonVi(totalsSummaryReturnQty), align: "right" },
                 {
                   content: (() => {
                     const v = employeeSummaryRows.reduce((s, r) => s + r.returnValue, 0)
@@ -1245,14 +1252,14 @@ export default function EmployeesReportPage() {
             { key: "name", label: "Người bán", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "skus", label: "Số mặt hàng", align: "right", render: (r) => r.products.length },
-            { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "qty", label: "Tổng SL", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
             { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
           ]}
           totalsRow={
             <TotalsRow
               cells={[
                 { content: `SL người bán: ${employeeProductRows.length}`, colSpan: 3 },
-                { content: totalsProducts.qty.toLocaleString("vi-VN"), align: "right" },
+                { content: hienSLTheoDonVi(totalsProducts.qtyTheoDv), align: "right" },
                 { content: formatCurrency(totalsProducts.revenue), align: "right", className: "text-primary" },
               ]}
             />
@@ -1272,7 +1279,7 @@ export default function EmployeesReportPage() {
                         <span className="font-medium">{p.name}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        SL: <span className="font-semibold text-foreground">{p.qty.toLocaleString("vi-VN")}</span>
+                        SL: <span className="font-semibold text-foreground">{p.qty.toLocaleString("vi-VN")}{p.unit ? ` ${p.unit}` : ""}</span>
                         <span className="mx-2">·</span>
                         DT: <span className="font-semibold text-primary">{formatCurrency(p.revenue)}</span>
                       </div>
@@ -1291,6 +1298,7 @@ export default function EmployeesReportPage() {
                             <td className="px-3 py-1.5">{c.store_name}</td>
                             <td className="px-3 py-1.5 text-right tabular-nums">
                               {c.qty.toLocaleString("vi-VN")}
+                              {p.unit ? ` ${p.unit}` : ""}
                             </td>
                             <td className="px-3 py-1.5 text-right tabular-nums">
                               {formatCurrency(c.revenue)}

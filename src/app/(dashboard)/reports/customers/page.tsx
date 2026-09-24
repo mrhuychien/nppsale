@@ -26,6 +26,7 @@ import {
   type StockEntryLineRow,
 } from "@/lib/analytics/sales"
 import type { SanPhamQuyDoi } from "@/lib/analytics/units"
+import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -358,14 +359,7 @@ export default function CustomersReportPage() {
   }, [receivables, customerMap, matchSearch])
 
   // -------------------- Hàng bán theo khách (drill-down) --------------------
-  type CustomerProductRow = {
-    id: string
-    name: string
-    channel: string
-    revenue: number
-    qty: number
-    products: { id: string; sku: string; name: string; qty: number; revenue: number; returnQty: number; returnValue: number }[]
-  }
+  type CustomerProductRow = HangBanTheoKhach
   const customerProductRows: CustomerProductRow[] = useMemo(() => {
     const linesByInvoice = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
@@ -383,11 +377,12 @@ export default function CustomersReportPage() {
         channel: c?.channel || "—",
         revenue: 0,
         qty: 0,
+        qtyTheoDv: {},
         products: [],
       }
       e.revenue += Number(o.total || 0)
       const ls = linesByInvoice.get(o.id) || []
-      const prodMap = new Map<string, { id: string; sku: string; name: string; qty: number; revenue: number; returnQty: number; returnValue: number }>()
+      const prodMap = new Map<string, MatHangTheoKhach>()
       for (const r of e.products) prodMap.set(r.id, r)
       for (const l of ls) {
         const p = productMap.get(l.product_id)
@@ -396,6 +391,7 @@ export default function CustomersReportPage() {
           id: l.product_id,
           sku: p.sku,
           name: p.name,
+          unit: p.base_unit || "",
           qty: 0,
           revenue: 0,
           returnQty: 0,
@@ -407,6 +403,8 @@ export default function CustomersReportPage() {
         pr.revenue += Number(l.line_total || 0)
         prodMap.set(l.product_id, pr)
         e.qty += qty
+        // Khách mua nhiều mặt hàng → giữ SL theo từng đơn vị cơ sở.
+        congSL(e.qtyTheoDv, p.base_unit, qty)
       }
       e.products = Array.from(prodMap.values())
       m.set(o.customer_id, e)
@@ -430,6 +428,7 @@ export default function CustomersReportPage() {
           id: rl.product_id,
           sku: p.sku,
           name: p.name,
+          unit: p.base_unit || "",
           qty: 0,
           revenue: 0,
           returnQty: rqty,
@@ -467,11 +466,11 @@ export default function CustomersReportPage() {
       downloadXlsx(`bao-cao-kh-congno-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
-        ["Khách hàng", "Kênh", "Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "SL trả", "Giá trị trả"],
+        ["Khách hàng", "Kênh", "Mã hàng", "Tên hàng", "Đơn vị", "SL bán", "Doanh thu", "SL trả", "Giá trị trả"],
       ]
       for (const c of customerProductRows) {
         for (const p of c.products) {
-          out.push([c.name, c.channel, p.sku, p.name, p.qty, p.revenue, p.returnQty, p.returnValue])
+          out.push([c.name, c.channel, p.sku, p.name, p.unit, p.qty, p.revenue, p.returnQty, p.returnValue])
         }
       }
       downloadXlsx(`bao-cao-kh-hangban-${range.from}-${range.to}`, out)
@@ -659,15 +658,37 @@ function ReceivablesView({ rows }: { rows: { id: string; name: string; channel: 
   )
 }
 
-function CustomerProductsView({
-  rows,
-}: {
-  rows: { id: string; name: string; channel: string; revenue: number; qty: number; products: { id: string; sku: string; name: string; qty: number; revenue: number; returnQty: number; returnValue: number }[] }[]
-}) {
-  const totals = rows.reduce(
-    (acc, r) => ({ revenue: acc.revenue + r.revenue, qty: acc.qty + r.qty }),
-    { revenue: 0, qty: 0 }
-  )
+/** Một mặt hàng của khách — `qty` / `returnQty` theo đơn vị cơ sở `unit`. */
+type MatHangTheoKhach = {
+  id: string
+  sku: string
+  name: string
+  unit: string
+  qty: number
+  revenue: number
+  returnQty: number
+  returnValue: number
+}
+type HangBanTheoKhach = {
+  id: string
+  name: string
+  channel: string
+  revenue: number
+  /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `qtyTheoDv`. */
+  qty: number
+  qtyTheoDv: SLTheoDonVi
+  products: MatHangTheoKhach[]
+}
+
+/** SL một mặt hàng kèm đơn vị cơ sở, vd "640 hộp". */
+const slMatHang = (q: number, unit: string) => `${q.toLocaleString("vi-VN")}${unit ? ` ${unit}` : ""}`
+
+function CustomerProductsView({ rows }: { rows: HangBanTheoKhach[] }) {
+  // Dòng tổng nhiều khách, nhiều mặt hàng: gộp theo đơn vị cơ sở.
+  const totals = {
+    revenue: rows.reduce((s, r) => s + r.revenue, 0),
+    qtyTheoDv: tongSLTheoDonVi(rows),
+  }
   return (
     <ReportTable
       rows={rows}
@@ -675,14 +696,14 @@ function CustomerProductsView({
       columns={[
         { key: "name", label: "Khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
         { key: "ch", label: "Kênh", render: (r) => r.channel },
-        { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+        { key: "qty", label: "Tổng SL", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
       ]}
       totalsRow={
         <TotalsRow
           cells={[
             { content: `SL khách hàng: ${rows.length}`, colSpan: 2 },
-            { content: totals.qty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(totals.qtyTheoDv), align: "right" },
             { content: formatCurrency(totals.revenue), align: "right", className: "text-primary" },
           ]}
         />
@@ -712,10 +733,10 @@ function CustomerProductsView({
                   <tr key={p.id} className="border-t border-border/30">
                     <td className="px-3 py-1.5 font-mono text-xs text-primary">{p.sku}</td>
                     <td className="px-3 py-1.5">{p.name}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{p.qty.toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{slMatHang(p.qty, p.unit)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(p.revenue)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
-                      {p.returnQty > 0 ? p.returnQty.toLocaleString("vi-VN") : "0"}
+                      {p.returnQty > 0 ? slMatHang(p.returnQty, p.unit) : "0"}
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {p.returnValue > 0 ? `-${formatCurrency(p.returnValue)}` : "0"}

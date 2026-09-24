@@ -2,6 +2,7 @@ import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import { soLuongCoSoDongHd, type InvoiceLineRow } from "@/lib/analytics/sales"
 import type { SanPhamQuyDoi } from "@/lib/analytics/units"
+import { hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 
 export interface ProductMeta {
   id: string
@@ -16,9 +17,12 @@ export interface SalesByProductRow {
   name: string
   /** Đơn vị cơ sở ("" khi gộp theo nhóm) — `qty`/`returnQty` đã quy về nó. */
   unit: string
+  /** ⚠ Gộp theo nhóm thì lẫn đơn vị — chỉ để sắp xếp / xuất dòng một mặt hàng. Hiện `qtyTheoDv`. */
   qty: number
+  qtyTheoDv: SLTheoDonVi
   revenue: number
   returnQty: number
+  returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
 }
@@ -47,14 +51,15 @@ function slDonVi(qty: number, unit: string): string {
 export function SalesByProductView({ rows, orderLines, orderMap, productMap }: Props) {
   const totals = rows.reduce(
     (acc, r) => ({
-      qty: acc.qty + r.qty,
       revenue: acc.revenue + r.revenue,
-      returnQty: acc.returnQty + r.returnQty,
       returnValue: acc.returnValue + r.returnValue,
       netRevenue: acc.netRevenue + r.netRevenue,
     }),
-    { qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
+    { revenue: 0, returnValue: 0, netRevenue: 0 }
   )
+  // SL dòng tổng (nhiều mặt hàng): gộp theo đơn vị cơ sở, không cộng hộp + chai.
+  const tongSL = tongSLTheoDonVi(rows)
+  const tongSLTra = tongSLTheoDonVi(rows, (r) => r.returnQtyTheoDv)
 
   return (
     <ReportTable
@@ -63,9 +68,9 @@ export function SalesByProductView({ rows, orderLines, orderMap, productMap }: P
       columns={[
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
-        { key: "qty", label: "SL Bán", align: "right", render: (r) => slDonVi(r.qty, r.unit) },
+        { key: "qty", label: "SL Bán", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "rqty", label: "SL Trả", align: "right", render: (r) => slDonVi(r.returnQty, r.unit) },
+        { key: "rqty", label: "SL Trả", align: "right", render: (r) => hienSLTheoDonVi(r.returnQtyTheoDv) },
         { key: "rval", label: "Giá trị trả", align: "right", render: (r) => (r.returnValue > 0 ? `-${formatCurrency(r.returnValue)}` : "0") },
         { key: "net", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.netRevenue)}</span> },
       ]}
@@ -73,9 +78,9 @@ export function SalesByProductView({ rows, orderLines, orderMap, productMap }: P
         <TotalsRow
           cells={[
             { content: `SL mặt hàng: ${rows.length}`, colSpan: 3 },
-            { content: totals.qty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(tongSL), align: "right" },
             { content: formatCurrency(totals.revenue), align: "right" },
-            { content: totals.returnQty.toLocaleString("vi-VN"), align: "right" },
+            { content: hienSLTheoDonVi(tongSLTra), align: "right" },
             {
               content: totals.returnValue > 0 ? `-${formatCurrency(totals.returnValue)}` : "0",
               align: "right",

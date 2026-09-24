@@ -34,6 +34,7 @@ import {
   type StockEntryLineRow,
 } from "@/lib/analytics/sales"
 import type { SanPhamQuyDoi } from "@/lib/analytics/units"
+import { congSL, hienSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
@@ -266,14 +267,21 @@ export default function ProductsReportPage() {
   // -------------------- Bán hàng --------------------
   const salesRows: SalesByProductRow[] = useMemo(() => {
     const m = new Map<string, SalesByProductRow>()
+    const moiDongBan = (k: string, lbl: { sku: string; name: string }, p: ProductRow): SalesByProductRow => ({
+      id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit,
+      qty: 0, qtyTheoDv: {}, revenue: 0, returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0,
+    })
     for (const l of lines) {
       const p = productMap.get(l.product_id)
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
+      const e = m.get(k) || moiDongBan(k, lbl, p)
       // SL quy về đơn vị cơ sở (ưu tiên hệ số chụp trên dòng hóa đơn).
-      e.qty += soLuongCoSoDongHd(l, p)
+      const q = soLuongCoSoDongHd(l, p)
+      e.qty += q
+      // Gộp theo nhóm = nhiều mặt hàng → giữ theo từng đơn vị cơ sở.
+      congSL(e.qtyTheoDv, p.base_unit, q)
       e.revenue += Number(l.line_total || 0)
       m.set(k, e)
     }
@@ -282,9 +290,11 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
+      const e = m.get(k) || moiDongBan(k, lbl, p)
       // Dòng trả không có hệ số chụp → tra danh mục.
-      e.returnQty += soLuongCoSoDongTra(l, p)
+      const q = soLuongCoSoDongTra(l, p)
+      e.returnQty += q
+      congSL(e.returnQtyTheoDv, p.base_unit, q)
       e.returnValue += Number(l.line_total || 0)
       m.set(k, e)
     }
@@ -306,8 +316,10 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, cogs: 0, profit: 0, margin: 0 }
-      e.qty += soLuongCoSoDongHd(l, p)
+      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
+      const q = soLuongCoSoDongHd(l, p)
+      e.qty += q
+      congSL(e.qtyTheoDv, p.base_unit, q)
       e.revenue += Number(l.line_total || 0)
       m.set(k, e)
     }
@@ -316,7 +328,7 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, cogs: 0, profit: 0, margin: 0 }
+      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
       // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
       e.cogs += giaTriDongKho(l)
       m.set(k, e)
@@ -344,6 +356,7 @@ export default function ProductsReportPage() {
         name: lbl.name,
         category: p.category || "—",
         qty: 0,
+        qtyTheoDv: {},
         unit_cost: 0,
         value: 0,
         batches: 0,
@@ -353,6 +366,7 @@ export default function ProductsReportPage() {
       const q = Number(b.qty_on_hand || 0)
       const c = Number(b.unit_cost || 0)
       e.qty += q
+      congSL(e.qtyTheoDv, p.base_unit, q)
       e.value += q * c
       e.batches += 1
       e._qtyAccum += q
@@ -371,7 +385,12 @@ export default function ProductsReportPage() {
   const movementData = useMemo(() => {
     type MR = StockMovementRow & { _id: string }
     const m = new Map<string, MR>()
-    const detail = new Map<string, { date: string; type: "import" | "export" | "stocktake" | "transfer"; doc: string; qty: number; unit_cost: number }[]>()
+    const detail = new Map<string, { date: string; type: "import" | "export" | "stocktake" | "transfer"; doc: string; qty: number; unit: string; unit_cost: number }[]>()
+    const moiDongXnt = (k: string, lbl: { sku: string; name: string }): MR => ({
+      _id: k, id: k, sku: lbl.sku, name: lbl.name,
+      beginQty: 0, importQty: 0, importValue: 0, exportQty: 0, exportValue: 0, endQty: 0,
+      beginTheoDv: {}, importTheoDv: {}, exportTheoDv: {}, endTheoDv: {},
+    })
 
     // current stock value (end-of-period proxy = current on-hand)
     for (const b of batches) {
@@ -379,19 +398,9 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || {
-        _id: k,
-        id: k,
-        sku: lbl.sku,
-        name: lbl.name,
-        beginQty: 0,
-        importQty: 0,
-        importValue: 0,
-        exportQty: 0,
-        exportValue: 0,
-        endQty: 0,
-      }
+      const e = m.get(k) || moiDongXnt(k, lbl)
       e.endQty += Number(b.qty_on_hand || 0)
+      congSL(e.endTheoDv, p.base_unit, Number(b.qty_on_hand || 0))
       m.set(k, e)
     }
 
@@ -403,26 +412,17 @@ export default function ProductsReportPage() {
       const lbl = groupLabel(k, p)
       const entry = stockEntryMap.get(l.entry_id)
       if (!entry) continue
-      const e = m.get(k) || {
-        _id: k,
-        id: k,
-        sku: lbl.sku,
-        name: lbl.name,
-        beginQty: 0,
-        importQty: 0,
-        importValue: 0,
-        exportQty: 0,
-        exportValue: 0,
-        endQty: 0,
-      }
+      const e = m.get(k) || moiDongXnt(k, lbl)
       // SL cơ sở — cùng đơn vị với tồn lô (`qty_on_hand`) và `unit_cost`.
       const q = soLuongCoSoDongKho(l)
       const c = Number(l.unit_cost || 0)
       if (entry.type === "import") {
         e.importQty += q
+        congSL(e.importTheoDv, p.base_unit, q)
         e.importValue += q * c
       } else if (entry.type === "export") {
         e.exportQty += q
+        congSL(e.exportTheoDv, p.base_unit, q)
         e.exportValue += q * c
       }
       m.set(k, e)
@@ -432,6 +432,7 @@ export default function ProductsReportPage() {
         type: entry.type,
         doc: entry.entry_code,
         qty: q,
+        unit: p.base_unit || "",
         unit_cost: c,
       })
       detail.set(k, arr)
@@ -440,6 +441,12 @@ export default function ProductsReportPage() {
     // begin = end - imports + exports (approximation)
     for (const e of Array.from(m.values())) {
       e.beginQty = Math.max(0, e.endQty - e.importQty + e.exportQty)
+      // Tồn đầu theo từng đơn vị cơ sở: cùng công thức, trên từng đơn vị.
+      const dv = new Set([...Object.keys(e.endTheoDv), ...Object.keys(e.importTheoDv), ...Object.keys(e.exportTheoDv)])
+      e.beginTheoDv = {}
+      for (const u of Array.from(dv)) {
+        congSL(e.beginTheoDv, u, Math.max(0, (e.endTheoDv[u] || 0) - (e.importTheoDv[u] || 0) + (e.exportTheoDv[u] || 0)))
+      }
     }
 
     return {
@@ -448,13 +455,17 @@ export default function ProductsReportPage() {
     }
   }, [batches, stockLines, stockEntryMap, productMap, filterFn, groupKey, groupLabel])
 
+  /** Ô SL khi xuất: một mặt hàng → số; gộp theo nhóm → chuỗi theo đơn vị. */
+  const slXuat = (qty: number, theoDv: SLTheoDonVi): string | number => (groupSameType ? hienSLTheoDonVi(theoDv) : qty)
+
   const handleExport = () => {
     if (variant === "sales") {
       const out: (string | number)[][] = [
         ["Mã hàng", "Tên hàng", "Đơn vị", "SL bán", "Doanh thu", "SL trả", "Giá trị trả", "Doanh thu thuần"],
       ]
       for (const r of salesRows) {
-        out.push([r.sku, r.name, r.unit, r.qty, r.revenue, r.returnQty, -r.returnValue, r.netRevenue])
+        // Gộp theo nhóm: xuất "640 hộp · 12 chai", không cộng lẫn đơn vị.
+        out.push([r.sku, r.name, r.unit, slXuat(r.qty, r.qtyTheoDv), r.revenue, slXuat(r.returnQty, r.returnQtyTheoDv), -r.returnValue, r.netRevenue])
       }
       downloadXlsx(`bao-cao-hh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
@@ -462,7 +473,7 @@ export default function ProductsReportPage() {
         ["Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows) {
-        out.push([r.sku, r.name, r.qty, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
+        out.push([r.sku, r.name, slXuat(r.qty, r.qtyTheoDv), r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
       }
       downloadXlsx(`bao-cao-hh-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "stock_value") {
@@ -470,7 +481,7 @@ export default function ProductsReportPage() {
         ["Mã hàng", "Tên hàng", "Nhóm", "SL tồn", "Giá vốn TB", "Giá trị tồn", "Số lô"],
       ]
       for (const r of stockValueRows) {
-        out.push([r.sku, r.name, r.category, r.qty, r.unit_cost, r.value, r.batches])
+        out.push([r.sku, r.name, r.category, slXuat(r.qty, r.qtyTheoDv), r.unit_cost, r.value, r.batches])
       }
       downloadXlsx(`bao-cao-hh-giatrikho-${range.from}-${range.to}`, out)
     } else {
@@ -478,7 +489,10 @@ export default function ProductsReportPage() {
         ["Mã hàng", "Tên hàng", "Tồn đầu", "SL nhập", "Giá trị nhập", "SL xuất", "Giá trị xuất", "Tồn cuối"],
       ]
       for (const r of movementData.rows) {
-        out.push([r.sku, r.name, r.beginQty, r.importQty, r.importValue, r.exportQty, r.exportValue, r.endQty])
+        out.push([
+          r.sku, r.name, slXuat(r.beginQty, r.beginTheoDv), slXuat(r.importQty, r.importTheoDv), r.importValue,
+          slXuat(r.exportQty, r.exportTheoDv), r.exportValue, slXuat(r.endQty, r.endTheoDv),
+        ])
       }
       downloadXlsx(`bao-cao-hh-xnt-${range.from}-${range.to}`, out)
     }

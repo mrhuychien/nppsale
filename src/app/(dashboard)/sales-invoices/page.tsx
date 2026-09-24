@@ -303,7 +303,7 @@ export default function SalesInvoicesPage() {
       return x
     },
     [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc,
-     listSearch, fieldSearch]
+     listSearch, fieldSearch, locNC.menhDe]
   )
 
   /**
@@ -675,7 +675,7 @@ export default function SalesInvoicesPage() {
           {(filterActive("date") || filterActive("customer") || filterActive("sales") || filterActive("amount")) && (
             <Button variant="outline" onClick={() => setShowAdvanced((v) => !v)} className="gap-2">
               <Filter className="h-4 w-4" />
-              Bộ lọc nâng cao
+              Lọc nhanh
               {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
           )}

@@ -1490,7 +1490,7 @@ export default function OrdersPage() {
             className="gap-2"
           >
             <Filter className="h-4 w-4" />
-            Bộ lọc nâng cao
+            Lọc nhanh
             {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         )}

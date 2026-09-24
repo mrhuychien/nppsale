@@ -56,6 +56,8 @@ export interface SellCartState {
   sellerId: string
   /** Giảm giá cả đơn (% / đồng) — xem `cartTotals`. Vắng = không giảm. */
   docDiscount?: DiscountInput
+  /** Khoản giảm đơn ĐÃ CÓ khi mở sửa đơn (đồng) — xem `kiemQuyenGiamGia`. */
+  docDiscountGoc?: number
   /** Đang sửa đơn đã lưu hay đang soạn đơn mới. */
   editing: EditingOrder | null
 }

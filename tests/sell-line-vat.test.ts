@@ -98,12 +98,12 @@ describe("/sell: giảm giá từng dòng theo % hoặc theo đồng", () => {
     expect(priceViolation(g, { canEditPrice: true, maxIncreasePct: 10 })).toBeNull()
   })
 
-  it("sheet có ô giảm dòng ₫/%, khoá khi không có quyền sửa giá; chỉ giỏ /sell bật", () => {
+  /* ⚠ 24/09/2026: quyền giảm giá RIÊNG theo nhân viên (mig 185) thay cho khoá theo quyền sửa giá. */
+  it("sheet có ô giảm dòng ₫/%, hiện theo quyền giảm giá, kẹp theo trần; chỉ giỏ /sell bật", () => {
     expect(SHEET).toMatch(/lineDiscount && \(\s*<DiscountField/)
-    expect(SHEET).toContain("disabled={!canEditPrice}")
-    expect(SHEET).toContain("onChange={(d) => onPatch({ discount: d })}")
+    expect(SHEET).toContain("kepGiamGia(d, lineGross(line.qty, line.price), discountRules)")
     expect(SHEET).toContain("switchUnit(d, lineGross(line.qty, line.price))")
-    expect(CART).toMatch(/<LineEditSheet[\s\S]*?lineDiscount[\s\S]*?\/>/)
+    expect(CART).toMatch(/<LineEditSheet[\s\S]*?lineDiscount=\{quyenGiam\.allowed\}[\s\S]*?discountRules=\{quyenGiam\}[\s\S]*?\/>/)
     // Thành tiền trên sheet và trên giỏ đọc giá SAU giảm.
     expect(SHEET).toContain("formatCurrency(line.qty * netPriceOf(line))")
     expect(CART).toContain("formatCurrency(r.line.qty * netPriceOf(r.line))")
@@ -136,12 +136,16 @@ describe("/sell: giảm giá cả đơn", () => {
     })
     expect(p.order).toMatchObject({ subtotal: 170_000, total: 170_000 })
   })
-  it("màn giỏ có ô giảm đơn, khoá khi không có quyền sửa giá; khoá chống lặp đổi theo giảm đơn", () => {
-    expect(CART).toMatch(/<GiamGiaDon[\s\S]*?disabled=\{!canEditPrice\}[\s\S]*?onChange=\{cart\.setDocDiscount\}/)
+  it("màn giỏ có ô giảm đơn theo quyền giảm giá (kẹp trần), chốt lại lúc gửi; khoá chống lặp đổi theo giảm đơn", () => {
+    expect(CART).toMatch(/cart\.cart\.length > 0 && quyenGiam\.allowed && \(\s*<GiamGiaDon/)
+    expect(CART).toContain("cart.setDocDiscount(kepGiamGia(d, cart.totals.subtotal + cart.totals.docDiscount, quyenGiam))")
+    expect(CART).toMatch(/const loiGiam = kiemQuyenGiamGia\(cart\.cart, cart\.totals, quyenGiam, cart\.docDiscountGoc \?\? 0\)\s*if \(loiGiam\) throw new Error\(loiGiam\)/)
     expect(CART).toContain("nguoiDungTen, cart.docDiscount ?? null]")
   })
   it("sửa đơn đã lưu nạp lại giảm đơn; không đọc được subtotal thì 0", () => {
     expect(EDIT).toContain("subtotal\"")
-    expect(EDIT).toMatch(/docDiscount: \{\s*value: head\.subtotal == null \? 0 : giamCuaChungTu\(/)
+    expect(EDIT).toMatch(/const giamDonDaLuu = head\.subtotal == null \? 0 : giamCuaChungTu\(/)
+    expect(EDIT).toContain('docDiscount: { value: giamDonDaLuu, unit: "vnd" },')
+    expect(EDIT).toContain("docDiscountGoc: giamDonDaLuu,")
   })
 })

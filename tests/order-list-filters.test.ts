@@ -158,11 +158,12 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
        tìm mở rộng sang tên khách (21/09/2026). */
     const search = ORDERS.indexOf('placeholder="Tìm mã đơn', row)
     const route = ORDERS.indexOf("<RouteFilter routes={routes}", search)
-    const advanced = ORDERS.indexOf("Bộ lọc nâng cao", search)
+    /* 24/09/2026: nút cũ đổi tên "Lọc nhanh" — "Bộ lọc nâng cao" nay là bộ lọc theo trường bất kỳ. */
+    const advanced = ORDERS.indexOf("Lọc nhanh", search)
     expect(row).toBeGreaterThan(0)
     expect(search).toBeGreaterThan(row)
     expect(route, "bộ lọc tuyến không nằm sau ô tìm").toBeGreaterThan(search)
-    expect(route, "bộ lọc tuyến phải đứng trước nút Bộ lọc nâng cao").toBeLessThan(advanced)
+    expect(route, "bộ lọc tuyến phải đứng trước nút Lọc nhanh").toBeLessThan(advanced)
   })
 })
 

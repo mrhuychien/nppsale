@@ -566,11 +566,13 @@ export function LineDetailPanel({ children, testId }: { children: ReactNode; tes
 }
 
 /** Một ô trong khung chi tiết: nhãn + điều khiển. */
-export function LineDetailField({ label, children, width = 200 }: { label: string; children: ReactNode; width?: number }) {
+export function LineDetailField({ label, children, width = 200, hint }: { label: string; children: ReactNode; width?: number; hint?: string }) {
   return (
     <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--pos-muted)]">
       <span className="shrink-0">{label}</span>
       <span style={{ width }}>{children}</span>
+      {/* Ví dụ trần giảm giá của người dùng: "Tối đa 5%". */}
+      {hint && <span className="shrink-0 text-[11px] text-[var(--pos-dim)]">{hint}</span>}
     </label>
   )
 }

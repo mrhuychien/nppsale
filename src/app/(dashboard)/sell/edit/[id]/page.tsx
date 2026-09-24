@@ -188,6 +188,11 @@ export default function SellEditLoaderPage() {
       })
     }
 
+    /* Không đọc được subtotal thì 0 — `giamCuaChungTu(…, null)` ra CẢ tiền hàng. */
+    const giamDonDaLuu = head.subtotal == null ? 0 : giamCuaChungTu(
+      lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unit_price) })),
+      head.subtotal
+    )
     cart.loadForEdit({
       cart: rows,
       customerId: head.customer_id,
@@ -211,14 +216,8 @@ export default function SellEditLoaderPage() {
       sellerId: head.sales_user_id ?? "",
       /* ⚠ GIẢM GIÁ ĐƠN ĐÃ LƯU phải nạp lại — không thì sửa đơn rồi lưu là mất
          khoản giảm, khách bị ghi nợ cao hơn. Suy từ Σ(SL × giá) − subtotal. */
-      docDiscount: {
-        /* Không đọc được subtotal thì 0 — `giamCuaChungTu(…, null)` ra CẢ tiền hàng. */
-        value: head.subtotal == null ? 0 : giamCuaChungTu(
-          lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unit_price) })),
-          head.subtotal
-        ),
-        unit: "vnd",
-      },
+      docDiscount: { value: giamDonDaLuu, unit: "vnd" },
+      docDiscountGoc: giamDonDaLuu,
       editing: {
         orderId: head.id,
         orderCode: head.order_code,

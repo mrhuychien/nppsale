@@ -61,7 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("[AuthProvider] profile error:", error.code, error.message)
           return null
         }
-        return data as User | null
+        if (!data) return null
+        /* ⚠ QUYỀN GIẢM GIÁ (mig 185) ĐỌC RIÊNG. Ghép vào câu trên thì DB chưa
+           chạy mig 185 là 42703 và KHÔNG AI đăng nhập được; ở đây hỏng thì chỉ
+           là quyền giảm giá tắt — đúng mặc định. */
+        const gg = await supabase
+          .from("users")
+          .select("allow_discount, discount_max_type, discount_max_value")
+          .eq("id", userId)
+          .maybeSingle()
+        return { ...(data as User), ...(gg.error || !gg.data ? {} : (gg.data as Partial<User>)) }
       } catch (err) {
         console.error("[AuthProvider] profile unexpected error:", err)
         return null

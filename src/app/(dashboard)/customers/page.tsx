@@ -532,7 +532,7 @@ export default function CustomersPage() {
         items: ordered,
       },
     ]
-  }, [ordered, routeMode, quick, debouncedSearch, locNC.key, visitedToday])
+  }, [ordered, routeMode, quick, debouncedSearch, visitedToday])
 
   const visitedOnRoute = Array.from(todayStops.keys()).filter((id) => visitedToday.has(id)).length
   const routeTotal = todayStops.size

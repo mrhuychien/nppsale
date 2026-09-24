@@ -9,6 +9,7 @@
 
 import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discount"
 import { vatChungCuaDong } from "@/lib/pos/vat"
+import { kiemGiamGia, type UserDiscountRules } from "@/lib/pricing"
 
 /* ⚠ Quy tắc SỐ dùng chung với POS (hàm thuần, không store) — `/sell` đọc qua
    đây, không import thẳng `@/lib/pos` (chốt tách store, tests/pos-cau-truc). */
@@ -258,4 +259,30 @@ export function priceViolation(
 
 export function ceilingFor(listPrice: number, maxIncreasePct: number): number {
   return Math.round(listPrice * (1 + (Number(maxIncreasePct) || 0) / 100))
+}
+
+/**
+ * CHỐT QUYỀN GIẢM GIÁ LÚC GỬI ĐƠN (mig 185, chủ nhà 24/09/2026).
+ *
+ * Ô nhập đã kẹp theo trần, nhưng tiền hàng đổi sau đó (tăng/giảm SL, đổi đơn
+ * vị) làm khoản giảm theo đồng vượt % trần, và giỏ nạp từ máy có thể mang
+ * khoản giảm của lần trước khi quyền còn bật. Nên kiểm lại ở đây.
+ *
+ * ⚠ `giamDonGoc` — khoản giảm cả đơn ĐÃ CÓ trên đơn đang sửa (do NPP đặt):
+ *   nhân viên không có quyền vẫn lưu được đơn, miễn không tăng khoản ấy.
+ *
+ * Trả câu lỗi, hoặc `null` khi hợp lệ.
+ */
+export function kiemQuyenGiamGia(
+  cart: readonly CartLine[],
+  totals: Pick<CartTotals, "subtotal" | "docDiscount">,
+  rules: UserDiscountRules,
+  giamDonGoc = 0
+): string | null {
+  return kiemGiamGia(
+    cart.map((l) => ({ giam: lineDiscountAmountOf(l), tienHang: lineGross(l.qty, l.price) })),
+    { giam: totals.docDiscount, tienHang: totals.subtotal + totals.docDiscount },
+    rules,
+    giamDonGoc
+  )
 }

@@ -40,9 +40,9 @@ export function AdvancedFilter({
   return (
     <Popover open={mo} onOpenChange={setMo}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={className} aria-label="Lọc nâng cao">
+        <Button variant="outline" className={className} aria-label="Bộ lọc nâng cao">
           <SlidersHorizontal className="mr-1.5 h-4 w-4" />
-          Lọc nâng cao
+          Bộ lọc nâng cao
           {dangAp > 0 && (
             <span className="ml-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
               {dangAp}

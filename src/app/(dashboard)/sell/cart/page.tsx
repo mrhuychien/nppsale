@@ -17,7 +17,7 @@ import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import {
-  lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, unitLabel, vatChungCuaDong, vatChungKeTiep,
+  kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, unitLabel, vatChungCuaDong, vatChungKeTiep,
   type DiscountInput,
 } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
@@ -26,7 +26,7 @@ import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/
 import { useCommittedStock } from "@/hooks/use-committed-stock"
 import { availableMapFrom } from "@/lib/sell/committed"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
-import { userPriceRulesFrom } from "@/lib/pricing"
+import { kepGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom, type UserDiscountRules } from "@/lib/pricing"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { canDeleteOrder, deleteOrder } from "@/lib/orders/delete"
@@ -120,6 +120,8 @@ export default function SellCartPage() {
 
   // Quyền sửa giá theo từng người — NVBH phải được bật riêng.
   const rules = userPriceRulesFrom(user)
+  /* ⚠ QUYỀN GIẢM GIÁ (mig 185): tắt thì ô giảm dòng / giảm đơn ẩn hẳn. */
+  const quyenGiam = userDiscountRulesFrom(user)
   const isSales = user?.role === "sales"
   /**
    * NPP LẬP ĐƠN GIÚP NHÂN VIÊN (chủ nhà chốt 21/09/2026).
@@ -327,6 +329,8 @@ export default function SellCartPage() {
     if (submitting || !cart.customerId || !user?.id || !user.org_id) return
     setSubmitting(true)
     try {
+      const loiGiam = kiemQuyenGiamGia(cart.cart, cart.totals, quyenGiam, cart.docDiscountGoc ?? 0)
+      if (loiGiam) throw new Error(loiGiam)
       const supabase = createClient()
       const online = typeof navigator === "undefined" || navigator.onLine
       // ⚠ SỬA ĐƠN KHÔNG XẾP ĐƯỢC VÀO HÀNG ĐỢI. Hàng đợi ngoại tuyến chỉ
@@ -695,13 +699,13 @@ export default function SellCartPage() {
 
         {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chủ nhà 24/09/2026: "làm đơn chưa có giảm giá tổng
             đơn". Như POS; khoá khi không có quyền sửa giá (cùng luật giảm dòng). */}
-        {cart.cart.length > 0 && (
+        {cart.cart.length > 0 && quyenGiam.allowed && (
           <GiamGiaDon
             value={cart.docDiscount ?? { value: 0, unit: "vnd" }}
             base={cart.totals.subtotal + cart.totals.docDiscount}
             amount={cart.totals.docDiscount}
-            disabled={!canEditPrice}
-            onChange={cart.setDocDiscount}
+            rules={quyenGiam}
+            onChange={(d) => cart.setDocDiscount(kepGiamGia(d, cart.totals.subtotal + cart.totals.docDiscount, quyenGiam))}
           />
         )}
 
@@ -945,7 +949,8 @@ export default function SellCartPage() {
         groupId={groupId}
         canEditPrice={canEditPrice}
         maxIncreasePct={maxIncreasePct}
-        lineDiscount
+        lineDiscount={quyenGiam.allowed}
+        discountRules={quyenGiam}
         baseOnHand={edit ? (stockByProduct[edit.productId] ?? 0) : 0}
         onPatch={(patch) => editIdx != null && cart.patchLine(editIdx, patch)}
         onRemove={() => {
@@ -969,15 +974,17 @@ function Row({ label, value, error }: { label: string; value: string; error?: bo
 
 /** Ô giảm giá cả đơn (₫ / %). Lật đơn vị giữ nguyên số tiền — quy tắc POS. */
 function GiamGiaDon({
-  value, base, amount, disabled, onChange,
+  value, base, amount, rules, onChange,
 }: {
   value: DiscountInput
   /** Tiền hàng sau giảm dòng, trước giảm đơn — nền của phần trăm. */
   base: number
   amount: number
-  disabled: boolean
+  rules: UserDiscountRules
   onChange: (d: DiscountInput) => void
 }) {
+  const disabled = !rules.allowed
+  const tran = nhanTranGiamGia(rules)
   const pct = value.unit === "pct"
   const [pctText, setPctText] = useState(pct && value.value ? String(value.value) : "")
   return (
@@ -1024,9 +1031,9 @@ function GiamGiaDon({
           {unitLabel(value.unit)}
         </button>
       </div>
-      {(disabled || amount > 0) && (
+      {(amount > 0 || tran) && (
         <p className="mt-1.5 text-xs font-bold text-on-surface-variant">
-          {disabled ? "Bạn không có quyền sửa giá nên không giảm giá đơn được." : `Giảm ${formatCurrency(amount)} trên tiền hàng ${formatCurrency(base)}`}
+          {[amount > 0 ? `Giảm ${formatCurrency(amount)} trên tiền hàng ${formatCurrency(base)}` : "", tran].filter(Boolean).join(" · ")}
         </p>
       )}
     </div>

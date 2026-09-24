@@ -1,0 +1,590 @@
+</style>
+<style>
+body{margin:0;background:#e9e7e2;font-family:'Be Vietnam Pro',system-ui,sans-serif;color:#111827}
+a{color:#2563eb}a:hover{color:#1d4ed8}
+input,select,button{font-family:inherit}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<section style="display:flex;flex-wrap:wrap;gap:56px;padding:48px 48px 0;align-items:flex-start;justify-content:center">
+  <div id="3a" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">3a</span><span style="font-size:14px;font-weight:600">Sửa dòng hàng (bottom sheet)</span></div>
+    <div style="width:390px;height:800px;background:#6b7280;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+      <div style="flex:1;background:rgba(17,24,39,.35)"></div>
+      <div style="background:#fff;border-radius:20px 20px 0 0;display:flex;flex-direction:column">
+        <div style="display:flex;justify-content:center;padding:8px 0 4px"><span style="width:40px;height:4px;border-radius:2px;background:#d1d5db"></span></div>
+        <div style="padding:8px 16px 14px;display:flex;gap:12px;align-items:flex-start;border-bottom:1px solid #f0f1f4">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+            <div style="font-size:16px;font-weight:700;line-height:1.35">Kẹo Dẻo Xiên 300 PH (24 gói/)</div>
+            <div style="font-size:12px;color:#6b7280">SP00090 · Còn 105 thùng</div>
+          </div>
+          <button style="width:32px;height:32px;border-radius:16px;border:none;background:#f3f4f7;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;background:#f3f4f7;border-radius:12px;padding:3px">
+            <sc-for list="{{ eUnits }}" as="u" hint-placeholder-count="2">
+              <button sc-camel-on-click="{{ u.onClick }}" style="flex:1;height:44px;border:none;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:{{ u.bg }};box-shadow:{{ u.shadow }}">
+                <span style="font-size:14px;font-weight:{{ u.weight }};color:{{ u.color }}">{{ u.label }}</span>
+                <span style="font-size:11px;color:#6b7280">{{ u.price }}đ</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:12px;font-weight:600;color:#374151">Số lượng</span>
+              <div style="display:flex;align-items:center;height:48px;border:1px solid #e5e7eb;border-radius:12px">
+                <button sc-camel-on-click="{{ eDec }}" style="width:44px;height:46px;border:none;background:transparent;font-size:20px;color:#2563eb;cursor:pointer">−</button>
+                <input value="{{ eQty }}" sc-camel-on-change="{{ onEQty }}" inputmode="numeric" style="width:44px;border:none;outline:none;text-align:center;font-size:17px;font-weight:700;background:transparent">
+                <button sc-camel-on-click="{{ eInc }}" style="width:44px;height:46px;border:none;background:transparent;font-size:20px;color:#2563eb;cursor:pointer">+</button>
+              </div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:12px;font-weight:600;color:#374151">Đơn giá / {{ eUnitName }}</span>
+              <div style="height:48px;border-radius:12px;display:flex;align-items:center;padding:0 12px;gap:4px;border:{{ ePriceBorder }}">
+                <input value="{{ ePrice }}" sc-camel-on-change="{{ onEPrice }}" inputmode="numeric" style="flex:1;min-width:0;border:none;outline:none;text-align:right;font-size:17px;font-weight:700;background:transparent">
+                <span style="font-size:13px;color:#6b7280">đ</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:-8px;font-size:12px">
+            <span style="flex:1;color:{{ eHintColor }}">{{ eHint }}</span>
+            <sc-if value="{{ eChanged }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ eResetPrice }}" style="border:none;background:transparent;color:#2563eb;font-size:12px;font-weight:600;cursor:pointer;padding:0">Về giá bảng</button></sc-if>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:12px;font-weight:600;color:#374151">Giảm giá dòng</span>
+            <div style="display:flex;gap:8px">
+              <div style="flex:1;height:48px;border:1px solid #e5e7eb;border-radius:12px;display:flex;align-items:center;padding:0 12px">
+                <input value="{{ eDisc }}" sc-camel-on-change="{{ onEDisc }}" inputmode="numeric" placeholder="0" style="flex:1;min-width:0;border:none;outline:none;text-align:right;font-size:17px;font-weight:700;background:transparent">
+              </div>
+              <div style="display:flex;background:#f3f4f7;border-radius:12px;padding:3px">
+                <sc-for list="{{ eDTypes }}" as="d" hint-placeholder-count="2">
+                  <button sc-camel-on-click="{{ d.onClick }}" style="width:44px;height:42px;border:none;border-radius:10px;font-size:15px;cursor:pointer;background:{{ d.bg }};color:{{ d.color }};font-weight:{{ d.weight }};box-shadow:{{ d.shadow }}">{{ d.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:12px;font-weight:600;color:#374151">Ghi chú dòng</span>
+            <input placeholder="VD: lấy date mới, đổi vị cam" style="height:44px;border:1px solid #e5e7eb;border-radius:12px;padding:0 12px;font-size:14px;outline:none">
+          </div>
+          <div style="background:#f7f8fa;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#6b7280">
+            <div style="display:flex;justify-content:space-between"><span>{{ eQty }} {{ eUnitName }} × {{ ePrice }}đ</span><span style="color:#111827">{{ eGross }}đ</span></div>
+            <sc-if value="{{ eHasDisc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between"><span>Giảm giá</span><span style="color:#067647">−{{ eDiscAmt }}đ</span></div></sc-if>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:6px;border-top:1px solid #e5e7eb"><span style="color:#111827;font-weight:600">Thành tiền</span><span style="font-size:20px;font-weight:700;color:#111827">{{ eTotal }}đ</span></div>
+          </div>
+        </div>
+        <div style="padding:4px 16px 20px;display:flex;gap:8px">
+          <button style="width:50px;height:50px;border-radius:12px;border:1px solid #fecaca;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg></button>
+          <button style="flex:1;height:50px;border:none;border-radius:12px;background:#2563eb;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Cập nhật · {{ eTotal }}đ</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Sheet cao theo nội dung, bỏ khoảng trống lớn ở giữa.</div>
+      <div>• Đơn vị dạng 2 dòng tên / giá; đổi đơn vị tự đặt lại giá bảng.</div>
+      <div>• Giá vượt tối đa → viền đỏ + cảnh báo; có “Về giá bảng”.</div>
+      <div>• đ / % là toggle rõ ràng thay cho hướng dẫn chữ.</div>
+      <div>• Diễn giải tiền: SL × giá − giảm = thành tiền; nút xác nhận hiện số tiền.</div>
+    </div>
+  </div>
+</section>
+<section style="display:flex;flex-wrap:wrap;gap:56px;padding:48px 48px 0;align-items:flex-start;justify-content:center">
+
+  <div id="2a" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">2a</span><span style="font-size:14px;font-weight:600">Thêm hàng</span></div>
+    <div style="width:390px;height:800px;background:#f3f4f7;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column">
+      <div style="background:#fff;padding:14px 16px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid #eceef2">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button style="width:36px;height:36px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;margin-left:-8px;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"></path></svg></button>
+          <div style="flex:1;font-size:19px;font-weight:700">Thêm hàng</div>
+          <button style="height:32px;padding:0 10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-size:12px;font-weight:500;color:#374151;cursor:pointer">Bảng giá chung</button>
+        </div>
+        <button sc-camel-on-click="{{ goCust }}" style="height:40px;border-radius:10px;border:none;background:#eaf1ff;display:flex;align-items:center;gap:8px;padding:0 12px;cursor:pointer;text-align:left">
+          <span style="width:24px;height:24px;border-radius:6px;background:#2563eb;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ custInitial }}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;color:#1e3a8a">{{ custName }}</span>
+          <span style="flex-shrink:0;white-space:nowrap;font-size:12px;color:#2563eb;font-weight:500">Đổi khách</span>
+        </button>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;height:44px;background:#f3f4f7;border-radius:12px;display:flex;align-items:center;gap:8px;padding:0 12px">
+            <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+            <input value="{{ sq }}" sc-camel-on-change="{{ onSq }}" placeholder="Tên, mã hàng, mã vạch…" style="flex:1;border:none;background:transparent;outline:none;font-size:14px;min-width:0">
+          </div>
+          <button style="width:44px;height:44px;border-radius:12px;border:none;background:#eaf1ff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M14 9v6M17 9v6"></path></svg></button>
+        </div>
+        <div style="display:flex;gap:20px;padding:0 4px">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+            <button sc-camel-on-click="{{ t.onClick }}" style="height:32px;padding:0;border:none;background:transparent;font-size:14px;cursor:pointer;color:{{ t.color }};font-weight:{{ t.weight }};border-bottom:{{ t.border }}">{{ t.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ list3 }}" as="it" hint-placeholder-count="4">
+          <div style="background:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;border:{{ it.border }}">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                <div style="font-size:14px;font-weight:600;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ it.name }}</div>
+                <div style="font-size:12px;color:#6b7280">{{ it.code }} · Còn {{ it.stock }}</div>
+              </div>
+              <div style="text-align:right;white-space:nowrap">
+                <div style="font-size:15px;font-weight:700">{{ it.price }}đ</div>
+                <div style="font-size:11px;color:#6b7280">/ {{ it.unitName }}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="display:flex;gap:2px;background:#f3f4f7;border-radius:10px;padding:3px">
+                <sc-for list="{{ it.units }}" as="u" hint-placeholder-count="2">
+                  <button sc-camel-on-click="{{ u.onClick }}" style="height:30px;padding:0 12px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:{{ u.bg }};color:{{ u.color }};font-weight:{{ u.weight }};box-shadow:{{ u.shadow }}">{{ u.label }}</button>
+                </sc-for>
+              </div>
+              <div style="flex:1"></div>
+              <sc-if value="{{ it.none }}" hint-placeholder-val="{{ true }}">
+                <button sc-camel-on-click="{{ it.onAdd }}" style="width:40px;height:36px;border-radius:10px;border:1.5px solid #2563eb;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+              </sc-if>
+              <sc-if value="{{ it.has }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;height:36px;background:#2563eb;border-radius:10px;color:#fff">
+                  <button sc-camel-on-click="{{ it.onDec }}" style="width:36px;height:36px;border:none;background:transparent;color:#fff;font-size:18px;cursor:pointer">−</button>
+                  <div style="min-width:24px;text-align:center;font-size:14px;font-weight:700">{{ it.qty }}</div>
+                  <button sc-camel-on-click="{{ it.onInc }}" style="width:36px;height:36px;border:none;background:transparent;color:#fff;font-size:18px;cursor:pointer">+</button>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border-top:1px solid #eceef2;padding:12px 16px 20px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:12px;color:#6b7280">{{ cartCount }} mặt hàng trong đơn</div>
+          <div style="font-size:16px;font-weight:700">{{ subtotal }}đ</div>
+        </div>
+        <button style="height:48px;padding:0 22px;border:none;border-radius:12px;background:#2563eb;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Xem đơn</button>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Khách hàng lên đầu: sai khách là sai giá, nên phải thấy trước.</div>
+      <div>• Gộp 3 icon góc trên; tab dạng gạch chân nhẹ hơn.</div>
+      <div>• Tồn kho gọn 1 cụm “Còn …”; đơn vị + số lượng chung 1 hàng.</div>
+      <div>• Thanh giỏ hàng không đè lên thẻ, bỏ tab bar.</div>
+    </div>
+  </div>
+
+  <div id="2b" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">2b</span><span style="font-size:14px;font-weight:600">Đơn hàng</span></div>
+    <div style="width:390px;height:800px;background:#f3f4f7;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column;position:relative">
+      <div style="background:#fff;padding:14px 16px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eceef2">
+        <button style="width:36px;height:36px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;margin-left:-8px;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"></path></svg></button>
+        <div style="flex:1;font-size:19px;font-weight:700">Đơn hàng</div>
+        <button style="height:36px;padding:0 12px;border-radius:10px;border:none;background:#eaf1ff;color:#2563eb;font-size:13px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Thêm hàng</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0">
+        <button sc-camel-on-click="{{ goCust }}" style="background:#fff;border:none;border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left">
+          <span style="width:40px;height:40px;border-radius:10px;background:#eaf1ff;color:#2563eb;font-weight:700;display:flex;align-items:center;justify-content:center">{{ custInitial }}</span>
+          <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600;color:#111827">{{ custName }}</span><span style="font-size:12px;color:#6b7280">Bảng giá chung · Nợ {{ custDebt }}</span></span>
+          <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+        <div style="background:#fff;border-radius:14px;display:flex;flex-direction:column">
+          <sc-for list="{{ cartLines }}" as="it" hint-placeholder-count="2">
+            <div style="padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid #f0f1f4">
+              <div style="display:flex;gap:8px;align-items:flex-start">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                  <div style="font-size:14px;font-weight:600;line-height:1.35">{{ it.name }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#6b7280">
+                    <span style="white-space:nowrap">{{ it.price }}đ / {{ it.unit }}</span>
+                    <sc-if value="{{ it.promo }}" hint-placeholder-val="{{ false }}"><span style="background:#ecfdf3;color:#067647;font-weight:600;padding:1px 6px;border-radius:5px;white-space:nowrap">{{ it.promoText }}</span></sc-if>
+                  </div>
+                </div>
+                <button sc-camel-on-click="{{ it.onRemove }}" style="width:32px;height:32px;margin:-4px -4px 0 0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;height:36px;border:1px solid #e5e7eb;border-radius:10px">
+                  <button sc-camel-on-click="{{ it.onDec }}" style="width:36px;height:34px;border:none;background:transparent;font-size:18px;color:#2563eb;cursor:pointer">−</button>
+                  <div style="min-width:36px;text-align:center;font-size:14px;font-weight:700">{{ it.qty }} <span style="font-weight:400;color:#6b7280;font-size:12px">{{ it.unit }}</span></div>
+                  <button sc-camel-on-click="{{ it.onInc }}" style="width:36px;height:34px;border:none;background:transparent;font-size:18px;color:#2563eb;cursor:pointer">+</button>
+                </div>
+                <span style="font-size:15px;font-weight:700">{{ it.line }}đ</span>
+              </div>
+            </div>
+          </sc-for>
+          <div style="padding:12px;display:flex;justify-content:space-between;font-size:13px;color:#6b7280"><span>Tạm tính</span><span style="color:#111827;font-weight:600">{{ subtotal }}đ</span></div>
+        </div>
+        <div style="background:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:14px;font-weight:600">Giảm giá đơn</span>
+            <sc-if value="{{ oHasDisc }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#067647">−{{ oDiscAmt }}đ</span></sc-if>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1;min-width:0;height:44px;border:1px solid #e5e7eb;border-radius:10px;display:flex;align-items:center;padding:0 12px;gap:4px">
+              <input value="{{ oDisc }}" sc-camel-on-change="{{ onODisc }}" inputmode="numeric" placeholder="0" style="width:100%;flex:1;min-width:0;border:none;outline:none;text-align:right;font-size:16px;font-weight:600;background:transparent">
+              <span style="font-size:13px;color:#6b7280">{{ oDType }}</span>
+            </div>
+            <div style="display:flex;background:#f3f4f7;border-radius:10px;padding:3px">
+              <sc-for list="{{ oDTypes }}" as="d" hint-placeholder-count="2">
+                <button sc-camel-on-click="{{ d.onClick }}" style="height:38px;padding:0 14px;border:none;border-radius:8px;font-size:14px;cursor:pointer;background:{{ d.bg }};color:{{ d.color }};font-weight:{{ d.weight }};box-shadow:{{ d.shadow }}">{{ d.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          
+        </div>
+        <div style="background:#fff;border-radius:14px;display:flex;flex-direction:column">
+          <div style="padding:12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f1f4;cursor:pointer">
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600">Hàng trả / đổi kèm đơn</span><span style="font-size:12px;color:#6b7280">{{ count }} dòng</span></span>
+            <span style="font-size:14px;font-weight:600;color:#dc2626">−{{ total }}đ</span>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="padding:12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f1f4;cursor:pointer">
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600">Giao hàng &amp; thanh toán</span><span style="font-size:12px;color:#6b7280">COD · Chưa chọn ngày giao</span></span>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="padding:12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid #f0f1f4">
+            <span style="font-size:14px;font-weight:600">Nhân viên bán</span>
+            <sc-raw-select style="width:100%;height:40px;border:1px solid #e5e7eb;border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:#111827">
+              <option>Tôi (mặc định)</option><option>Chọn nhân viên khác…</option>
+            </sc-raw-select>
+            <span style="font-size:11.5px;color:#6b7280">Doanh số và hoa hồng tính cho người được chọn.</span>
+          </div>
+          <div style="padding:12px;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:14px;font-weight:600">Ghi chú</span>
+            <textarea placeholder="VD: giao trước 10h, để hàng sau quầy" rows="2" style="width:100%;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:14px;font-family:inherit;resize:none;outline:none"></textarea>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ sumOpen }}" hint-placeholder-val="{{ false }}"><div sc-camel-on-click="{{ toggleSum }}" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(17,24,39,.45);z-index:1"></div></sc-if>
+      <div style="position:relative;z-index:2;background:#fff;border-top:1px solid #eceef2;border-radius:{{ sumRadius }};padding:12px 16px 20px;display:flex;flex-direction:column;gap:12px">
+        <sc-if value="{{ sumOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:12px;font-size:15px;color:#374151;padding:0 0 12px;border-bottom:1px solid #eceef2">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600;color:#6b7280">Chi tiết thanh toán</span><button sc-camel-on-click="{{ toggleSum }}" style="width:28px;height:28px;border-radius:14px;border:none;background:#f3f4f7;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="12" height="12" sc-camel-view-box="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+            <div style="display:flex;justify-content:space-between"><span>Tạm tính · {{ cartCount }} mặt hàng</span><span style="color:#111827;font-weight:600">{{ subtotal }}đ</span></div>
+            <sc-if value="{{ oHasDisc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between"><span>Giảm giá đơn</span><span style="color:#067647;font-weight:600">−{{ oDiscAmt }}đ</span></div></sc-if>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="display:flex;align-items:center;gap:8px">VAT
+                <span style="display:flex;background:#f3f4f7;border-radius:8px;padding:2px">
+                  <sc-for list="{{ vatOpts }}" as="v" hint-placeholder-count="3"><button sc-camel-on-click="{{ v.onClick }}" style="height:26px;padding:0 8px;border:none;border-radius:6px;font-size:12px;cursor:pointer;background:{{ v.bg }};color:{{ v.color }};font-weight:{{ v.weight }};box-shadow:{{ v.shadow }}">{{ v.label }}</button></sc-for>
+                </span>
+              </span>
+              <span style="color:#111827;font-weight:600">+{{ vatAmt }}đ</span>
+            </div>
+            <div style="display:flex;justify-content:space-between"><span>Trừ hàng trả</span><span style="color:#dc2626;font-weight:600">−{{ total }}đ</span></div>
+          </div>
+        </sc-if>
+        <button sc-camel-on-click="{{ toggleSum }}" style="border:none;background:transparent;padding:0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;text-align:left">
+          <span style="display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap">
+            <span style="font-size:18px;font-weight:700;color:#111827">Tổng tiền</span>
+            <span style="min-width:22px;height:22px;border-radius:11px;border:1.5px solid #2563eb;color:#2563eb;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ cartCount }}</span>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.4" stroke-linecap="round" style="transform:{{ sumChevron }}"><path d="M6 15l6-6 6 6"></path></svg>
+          </span>
+          <span style="font-size:24px;font-weight:700;color:#111827;white-space:nowrap">{{ grand }}đ</span>
+        </button>
+        <div style="display:flex;gap:8px">
+          <button style="flex:1;height:50px;border-radius:12px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:15px;font-weight:600;cursor:pointer">Lưu nháp</button>
+          <button style="flex:2;height:50px;border:none;border-radius:12px;background:#2563eb;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Gửi đơn</button>
+        </div>
+        <sc-if value="{{ sumOpen }}" hint-placeholder-val="{{ false }}"><button style="height:36px;border:none;background:transparent;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer">Huỷ đơn này</button></sc-if>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Bỏ ô tìm kiếm khỏi màn đơn → nút “Thêm hàng”.</div>
+      <div>• Dòng hàng: đơn giá, khuyến mãi, thành tiền tách rõ; hàng tặng có nhãn xanh.</div>
+      <div>• Gom tuỳ chọn phụ vào 1 nhóm; nhân viên mặc định “Tôi”.</div>
+      <div>• Tổng dưới đáy cho thấy công thức tạm tính − hàng trả.</div>
+    </div>
+  </div>
+
+  <div id="2c" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">2c</span><span style="font-size:14px;font-weight:600">Chọn khách hàng</span></div>
+    <div style="width:390px;height:800px;background:#f3f4f7;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column">
+      <div style="background:#fff;padding:14px 16px 12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid #eceef2">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button style="width:36px;height:36px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;margin-left:-8px;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"></path></svg></button>
+          <div style="flex:1;font-size:19px;font-weight:700">Chọn khách hàng</div>
+          <button style="height:36px;padding:0 12px;border-radius:10px;border:none;background:#eaf1ff;color:#2563eb;font-size:13px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Khách mới</button>
+        </div>
+        <div style="height:44px;background:#f3f4f7;border-radius:12px;display:flex;align-items:center;gap:8px;padding:0 12px">
+          <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+          <input value="{{ cq }}" sc-camel-on-change="{{ onCq }}" placeholder="Tên cửa hàng, địa chỉ…" style="flex:1;border:none;background:transparent;outline:none;font-size:14px;min-width:0">
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:4px 12px 16px;display:flex;flex-direction:column">
+        <sc-for list="{{ custGroups }}" as="g" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;padding:12px 4px 6px">{{ g.letter }}</div>
+            <div style="background:#fff;border-radius:14px;display:flex;flex-direction:column;overflow:hidden">
+              <sc-for list="{{ g.rows }}" as="c" hint-placeholder-count="2">
+                <button sc-camel-on-click="{{ c.onClick }}" style="border:none;border-bottom:1px solid #f0f1f4;padding:12px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;background:{{ c.bg }}">
+                  <span style="width:36px;height:36px;border-radius:10px;background:#eaf1ff;color:#2563eb;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center">{{ c.initial }}</span>
+                  <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600;color:#111827">{{ c.name }}</span><span style="font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.contact }}</span></span>
+                  <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px"><span style="font-size:11px;color:#6b7280">Công nợ</span><span style="font-size:14px;font-weight:600;color:#111827">{{ c.debt }}</span></span>
+                  <sc-if value="{{ c.active }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M5 12l5 5 9-10"></path></svg></sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Nhóm theo chữ cái thay vì thẻ rời, danh sách dày hơn.</div>
+      <div>• Số tiền có nhãn “Công nợ”; bỏ “không hạn mức” lặp mọi dòng.</div>
+      <div>• Khách đang chọn có dấu tích; “+” thành “Khách mới”.</div>
+      <div>• Chạm để chọn → cập nhật ngay <a href="#2a">2a</a>, <a href="#2b">2b</a>.</div>
+    </div>
+  </div>
+</section>
+<section style="display:flex;flex-wrap:wrap;gap:56px;padding:48px;align-items:flex-start;justify-content:center">
+
+  <div id="1a" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">1a</span><span style="font-size:14px;font-weight:600">Chọn hàng trả</span></div>
+    <div style="width:390px;height:800px;background:#f3f4f7;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column;position:relative">
+      <div style="background:#fff;padding:14px 16px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid #eceef2">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button style="width:36px;height:36px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;margin-left:-8px;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"></path></svg></button>
+          <div style="flex:1;font-size:19px;font-weight:700">Chọn hàng trả</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;height:44px;background:#f3f4f7;border-radius:12px;display:flex;align-items:center;gap:8px;padding:0 12px">
+            <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+            <input value="{{ q }}" sc-camel-on-change="{{ onQ }}" placeholder="Tên, mã hàng, mã vạch…" style="flex:1;border:none;background:transparent;outline:none;font-size:14px;color:#111827;min-width:0">
+          </div>
+          <button style="width:44px;height:44px;border-radius:12px;border:none;background:#eaf1ff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M14 9v6M17 9v6"></path></svg></button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="flex:1;height:36px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:13px;font-weight:500;color:#111827;cursor:pointer"><span style="color:#6b7280">Khách:</span><span style="flex:1;text-align:left;font-weight:600">Tạp hoá Minh Anh</span><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2"><path d="M9 6l6 6-6 6"></path></svg></button>
+          <button style="height:36px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;padding:0 10px;font-size:13px;font-weight:500;color:#374151;cursor:pointer">Bảng giá chung</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ list1 }}" as="it" hint-placeholder-count="4">
+          <div style="background:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;border:{{ it.border }}">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                <div style="font-size:14px;font-weight:600;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ it.name }}</div>
+                <div style="font-size:12px;color:#6b7280">{{ it.code }}</div>
+              </div>
+              <div style="text-align:right;white-space:nowrap">
+                <div style="font-size:15px;font-weight:700;color:#111827">{{ it.price }}đ</div>
+                <div style="font-size:11px;color:#6b7280">/ {{ it.unitName }}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="display:flex;gap:2px;background:#f3f4f7;border-radius:10px;padding:3px">
+                <sc-for list="{{ it.units }}" as="u" hint-placeholder-count="2">
+                  <button sc-camel-on-click="{{ u.onClick }}" style="height:30px;padding:0 12px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:{{ u.bg }};color:{{ u.color }};font-weight:{{ u.weight }};box-shadow:{{ u.shadow }}">{{ u.label }}</button>
+                </sc-for>
+              </div>
+              <div style="flex:1"></div>
+              <sc-if value="{{ it.none }}" hint-placeholder-val="{{ true }}">
+                <button sc-camel-on-click="{{ it.onAdd }}" style="height:36px;padding:0 14px;border-radius:10px;border:1.5px solid #2563eb;background:#fff;color:#2563eb;font-size:13px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Trả</button>
+              </sc-if>
+              <sc-if value="{{ it.has }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;height:36px;background:#2563eb;border-radius:10px;color:#fff">
+                  <button sc-camel-on-click="{{ it.onDec }}" style="width:36px;height:36px;border:none;background:transparent;color:#fff;font-size:18px;cursor:pointer">−</button>
+                  <div style="min-width:24px;text-align:center;font-size:14px;font-weight:700">{{ it.qty }}</div>
+                  <button sc-camel-on-click="{{ it.onInc }}" style="width:36px;height:36px;border:none;background:transparent;color:#fff;font-size:18px;cursor:pointer">+</button>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border-top:1px solid #eceef2;padding:12px 16px 20px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:12px;color:#6b7280">{{ count }} mặt hàng · {{ units }} đơn vị</div>
+          <div style="font-size:16px;font-weight:700;color:#dc2626">−{{ total }}đ</div>
+        </div>
+        <button style="height:48px;padding:0 22px;border:none;border-radius:12px;background:{{ ctaBg }};color:#fff;font-size:15px;font-weight:600;cursor:pointer">Tiếp tục</button>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Ẩn tab bar: đây là luồng tác vụ, có nút back rõ ràng.</div>
+      <div>• Chọn đơn vị gọn thành pill, giá hiển thị kèm “/ đơn vị”.</div>
+      <div>• Thêm nút “Trả” + stepper ngay trên thẻ; thẻ đã chọn viền xanh.</div>
+      <div>• Thanh tổng cố định đáy thay nút “Xong” góc trên.</div>
+    </div>
+  </div>
+
+  <div id="1b" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="background:#111827;color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px">1b</span><span style="font-size:14px;font-weight:600">Hàng trả / đổi</span></div>
+    <div style="width:390px;height:800px;background:#f3f4f7;border-radius:36px;border:8px solid #111827;overflow:hidden;display:flex;flex-direction:column">
+      <div style="background:#fff;padding:14px 16px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #eceef2">
+        <button style="width:36px;height:36px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;margin-left:-8px;cursor:pointer"><svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"></path></svg></button>
+        <div style="flex:1;font-size:19px;font-weight:700">Hàng trả / đổi</div>
+        <button style="height:36px;padding:0 12px;border-radius:10px;border:none;background:#eaf1ff;color:#2563eb;font-size:13px;font-weight:600;display:flex;align-items:center;gap:4px;cursor:pointer"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Thêm hàng</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;font-weight:600;color:#6b7280;padding:0 4px">Lý do trả (áp dụng cho tất cả)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="5">
+              <button sc-camel-on-click="{{ r.onClick }}" style="height:34px;padding:0 12px;border-radius:17px;font-size:13px;cursor:pointer;border:{{ r.border }};background:{{ r.bg }};color:{{ r.color }};font-weight:{{ r.weight }}">{{ r.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border-radius:14px;padding:32px 16px;text-align:center;font-size:14px;color:#6b7280">Chưa có hàng trả. Bấm “Thêm hàng” để chọn.</div>
+        </sc-if>
+        <sc-for list="{{ list2 }}" as="it" hint-placeholder-count="1">
+          <div style="background:#fff;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:8px;align-items:flex-start">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:14px;font-weight:600;line-height:1.35">{{ it.name }}</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;flex-wrap:wrap">
+                  <span>{{ it.code }}</span><span>·</span><span>{{ it.unit }}</span><span>·</span>
+                  <sc-raw-select value="{{ it.reason }}" sc-camel-on-change="{{ it.onReason }}" style="border:none;background:#f3f4f7;border-radius:6px;padding:2px 4px;font-size:12px;color:#374151;cursor:pointer">
+                    <sc-for list="{{ reasonNames }}" as="n" hint-placeholder-count="5"><option value="{{ n }}">{{ n }}</option></sc-for>
+                  </sc-raw-select>
+                </div>
+              </div>
+              <button sc-camel-on-click="{{ it.onRemove }}" style="width:32px;height:32px;margin:-4px -4px 0 0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+            </div>
+            <div style="display:flex;background:#f3f4f7;border-radius:10px;padding:3px">
+              <button sc-camel-on-click="{{ it.setRefund }}" style="flex:1;height:32px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:{{ it.rBg }};color:{{ it.rColor }};font-weight:{{ it.rW }};box-shadow:{{ it.rSh }}">Trả tiền</button>
+              <button sc-camel-on-click="{{ it.setExchange }}" style="flex:1;height:32px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:{{ it.eBg }};color:{{ it.eColor }};font-weight:{{ it.eW }};box-shadow:{{ it.eSh }}">Đổi hàng</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <label style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font-size:11px;color:#6b7280">Đơn giá</span>
+                <div style="height:40px;border:1px solid #e5e7eb;border-radius:10px;display:flex;align-items:center;padding:0 10px;gap:4px;opacity:{{ it.priceOp }}">
+                  <input value="{{ it.price }}" sc-camel-on-change="{{ it.onPrice }}" inputmode="numeric" style="flex:1;min-width:0;border:none;outline:none;font-size:15px;font-weight:600;background:transparent;text-align:right">
+                  <span style="font-size:12px;color:#6b7280">đ/{{ it.unit }}</span>
+                </div>
+              </label>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:11px;color:#6b7280">Số lượng</span>
+                <div style="display:flex;align-items:center;height:40px;border:1px solid #e5e7eb;border-radius:10px">
+                  <button sc-camel-on-click="{{ it.onDec }}" style="width:38px;height:38px;border:none;background:transparent;font-size:18px;color:#2563eb;cursor:pointer">−</button>
+                  <div style="min-width:28px;text-align:center;font-size:15px;font-weight:700">{{ it.qty }}</div>
+                  <button sc-camel-on-click="{{ it.onInc }}" style="width:38px;height:38px;border:none;background:transparent;font-size:18px;color:#2563eb;cursor:pointer">+</button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px dashed #e5e7eb">
+              <span style="font-size:13px;color:#6b7280">{{ it.lineLabel }}</span>
+              <span style="font-size:15px;font-weight:700;color:{{ it.lineColor }}">{{ it.line }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border-top:1px solid #eceef2;padding:12px 16px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:13px;font-weight:600">Trừ vào đơn</span>
+            <span style="font-size:12px;color:#6b7280">{{ summary }}</span>
+          </div>
+          <span style="font-size:20px;font-weight:700;color:#dc2626">−{{ total }}đ</span>
+        </div>
+        <div style="font-size:11.5px;line-height:1.45;color:#6b7280;background:#f7f8fa;border-radius:8px;padding:8px 10px">Phiếu trả đi kèm đơn. Kho và công nợ chỉ cập nhật khi NPP hoàn thành phiếu trả. Dòng “Đổi hàng” không trừ tiền.</div>
+        <button style="height:50px;border:none;border-radius:12px;background:{{ ctaBg }};color:#fff;font-size:15px;font-weight:600;cursor:pointer">Xong · về đơn hàng</button>
+      </div>
+    </div>
+    <div style="font-size:13px;line-height:1.55;color:#374151;display:flex;flex-direction:column;gap:4px">
+      <div>• Bỏ ô tìm kiếm trùng lặp → nút “Thêm hàng” về 1a.</div>
+      <div>• Lý do chung ở trên, mỗi dòng có thể đổi riêng.</div>
+      <div>• Bỏ dòng “Trừ vào đơn” lặp; mỗi dòng có thành tiền, tổng dính đáy.</div>
+      <div>• Chọn “Đổi hàng” → đơn giá mờ, thành tiền 0đ.</div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script="">
+const PRODUCTS=[
+{id:'SP00090',name:'Kẹo Dẻo Xiên 300 PH (24 gói/)',units:[['gói',57000],['thùng',1368000]]},
+{id:'SP003650',name:'Xúc xích xiên que koko vị sụn gà 30g (30 cái/bịch x 12 bịch/th) cty hương đạt',units:[['cái',3900],['bịch',117000],['thùng',1404000]]},
+{id:'SP003648',name:'Bánh hamberger M&joy 3 vị 85g (40 gói/th) cty hương đạt',units:[['gói',11500],['thùng',460000]]},
+{id:'SP003475',name:'Trứng đồ chơi bất ngờ (20 quả/túi x 8 túi/thùng) cty á châu',units:[['quả',8500],['túi',170000],['thùng',1360000]]},
+{id:'SP002368',name:'Chân gà có xương 45g nguyên vị (30 cái/bịch x 10 bịch/th) cty hải đăng 22',units:[['cái',8000],['bịch',240000],['thùng',2400000]]}];
+const REASONS=['Hàng hư hỏng','Sai hàng','Gần hết hạn','Hết hạn sử dụng','Khách từ chối nhận'];
+const STOCK={SP00090:'2.522 gói',SP003650:'1.860 cái',SP003648:'665 gói',SP003475:'312 túi',SP002368:'140 bịch'};
+const FAV=['SP00090','SP003650','SP003648'],GIFT=['SP003650'];
+const CUSTOMERS=[['Ánh Dương mart','12 Lê Lợi, P. Bến Thành, Q.1',1323000],['Anh Đức 303','303 Nguyễn Trãi, Q.5',240000],['Anh Đức 47','47 Phan Đăng Lưu, Bình Thạnh',810000],['Bảo anh 103','103 Lý Thường Kiệt, Q.10',550000],['Bảo Quân','88 Cách Mạng Tháng 8, Q.3',2525000],['Bé Bông 99','99 Hoàng Văn Thụ, Phú Nhuận',0],['Đức Tuệ','21 Trường Chinh, Tân Bình',1094000],['Minh thúy mart','156 Lê Văn Sỹ, Q.3',3222000],['559 mart','559 Âu Cơ, Tân Phú',2061000],['837 Mart','837 Quang Trung, Gò Vấp',410000]];
+const fmt=n=>Number(n||0).toLocaleString('vi-VN');
+class Component extends DCLogic {
+  state={q:'',unit:{},qty:{SP00090:2},mode:{},reason:{},price:{},def:'Hàng hư hỏng',
+    sq:'',tab:'all',cart:{SP00090:4,SP003650:5},cunit:{SP00090:1},cust:'Minh thúy mart',cq:'',sumOpen:true};
+  edit(){
+    const s=this.state,p=PRODUCTS[0],ui=s.eu??1,u=p.units[ui],n=s.eq??4,price=s.ep??u[1],max=Math.round(u[1]*1.1);
+    const on=(a)=>a?{bg:'#fff',color:'#2563eb',weight:600,shadow:'0 1px 2px rgba(0,0,0,.1)'}:{bg:'transparent',color:'#4b5563',weight:500,shadow:'none'};
+    const gross=price*n,dv=Number(s.ed||0),dt=s.edt||'đ',disc=Math.min(gross,dt==='%'?Math.round(gross*Math.min(dv,100)/100):dv),over=price>max;
+    return{eUnits:p.units.map((x,i)=>({label:x[0],price:fmt(x[1]),...on(i===ui),onClick:()=>this.setState({eu:i,ep:undefined})})),
+      eUnitName:u[0],eQty:n,ePrice:fmt(price),eGross:fmt(gross),eDiscAmt:fmt(disc),eHasDisc:disc>0,eTotal:fmt(gross-disc),
+      eInc:()=>this.setState({eq:n+1}),eDec:()=>this.setState({eq:Math.max(1,n-1)}),
+      onEQty:e=>this.setState({eq:Math.max(1,Number(e.target.value.replace(/\D/g,''))||1)}),
+      onEPrice:e=>this.setState({ep:Number(e.target.value.replace(/\D/g,''))}),
+      eChanged:price!==u[1],eResetPrice:()=>this.setState({ep:undefined}),
+      ePriceBorder:over?'1.5px solid #dc2626':'1px solid #e5e7eb',
+      eHint:over?'Vượt giá tối đa '+fmt(max)+'đ':'Giá bảng '+fmt(u[1])+'đ · tối đa '+fmt(max)+'đ',eHintColor:over?'#dc2626':'#6b7280',
+      eDisc:s.ed||'',onEDisc:e=>this.setState({ed:e.target.value.replace(/\D/g,'')}),
+      eDTypes:['đ','%'].map(l=>({label:l,...on(l===dt),onClick:()=>this.setState({edt:l})}))};
+  }
+  sales(retTotal){
+    const s=this.state,q=s.sq.toLowerCase();
+    const on=(a)=>a?{bg:'#fff',color:'#2563eb',weight:600,shadow:'0 1px 2px rgba(0,0,0,.1)'}:{bg:'transparent',color:'#4b5563',weight:500,shadow:'none'};
+    const cq=(id,v)=>this.setState(st=>({cart:{...st.cart,[id]:Math.max(0,v)}}));
+    const list3=PRODUCTS.filter(p=>(s.tab==='all'||FAV.includes(p.id))&&(!q||(p.name+p.id).toLowerCase().includes(q))).map(p=>{
+      const ui=s.cunit[p.id]??0,u=p.units[ui],n=s.cart[p.id]||0;
+      return{name:p.name,code:p.id,stock:STOCK[p.id],unitName:u[0],price:fmt(u[1]),qty:n,has:n>0,none:n===0,
+        border:n>0?'1.5px solid #2563eb':'1.5px solid transparent',
+        units:p.units.map((x,i)=>({label:x[0],...on(i===ui),onClick:()=>this.setState(st=>({cunit:{...st.cunit,[p.id]:i}}))})),
+        onAdd:()=>cq(p.id,1),onInc:()=>cq(p.id,n+1),onDec:()=>cq(p.id,n-1)};});
+    let sub=0;
+    const cartLines=PRODUCTS.filter(p=>(s.cart[p.id]||0)>0).map(p=>{
+      const u=p.units[s.cunit[p.id]??0],n=s.cart[p.id],gift=GIFT.includes(p.id),line=gift?0:u[1]*n;sub+=line;
+      return{name:p.name,unit:u[0],price:fmt(u[1]),qty:n,line:fmt(line),promo:gift,promoText:'Hàng tặng · −'+fmt(u[1]*n)+'đ',
+        onInc:()=>cq(p.id,n+1),onDec:()=>cq(p.id,Math.max(1,n-1)),onRemove:()=>cq(p.id,0)};});
+    const cur=CUSTOMERS.find(c=>c[0]===s.cust)||CUSTOMERS[0];
+    const cf=s.cq.toLowerCase(),groups={};
+    CUSTOMERS.filter(c=>!cf||c.join(' ').toLowerCase().includes(cf)).forEach(c=>{
+      const L=c[0][0].toUpperCase();(groups[L]=groups[L]||[]).push({name:c[0],contact:c[1],debt:c[2]?fmt(c[2])+'đ':'—',initial:L,
+        active:c[0]===s.cust,bg:c[0]===s.cust?'#f5f8ff':'#fff',onClick:()=>this.setState({cust:c[0]})});});
+    const tab=(k,l)=>({label:l,onClick:()=>this.setState({tab:k}),color:s.tab===k?'#111827':'#6b7280',weight:s.tab===k?600:500,border:s.tab===k?'2px solid #2563eb':'2px solid transparent'});
+    return{sq:s.sq,onSq:e=>this.setState({sq:e.target.value}),tabs:[tab('fav','Khách hay lấy'),tab('all','Tất cả sản phẩm')],list3,cartLines,
+      cartCount:cartLines.length,subtotal:fmt(sub),...(()=>{
+        const t=s.odt||'%',v=Number(s.od||0),d=Math.min(sub,t==='%'?Math.round(sub*Math.min(v,100)/100):v);
+        const onx=a=>a?{bg:'#fff',color:'#2563eb',weight:600,shadow:'0 1px 2px rgba(0,0,0,.1)'}:{bg:'transparent',color:'#4b5563',weight:500,shadow:'none'};
+        return{oDisc:s.od||'',onODisc:e=>this.setState({od:e.target.value.replace(/\D/g,'')}),oDType:t,oIsPct:t==='%',
+          oDTypes:[['%','%'],['đ','đ']].map(([k,l])=>({label:l,...onx(k===t),onClick:()=>this.setState({odt:k,od:''})})),
+          oPresets:[2,3,5,10].map(p=>{const a=String(p)===String(s.od);return{label:p+'%',onClick:()=>this.setState({od:String(p)}),border:a?'1.5px solid #2563eb':'1px solid #e5e7eb',bg:a?'#eaf1ff':'#fff',color:a?'#2563eb':'#374151'};}),
+          oHasDisc:d>0,oDiscAmt:fmt(d),vatAmt:fmt(Math.round((sub-d)*(s.vat??10)/100)),grand:fmt(Math.max(0,sub-d+Math.round((sub-d)*(s.vat??10)/100)-retTotal)),vatOpts:[0,8,10].map(v=>({label:v+'%',...onx(v===(s.vat??10)),onClick:()=>this.setState({vat:v})})),sumOpen:!!s.sumOpen,toggleSum:()=>this.setState(st=>({sumOpen:!st.sumOpen})),sumChevron:s.sumOpen?'rotate(180deg)':'none',sumRadius:s.sumOpen?'20px 20px 0 0':'0',
+          grandNote:fmt(sub)+'đ'+(d>0?' − '+fmt(d)+'đ giảm':'')+' − '+fmt(retTotal)+'đ hàng trả'};})(),
+      custName:cur[0],custInitial:cur[0][0].toUpperCase(),custDebt:fmt(cur[2])+'đ',goCust:()=>{},
+      cq:s.cq,onCq:e=>this.setState({cq:e.target.value}),custGroups:Object.keys(groups).map(k=>({letter:k,rows:groups[k]}))};
+  }
+  set(k,id,v){this.setState(s=>({[k]:{...s[k],[id]:v}}));}
+  renderVals(){
+    const s=this.state, q=s.q.toLowerCase();
+    const qty=(id,v)=>this.set('qty',id,Math.max(0,v));
+    const on=(a)=>a?{bg:'#fff',color:'#2563eb',weight:600,shadow:'0 1px 2px rgba(0,0,0,.1)'}:{bg:'transparent',color:'#4b5563',weight:500,shadow:'none'};
+    const info=p=>{const ui=s.unit[p.id]??0,u=p.units[ui],n=s.qty[p.id]||0,price=s.price[p.id]??u[1],mode=s.mode[p.id]||'refund';return {ui,u,n,price,mode,line:mode==='refund'?price*n:0};};
+    const list1=PRODUCTS.filter(p=>!q||(p.name+p.id).toLowerCase().includes(q)).map(p=>{const I=info(p);return{
+      name:p.name,code:p.id,unitName:I.u[0],price:fmt(I.u[1]),qty:I.n,has:I.n>0,none:I.n===0,
+      border:I.n>0?'1.5px solid #2563eb':'1.5px solid transparent',
+      units:p.units.map((x,i)=>({label:x[0],...on(i===I.ui),onClick:()=>this.setState(st=>({unit:{...st.unit,[p.id]:i},price:{...st.price,[p.id]:undefined}}))})),
+      onAdd:()=>qty(p.id,1),onInc:()=>qty(p.id,I.n+1),onDec:()=>qty(p.id,I.n-1)};});
+    const sel=PRODUCTS.filter(p=>(s.qty[p.id]||0)>0);
+    let total=0,units=0,nr=0,ne=0;
+    const list2=sel.map(p=>{const I=info(p);total+=I.line;units+=I.n;I.mode==='refund'?nr++:ne++;const r=on(I.mode==='refund'),e=on(I.mode==='exchange');return{
+      name:p.name,code:p.id,unit:I.u[0],qty:I.n,price:fmt(I.price),reason:s.reason[p.id]||s.def,
+      rBg:r.bg,rColor:r.color,rW:r.weight,rSh:r.shadow,eBg:e.bg,eColor:e.color,eW:e.weight,eSh:e.shadow,
+      priceOp:I.mode==='refund'?1:0.45,
+      lineLabel:I.mode==='refund'?'Thành tiền':'Đổi 1:1, không trừ tiền',
+      line:I.mode==='refund'?'−'+fmt(I.line)+'đ':'0đ',lineColor:I.mode==='refund'?'#dc2626':'#6b7280',
+      onReason:ev=>this.set('reason',p.id,ev.target.value),
+      onPrice:ev=>this.set('price',p.id,Number(ev.target.value.replace(/\D/g,''))),
+      setRefund:()=>this.set('mode',p.id,'refund'),setExchange:()=>this.set('mode',p.id,'exchange'),
+      onInc:()=>qty(p.id,I.n+1),onDec:()=>qty(p.id,Math.max(1,I.n-1)),onRemove:()=>qty(p.id,0)};});
+    const reasons=REASONS.map(l=>{const a=l===s.def;return{label:l,border:a?'1.5px solid #2563eb':'1px solid #e5e7eb',bg:a?'#eaf1ff':'#fff',color:a?'#2563eb':'#374151',weight:a?600:500,onClick:()=>this.setState({def:l,reason:{}})};});
+    const parts=[];if(nr)parts.push(nr+' trả tiền');if(ne)parts.push(ne+' đổi hàng');
+    return{...this.edit(),...this.sales(total),q:s.q,onQ:e=>this.setState({q:e.target.value}),list1,list2,reasons,reasonNames:REASONS,
+      count:sel.length,units,total:fmt(total),empty:sel.length===0,summary:parts.join(' · ')||'Chưa có hàng',
+      ctaBg:sel.length?'#2563eb':'#9ca3af'};
+  }
+}
+</script>
+
+
+<div id="__claude_design_branding"><style>#__claude_design_branding{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;align-items:center;gap:7px;height:30px;padding:0 5px 0 10px;border-radius:999px;font-family:"Anthropic Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:12.5px;font-weight:400;line-height:1;letter-spacing:normal;text-transform:none;color:#141413;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:0 0 0 .5px rgba(31,30,29,.14),0 2px 10px rgba(0,0,0,.09)}
+#__claude_design_branding *{box-sizing:border-box;margin:0}
+#__claude_design_branding a{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+#__claude_design_branding a:hover span{text-decoration:underline}
+#__claude_design_branding svg{flex:none}
+#__claude_design_branding a svg{color:#D97757}
+#__claude_design_branding button{width:20px;height:20px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:currentColor;opacity:.55;border:0;background:none;cursor:pointer;flex:none;font:inherit;transition:opacity .14s}
+#__claude_design_branding button:hover{opacity:1;background:rgba(127,127,127,.22)}
+@media print{#__claude_design_branding{display:none}}</style><a href="https://claude.com/product/design" target="_blank" rel="noopener noreferrer"><svg width="14" height="14" viewBox="0 0 20 21" fill="none" aria-hidden="true"><path fill="currentColor" d="M9.99902 0C15.5258 0.000170936 19.999 4.50643 19.999 10.0547C19.999 11.7656 19.5863 12.9976 18.7861 13.8203C17.9924 14.6362 16.9465 14.9138 15.9854 15.0078C15.05 15.0993 14.0097 15.0262 13.2549 15.0186C12.8524 15.0145 12.5177 15.0267 12.2441 15.0703C11.9682 15.1144 11.8143 15.1813 11.7305 15.2432C11.4745 15.4322 11.3353 15.7121 11.2656 16.1602C11.2303 16.3875 11.2168 16.6362 11.209 16.9131C11.2017 17.1715 11.1986 17.4893 11.1807 17.7705C11.1469 18.2975 11.0495 19.0865 10.4199 19.5908C9.7846 20.0996 8.88652 20.1057 7.85449 19.877C7.36399 19.7682 6.88652 19.6232 6.42578 19.4453C2.66989 17.9949 0.000187748 14.3414 0 10.0547C0 4.50643 4.47223 0.000171048 9.99902 0ZM9.99902 1.60547C5.36781 1.60564 1.60547 5.38391 1.60547 10.0547C1.60566 13.6582 3.84823 16.7296 7.00391 17.9482C7.39027 18.0974 7.79085 18.2184 8.20215 18.3096C9.1375 18.5169 9.384 18.3633 9.41602 18.3379C9.4524 18.3087 9.54558 18.1915 9.5791 17.668C9.5947 17.4239 9.59473 17.1786 9.60352 16.8672C9.61179 16.5742 9.62831 16.2435 9.67969 15.9131C9.78359 15.2455 10.0474 14.4906 10.7764 13.9521C11.1479 13.6778 11.5842 13.5493 11.9912 13.4844C12.4007 13.4191 12.8434 13.4088 13.2705 13.4131C14.1753 13.4222 15.0071 13.4905 15.8291 13.4102C16.6257 13.3322 17.2249 13.1235 17.6357 12.7012C18.0401 12.2855 18.3935 11.5261 18.3936 10.0547C18.3936 5.38391 14.6302 1.60564 9.99902 1.60547ZM5.11621 9.86719C5.86386 9.91468 6.45486 10.5348 6.45508 11.2939C6.45506 12.0838 5.81519 12.7245 5.02539 12.7246C4.28481 12.7246 3.67573 12.1617 3.60254 11.4404L3.59473 11.2939L3.60156 11.1533C3.66942 10.4596 4.23282 9.91186 4.93359 9.86719H5.11621ZM14.9814 7.19141C15.729 7.23889 16.3199 7.85919 16.3203 8.61816C16.3203 9.40801 15.6804 10.0487 14.8906 10.0488C14.1501 10.0487 13.5409 9.48586 13.4678 8.76465L13.46 8.61816L13.4668 8.47754C13.5348 7.78403 14.0983 7.23618 14.7988 7.19141H14.9814ZM6.4541 4.93457C7.20161 4.9822 7.79275 5.60231 7.79297 6.36133C7.79288 7.151 7.15291 7.7917 6.36328 7.79199C5.62274 7.79199 5.01369 7.22903 4.94043 6.50781L4.93262 6.36133L4.93945 6.2207C5.00731 5.52698 5.5707 4.97922 6.27148 4.93457H6.4541ZM11.3867 3.59668C12.1343 3.64419 12.7253 4.26436 12.7256 5.02344C12.7256 5.81326 12.0857 6.45393 11.2959 6.4541C10.5553 6.4541 9.94622 5.89123 9.87305 5.16992L9.86523 5.02344L9.87207 4.88281C9.93996 4.18912 10.5033 3.64133 11.2041 3.59668H11.3867Z"></path></svg><span>Made with Claude Design</span></a><button type="button" aria-label="Dismiss" onclick="this.parentElement.remove()"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></button></div></body></html>

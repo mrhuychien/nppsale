@@ -60,6 +60,13 @@ export default function UserDetailPage() {
     allow_price_edit: false,
     price_edit_max_increase_pct: 0,
   })
+  /**
+   * QUYỀN GIẢM GIÁ (mig 185) — chủ nhà 24/09/2026. Đọc / ghi RIÊNG khỏi hồ sơ:
+   * DB chưa chạy mig 185 thì chỉ khối này báo, phần còn lại vẫn lưu được.
+   * `max` rỗng = không giới hạn.
+   */
+  const [giamGia, setGiamGia] = useState<{ bat: boolean; kieu: "pct" | "vnd"; max: string }>({ bat: false, kieu: "pct", max: "" })
+  const [coCotGiamGia, setCoCotGiamGia] = useState(true)
   const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [supplierIds, setSupplierIds] = useState<Set<string>>(new Set())
   const supabase = createClient()
@@ -72,6 +79,16 @@ export default function UserDetailPage() {
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
     ])
+    const ggRes = await supabase.from("users").select("allow_discount, discount_max_type, discount_max_value").eq("id", id).maybeSingle()
+    setCoCotGiamGia(!ggRes.error)
+    if (ggRes.data) {
+      const g = ggRes.data as { allow_discount?: boolean; discount_max_type?: string; discount_max_value?: number | null }
+      setGiamGia({
+        bat: !!g.allow_discount,
+        kieu: g.discount_max_type === "vnd" ? "vnd" : "pct",
+        max: g.discount_max_value == null ? "" : String(g.discount_max_value),
+      })
+    }
     const qErr = ([userRes, supRes, mySupRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[users/id] truy vấn lỗi:", qErr.message)
@@ -135,6 +152,18 @@ export default function UserDetailPage() {
          báo "Đã cập nhật". Dừng ngay tại đây. */
       if (!savedRows || savedRows.length === 0) {
         throw new Error("Không lưu được hồ sơ — chỉ chủ NPP được sửa hồ sơ nhân viên.")
+      }
+      if (coCotGiamGia) {
+        const maxSo = giamGia.max.trim() === "" ? null : Math.max(0, Number(giamGia.max.replace(/\./g, "").replace(",", ".")) || 0)
+        const { error: ggErr } = await supabase
+          .from("users")
+          .update({
+            allow_discount: giamGia.bat,
+            discount_max_type: giamGia.kieu,
+            discount_max_value: maxSo === null ? null : giamGia.kieu === "pct" ? Math.min(100, maxSo) : Math.round(maxSo),
+          })
+          .eq("id", target.id)
+        if (ggErr) throw new Error(`Chưa lưu được quyền giảm giá — ${ggErr.message}`)
       }
 
       // Sync user_suppliers — diff state Set vs DB: delete cũ-không-còn, insert mới.
@@ -315,6 +344,66 @@ export default function UserDetailPage() {
                 />
                 <p className="text-[10px] text-muted-foreground">
                   VD 10 = giá tối đa = giá list × 1,10. Chỉ áp dụng khi bật &ldquo;Cho phép sửa giá&rdquo;.
+                </p>
+              </div>
+            </div>
+
+            {/* ⚠ QUYỀN GIẢM GIÁ — ngay dưới quyền sửa giá (chủ nhà 24/09/2026). Chủ NPP /
+                kế toán luôn toàn quyền; tắt thì ô giảm giá dòng và giảm giá đơn ẩn với NV. */}
+            <div data-testid="quyen-giam-gia" className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Quyền giảm giá dòng / giảm giá đơn
+              </p>
+              {!coCotGiamGia && (
+                <p className="text-[11px] font-semibold text-amber-700">
+                  Máy chủ chưa có cột quyền giảm giá — cần chạy migration 185.
+                </p>
+              )}
+              {(form.role === "owner" || form.role === "accountant") && (
+                <p className="text-[11px] text-muted-foreground">Chủ NPP / kế toán luôn toàn quyền giảm giá.</p>
+              )}
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2">
+                <div>
+                  <Label className="text-xs">Cho phép giảm giá</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Tắt (mặc định): nhân viên không thấy ô giảm giá dòng và giảm giá đơn.
+                  </p>
+                </div>
+                <Switch
+                  aria-label="Cho phép giảm giá"
+                  checked={giamGia.bat}
+                  disabled={!coCotGiamGia}
+                  onCheckedChange={(v) => setGiamGia((g) => ({ ...g, bat: v }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Giảm tối đa (mỗi dòng và cả đơn)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    aria-label="Giảm tối đa"
+                    inputMode="decimal"
+                    placeholder="Để trống = không giới hạn"
+                    value={giamGia.max}
+                    disabled={!giamGia.bat || !coCotGiamGia}
+                    onChange={(e) => setGiamGia((g) => ({ ...g, max: e.target.value.replace(/[^\d.,]/g, "") }))}
+                  />
+                  <div className="flex shrink-0 rounded-md border p-0.5">
+                    {(["pct", "vnd"] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        aria-pressed={giamGia.kieu === k}
+                        disabled={!giamGia.bat || !coCotGiamGia}
+                        onClick={() => setGiamGia((g) => ({ ...g, kieu: k }))}
+                        className={`h-8 rounded px-3 text-sm font-semibold ${giamGia.kieu === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                      >
+                        {k === "pct" ? "%" : "đ"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  VD 5 % = mỗi dòng giảm tối đa 5% tiền hàng của dòng, cả đơn giảm tối đa 5% tiền hàng của đơn.
                 </p>
               </div>
             </div>

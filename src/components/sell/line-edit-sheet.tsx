@@ -1,5 +1,6 @@
 "use client"
 
+import { kepGiamGia, nhanTranGiamGia, type UserDiscountRules } from "@/lib/pricing"
 import { useEffect, useState } from "react"
 import { Lock } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -41,6 +42,7 @@ export function LineEditSheet({
   canRemove = true,
   freePrice = false,
   lineDiscount = false,
+  discountRules,
 }: {
   line: CartLine | null
   product: PricedProduct | undefined
@@ -83,6 +85,8 @@ export function LineEditSheet({
    * mang dòng của đơn, khoản giảm đã nằm sẵn trong đơn giá.
    */
   lineDiscount?: boolean
+  /** Quyền giảm giá của người dùng (mig 185) — kẹp ô giảm theo trần. Vắng = không giới hạn. */
+  discountRules?: UserDiscountRules
 }) {
   const open = !!line && !!product
   const vp = useViewportInsets(open)
@@ -219,10 +223,10 @@ export function LineEditSheet({
           {lineDiscount && (
             <DiscountField
               line={line}
-              disabled={!canEditPrice}
+              tran={discountRules ? nhanTranGiamGia(discountRules) : ""}
               pctText={pctText}
               setPctText={setPctText}
-              onChange={(d) => onPatch({ discount: d })}
+              onChange={(d) => onPatch({ discount: discountRules ? kepGiamGia(d, lineGross(line.qty, line.price), discountRules) : d })}
             />
           )}
 
@@ -273,18 +277,19 @@ export function LineEditSheet({
  * trị". Cùng quy tắc số với POS (`@/lib/pos/discount`): lật ₫ ↔ % giữ nguyên
  * số tiền, kẹp trong [0, tiền hàng].
  *
- * ⚠ KHÔNG CÓ QUYỀN SỬA GIÁ THÌ KHÔNG GIẢM ĐƯỢC. Giảm dòng là hạ giá bán; để
- *   mở là lối vòng qua sàn giá bảng của `priceViolation`. Khoá kèm lý do.
+ * ⚠ QUYỀN GIẢM GIÁ RIÊNG (mig 185): không có quyền thì ô này KHÔNG HIỆN (nơi
+ *   gọi tắt `lineDiscount`); có trần thì nơi gọi kẹp giá trị và ô nói ra trần.
  */
 function DiscountField({
   line,
-  disabled,
+  tran,
   pctText,
   setPctText,
   onChange,
 }: {
   line: CartLine
-  disabled: boolean
+  /** "Tối đa 5%" — rỗng khi không giới hạn. */
+  tran: string
   pctText: string
   setPctText: (t: string) => void
   onChange: (d: DiscountInput) => void
@@ -298,7 +303,6 @@ function DiscountField({
       <div className="flex gap-2">
         <input
           aria-label="Giảm giá dòng"
-          disabled={disabled}
           inputMode={pct ? "decimal" : "numeric"}
           value={pct ? pctText : d.value === 0 ? "" : formatInt(d.value)}
           placeholder="0"
@@ -316,12 +320,11 @@ function DiscountField({
           className={cn(
             "h-12 w-0 flex-1 rounded-xl border-[1.5px] px-3 text-right text-lg font-extrabold tabular-data outline-none",
             tien > 0 ? "border-primary" : "border-outline-variant",
-            disabled ? "bg-surface-container" : "bg-surface-container-lowest"
+            "bg-surface-container-lowest"
           )}
         />
         <button
           type="button"
-          disabled={disabled}
           aria-label={pct ? "Đơn vị giảm — đang là phần trăm, bấm để đổi sang đồng" : "Đơn vị giảm — đang là đồng, bấm để đổi sang phần trăm"}
           onClick={() => {
             const moi = switchUnit(d, lineGross(line.qty, line.price))
@@ -337,11 +340,10 @@ function DiscountField({
         </button>
       </div>
       <p className="mt-1.5 text-xs font-bold text-on-surface-variant">
-        {disabled
-          ? "Bạn không có quyền sửa giá nên không giảm giá dòng được."
-          : tien > 0
-            ? `Giảm ${formatCurrency(tien)} · còn ${formatCurrency(netPriceOf(line))}/${line.unit}`
-            : "Bấm ₫ / % để đổi cách nhập."}
+        {[
+          tien > 0 ? `Giảm ${formatCurrency(tien)} · còn ${formatCurrency(netPriceOf(line))}/${line.unit}` : "Bấm ₫ / % để đổi cách nhập.",
+          tran,
+        ].filter(Boolean).join(" · ")}
       </p>
     </>
   )

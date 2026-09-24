@@ -179,6 +179,12 @@ export interface User {
   /** Ngưỡng % tăng giá tối đa so với giá list. Chỉ áp khi
    *  allow_price_edit=true. */
   price_edit_max_increase_pct?: number
+  /** Được giảm giá dòng / cả đơn (mig 185). Mặc định tắt. */
+  allow_discount?: boolean
+  /** Trần giảm giá: 'pct' = % tiền hàng, 'vnd' = số đồng (mig 185). */
+  discount_max_type?: "pct" | "vnd"
+  /** Trần theo `discount_max_type`; null = không giới hạn (mig 185). */
+  discount_max_value?: number | null
 }
 
 export interface CustomerGroup {

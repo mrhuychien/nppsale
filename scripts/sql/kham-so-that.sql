@@ -220,4 +220,11 @@ SELECT 24, 'Mig 184 (sửa HĐ đã thu tiền: phiếu thu gắn sang HĐ mới
   CASE WHEN position('(mig 184)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
             AND position('(mig 184)' IN pg_get_functiondef('public.cancel_invoice(uuid, text)'::regprocedure)) > 0
        THEN 'OK — đã vá' ELSE 'CHƯA — sửa HĐ đã có phiếu thu báo LOCKED_HAS_PAYMENT' END, ''
+UNION ALL
+-- 25. Mig 185 — quyền giảm giá theo từng nhân viên
+SELECT 25, 'Mig 185 (quyền giảm giá theo nhân viên)',
+  CASE WHEN (SELECT count(*) FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'users'
+               AND column_name IN ('allow_discount', 'discount_max_type', 'discount_max_value')) = 3
+       THEN 'OK — đã có' ELSE 'CHƯA — NVBH không thấy ô giảm giá, màn cài đặt không lưu được quyền giảm giá' END, ''
 ) t ORDER BY stt;

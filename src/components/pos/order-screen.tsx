@@ -64,7 +64,7 @@ import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
 import { cartTotals, priceViolation, ceilingFor } from "@/lib/sell/cart"
 import { unitPriceFor, conversionFor, sellableUnits, stockInUnit } from "@/lib/sell/pricing"
-import { userPriceRulesFrom } from "@/lib/pricing"
+import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom } from "@/lib/pricing"
 import { isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { toStockLines } from "@/lib/sell/stock"
 import { viMatchAllWords } from "@/lib/search"
@@ -77,7 +77,8 @@ import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras }
 import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
 import { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
-import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
+import { discountAmount, lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
+import { giamCuaChungTu } from "@/lib/pos/invoice-discount"
 import { doiDonViDong, doiDonViDongTra, donViHienThi } from "@/lib/pos/units"
 import { posTotals } from "@/lib/pos/totals"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
@@ -158,6 +159,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [heldReturnId, setHeldReturnId] = useState<string | null | undefined>(orderId ? undefined : null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
   const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
+  /** Khoản giảm đơn đã có khi mở đơn cũ — NV không có quyền vẫn lưu được nếu giữ nguyên. */
+  const [giamDonGoc, setGiamDonGoc] = useState(0)
   const [ngayGiao, setNgayGiao] = useState("")
   const [dieuKhoan, setDieuKhoan] = useState("COD")
   const [nvbh, setNvbh] = useState("")
@@ -244,6 +247,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    * phải đọc CÙNG một bộ quy tắc với màn đơn cũ.
    */
   const rules = userPriceRulesFrom(user)
+  /* ⚠ QUYỀN GIẢM GIÁ (mig 185): tắt thì ô giảm dòng và giảm đơn ẩn. */
+  const quyenGiam = useMemo(() => userDiscountRulesFrom(user), [user])
   const isSales = user?.role === "sales"
   const canEditPrice = !isSales || rules.allow_price_edit
   const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
@@ -488,7 +493,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         const sb = createClient()
         const [h, ds, hd, rt] = await Promise.all([
           sb.from("sales_orders")
-            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, customer:customers(store_name, phone, address, group_id)")
+            .select("id, order_code, status, customer_id, payment_terms, expected_delivery, notes, sales_user_id, subtotal, customer:customers(store_name, phone, address, group_id)")
             .eq("id", orderId).maybeSingle(),
           loadInvoiceableLines(sb, orderId),
           sb.from("sales_invoices")
@@ -509,6 +514,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           order_code: string; status: string; customer_id: string
           payment_terms: string | null; expected_delivery: string | null
           notes: string | null; sales_user_id: string | null
+          subtotal?: number | null
           customer?: {
             store_name?: string | null; phone?: string | null
             address?: string | null; group_id?: string | null
@@ -563,6 +569,19 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               note: r.note ?? undefined,
             }))
         )
+
+        /* ⚠ GIẢM GIÁ CẢ ĐƠN ĐÃ LƯU PHẢI NẠP LẠI (mig 183). Trước đây ô này về 0
+           khi mở đơn cũ, và lưu lại là mất khoản giảm — khách bị ghi nợ cao
+           hơn đơn đã chốt. Suy từ Σ(SL × giá) − subtotal như hóa đơn. */
+        {
+          const ban = ds.filter((r) => !r.isExchange && r.orderLineId)
+          const g = head.subtotal == null ? 0 : giamCuaChungTu(
+            ban.map((r) => ({ quantity: Number(r.orderedQty), unitPrice: Number(r.unitPrice) })),
+            head.subtotal
+          )
+          setDocDiscount({ value: g, unit: "vnd" })
+          setGiamDonGoc(g)
+        }
 
         /* Phiếu trả kèm đơn — cùng luật `editableReturnOf` với `/sell`. */
         if (rt.error) {
@@ -887,6 +906,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
        * cú gõ nhầm và việc cho không hàng — màn đơn cũ chặn ở đây, và
        * bản đầu của màn này bỏ mất nó hoàn toàn.
        */
+      {
+        const loi = kiemGiamGia(
+          lines.map((l) => ({ giam: discountAmount(l.discount, lineGross(l.qty, l.price)), tienHang: lineGross(l.qty, l.price) })),
+          { giam: totals.docDiscount, tienHang: totals.gross },
+          quyenGiam,
+          giamDonGoc
+        )
+        if (loi) { toast({ title: loi, variant: "destructive" }); return }
+      }
       if (coGiaXau) {
         toast({
           title: "Có dòng đặt giá ngoài hạn mức",
@@ -1019,7 +1047,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
        là `luuDon` giữ bản `totals` của lần vẽ trước: thêm một dòng
        hàng trả rồi bấm F9 ngay là đơn ghi xuống bằng con số CŨ — sai
        tiền, và sai đúng kiểu không ai nhìn ra. */
-    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.returnCredit, vuotHanMuc]
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.gross, totals.returnCredit, vuotHanMuc, giamDonGoc, quyenGiam]
   )
 
   /**
@@ -1368,16 +1396,20 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     )}
                   </div>
                   <LineAmountCell line={l} />
-                  <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(l.key)} />
+                  {quyenGiam.allowed ? (
+                    <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(l.key)} />
+                  ) : (
+                    <span />
+                  )}
                 </div>
                 {/*
                   ⚠ CHI TIẾT DÒNG — GIẢM GIÁ (chủ nhà 24/09/2026: "cho vào chi tiết
                     dòng, bấm vào mới hiện lên trên dòng"). VAT không còn ở mức dòng.
                 */}
-                {moCT && (
+                {moCT && quyenGiam.allowed && (
                   <LineDetailPanel testId="chi-tiet-dong">
-                    <LineDetailField label="Giảm giá" width={190}>
-                      <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: d })} />
+                    <LineDetailField label="Giảm giá" width={190} hint={nhanTranGiamGia(quyenGiam) || undefined}>
+                      <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: kepGiamGia(d, lineGross(l.qty, l.price), quyenGiam) })} />
                     </LineDetailField>
                   </LineDetailPanel>
                 )}
@@ -1705,18 +1737,25 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           <div className="flex min-h-0 flex-grow flex-col rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
             <MoneyRow label="Tổng tiền hàng" value={totals.gross} />
             <MoneyRow label="Giảm giá dòng" value={totals.lineDiscount} tone="muted" />
-            <DocDiscountRow
-              id="pos-giam-don"
-              label="Giảm giá đơn"
-              discount={docDiscount}
-              amount={totals.docDiscount}
-              onChange={(d) =>
-                /* ⚠ Đổi đơn vị thì GIỮ số tiền — cùng luật với cấp dòng. */
-                setDocDiscount(
-                  d.unit === docDiscount.unit ? d : switchUnit(docDiscount, totals.gross)
-                )
-              }
-            />
+            {quyenGiam.allowed ? (
+              <DocDiscountRow
+                id="pos-giam-don"
+                label="Giảm giá đơn"
+                discount={docDiscount}
+                amount={totals.docDiscount}
+                onChange={(d) =>
+                  /* ⚠ Đổi đơn vị thì GIỮ số tiền — cùng luật với cấp dòng; và kẹp theo trần. */
+                  setDocDiscount(kepGiamGia(
+                    d.unit === docDiscount.unit ? d : switchUnit(docDiscount, totals.gross),
+                    totals.gross,
+                    quyenGiam
+                  ))
+                }
+              />
+            ) : totals.docDiscount > 0 ? (
+              /* Không có quyền: khoản giảm NPP đã đặt vẫn hiện, không sửa được. */
+              <MoneyRow label="Giảm giá đơn" value={totals.docDiscount} tone="muted" />
+            ) : null}
             {/*
               THUẾ GTGT CẢ ĐƠN — chủ nhà chốt 22/09/2026: "Đơn tổng cũng
               thiếu VAT (làm tương tự)".

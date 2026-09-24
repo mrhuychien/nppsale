@@ -27,6 +27,7 @@
  *   BÁN, tính tiền khách — và không có khối hàng trả nào để xem hay sửa.
  */
 
+import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom } from "@/lib/pricing"
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -164,7 +165,15 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
    */
   const [giamDonNhap, setGiamDonNhap] = useState<DiscountInput>({ value: 0, unit: "vnd" })
   /** Các lượt nạp đặt khoản giảm bằng ĐỒNG (số đã suy ra từ đơn / tờ cũ). */
-  const setGiamDon = (v: number) => setGiamDonNhap({ value: Math.max(0, Math.round(v)), unit: "vnd" })
+  /** Khoản giảm đơn nạp sẵn (từ đơn / tờ cũ) — NV không có quyền vẫn xuất được nếu giữ nguyên. */
+  const [giamDonGoc, setGiamDonGoc] = useState(0)
+  const setGiamDon = (v: number) => {
+    const g = Math.max(0, Math.round(v))
+    setGiamDonNhap({ value: g, unit: "vnd" })
+    setGiamDonGoc(g)
+  }
+  /* ⚠ QUYỀN GIẢM GIÁ (mig 185) — tắt thì ô giảm dòng / giảm đơn ẩn. */
+  const quyenGiam = useMemo(() => userDiscountRulesFrom(user), [user])
   /**
    * GIẢM GIÁ THEO DÒNG gõ trên màn này (theo `key` dòng) — ô "Giảm giá" như
    * màn đơn (chủ nhà 24/09/2026). Lưu thì quy về đơn giá (`toDraftCoGiam`).
@@ -630,6 +639,15 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
   const luu = useCallback(async () => {
     if (dangLuu || khoa || soDong === 0 || !orderId) return
+    {
+      const loi = kiemGiamGia(
+        rows.map((r) => ({ giam: discountAmount(giamDong[r.key] ?? { value: 0, unit: "vnd" }, lineGross(r.qty, r.price)), tienHang: lineGross(r.qty, r.price) })),
+        { giam: giamDon, tienHang: tienSauGiamDong },
+        quyenGiam,
+        giamDonGoc
+      )
+      if (loi) { toast({ title: loi, variant: "destructive" }); return }
+    }
     setDangLuu(true)
     try {
       const returnAdds = traMoi
@@ -701,7 +719,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     } finally {
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount])
+  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
 
   usePosKeys({
     F2: () => { setMoThemTra(false); focusPosPicker() },
@@ -876,16 +894,20 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   onChange={(v) => suaDong(r.key, { price: Math.max(0, v) })}
                 />
                 <div className="n text-right text-[14px] font-extrabold text-[var(--pos-ink)]">{formatCurrency(thanhTien)}</div>
-                <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(r.key)} />
+                {quyenGiam.allowed ? (
+                  <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(r.key)} />
+                ) : (
+                  <span />
+                )}
               </div>
               {/* ⚠ CHI TIẾT DÒNG — giảm giá (đ / %). Không còn VAT từng dòng (24/09/2026). */}
-              {moCT && (
+              {moCT && quyenGiam.allowed && (
                 <LineDetailPanel testId="chi-tiet-dong">
-                  <LineDetailField label="Giảm giá" width={190}>
+                  <LineDetailField label="Giảm giá" width={190} hint={nhanTranGiamGia(quyenGiam) || undefined}>
                     <DiscountCell
                       line={{ qty: r.qty, price: r.price, discount: giam } as PosLine}
                       index={i + 1}
-                      onChange={(d) => setGiamDong((m) => ({ ...m, [r.key]: d }))}
+                      onChange={(d) => setGiamDong((m) => ({ ...m, [r.key]: kepGiamGia(d, lineGross(r.qty, r.price), quyenGiam) }))}
                     />
                   </LineDetailField>
                 </LineDetailPanel>
@@ -1187,16 +1209,20 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             ⚠ GIẢM GIÁ CẢ ĐƠN (mig 183) — đơn có thì hóa đơn phải có. Xuất hàng:
               mặc định phần giảm của đơn chưa dùng ở tờ khác; sửa được, đồng / %.
           */}
-          <DocDiscountRow
-            id="hd-giam"
-            label="Giảm giá đơn"
-            discount={giamDonNhap}
-            amount={giamDon}
-            onChange={(d) =>
-              /* ⚠ Đổi đơn vị thì GIỮ số tiền — cùng luật với màn đơn. */
-              setGiamDonNhap(d.unit === giamDonNhap.unit ? d : switchUnit(giamDonNhap, tienSauGiamDong))
-            }
-          />
+          {quyenGiam.allowed ? (
+            <DocDiscountRow
+              id="hd-giam"
+              label="Giảm giá đơn"
+              discount={giamDonNhap}
+              amount={giamDon}
+              onChange={(d) =>
+                /* ⚠ Đổi đơn vị thì GIỮ số tiền — cùng luật với màn đơn; kẹp theo trần. */
+                setGiamDonNhap(kepGiamGia(d.unit === giamDonNhap.unit ? d : switchUnit(giamDonNhap, tienSauGiamDong), tienSauGiamDong, quyenGiam))
+              }
+            />
+          ) : giamDon > 0 ? (
+            <MoneyRow label="Giảm giá đơn" value={giamDon} tone="muted" />
+          ) : null}
           {/* ⚠ Nút đặt HÀNG LOẠT thuế cho mọi dòng — thuế chỉ có một nguồn là từng dòng. */}
           <div className="flex items-center justify-between gap-2.5 py-[5px]">
             <span className="flex items-center gap-2">

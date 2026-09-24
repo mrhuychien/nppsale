@@ -1,5 +1,6 @@
 "use client"
 
+import { vnDateKey } from "@/lib/orders/status-tone"
 import { useEffect, useMemo, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
@@ -165,8 +166,11 @@ export default function CustomerDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+    /* ⚠ `invoice_date` là DATE: so bằng NGÀY theo giờ VN, không bằng mốc UTC —
+       nửa đêm 01/09 giờ VN là 31/08 17:00Z, so kiểu ngày là lọt cả ngày 31/08. */
+    const [nam, thang] = vnDateKey(now).split("-").map(Number)
+    const ngayDauThang = `${nam}-${String(thang).padStart(2, "0")}-01`
+    const ngayDauThangTruoc = thang === 1 ? `${nam - 1}-12-01` : `${nam}-${String(thang - 1).padStart(2, "0")}-01`
     const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
     const [custRes, assignRes] = await Promise.all([
@@ -234,19 +238,22 @@ export default function CustomerDetailPage() {
       photosRes,
       pjpRes,
     ] = await Promise.all([
+      /* ⚠ DOANH THU TÍNH THEO HÓA ĐƠN ĐÃ GHI SỔ (chủ nhà 24/09/2026), theo ngày
+         hóa đơn — như `dashboard_summary` (mig 126). Tổng đơn "Hoàn thành" lệch
+         khi đơn xuất nhiều đợt, sửa lúc xuất, hay hóa đơn bị huỷ. */
       supabase
-        .from("sales_orders")
+        .from("sales_invoices")
         .select("total")
         .eq("customer_id", id)
-        .eq("status", "completed")
-        .gte("order_date", monthStart),
+        .eq("status", "posted")
+        .gte("invoice_date", ngayDauThang),
       supabase
-        .from("sales_orders")
+        .from("sales_invoices")
         .select("total")
         .eq("customer_id", id)
-        .eq("status", "completed")
-        .gte("order_date", prevMonthStart)
-        .lt("order_date", monthStart),
+        .eq("status", "posted")
+        .gte("invoice_date", ngayDauThangTruoc)
+        .lt("invoice_date", ngayDauThang),
       // ⚠ ĐỌC ĐỦ MỌI TRANG. Đọc trơn thì khách lâu năm dừng ở đúng 1.000
       //   đơn: "Tất cả đơn hàng (1000)", "TB …/đơn" chia sai, mà không báo.
       //   Khoá phụ `id` vì nhiều đơn cùng ngày (trang chạy song song).

@@ -10,13 +10,13 @@ import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
-  fetchDeliveredOrdersDu,
-  fetchOrderLines,
+  fetchRevenueInvoicesDu,
+  fetchInvoiceLines,
   fetchReturnsRowsDu,
   fetchPostedStockEntries,
   fetchOrgRows,
-  type SalesOrderLineRow,
-  type SalesOrderRow,
+  type InvoiceLineRow,
+  type RevenueInvoiceRow,
   type ReturnSummaryRow,
   fetchStockEntryLines,
   fetchReturnLines,
@@ -107,8 +107,9 @@ export default function EmployeesReportPage() {
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loading, setLoading] = useState(true)
 
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
+  // Hóa đơn ĐÃ GHI SỔ trong kỳ — doanh thu tính theo hóa đơn (chủ nhà 24/09/2026).
+  const [invoices, setInvoices] = useState<RevenueInvoiceRow[]>([])
+  const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
@@ -137,9 +138,9 @@ export default function EmployeesReportPage() {
       /* ⚠ PHIẾU XUẤT HỎNG THÌ NÉM. Bản cũ chỉ `console.error` rồi đọc
          `rows` rỗng → giá vốn 0 → lợi nhuận và hoa hồng phồng lên. Bảng
          tra cứu (khách, mặt hàng, người dùng) cũng đọc đủ theo trang. */
-      const [orderRes, returnsRes, usersRes, customersRes, productsRes, stockEntriesRes] =
+      const [invoiceRes, returnsRes, usersRes, customersRes, productsRes, stockEntriesRes] =
         await Promise.all([
-          fetchDeliveredOrdersDu(supabase, orgId, range),
+          fetchRevenueInvoicesDu(supabase, orgId, range),
           fetchReturnsRowsDu(supabase, orgId, range),
           fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role, is_active", "đọc nhân viên"),
           fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
@@ -149,25 +150,25 @@ export default function EmployeesReportPage() {
           ),
           fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
-      const orderList = orderRes.rows
+      const invoiceList = invoiceRes.rows
       const returnsRows = returnsRes.rows
       setTruncated(
-        orderRes.truncated || returnsRes.truncated || usersRes.truncated ||
+        invoiceRes.truncated || returnsRes.truncated || usersRes.truncated ||
           customersRes.truncated || productsRes.truncated || stockEntriesRes.truncated
       )
-      const orderIds = orderList.map((o) => o.id)
+      const invoiceIds = invoiceList.map((o) => o.id)
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
       const returnIds = returnsRows.map((r) => r.id)
-      /* ⚠ CẢ BA ĐỀU PHẢI PHÂN TRANG. Trước đây chỉ `fetchOrderLines` phân
+      /* ⚠ CẢ BA ĐỀU PHẢI PHÂN TRANG. Trước đây chỉ `fetchInvoiceLines` phân
          trang, còn dòng kho và dòng trả nằm ngay cạnh trong cùng
          `Promise.all` thì đọc trần — quá 1.000 dòng là API trả đúng 1.000,
          không lỗi, và giá vốn thiếu kéo hoa hồng sai theo. */
       const [linesList, stockLinesList, returnLinesList] = await Promise.all([
-        fetchOrderLines(supabase, orderIds),
+        fetchInvoiceLines(supabase, invoiceIds),
         fetchStockEntryLines(supabase, stockEntryIds),
         fetchReturnLines(supabase, returnIds),
       ])
-      setOrders(orderList)
+      setInvoices(invoiceList)
       setLines(linesList)
       setReturns(returnsRows)
       setUsers(usersRes.rows)
@@ -226,13 +227,13 @@ export default function EmployeesReportPage() {
     return m
   }, [stockLines])
 
-  // Map order_id -> [lines]
-  const linesByOrder = useMemo(() => {
-    const m = new Map<string, SalesOrderLineRow[]>()
+  // Map invoice_id -> [dòng hóa đơn]
+  const linesByInvoice = useMemo(() => {
+    const m = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
-      const a = m.get(l.order_id) || []
+      const a = m.get(l.invoice_id) || []
       a.push(l)
-      m.set(l.order_id, a)
+      m.set(l.invoice_id, a)
     }
     return m
   }, [lines])
@@ -240,14 +241,14 @@ export default function EmployeesReportPage() {
   // Map customer_id -> đơn của khách. Chỉ còn dùng cho phiếu trả CHƯA
   // GÁN nhân viên (lập trước mig 160) — phiếu có ghi tên thì đọc tên.
   const orderByCustomer = useMemo(() => {
-    const m = new Map<string, SalesOrderRow[]>()
-    for (const o of orders) {
+    const m = new Map<string, RevenueInvoiceRow[]>()
+    for (const o of invoices) {
       const a = m.get(o.customer_id) || []
       a.push(o)
       m.set(o.customer_id, a)
     }
     return m
-  }, [orders])
+  }, [invoices])
 
   const matchSearchUser = useCallback(
     (uid: string) => {
@@ -307,8 +308,8 @@ export default function EmployeesReportPage() {
 
   const salesRows: SalesRow[] = useMemo(() => {
     const m = new Map<string, SalesRow>()
-    // revenue from orders
-    for (const o of orders) {
+    // doanh thu từ hóa đơn đã ghi sổ
+    for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -324,7 +325,7 @@ export default function EmployeesReportPage() {
           days: [],
         } as SalesRow)
       e.revenue += Number(o.total || 0)
-      const d = String(o.order_date).slice(0, 10)
+      const d = String(o.invoice_date).slice(0, 10)
       const dd = d.split("-")
       const lbl = `${dd[2]}/${dd[1]}/${dd[0]}`
       const dayBucket = e.days.find((x) => x.date === d)
@@ -352,7 +353,7 @@ export default function EmployeesReportPage() {
       if (!uid) {
         const ords = orderByCustomer.get(r.customer_id) || []
         if (ords.length === 0) continue
-        uid = ords.reduce((a, b) => (a.order_date > b.order_date ? a : b)).sales_user_id
+        uid = ords.reduce((a, b) => (a.invoice_date > b.invoice_date ? a : b)).sales_user_id
       }
       if (!matchSearchUser(uid)) continue
       const u = userMap.get(uid)
@@ -389,7 +390,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [orders, returns, orderByCustomer, userMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, returns, orderByCustomer, userMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -404,7 +405,7 @@ export default function EmployeesReportPage() {
   }
   const profitRows: ProfitRow[] = useMemo(() => {
     const m = new Map<string, ProfitRow>()
-    for (const o of orders) {
+    for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -422,7 +423,7 @@ export default function EmployeesReportPage() {
         } as ProfitRow)
       e.orders += 1
       e.revenue += Number(o.total || 0)
-      const ls = linesByOrder.get(o.id) || []
+      const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
         if (!productPasses(l.product_id)) continue
         e.cogs += Number(l.quantity || 0) * (avgCostMap.get(l.product_id) || 0)
@@ -435,7 +436,7 @@ export default function EmployeesReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [orders, linesByOrder, avgCostMap, userMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, avgCostMap, userMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên ==============
   type EmployeeProductRow = {
@@ -455,7 +456,7 @@ export default function EmployeesReportPage() {
   }
   const employeeProductRows: EmployeeProductRow[] = useMemo(() => {
     const m = new Map<string, EmployeeProductRow>()
-    for (const o of orders) {
+    for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -470,7 +471,7 @@ export default function EmployeesReportPage() {
           products: [],
         } as EmployeeProductRow)
       e.revenue += Number(o.total || 0)
-      const ls = linesByOrder.get(o.id) || []
+      const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
         if (!productPasses(l.product_id)) continue
         const prod = productMap.get(l.product_id)
@@ -504,7 +505,7 @@ export default function EmployeesReportPage() {
       for (const p of e.products) p.customers.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Theo khách hàng (NV → KH → mặt hàng) ==============
   type EmployeeCustomerRow = {
@@ -524,7 +525,7 @@ export default function EmployeesReportPage() {
   }
   const employeeCustomerRows: EmployeeCustomerRow[] = useMemo(() => {
     const m = new Map<string, EmployeeCustomerRow>()
-    for (const o of orders) {
+    for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -556,7 +557,7 @@ export default function EmployeesReportPage() {
       cust.orders += 1
       cust.revenue += Number(o.total || 0)
 
-      const ls = linesByOrder.get(o.id) || []
+      const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
         if (!productPasses(l.product_id)) continue
         const prod = productMap.get(l.product_id)
@@ -578,7 +579,7 @@ export default function EmployeesReportPage() {
       for (const c of e.customers) c.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên (summary 9 cột) ==============
   // Map customer→sales_user thông qua đơn (returns không tham chiếu trực tiếp
@@ -661,11 +662,11 @@ export default function EmployeesReportPage() {
     }
 
     // Order lines → tính SL bán + Giá trị niêm yết + Doanh thu
-    for (const o of orders) {
+    for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const row = ensureRow(o.sales_user_id)
-      const ls = linesByOrder.get(o.id) || []
+      const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
         if (!productPasses(l.product_id)) continue
         const p = productMap.get(l.product_id)
@@ -694,9 +695,9 @@ export default function EmployeesReportPage() {
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
-    const lineByOrderId = linesByOrder
+    const lineByOrderId = linesByInvoice
     const lastSalesUserByCustomer = new Map<string, string>()
-    const sortedOrders = [...orders].sort((a, b) => b.order_date.localeCompare(a.order_date))
+    const sortedOrders = [...invoices].sort((a, b) => b.invoice_date.localeCompare(a.invoice_date))
     for (const o of sortedOrders) {
       if (!lastSalesUserByCustomer.has(o.customer_id)) {
         lastSalesUserByCustomer.set(o.customer_id, o.sales_user_id)
@@ -735,7 +736,7 @@ export default function EmployeesReportPage() {
       row.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [orders, linesByOrder, returns, returnLines, userMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, returns, returnLines, userMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -747,7 +748,7 @@ export default function EmployeesReportPage() {
       downloadXlsx(`bao-cao-nv-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
-        ["Người bán", "Vai trò", "Số đơn", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
+        ["Người bán", "Vai trò", "Số HĐ", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows)
         out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
@@ -1023,7 +1024,7 @@ export default function EmployeesReportPage() {
           columns={[
             { key: "name", label: "Người bán", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "role", label: "Vai trò", render: (r) => r.role },
-            { key: "or", label: "Số đơn", align: "right", render: (r) => r.orders },
+            { key: "or", label: "Số HĐ", align: "right", render: (r) => r.orders },
             { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
             { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
             { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>{formatCurrency(r.profit)}</span> },
@@ -1083,7 +1084,7 @@ export default function EmployeesReportPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{c.store_name}</span>
                         <span className="text-xs text-muted-foreground">
-                          ({c.orders} đơn)
+                          ({c.orders} HĐ)
                         </span>
                       </div>
                       <div className="text-xs text-muted-foreground">

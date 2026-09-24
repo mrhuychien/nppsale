@@ -17,10 +17,10 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchDeliveredOrders,
-  fetchOrderLines,
-  type SalesOrderLineRow,
-  type SalesOrderRow,
+  fetchRevenueInvoices,
+  fetchInvoiceLines,
+  type InvoiceLineRow,
+  type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -44,10 +44,10 @@ export default function ProductsOverviewPage() {
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
 
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
-  const [prevLines, setPrevLines] = useState<SalesOrderLineRow[]>([])
+  const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
+  const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
+  const [lines, setLines] = useState<InvoiceLineRow[]>([])
+  const [prevLines, setPrevLines] = useState<InvoiceLineRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
 
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -65,12 +65,13 @@ export default function ProductsOverviewPage() {
      *   1.000 mã, dòng đơn của mã thứ 1.001 trở đi hiện "—" / "Chưa phân
      *   nhóm". Nay đọc đủ theo trang, mốc `id` duy nhất.
      * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, kể cả hàm ở `lib/analytics/sales`
-     *   (`fetchOrderLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
+     *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
     try {
       const [orderList, prevOrderList, productsRes] = await Promise.all([
-        fetchDeliveredOrders(supabase, orgId, range),
-        fetchDeliveredOrders(supabase, orgId, prev),
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        fetchRevenueInvoices(supabase, orgId, range),
+        fetchRevenueInvoices(supabase, orgId, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -83,8 +84,8 @@ export default function ProductsOverviewPage() {
         ),
       ])
       const [lineList, prevLineList] = await Promise.all([
-        fetchOrderLines(supabase, orderList.map((o) => o.id)),
-        fetchOrderLines(supabase, prevOrderList.map((o) => o.id)),
+        fetchInvoiceLines(supabase, orderList.map((o) => o.id)),
+        fetchInvoiceLines(supabase, prevOrderList.map((o) => o.id)),
       ])
       setOrders(orderList)
       setPrevOrders(prevOrderList)
@@ -135,7 +136,7 @@ export default function ProductsOverviewPage() {
       const e = cur.get(l.product_id) || { qty: 0, revenue: 0, orders: new Set() }
       e.qty += Number(l.quantity || 0)
       e.revenue += Number(l.line_total || 0)
-      e.orders.add(l.order_id)
+      e.orders.add(l.invoice_id)
       cur.set(l.product_id, e)
     }
     for (const l of prevLines) {
@@ -280,7 +281,7 @@ export default function ProductsOverviewPage() {
           { key: "name", label: "Tên hàng hóa", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "qty", label: "SL bán", align: "right", render: (r) => <NumberCell value={r.qty} /> },
           { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-          { key: "aov", label: "DT TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+          { key: "aov", label: "DT TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />

@@ -17,7 +17,10 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchDeliveredOrdersDu,
+  fetchRevenueInvoicesDu,
+  fetchInvoiceLines,
+  giamGiaHoaDon,
+  type InvoiceLineRow,
   fetchReturnsValueDu,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
@@ -105,9 +108,10 @@ export default function FinanceReportPage() {
       setLoadError(null)
       const r = effectiveRange
       const orgId = user.org_id
-      const [orderRes, retRes, cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] =
+      const [invoiceRes, retRes, cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] =
         await Promise.all([
-          fetchDeliveredOrdersDu(supabase, orgId, r),
+          // Doanh thu = hóa đơn ĐÃ GHI SỔ theo ngày hóa đơn (chủ nhà 24/09/2026).
+          fetchRevenueInvoicesDu(supabase, orgId, r),
           fetchReturnsValueDu(supabase, orgId, r),
           fetchCogsForRange(supabase, orgId, r),
           docDuHoacNem<ExpRowRaw>(
@@ -135,15 +139,26 @@ export default function FinanceReportPage() {
       const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
         .find((x) => x?.error)?.error
       if (rpcErr) throw new Error(`tính số tổng ở máy chủ: ${errorMessage(rpcErr)}`)
-      setTruncated(orderRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
-      const orderList = orderRes.rows
+      setTruncated(invoiceRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
+      const invoiceList = invoiceRes.rows
       const retVal = retRes.total
+      /* Hóa đơn không có cột giảm giá: giảm = Σ dòng − subtotal (mig 183).
+         ⚠ `total` ĐÃ trừ giảm giá, nên dòng (1) phải là total + giảm — lấy
+         total rồi trừ giảm lần nữa là trừ HAI lần. */
+      const dong = await fetchInvoiceLines(supabase, invoiceList.map((o) => o.id))
+      const dongTheoHd = new Map<string, InvoiceLineRow[]>()
+      for (const l of dong) {
+        const a = dongTheoHd.get(l.invoice_id) || []
+        a.push(l)
+        dongTheoHd.set(l.invoice_id, a)
+      }
 
       let totalRevenue = 0
       let totalDiscount = 0
-      for (const o of orderList) {
-        totalRevenue += Number(o.total || 0)
-        totalDiscount += Number(o.discount || 0)
+      for (const o of invoiceList) {
+        const giam = giamGiaHoaDon(o, dongTheoHd.get(o.id) || [])
+        totalRevenue += Number(o.total || 0) + giam
+        totalDiscount += giam
       }
       setRevenue(totalRevenue)
       setDiscount(totalDiscount)

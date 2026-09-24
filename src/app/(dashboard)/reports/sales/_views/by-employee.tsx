@@ -29,7 +29,7 @@ export function EmployeeView({ rows }: { rows: EmployeeRow[] }) {
       columns={[
         { key: "name", label: "Nhân viên", render: (r) => <span className="font-medium">{r.name}</span> },
         { key: "role", label: "Vai trò", render: (r) => r.role },
-        { key: "orders", label: "Số đơn", align: "right", render: (r) => r.orders },
+        { key: "orders", label: "Số HĐ", align: "right", render: (r) => r.orders },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
         { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
         {
@@ -38,7 +38,7 @@ export function EmployeeView({ rows }: { rows: EmployeeRow[] }) {
           align: "right",
           render: (r) => <span className="font-semibold text-tertiary">{formatCurrency(r.profit)}</span>,
         },
-        { key: "aov", label: "TB/đơn", align: "right", render: (r) => formatCurrency(r.aov) },
+        { key: "aov", label: "TB/HĐ", align: "right", render: (r) => formatCurrency(r.aov) },
       ]}
       totalsRow={
         <TotalsRow

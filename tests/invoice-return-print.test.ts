@@ -233,7 +233,11 @@ describe("tab Lịch sử giao dịch của khách hàng", () => {
    * khoảng trống giữa hai số hóa đơn và không biết chuyện gì xảy ra ở đó.
    */
   it("không lọc bỏ hóa đơn đã huỷ", () => {
-    const q = CUS.slice(CUS.indexOf('.from("sales_invoices")'), CUS.indexOf('.limit(200)'))
+    // Soi đúng truy vấn DANH SÁCH hóa đơn (có `invoice_code`) — hai truy vấn doanh
+    // thu tháng ở trên cố ý chỉ lấy hóa đơn đã ghi sổ (24/09/2026).
+    const i = CUS.indexOf('.select("id, invoice_code, invoice_date, total, status")')
+    expect(i).toBeGreaterThan(0)
+    const q = CUS.slice(i, CUS.indexOf('.limit(200)', i))
     expect(q).not.toContain('.eq("status"')
     expect(q).not.toContain('.neq("status"')
   })

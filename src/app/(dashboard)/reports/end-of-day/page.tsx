@@ -20,10 +20,11 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   fetchAllOrdersDu,
-  fetchDeliveredOrdersDu,
+  fetchRevenueInvoicesDu,
   fetchReturnsValueDu,
   fetchCogsForRange,
   type SalesOrderRow,
+  type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -53,8 +54,10 @@ export default function EndOfDayPage() {
   const catalogs = useFilterCatalogs(user?.org_id)
   const [date, setDate] = useState<string>(rangeFromPreset("today").from)
   const [, setLoading] = useState(true)
+  // Đơn tạo trong ngày — số liệu HOẠT ĐỘNG, không phải doanh thu.
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [delivered, setDelivered] = useState<SalesOrderRow[]>([])
+  // Hóa đơn ghi sổ trong ngày — DOANH THU tính theo hóa đơn (chủ nhà 24/09/2026).
+  const [delivered, setDelivered] = useState<RevenueInvoiceRow[]>([])
   const [returnsValue, setReturnsValue] = useState(0)
   const [cogs, setCogs] = useState(0)
   const [cashReceipts, setCashReceipts] = useState<CashReceiptRow[]>([])
@@ -83,7 +86,7 @@ export default function EndOfDayPage() {
       const orgId = user.org_id
       const [allRes, delivRes, retRes, cogsRes, cashRes, expRes] = await Promise.all([
         fetchAllOrdersDu(supabase, orgId, range),
-        fetchDeliveredOrdersDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, range),
         fetchReturnsValueDu(supabase, orgId, range),
         fetchCogsForRange(supabase, orgId, range),
         docDuHoacNem<CashReceiptRow>(
@@ -132,7 +135,7 @@ export default function EndOfDayPage() {
 
   // Filter helper applied to delivered + raw orders
   const passesFilters = useCallback(
-    (o: SalesOrderRow) => {
+    (o: SalesOrderRow | RevenueInvoiceRow) => {
       if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
       if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
       // creator / payment method / sales method are stored on the order
@@ -235,7 +238,7 @@ export default function EndOfDayPage() {
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
           <SmallStat label="Đơn tạo trong ngày" value={String(filteredOrders.length)} />
-          <SmallStat label="Đơn đã giao" value={String(filteredDelivered.length)} />
+          <SmallStat label="Hóa đơn đã xuất" value={String(filteredDelivered.length)} />
           <SmallStat label="Doanh thu" value={formatCurrency(revenue)} />
           <SmallStat label="Trả hàng" value={formatCurrency(returnsValue)} />
           <SmallStat label="Doanh thu thuần" value={formatCurrency(netRevenue)} accent />

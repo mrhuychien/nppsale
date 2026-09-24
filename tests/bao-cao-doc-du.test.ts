@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
 import {
-  fetchDeliveredOrders,
-  fetchDeliveredOrdersDu,
+  fetchRevenueInvoices,
+  fetchRevenueInvoicesDu,
+  fetchInvoiceLines,
   fetchAllOrders,
   fetchReturnsValue,
   fetchReturnsValueDu,
@@ -107,14 +108,17 @@ const ORG = "org-1"
 const KY = { from: "2026-09-01", to: "2026-09-30" }
 const pad = (i: number) => String(i).padStart(6, "0")
 
-function donHang(n: number): Row[] {
+/* Doanh thu tính theo HÓA ĐƠN (chủ nhà 24/09/2026) — hóa đơn đã ghi sổ. */
+function hoaDon(n: number): Row[] {
   return Array.from({ length: n }, (_, i) => ({
-    id: `o-${pad(i)}`,
+    id: `i-${pad(i)}`,
     org_id: ORG,
-    status: "completed",
-    // Cố ý dồn cả nghìn đơn vào vài ngày — `order_date` không duy nhất.
-    order_date: `2026-09-0${1 + (i % 3)}`,
+    order_id: `o-${pad(i % 700)}`,
+    status: "posted",
+    // Cố ý dồn cả nghìn hóa đơn vào vài ngày — `invoice_date` không duy nhất.
+    invoice_date: `2026-09-0${1 + (i % 3)}`,
     total: 1000,
+    sales_user_id: null,
   }))
 }
 
@@ -123,31 +127,49 @@ function donHang(n: number): Row[] {
 // =====================================================================
 
 describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
-  it("đơn đã giao vượt 1.000 dòng vẫn đọc đủ, không trùng", async () => {
-    const { client, nhatKy } = postgrestGia({ bang: { sales_orders: donHang(2500) } })
-    const r = await fetchDeliveredOrdersDu(client, ORG, KY)
+  // Đổi từ `fetchDeliveredOrdersDu` (đơn "Hoàn thành") sang hóa đơn đã ghi
+  // sổ — doanh thu tính theo hóa đơn (chủ nhà 24/09/2026).
+  it("hóa đơn đã ghi sổ vượt 1.000 dòng vẫn đọc đủ, không trùng", async () => {
+    const { client, nhatKy } = postgrestGia({
+      bang: { sales_invoices: [...hoaDon(2500), { ...hoaDon(1)[0], id: "i-huy", status: "cancelled" }] },
+    })
+    const r = await fetchRevenueInvoicesDu(client, ORG, KY)
     expect(r.rows).toHaveLength(2500)
     expect(new Set(r.rows.map((x) => x.id)).size).toBe(2500)
     expect(r.truncated).toBe(false)
+    /* Hóa đơn chưa gán người → chuỗi rỗng, không phải null. */
+    expect(r.rows[0].sales_user_id).toBe("")
     /* Sắp theo ngày cho người xem, nhưng mốc CUỐI phải là `id`. */
     for (const k of nhatKy) expect(k.order[k.order.length - 1]).toBe("id")
   })
 
   it.each([
-    ["fetchDeliveredOrders", () => fetchDeliveredOrders],
-    ["fetchAllOrders", () => fetchAllOrders],
-  ])("%s: đọc hỏng thì NÉM, không trả mảng rỗng", async (_t, ham) => {
-    const { client } = postgrestGia({ bang: {}, loi: { sales_orders: "rớt mạng" } })
+    ["fetchRevenueInvoices", () => fetchRevenueInvoices, "sales_invoices"],
+    ["fetchAllOrders", () => fetchAllOrders, "sales_orders"],
+  ])("%s: đọc hỏng thì NÉM, không trả mảng rỗng", async (_t, ham, bang) => {
+    const { client } = postgrestGia({ bang: {}, loi: { [bang]: "rớt mạng" } })
     await expect(ham()(client, ORG, KY)).rejects.toThrow(/rớt mạng/)
   })
 
   it("chạm trần thì bản `…Du` gắn cờ `truncated`", async () => {
     const { client } = postgrestGia({
-      bang: { sales_orders: donHang(10) },
-      demGia: { sales_orders: AGGREGATE_ROW_CAP + 5 },
+      bang: { sales_invoices: hoaDon(10) },
+      demGia: { sales_invoices: AGGREGATE_ROW_CAP + 5 },
     })
-    const r = await fetchDeliveredOrdersDu(client, ORG, KY)
+    const r = await fetchRevenueInvoicesDu(client, ORG, KY)
     expect(r.truncated).toBe(true)
+  })
+
+  it("dòng hóa đơn: chia lô ≤150 id, đọc đủ", async () => {
+    const dong = hoaDon(400).map((h, i) => ({
+      id: `sil-${pad(i)}`, invoice_id: h.id, product_id: "p", unit_name: "thùng",
+      conversion_factor: 1, quantity: 2, unit_price: 500, line_total: 1000,
+    }))
+    const { client, nhatKy } = postgrestGia({ bang: { sales_invoice_lines: dong } })
+    const r = await fetchInvoiceLines(client, dong.map((d) => String(d.invoice_id)))
+    expect(r).toHaveLength(400)
+    const lo = nhatKy.filter((k) => k.bang === "sales_invoice_lines").flatMap((k) => k.inLen)
+    expect(Math.max(...lo)).toBeLessThanOrEqual(150)
   })
 
   it("phiếu trả: hỏng thì NÉM (cả tổng lẫn danh sách)", async () => {
@@ -280,7 +302,7 @@ const loRong = (src: string) =>
 /** Luật: không gọi thẳng `fetchAllForAggregate` (nó trả lỗi thay vì ném). */
 const goiThang = (src: string) => /fetchAllForAggregate/.test(src)
 /** Luật: không gọi bản cũ nuốt cờ `truncated` — dùng bản `…Du`. */
-const nuotCo = (src: string) => /\bfetch(DeliveredOrders|AllOrders|ReturnsRows|ReturnsValue)\(/.test(src)
+const nuotCo = (src: string) => /\bfetch(RevenueInvoices|AllOrders|ReturnsRows|ReturnsValue)\(/.test(src)
 
 describe("reports/**: các phép quét còn nhìn thấy lỗi", () => {
   it("nhận ra `console.error` nuốt lỗi", () => {
@@ -307,8 +329,8 @@ describe("reports/**: các phép quét còn nhìn thấy lỗi", () => {
     expect(loRong('.from("batches").select("id").gt("qty_on_hand", 0).order("id").range(a, b)')).toBe(false)
   })
   it("nhận ra gọi bản nuốt cờ", () => {
-    expect(nuotCo("fetchDeliveredOrders(supabase, org, range)")).toBe(true)
-    expect(nuotCo("fetchDeliveredOrdersDu(supabase, org, range)")).toBe(false)
+    expect(nuotCo("fetchRevenueInvoices(supabase, org, range)")).toBe(true)
+    expect(nuotCo("fetchRevenueInvoicesDu(supabase, org, range)")).toBe(false)
   })
 })
 

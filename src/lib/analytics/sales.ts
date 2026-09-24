@@ -60,7 +60,7 @@ function isMissingColumn(err: string | null | undefined): boolean {
 }
 
 export interface SalesAggregates {
-  invoiceCount: number       // số hóa đơn (đơn đã giao)
+  invoiceCount: number       // số hóa đơn đã ghi sổ
   revenue: number            // doanh thu (subtotal-ish gross)
   returnsValue: number       // giá trị trả
   netRevenue: number         // doanh thu thuần = revenue - returnsValue
@@ -137,45 +137,133 @@ function canhBaoTran(truncated: boolean, ten: string): void {
 const COT_DON = "id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id"
 
 /**
- * Đơn đã giao trong kỳ (theo `order_date`, tính cả hai đầu).
+ * Một hóa đơn bán ĐÃ GHI SỔ — đơn vị của DOANH THU.
  *
- * ⚠ `.order("id")` SAU `order_date`. Các trang chạy SONG SONG; nhiều đơn
- *   cùng một ngày mà không có mốc duy nhất thì mỗi trang được Postgres xếp
- *   một kiểu — đơn lặp ở hai trang, đơn khác không ở trang nào.
+ * Chủ nhà chốt 24/09/2026: doanh thu tính theo HÓA ĐƠN, không theo đơn.
+ * Đơn xuất nhiều đợt có nhiều hóa đơn; đơn "Hoàn thành" cộng `total` của
+ * ĐƠN là tính cả phần chưa giao (hoặc sót phần đã giao của đơn dở dang).
+ * Cùng nghĩa với `dashboard_summary` (mig 126).
  */
-export async function fetchDeliveredOrdersDu(
+export interface RevenueInvoiceRow {
+  id: string
+  invoice_code: string
+  /** Cột DATE — ngày ghi doanh thu. So bằng chuỗi YYYY-MM-DD. */
+  invoice_date: string
+  order_id: string
+  status: string
+  total: number
+  /** Sau giảm giá cả đơn, trước thuế (mig 183). */
+  subtotal: number
+  vat: number
+  customer_id: string
+  /** Người được gán hóa đơn (mig 182). Chưa gán → chuỗi rỗng. */
+  sales_user_id: string
+}
+
+/** Dòng của hóa đơn đã ghi sổ — doanh thu / số lượng theo mặt hàng. */
+export interface InvoiceLineRow {
+  id: string
+  invoice_id: string
+  product_id: string
+  unit_name: string
+  conversion_factor: number
+  quantity: number
+  unit_price: number
+  line_total: number
+}
+
+/** Trạng thái hóa đơn được tính doanh thu — như `is_revenue_invoice_status`. */
+export const REVENUE_INVOICE_STATUS = "posted"
+
+const COT_HOA_DON =
+  "id, invoice_code, invoice_date, order_id, status, total, subtotal, vat, customer_id, sales_user_id"
+
+/**
+ * Hóa đơn đã ghi sổ trong kỳ (theo `invoice_date`, tính cả hai đầu).
+ *
+ * ⚠ `invoice_date` LÀ DATE — so với `range.from/to` (YYYY-MM-DD, lịch VN),
+ *   không so với mốc ISO/UTC.
+ * ⚠ `.order("id")` SAU `invoice_date`: các trang chạy song song, nhiều hóa
+ *   đơn cùng ngày mà không có mốc duy nhất thì lặp/sót giữa hai trang.
+ */
+export async function fetchRevenueInvoicesDu(
   supabase: SupabaseClient,
   orgId: string,
   range: DateRange
-): Promise<DocDu<SalesOrderRow>> {
-  const res = await fetchAllForAggregate<SalesOrderRow>((from, to) =>
+): Promise<DocDu<RevenueInvoiceRow>> {
+  const res = await fetchAllForAggregate<RevenueInvoiceRow>((from, to) =>
     supabase
-      .from("sales_orders")
-      .select(COT_DON, { count: "exact" })
+      .from("sales_invoices")
+      .select(COT_HOA_DON, { count: "exact" })
       .eq("org_id", orgId)
-      .eq("status", "completed")
-      .gte("order_date", range.from)
-      .lte("order_date", range.to)
-      .order("order_date", { ascending: false })
+      .eq("status", REVENUE_INVOICE_STATUS)
+      .gte("invoice_date", range.from)
+      .lte("invoice_date", range.to)
+      .order("invoice_date", { ascending: false })
       .order("id")
       .range(from, to)
   )
-  nemNeuLoi(res.error, "đọc đơn đã giao")
-  return { rows: res.rows, truncated: res.truncated }
+  nemNeuLoi(res.error, "đọc hóa đơn đã ghi sổ")
+  const rows = res.rows.map((r) => ({
+    ...r,
+    total: Number(r.total || 0),
+    subtotal: Number(r.subtotal || 0),
+    vat: Number(r.vat || 0),
+    sales_user_id: r.sales_user_id ?? "",
+  }))
+  return { rows, truncated: res.truncated }
 }
 
-/** Fetch delivered sales orders within a range (inclusive, by order_date). */
-export async function fetchDeliveredOrders(
+/** Như trên, cho màn không có chỗ báo cờ chạm trần (chỉ `console.warn`). */
+export async function fetchRevenueInvoices(
   supabase: SupabaseClient,
   orgId: string,
   range: DateRange
-): Promise<SalesOrderRow[]> {
-  const r = await fetchDeliveredOrdersDu(supabase, orgId, range)
-  canhBaoTran(r.truncated, "đơn đã giao")
+): Promise<RevenueInvoiceRow[]> {
+  const r = await fetchRevenueInvoicesDu(supabase, orgId, range)
+  canhBaoTran(r.truncated, "hóa đơn đã ghi sổ")
   return r.rows
 }
 
-/** Mọi đơn trong kỳ, không kể trạng thái — cùng luật với hàm trên. */
+/**
+ * Dòng hóa đơn của các hóa đơn đã chọn — CHIA LÔ + PHÂN TRANG như
+ * `fetchOrderLines`.
+ */
+export async function fetchInvoiceLines(
+  supabase: SupabaseClient,
+  invoiceIds: string[]
+): Promise<InvoiceLineRow[]> {
+  if (invoiceIds.length === 0) return []
+  return docTheoLoId<InvoiceLineRow>(
+    invoiceIds,
+    (lo, from, to) =>
+      supabase
+        .from("sales_invoice_lines")
+        .select("id, invoice_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total", {
+          count: "exact",
+        })
+        .in("invoice_id", lo)
+        .order("id")
+        .range(from, to),
+    "đọc dòng hóa đơn"
+  )
+}
+
+/**
+ * Giảm giá cả đơn đã sang hóa đơn = Σ `line_total` − `subtotal` (mig 183:
+ * `subtotal` ghi SAU giảm, không có cột riêng). Lệch làm tròn < 1đ bỏ qua.
+ */
+export function giamGiaHoaDon(inv: Pick<RevenueInvoiceRow, "subtotal">, lines: Pick<InvoiceLineRow, "line_total">[]): number {
+  const tienHang = Math.round(lines.reduce((s, l) => s + Number(l.line_total || 0), 0))
+  const giam = tienHang - Number(inv.subtotal || 0)
+  return giam >= 1 ? giam : 0
+}
+
+/**
+ * Mọi đơn trong kỳ, không kể trạng thái — số liệu HOẠT ĐỘNG (đơn đã đặt,
+ * đơn nháp, tỉ lệ huỷ…). ⚠ KHÔNG cộng `total` của nó làm doanh thu: doanh
+ * thu đi qua `fetchRevenueInvoicesDu`.
+ */
 export async function fetchAllOrdersDu(
   supabase: SupabaseClient,
   orgId: string,
@@ -550,15 +638,15 @@ export async function fetchCogsForRange(
 }
 
 export function summariseSales(
-  orders: SalesOrderRow[],
+  invoices: Pick<RevenueInvoiceRow, "total">[],
   returnsValue: number,
   cogs: number
 ): SalesAggregates {
-  const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0)
+  const revenue = invoices.reduce((s, o) => s + Number(o.total || 0), 0)
   const netRevenue = revenue - returnsValue
   const grossProfit = netRevenue - cogs
   return {
-    invoiceCount: orders.length,
+    invoiceCount: invoices.length,
     revenue,
     returnsValue,
     netRevenue,

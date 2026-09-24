@@ -16,15 +16,15 @@ import {
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { downloadXlsx } from "@/components/analytics/report-frame"
 import {
-  fetchDeliveredOrdersDu,
-  fetchOrderLines,
+  fetchRevenueInvoicesDu,
+  fetchInvoiceLines,
   fetchReturnsRowsDu,
   fetchReturnLines,
   fetchStockEntryLines,
   fetchPostedStockEntries,
   fetchOrgRows,
-  type SalesOrderLineRow,
-  type SalesOrderRow,
+  type InvoiceLineRow,
+  type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -110,8 +110,9 @@ export default function ProductsReportPage() {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
 
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
+  // Hóa đơn ĐÃ GHI SỔ trong kỳ — doanh thu tính theo hóa đơn (chủ nhà 24/09/2026).
+  const [invoices, setInvoices] = useState<RevenueInvoiceRow[]>([])
+  const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [batches, setBatches] = useState<BatchRow[]>([])
@@ -141,9 +142,9 @@ export default function ProductsReportPage() {
       setLoading(true)
       setLoadError(null)
       const orgId = user.org_id
-      const [orderRes, productsRes, batchesRes, returnsRes, entriesRes, customersRes, suppliersRes] =
+      const [invoiceRes, productsRes, batchesRes, returnsRes, entriesRes, customersRes, suppliersRes] =
         await Promise.all([
-          fetchDeliveredOrdersDu(supabase, orgId, range),
+          fetchRevenueInvoicesDu(supabase, orgId, range),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
             "id, sku, name, category, brand, base_unit, primary_supplier_id", "đọc mặt hàng"
@@ -169,16 +170,16 @@ export default function ProductsReportPage() {
         ])
 
       const [lineList, returnLineList, stockLineList] = await Promise.all([
-        fetchOrderLines(supabase, orderRes.rows.map((o) => o.id)),
+        fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id)),
         fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id)),
         fetchStockEntryLines(supabase, entriesRes.rows.map((e) => e.id)),
       ])
 
       setTruncated(
-        orderRes.truncated || productsRes.truncated || batchesRes.truncated || returnsRes.truncated ||
+        invoiceRes.truncated || productsRes.truncated || batchesRes.truncated || returnsRes.truncated ||
           entriesRes.truncated || customersRes.truncated || suppliersRes.truncated
       )
-      setOrders(orderRes.rows)
+      setInvoices(invoiceRes.rows)
       setLines(lineList)
       setReturnLines(returnLineList)
       setProducts(productsRes.rows)
@@ -222,16 +223,17 @@ export default function ProductsReportPage() {
 
   const orderMap = useMemo(() => {
     const m = new Map<string, { id: string; order_code: string; order_date: string; customer_name: string }>()
-    for (const o of orders) {
+    for (const o of invoices) {
       m.set(o.id, {
         id: o.id,
-        order_code: o.order_code,
-        order_date: o.order_date,
+        // Chi tiết theo HÓA ĐƠN: mã và ngày của tờ hóa đơn.
+        order_code: o.invoice_code,
+        order_date: o.invoice_date,
         customer_name: customerMap.get(o.customer_id)?.store_name || "—",
       })
     }
     return m
-  }, [orders, customerMap])
+  }, [invoices, customerMap])
 
   const stockEntryMap = useMemo(() => {
     const m = new Map<string, StockEntry>()
@@ -296,7 +298,7 @@ export default function ProductsReportPage() {
 
   // -------------------- Lợi nhuận --------------------
   const profitRows: ProfitByProductRow[] = useMemo(() => {
-    // Aggregate revenue & qty from order lines; COGS from posted export entry lines
+    // Doanh thu & SL từ dòng hóa đơn đã ghi sổ; COGS from posted export entry lines
     const m = new Map<string, ProfitByProductRow>()
     const exportLines = stockLines.filter(
       (l) => stockEntryMap.get(l.entry_id)?.type === "export"

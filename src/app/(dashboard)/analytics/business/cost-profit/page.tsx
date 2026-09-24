@@ -22,7 +22,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchDeliveredOrders,
+  fetchRevenueInvoices,
   fetchReturnsValue,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
@@ -124,8 +124,9 @@ export default function CostProfitPage() {
     try {
       const [orders, prevOrders, retVal, prevRetVal, cogsRes, prevCogsRes, exp, prevExp] =
         await Promise.all([
-          fetchDeliveredOrders(supabase, orgId, range),
-          fetchDeliveredOrders(supabase, orgId, prev),
+          // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+          fetchRevenueInvoices(supabase, orgId, range),
+          fetchRevenueInvoices(supabase, orgId, prev),
           fetchReturnsValue(supabase, orgId, range),
           fetchReturnsValue(supabase, orgId, prev),
           fetchCogsForRange(supabase, orgId, range),

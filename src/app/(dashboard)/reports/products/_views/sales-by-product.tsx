@@ -1,6 +1,6 @@
 import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import type { SalesOrderLineRow } from "@/lib/analytics/sales"
+import type { InvoiceLineRow } from "@/lib/analytics/sales"
 
 export interface ProductMeta {
   id: string
@@ -29,7 +29,7 @@ interface OrderMeta {
 
 interface Props {
   rows: SalesByProductRow[]
-  orderLines: SalesOrderLineRow[]
+  orderLines: InvoiceLineRow[]
   orderMap: Map<string, OrderMeta>
 }
 
@@ -77,10 +77,10 @@ export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
         const lines = orderLines.filter((l) => l.product_id === r.id)
         const grouped = new Map<string, { qty: number; line_total: number }>()
         for (const l of lines) {
-          const e = grouped.get(l.order_id) || { qty: 0, line_total: 0 }
+          const e = grouped.get(l.invoice_id) || { qty: 0, line_total: 0 }
           e.qty += Number(l.quantity || 0)
           e.line_total += Number(l.line_total || 0)
-          grouped.set(l.order_id, e)
+          grouped.set(l.invoice_id, e)
         }
         const drillRows = Array.from(grouped.entries())
           .map(([oid, e]) => {

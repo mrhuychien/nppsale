@@ -335,7 +335,8 @@ describe("màn báo cáo cộng đủ số dòng", () => {
    */
   it("ba bảng dòng của báo cáo nhân viên đi cùng một hàm", () => {
     const s = code(read("src/app/(dashboard)/reports/employees/page.tsx"))
-    for (const ham of ["fetchOrderLines(", "fetchStockEntryLines(", "fetchReturnLines("]) {
+    // Dòng bán nay là dòng HÓA ĐƠN (doanh thu theo hóa đơn, 24/09/2026).
+    for (const ham of ["fetchInvoiceLines(", "fetchStockEntryLines(", "fetchReturnLines("]) {
       expect(s, `báo cáo nhân viên không dùng ${ham}`).toContain(ham)
     }
   })

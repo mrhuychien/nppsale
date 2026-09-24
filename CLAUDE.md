@@ -21,6 +21,18 @@ Chủ nhà chốt 24/09/2026: *"công nợ đang tính theo đơn hàng, phải 
   (`src/lib/pos/load.ts`) hoặc `loadDebtByCustomer` (`src/lib/sell/debt.ts`), đừng tự viết lại.
 - Kiểm hạn mức = **nợ sẵn có + đơn này** so với `credit_limit`.
 
+### Doanh thu tính theo HÓA ĐƠN
+Chủ nhà chốt 24/09/2026: *"làm tiếp phần doanh thu tính theo hoá đơn"*.
+- Doanh thu = Σ `sales_invoices.total` của hóa đơn **`status = 'posted'`**
+  (`is_revenue_invoice_status`), theo **`invoice_date`**; theo mặt hàng thì từ `sales_invoice_lines`
+  của hóa đơn đã ghi sổ. Như `dashboard_summary` (mig 126).
+- **Không** cộng `sales_orders.total` (đơn "Hoàn thành") làm doanh thu. Đơn hàng chỉ dùng cho số
+  liệu HOẠT ĐỘNG (số đơn đã đặt, nháp…).
+- `invoice_date` là DATE: so bằng ngày theo giờ VN (`vnDateKey`), không so với mốc ISO/UTC.
+
+### Chuyến giao
+Chủ nhà 24/09/2026: không dùng chuyến giao nữa — không làm thêm gì cho luồng chuyến giao.
+
 ### Công nợ ÂM khi hàng trả nhiều hơn hàng xuất
 Chủ nhà chốt 24/09/2026 (mig 186): phần hàng trả vượt tiền hóa đơn phải ghi thành **công nợ âm**,
 không được kẹp về 0.

@@ -21,12 +21,12 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchDeliveredOrders,
-  fetchOrderLines,
+  fetchRevenueInvoices,
+  fetchInvoiceLines,
   fetchReturnsValue,
   fetchCogsForRange,
-  type SalesOrderRow,
-  type SalesOrderLineRow,
+  type RevenueInvoiceRow,
+  type InvoiceLineRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -72,10 +72,10 @@ export default function BusinessOverviewPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabKey>("revenue")
 
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
-  const [prevLines, setPrevLines] = useState<SalesOrderLineRow[]>([])
+  const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
+  const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
+  const [lines, setLines] = useState<InvoiceLineRow[]>([])
+  const [prevLines, setPrevLines] = useState<InvoiceLineRow[]>([])
   const [returnsValue, setReturnsValue] = useState(0)
   const [prevReturnsValue, setPrevReturnsValue] = useState(0)
   const [cogs, setCogs] = useState(0)
@@ -102,7 +102,7 @@ export default function BusinessOverviewPage() {
      *   vẫn khớp nên không ai nghi. Nay đọc đủ theo trang, mốc `id`.
      *
      * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, KỂ CẢ CÁC HÀM Ở `lib/analytics/sales`.
-     *   `fetchOrderLines` đã NÉM từ trước (đọc theo lô id); các hàm còn lại
+     *   `fetchInvoiceLines` đã NÉM từ trước (đọc theo lô id); các hàm còn lại
      *   cũng đang chuyển sang ném. Không bắt thì màn hình kẹt ở khung xương
      *   mãi; bắt rồi nuốt thì ra "Doanh thu 0đ". Cả hai đều sai — phải báo.
      */
@@ -118,8 +118,9 @@ export default function BusinessOverviewPage() {
         productsRes,
         usersRes,
       ] = await Promise.all([
-        fetchDeliveredOrders(supabase, orgId, range),
-        fetchDeliveredOrders(supabase, orgId, prev),
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        fetchRevenueInvoices(supabase, orgId, range),
+        fetchRevenueInvoices(supabase, orgId, prev),
         fetchReturnsValue(supabase, orgId, range),
         fetchReturnsValue(supabase, orgId, prev),
         fetchCogsForRange(supabase, orgId, range),
@@ -158,8 +159,8 @@ export default function BusinessOverviewPage() {
       const orderIds = orderList.map((o) => o.id)
       const prevOrderIds = prevOrderList.map((o) => o.id)
       const [lineList, prevLineList] = await Promise.all([
-        fetchOrderLines(supabase, orderIds),
-        fetchOrderLines(supabase, prevOrderIds),
+        fetchInvoiceLines(supabase, orderIds),
+        fetchInvoiceLines(supabase, prevOrderIds),
       ])
 
       setOrders(orderList)
@@ -221,7 +222,7 @@ export default function BusinessOverviewPage() {
     const returnsArr = new Array<number>(buckets.length).fill(0)
     const profitArr = new Array<number>(buckets.length).fill(0)
     for (const o of orders) {
-      const d = String(o.order_date).slice(0, 10)
+      const d = String(o.invoice_date).slice(0, 10)
       const i = dayIdx.get(d)
       if (i !== undefined) revenueArr[i] += Number(o.total || 0)
     }
@@ -295,14 +296,14 @@ export default function BusinessOverviewPage() {
       const e = cur.get(l.product_id) || { revenue: 0, qty: 0, orders: new Set() }
       e.revenue += Number(l.line_total || 0)
       e.qty += Number(l.quantity || 0)
-      e.orders.add(l.order_id)
+      e.orders.add(l.invoice_id)
       cur.set(l.product_id, e)
     }
     for (const l of prevLines) {
       const e = prev.get(l.product_id) || { revenue: 0, qty: 0, orders: new Set() }
       e.revenue += Number(l.line_total || 0)
       e.qty += Number(l.quantity || 0)
-      e.orders.add(l.order_id)
+      e.orders.add(l.invoice_id)
       prev.set(l.product_id, e)
     }
     return Array.from(cur.entries())
@@ -532,7 +533,7 @@ export default function BusinessOverviewPage() {
           columns={[
             { key: "name", label: "Tên nhóm hàng", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-            { key: "aov", label: "Doanh thu TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+            { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
         />
@@ -544,7 +545,7 @@ export default function BusinessOverviewPage() {
           columns={[
             { key: "name", label: "Tên hàng hóa", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-            { key: "aov", label: "Doanh thu TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+            { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
         />
@@ -556,7 +557,7 @@ export default function BusinessOverviewPage() {
           columns={[
             { key: "name", label: "Kênh bán", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-            { key: "aov", label: "Doanh thu TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+            { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
         />
@@ -568,7 +569,7 @@ export default function BusinessOverviewPage() {
           columns={[
             { key: "name", label: "Tên nhân viên", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-            { key: "aov", label: "Doanh thu TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+            { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
         />

@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
 import { FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
-import { fetchDeliveredOrdersDu, fetchOrgRows, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchRevenueInvoicesDu, fetchOrgRows, type RevenueInvoiceRow } from "@/lib/analytics/sales"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -32,7 +32,8 @@ export default function ChannelsReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
+  // Hóa đơn ĐÃ GHI SỔ trong kỳ — doanh thu tính theo hóa đơn (chủ nhà 24/09/2026).
+  const [invoices, setInvoices] = useState<RevenueInvoiceRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -48,12 +49,12 @@ export default function ChannelsReportPage() {
     try {
       setLoading(true)
       setLoadError(null)
-      const [orderRes, customersRes] = await Promise.all([
-        fetchDeliveredOrdersDu(supabase, user.org_id, range),
+      const [invoiceRes, customersRes] = await Promise.all([
+        fetchRevenueInvoicesDu(supabase, user.org_id, range),
         fetchOrgRows<CustomerRow>(supabase, "customers", user.org_id, "id, store_name, channel", "đọc khách hàng"),
       ])
-      setTruncated(orderRes.truncated || customersRes.truncated)
-      setOrders(orderRes.rows)
+      setTruncated(invoiceRes.truncated || customersRes.truncated)
+      setInvoices(invoiceRes.rows)
       setCustomers(customersRes.rows)
     } catch (err) {
       setLoadError(errorMessage(err))
@@ -83,7 +84,7 @@ export default function ChannelsReportPage() {
         for (const v of [r?.id, r?.label, r?.hint]) if (v) matchVals.add(v)
       }
     }
-    for (const o of orders) {
+    for (const o of invoices) {
       if (customerFilter.length && !customerFilter.includes(o.customer_id)) continue
       const ch = customerMap.get(o.customer_id)?.channel || fallback
       if (matchVals && !matchVals.has(ch)) continue
@@ -103,7 +104,7 @@ export default function ChannelsReportPage() {
         aov: e.orders > 0 ? e.revenue / e.orders : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue)
-  }, [orders, customerMap, customerFilter, routeFilter, catalogs.routes])
+  }, [invoices, customerMap, customerFilter, routeFilter, catalogs.routes])
 
   const totals = rows.reduce(
     (acc, r) => ({
@@ -116,7 +117,7 @@ export default function ChannelsReportPage() {
 
   const handleExport = () => {
     const out: (string | number)[][] = [
-      ["Kênh bán", "Số khách", "Số đơn", "Doanh thu", "TB/đơn"],
+      ["Kênh bán", "Số khách", "Số HĐ", "Doanh thu", "TB/HĐ"],
     ]
     for (const r of rows) {
       out.push([r.name, r.customers, r.orders, r.revenue, r.aov])
@@ -171,9 +172,9 @@ export default function ChannelsReportPage() {
             <tr className="bg-muted/30 text-muted-foreground">
               <th className="px-3 py-2 text-left font-semibold">Kênh bán</th>
               <th className="px-3 py-2 text-right font-semibold">Số khách</th>
-              <th className="px-3 py-2 text-right font-semibold">Số đơn</th>
+              <th className="px-3 py-2 text-right font-semibold">Số HĐ</th>
               <th className="px-3 py-2 text-right font-semibold">Doanh thu</th>
-              <th className="px-3 py-2 text-right font-semibold">TB/đơn</th>
+              <th className="px-3 py-2 text-right font-semibold">TB/HĐ</th>
             </tr>
             <tr className="border-t border-border/30 bg-muted/10 font-semibold">
               <td className="px-3 py-2">SL kênh: {rows.length}</td>

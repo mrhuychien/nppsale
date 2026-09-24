@@ -16,7 +16,7 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchRevenueInvoices, type RevenueInvoiceRow } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { demHoacNem } from "../../_shared/doc-du"
@@ -38,8 +38,8 @@ export default function CustomersOverviewPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
+  const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
+  const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
 
   const [totalCustomers, setTotalCustomers] = useState(0)
@@ -63,13 +63,14 @@ export default function CustomersOverviewPage() {
      *     đối, không tải dòng nào, không phụ thuộc trần 20.000.
      *   - DANH SÁCH (để tra tên và tìm khách Active không mua) đọc đủ theo
      *     trang, mốc `id` duy nhất; chạm trần thì nói ra.
-     *   - Đọc hỏng ở BẤT KỲ đâu (kể cả `fetchDeliveredOrders`) → màn hình
+     *   - Đọc hỏng ở BẤT KỲ đâu (kể cả `fetchRevenueInvoices`) → màn hình
      *     báo lỗi, không vẽ số 0.
      */
     try {
       const [orderList, prevOrderList, cust, total, moi] = await Promise.all([
-        fetchDeliveredOrders(supabase, orgId, range),
-        fetchDeliveredOrders(supabase, orgId, prev),
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        fetchRevenueInvoices(supabase, orgId, range),
+        fetchRevenueInvoices(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -251,9 +252,9 @@ export default function CustomersOverviewPage() {
         columns={[
           { key: "name", label: "Tên khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "channel", label: "Kênh", render: (r) => r.channel },
-          { key: "orders", label: "Số đơn", align: "right", render: (r) => <NumberCell value={r.orders} /> },
+          { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
           { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
-          { key: "aov", label: "DT TB/đơn", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
+          { key: "aov", label: "DT TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />

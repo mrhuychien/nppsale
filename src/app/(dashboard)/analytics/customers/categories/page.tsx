@@ -17,7 +17,7 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchDeliveredOrders, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchRevenueInvoices, type RevenueInvoiceRow } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
@@ -42,8 +42,8 @@ export default function CustomersCategoriesPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
-  const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [prevOrders, setPrevOrders] = useState<SalesOrderRow[]>([])
+  const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
+  const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const { groups } = useCustomerGroups()
 
@@ -67,8 +67,9 @@ export default function CustomersCategoriesPage() {
      */
     try {
       const [orderList, prevOrderList, cust] = await Promise.all([
-        fetchDeliveredOrders(supabase, orgId, range),
-        fetchDeliveredOrders(supabase, orgId, prev),
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        fetchRevenueInvoices(supabase, orgId, range),
+        fetchRevenueInvoices(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -225,7 +226,7 @@ export default function CustomersCategoriesPage() {
         columns={[
           { key: "name", label: "Nhóm khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
-          { key: "orders", label: "Số đơn", align: "right", render: (r) => <NumberCell value={r.orders} /> },
+          { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
           { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
@@ -238,7 +239,7 @@ export default function CustomersCategoriesPage() {
         columns={[
           { key: "name", label: "Kênh bán", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
-          { key: "orders", label: "Số đơn", align: "right", render: (r) => <NumberCell value={r.orders} /> },
+          { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
           { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
@@ -251,7 +252,7 @@ export default function CustomersCategoriesPage() {
         columns={[
           { key: "name", label: "Tỉnh / Thành", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
-          { key: "orders", label: "Số đơn", align: "right", render: (r) => <NumberCell value={r.orders} /> },
+          { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
           { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}

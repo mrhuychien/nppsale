@@ -10,6 +10,8 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
+import { vnDateKey } from "@/lib/orders/status-tone"
+import { REVENUE_INVOICE_STATUS } from "@/lib/analytics/sales"
 import { cn } from "@/lib/utils"
 import {
   TrendingUp,
@@ -29,6 +31,18 @@ import {
   Calendar,
 } from "lucide-react"
 import type { SalesOrder, Receivable, Batch, User } from "@/types"
+
+/**
+ * Hóa đơn đã ghi sổ — nguồn của DOANH THU (chủ nhà 24/09/2026: doanh thu
+ * tính theo hóa đơn, không theo đơn). `invoice_date` là DATE.
+ */
+interface RevenueInvoice {
+  id: string
+  order_id: string
+  invoice_date: string
+  total: number
+  sales_user_id: string | null
+}
 
 type Period = "today" | "week" | "month" | "quarter" | "custom"
 
@@ -50,7 +64,9 @@ const TAB_DEFS: { key: TabKey; label: string; icon: typeof TrendingUp }[] = [
 ]
 
 interface ReportStats {
+  /** Đơn — chỉ để ĐẾM đơn đã đặt (số liệu hoạt động), không cộng tiền. */
   salesOrders: SalesOrder[]
+  invoices: RevenueInvoice[]
   receivables: Receivable[]
   batches: (Batch & { product?: { shelf_life_days: number | null } })[]
   users: User[]
@@ -67,6 +83,7 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("sales")
   const [data, setData] = useState<ReportStats>({
     salesOrders: [],
+    invoices: [],
     receivables: [],
     batches: [],
     users: [],
@@ -86,7 +103,7 @@ export default function ReportsPage() {
       try {
         setLoading(true)
         setLoadError(null)
-        const [ordersRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
+        const [ordersRes, invoicesRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
           // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
           // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
           // báo cáo thiếu số còn tệ hơn báo cáo chậm.
@@ -94,11 +111,23 @@ export default function ReportsPage() {
             (from, to) =>
               supabase
                 .from("sales_orders")
-                .select("id, order_date, status, total, sales_user_id", { count: "exact" })
+                .select("id, order_date, status", { count: "exact" })
                 .order("order_date", { ascending: false })
                 .order("id")
                 .range(from, to),
             "đọc đơn hàng"
+          ),
+          // Doanh thu: hóa đơn ĐÃ GHI SỔ, theo ngày hóa đơn — như `dashboard_summary`.
+          docDuHoacNem<RevenueInvoice>(
+            (from, to) =>
+              supabase
+                .from("sales_invoices")
+                .select("id, order_id, invoice_date, total, sales_user_id", { count: "exact" })
+                .eq("status", REVENUE_INVOICE_STATUS)
+                .order("invoice_date", { ascending: false })
+                .order("id")
+                .range(from, to),
+            "đọc hóa đơn"
           ),
           docDuHoacNem<Receivable>(
             (from, to) =>
@@ -135,9 +164,10 @@ export default function ReportsPage() {
           supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
         ])
         if (prodRes.error) throw new Error(`đếm mặt hàng: ${errorMessage(prodRes.error)}`)
-        setTruncated(ordersRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
+        setTruncated(ordersRes.truncated || invoicesRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
         setData({
           salesOrders: ordersRes.rows,
+          invoices: invoicesRes.rows,
           receivables: recvRes.rows,
           batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
           users: usersRes.rows,
@@ -193,6 +223,22 @@ export default function ReportsPage() {
     })
   }, [data.salesOrders, periodWindows])
 
+  /* ⚠ `invoice_date` LÀ DATE: so bằng ngày theo giờ VN, không so mốc
+     ISO/UTC — hóa đơn 0h–7h sáng không được rơi sang ngày hôm trước. */
+  const filteredInvoices = useMemo(() => {
+    const tu = vnDateKey(periodWindows.start)
+    return data.invoices.filter((i) => String(i.invoice_date).slice(0, 10) >= tu)
+  }, [data.invoices, periodWindows])
+
+  const prevPeriodInvoices = useMemo(() => {
+    const tu = vnDateKey(periodWindows.prevStart)
+    const den = vnDateKey(periodWindows.prevEnd)
+    return data.invoices.filter((i) => {
+      const d = String(i.invoice_date).slice(0, 10)
+      return d >= tu && d < den
+    })
+  }, [data.invoices, periodWindows])
+
   const momPct = (curr: number, prev: number): number | null => {
     if (!Number.isFinite(prev) || prev === 0) return null
     return ((curr - prev) / prev) * 100
@@ -205,20 +251,20 @@ export default function ReportsPage() {
   if (authLoading || loading) return <Skeleton className="h-[600px]" />
   if (loadError) return <ReportLoadNotice error={loadError} />
 
-  // KPI calculations
-  const totalRevenue = filteredOrders
-    .filter((o) => o.status === "completed")
-    .reduce((sum, o) => sum + o.total, 0)
+  // KPI — doanh thu = Σ total hóa đơn đã ghi sổ; "đơn đã xuất hàng" = số
+  // đơn KHÁC NHAU có hóa đơn (như `period_orders` của mig 126).
+  const sumInvoices = (rows: RevenueInvoice[]) => rows.reduce((sum, i) => sum + Number(i.total || 0), 0)
+  const countInvoicedOrders = (rows: RevenueInvoice[]) => new Set(rows.map((i) => i.order_id)).size
+  const totalRevenue = sumInvoices(filteredInvoices)
+  // Tổng đơn hàng là số liệu HOẠT ĐỘNG — vẫn đếm trên đơn.
   const totalOrders = filteredOrders.length
-  const completedOrders = filteredOrders.filter((o) => o.status === "completed").length
+  const completedOrders = countInvoicedOrders(filteredInvoices)
   const aov = completedOrders > 0 ? totalRevenue / completedOrders : 0
 
   // Previous-period equivalents for MoM%
-  const prevRevenue = prevPeriodOrders
-    .filter((o) => o.status === "completed")
-    .reduce((sum, o) => sum + o.total, 0)
+  const prevRevenue = sumInvoices(prevPeriodInvoices)
   const prevTotalOrders = prevPeriodOrders.length
-  const prevCompletedOrders = prevPeriodOrders.filter((o) => o.status === "completed").length
+  const prevCompletedOrders = countInvoicedOrders(prevPeriodInvoices)
   const prevAov = prevCompletedOrders > 0 ? prevRevenue / prevCompletedOrders : 0
 
   const momRevenue = momPct(totalRevenue, prevRevenue)
@@ -279,12 +325,12 @@ export default function ReportsPage() {
     return acc
   }, {})
 
+  // Doanh số theo nhân viên: người được gán HÓA ĐƠN (mig 182).
   const salesByUser = new Map<string, number>()
-  filteredOrders
-    .filter((o) => o.status === "completed")
-    .forEach((o) => {
-      salesByUser.set(o.sales_user_id, (salesByUser.get(o.sales_user_id) || 0) + o.total)
-    })
+  filteredInvoices.forEach((i) => {
+    const uid = i.sales_user_id ?? ""
+    salesByUser.set(uid, (salesByUser.get(uid) || 0) + Number(i.total || 0))
+  })
   const topPerformers = Array.from(salesByUser.entries())
     .map(([uid, total]) => {
       const u = data.users.find((x) => x.id === uid)

@@ -1,5 +1,6 @@
 "use client"
 
+import { vnDateKey } from "@/lib/orders/status-tone"
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { newOrderHref } from "@/lib/nav/new-order"
@@ -138,14 +139,10 @@ const TILES: Tile[] = [
   { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue" },
 ]
 
-function startOfTodayISO(): string {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
-}
+/* ⚠ `order_date` / `visit_date` là DATE: so bằng NGÀY theo giờ VN. Mốc nửa đêm
+   dạng ISO (UTC) là 17:00 hôm qua — so kiểu ngày thì lọt cả đơn hôm qua. */
 function todayDateOnly(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  return vnDateKey(new Date())
 }
 
 interface SalesSnapshot {
@@ -173,7 +170,6 @@ export default function HomeLauncherPage() {
     if (!isSales || !user?.id) return
     let cancelled = false
     const supabase = createClient()
-    const t0 = startOfTodayISO()
     const todayDate = todayDateOnly()
     ;(async () => {
       const [ordersTodayRes, draftRes, visitsRes, custRes] = await Promise.all([
@@ -181,7 +177,7 @@ export default function HomeLauncherPage() {
           .from("sales_orders")
           .select("total", { count: "exact" })
           .eq("sales_user_id", user.id)
-          .gte("order_date", t0),
+          .gte("order_date", todayDate),
         supabase
           .from("sales_orders")
           .select("id", { count: "exact", head: true })

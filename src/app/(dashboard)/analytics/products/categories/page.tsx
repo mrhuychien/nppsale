@@ -16,7 +16,7 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchDeliveredOrders, fetchOrderLines, type SalesOrderLineRow } from "@/lib/analytics/sales"
+import { fetchRevenueInvoices, fetchInvoiceLines, type InvoiceLineRow } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
@@ -35,8 +35,8 @@ export default function ProductsCategoriesPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
-  const [prevLines, setPrevLines] = useState<SalesOrderLineRow[]>([])
+  const [lines, setLines] = useState<InvoiceLineRow[]>([])
+  const [prevLines, setPrevLines] = useState<InvoiceLineRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
 
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -54,12 +54,13 @@ export default function ProductsCategoriesPage() {
      *   1.000 mã, dòng đơn của mã thứ 1.001 trở đi hiện "—" / "Chưa phân
      *   nhóm". Nay đọc đủ theo trang, mốc `id` duy nhất.
      * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, kể cả hàm ở `lib/analytics/sales`
-     *   (`fetchOrderLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
+     *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
     try {
       const [orders, prevOrders, productsRes] = await Promise.all([
-        fetchDeliveredOrders(supabase, orgId, range),
-        fetchDeliveredOrders(supabase, orgId, prev),
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        fetchRevenueInvoices(supabase, orgId, range),
+        fetchRevenueInvoices(supabase, orgId, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -72,8 +73,8 @@ export default function ProductsCategoriesPage() {
         ),
       ])
       const [lineList, prevLineList] = await Promise.all([
-        fetchOrderLines(supabase, orders.map((o) => o.id)),
-        fetchOrderLines(supabase, prevOrders.map((o) => o.id)),
+        fetchInvoiceLines(supabase, orders.map((o) => o.id)),
+        fetchInvoiceLines(supabase, prevOrders.map((o) => o.id)),
       ])
       setLines(lineList)
       setPrevLines(prevLineList)
@@ -98,7 +99,7 @@ export default function ProductsCategoriesPage() {
   }, [products])
 
   const aggregate = useCallback(
-    (rows: SalesOrderLineRow[], key: "category" | "brand") => {
+    (rows: InvoiceLineRow[], key: "category" | "brand") => {
       const m = new Map<string, { qty: number; revenue: number; skuSet: Set<string> }>()
       for (const l of rows) {
         const p = productMap.get(l.product_id)

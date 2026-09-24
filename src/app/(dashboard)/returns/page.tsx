@@ -1,5 +1,8 @@
 "use client"
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_TRA_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -150,11 +153,13 @@ export default function ReturnsPage() {
      khách; ghép "VÀ". Xem `useFieldSearch`. */
   const [truongTim, setTruongTim] = useState<Record<string, string>>({})
   const fieldSearch = useFieldSearch(supabase, authUser?.org_id, TRUONG_TRA_HANG, truongTim)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026), ghép VÀ như tìm theo trường. */
+  const locNC = useAdvancedFilter("returns", LOC_TRA_HANG)
 
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
@@ -171,7 +176,7 @@ export default function ReturnsPage() {
   )
 
   /* Chờ cả hai lượt tra — ô tìm nhanh và các trường. */
-  const searchReady = listSearch.ready && fieldSearch.ready
+  const searchReady = listSearch.ready && fieldSearch.ready && locNC.ready
 
   /**
    * MỘT bộ lọc cho cả danh sách lẫn phép cộng tổng — hai đường lọc riêng là
@@ -182,6 +187,7 @@ export default function ReturnsPage() {
     let x = q
     if (listSearch.filter) x = x.or(listSearch.filter)
     for (const f of fieldSearch.filters) x = x.or(f)
+    for (const f of locNC.menhDe) x = x.or(f)
     if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
     if (statusFilter !== "all") x = x.eq("status", statusFilter)
     if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
@@ -235,7 +241,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -271,7 +277,7 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -420,6 +426,7 @@ export default function ReturnsPage() {
               </Button>
             )}
             <div className="sm:ml-auto flex items-center gap-2">
+              <AdvancedFilter truong={LOC_TRA_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
               <FilterPicker
                 available={RETURN_FILTERS}
                 value={activeFilters}

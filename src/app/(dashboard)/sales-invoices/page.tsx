@@ -21,6 +21,9 @@
  * nói thẳng điều đó.
  */
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_HOA_DON } from "@/lib/search/list-filter-fields"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
 import Link from "next/link"
@@ -258,7 +261,9 @@ export default function SalesInvoicesPage() {
     return () => clearTimeout(t)
   }, [truongTim])
   const fieldSearch = useFieldSearch(supabase, user?.org_id, TRUONG_HOA_DON, truongTimTre)
-  const searchReady = listSearch.ready && fieldSearch.ready
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026), ghép VÀ như tìm theo trường. */
+  const locNC = useAdvancedFilter("sales-invoices", LOC_HOA_DON)
+  const searchReady = listSearch.ready && fieldSearch.ready && locNC.ready
   const searchTruncated = listSearch.truncated || fieldSearch.truncated
 
   const applyFilters = useCallback(
@@ -280,6 +285,7 @@ export default function SalesInvoicesPage() {
       if (listSearch.filter) x = x.or(listSearch.filter)
       // Mỗi trường là MỘT `.or` — PostgREST ghép các `or=` bằng "VÀ".
       for (const f of fieldSearch.filters) x = x.or(f)
+      for (const f of locNC.menhDe) x = x.or(f)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
       if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
@@ -447,7 +453,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key])
+  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -624,6 +630,7 @@ export default function SalesInvoicesPage() {
       >
         <div className="grid gap-4">
           <DocFieldInputs fields={TRUONG_HOA_DON} values={truongTim} onChange={setTruongTim} />
+          <AdvancedFilter truong={LOC_HOA_DON} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
@@ -673,6 +680,7 @@ export default function SalesInvoicesPage() {
             </Button>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <AdvancedFilter truong={LOC_HOA_DON} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker
               available={INVOICE_FILTERS}
               value={activeFilters}

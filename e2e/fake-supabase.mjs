@@ -65,11 +65,16 @@ function filterFn(col, expr) {
     const re = new RegExp(`^${mau}$`, op === "ilike" ? "is" : "s")
     f = (r) => get(r) != null && re.test(String(get(r)))
   } else if (op === "gt") f = (r) => Number(get(r)) > Number(raw)
-  else if (op === "gte") f = (r) => (get(r) ?? "") >= raw
+  /* Cột số so bằng SỐ (PostgREST ép kiểu theo cột); ngày/chuỗi so chuỗi ISO. */
+  else if (op === "gte") f = (r) => (laSo(get(r)) && laSo(raw) ? Number(get(r)) >= Number(raw) : (get(r) ?? "") >= raw)
   else if (op === "lt") f = (r) => Number(get(r)) < Number(raw)
-  else if (op === "lte") f = (r) => (get(r) ?? "") <= raw
+  else if (op === "lte") f = (r) => (laSo(get(r)) && laSo(raw) ? Number(get(r)) <= Number(raw) : (get(r) ?? "") <= raw)
   if (!f) return null
   return neg ? (r) => !f(r) : f
+}
+
+function laSo(v) {
+  return typeof v === "number" || (typeof v === "string" && v.trim() !== "" && /^-?\d+(\.\d+)?$/.test(v))
 }
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns"])
@@ -98,6 +103,13 @@ function orFn(v) {
   const trong = v.replace(/^\(/, "").replace(/\)$/, "")
   const fs = []
   for (const dk of tachOr(trong)) {
+    /* `and(a.gte.1,a.lte.2)` lồng trong `or` — lọc nâng cao "trong khoảng". */
+    if (dk.startsWith("and(")) {
+      const con = tachOr(dk.slice(4, -1)).map((x) => { const j = x.indexOf("."); return filterFn(x.slice(0, j), x.slice(j + 1)) })
+      if (con.some((c) => !c)) return null
+      fs.push((r) => con.every((c) => c(r)))
+      continue
+    }
     const i = dk.indexOf(".")
     const f = filterFn(dk.slice(0, i), dk.slice(i + 1))
     if (!f) return null

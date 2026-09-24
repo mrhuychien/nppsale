@@ -1,5 +1,8 @@
 "use client"
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_SAN_PHAM } from "@/lib/search/list-filter-fields"
 import { useEffect, useState } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
@@ -60,6 +63,7 @@ export default function ProductsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  const locNC = useAdvancedFilter("products", LOC_SAN_PHAM)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -106,11 +110,11 @@ export default function ProductsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, categoryFilter, supplierFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchProducts()
-  }, [pg.from, pg.to, debouncedSearch, categoryFilter, supplierFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     setLoading(true)
@@ -126,6 +130,8 @@ export default function ProductsPage() {
       if (debouncedSearch) {
         q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
       }
+      /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+      for (const f of locNC.menhDe) q = q.or(f)
       if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
       if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
       if (statusFilter !== "all") q = q.eq("status", statusFilter)
@@ -290,6 +296,7 @@ export default function ProductsPage() {
           </Select>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={PRODUCT_FILTERS}
             value={activeFilters}

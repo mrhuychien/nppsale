@@ -1,5 +1,8 @@
 "use client"
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_KHACH_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useMemo, useState } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
@@ -152,6 +155,7 @@ export default function CustomersPage() {
   const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  const locNC = useAdvancedFilter("customers", LOC_KHACH_HANG)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -270,7 +274,7 @@ export default function CustomersPage() {
   // Reset page khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, channelFilter, salesUserFilter, quick, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, statusFilter, channelFilter, salesUserFilter, quick, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Danh sách mã khách mà thẻ lọc nhanh giới hạn vào. `null` = không giới hạn. */
   const quickIds = useMemo<string[] | null>(() => {
@@ -318,6 +322,8 @@ export default function CustomersPage() {
         if (debouncedSearch) {
           q = q.or(dieuKienTim("customers", ["store_name", "owner_name", "phone"], debouncedSearch))
         }
+        /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+        for (const f of locNC.menhDe) q = q.or(f)
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         if (channelFilter !== "all") q = q.eq("channel", channelFilter)
         return q
@@ -452,7 +458,7 @@ export default function CustomersPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, channelFilter, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -526,7 +532,7 @@ export default function CustomersPage() {
         items: ordered,
       },
     ]
-  }, [ordered, routeMode, quick, debouncedSearch, visitedToday])
+  }, [ordered, routeMode, quick, debouncedSearch, locNC.key, visitedToday])
 
   const visitedOnRoute = Array.from(todayStops.keys()).filter((id) => visitedToday.has(id)).length
   const routeTotal = todayStops.size
@@ -810,6 +816,7 @@ export default function CustomersPage() {
           <Button variant="ghost" size="sm" onClick={clearFilters}>Bỏ lọc</Button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_KHACH_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={CUSTOMER_FILTERS}
             value={activeFilters}

@@ -1,5 +1,8 @@
 "use client"
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_NHA_CUNG_CAP } from "@/lib/search/list-filter-fields"
 import { useEffect, useState } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
@@ -56,6 +59,7 @@ export default function SuppliersPage() {
   const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination(50)
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  const locNC = useAdvancedFilter("suppliers", LOC_NHA_CUNG_CAP)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -96,7 +100,7 @@ export default function SuppliersPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, categoryFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function fetchData() {
@@ -112,6 +116,8 @@ export default function SuppliersPage() {
         if (debouncedSearch) {
           q = q.or(dieuKienTim("suppliers", ["name", "code"], debouncedSearch))
         }
+        /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+        for (const f of locNC.menhDe) q = q.or(f)
         if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
         return q
@@ -128,7 +134,7 @@ export default function SuppliersPage() {
       setLoading(false)
     }
     fetchData()
-  }, [pg.from, pg.to, debouncedSearch, categoryFilter, statusFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
   const show = (k: (typeof SUPPLIER_COLUMNS)[number]["key"]) => visibleColumns.includes(k)
@@ -255,6 +261,7 @@ export default function SuppliersPage() {
           </Select>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={SUPPLIER_FILTERS}
             value={activeFilters}

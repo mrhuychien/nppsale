@@ -1,5 +1,8 @@
 "use client"
 
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_DON_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useMemo, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
 import { usePagination } from "@/hooks/use-pagination"
@@ -478,7 +481,9 @@ export default function OrdersPage() {
     return () => clearTimeout(t)
   }, [truongTim])
   const fieldSearch = useFieldSearch(supabase, user?.org_id, TRUONG_DON_HANG, truongTimTre)
-  const searchReady = listSearch.ready && fieldSearch.ready
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026), ghép VÀ như tìm theo trường. */
+  const locNC = useAdvancedFilter("orders", LOC_DON_HANG)
+  const searchReady = listSearch.ready && fieldSearch.ready && locNC.ready
 
   const applyCommonFilters = <T,>(q: T): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -488,6 +493,7 @@ export default function OrdersPage() {
     }
     // Mỗi trường là MỘT `.or` — PostgREST ghép các `or=` bằng "VÀ".
     for (const f of fieldSearch.filters) x = x.or(f)
+    for (const f of locNC.menhDe) x = x.or(f)
     // ⚠ Tuyến của đơn = tuyến của ĐIỂM BÁN, và nó nằm ở `customers.channel`
     // (cột lưu MÃ tuyến — xem migration 018). Lọc trên bảng nhúng thì phần
     // nhúng phải là `!inner`, nếu không PostgREST vẫn trả đơn về nhưng bỏ
@@ -624,12 +630,12 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -702,7 +708,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -805,7 +811,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ⚠ Bộ lọc pipeline đã bỏ (chủ nhà chốt 23/09/2026) — mọi lọc chạy ở máy chủ. */
   const filtered = orders
@@ -1424,6 +1430,7 @@ export default function OrdersPage() {
       >
         <div className="grid gap-4">
           <DocFieldInputs fields={TRUONG_DON_HANG} values={truongTim} onChange={setTruongTim} />
+          <AdvancedFilter truong={LOC_DON_HANG} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
           {routes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tuyến</p>
@@ -1488,6 +1495,7 @@ export default function OrdersPage() {
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_DON_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={ORDER_FILTERS}
             value={activeFilters}

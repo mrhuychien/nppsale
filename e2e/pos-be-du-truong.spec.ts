@@ -141,3 +141,35 @@ test("POS trả hàng: mở lại phiếu giữ lý do dòng, thuế dòng và k
     await xoa("returns", "id", "r-mo")
   }
 })
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026 (mig 184): sửa hóa đơn ĐÃ có tiền thu = huỷ tờ cũ, lập
+ *   tờ mới, phiếu thu tự gắn sang tờ mới — nút Lập lại KHÔNG bị khoá nữa.
+ */
+test("sửa hóa đơn đã có phiếu thu: không khoá, báo phiếu thu sẽ sang tờ mới", async ({ page }) => {
+  const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
+  const DON_HD = "00000000-0000-4000-8000-0000000000f9"
+  await chen("sales_orders", [{
+    id: DON_HD, org_id: "khong-hien-trong-danh-sach", order_code: "DH-0009", customer_id: KHACH, sales_user_id: OWNER,
+    status: "completed", payment_terms: "COD", notes: null, customer: { store_name: "Tạp hoá Cô Ba" },
+  }])
+  await chen("sales_order_lines", [{
+    id: "sol9", order_id: DON_HD, product_id: SUA, unit_name: "thùng", quantity: 2, conversion_factor: 24,
+    unit_price: 450000, invoiced_qty: 2, line_total: 900000,
+  }])
+  await chen("cash_receipt_lines", [{
+    id: "crl-thu", invoice_id: HOA_DON, amount: 300000, receipt: { status: "received", receipt_code: "PT-0031" },
+  }])
+  try {
+    await dangNhap(page)
+    await page.goto(`/pos/hoa-don/${HOA_DON}/sua`)
+    await expect(page.getByTestId("ghi-chu-tien-thu")).toContainText("PT-0031")
+    await expect(page.getByTestId("ghi-chu-tien-thu")).toContainText("hóa đơn mới")
+    await expect(page.getByText("Chưa lập lại được")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }), "tiền thu vẫn khoá nút lập lại").toBeEnabled()
+  } finally {
+    await xoa("cash_receipt_lines", "id", "crl-thu")
+    await xoa("sales_order_lines", "id", "sol9")
+    await xoa("sales_orders", "id", DON_HD)
+  }
+})

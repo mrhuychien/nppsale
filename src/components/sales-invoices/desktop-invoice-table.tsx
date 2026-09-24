@@ -50,6 +50,8 @@ export interface InvoiceRow {
     address?: string | null
   } | null
   sales_user?: { full_name?: string | null } | null
+  /** Khách của tờ — xem nhanh dùng cho nút Trả hàng / Thu tiền. */
+  customer_id?: string | null
   /** Người xuất hóa đơn (`posted_by`). */
   creator?: { full_name?: string | null } | null
   order?: { order_code?: string | null } | null

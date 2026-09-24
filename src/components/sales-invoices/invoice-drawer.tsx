@@ -1,5 +1,6 @@
 "use client"
 
+import { posNewReturnHref } from "@/lib/nav/pos-preview"
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { useEffect, useState } from "react"
 import { Label } from "@/components/ui/label"
@@ -324,6 +325,27 @@ export function InvoiceDrawer({
               )}
             </div>
 
+            {/*
+              ⚠ CHỦ NHÀ 24/09/2026: "thêm nút Trả hàng và Thu tiền — Trả hàng tạo trả
+                hàng gắn với Hoá đơn, Thu tiền tạo phiếu thu gắn với Hoá đơn và khách
+                hàng". Hai nút mở tab mới như các nút dưới; tờ đã huỷ thì không.
+            */}
+            {posted && (
+              <div className="flex gap-2">
+                <NewTabLink
+                  href={posNewReturnHref({ invoiceId: invoice.id, customerId: invoice.customer_id ?? null })}
+                  className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
+                >
+                  Trả hàng
+                </NewTabLink>
+                <NewTabLink
+                  href={`/finance/cash-receipts/new?${invoice.customer_id ? `customerId=${encodeURIComponent(invoice.customer_id)}&` : ""}invoiceId=${encodeURIComponent(invoice.id)}`}
+                  className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
+                >
+                  Thu tiền
+                </NewTabLink>
+              </div>
+            )}
             <div className="flex gap-2 border-t border-outline-variant/40 px-5 pb-5 pt-3">
               {/* ⚠ CHỈ HÓA ĐƠN ĐÃ XUẤT MỚI SỬA ĐƯỢC. Hiện nút trên một hóa
                   đơn đã huỷ là mời người ta đi vào một màn sẽ từ chối họ. */}

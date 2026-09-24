@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { reissueLock, invoiceEditTotals } from "../src/lib/pos/invoice-edit"
+import { reissueLock, reissuePaymentNote, invoiceEditTotals } from "../src/lib/pos/invoice-edit"
 
 /**
  * MÀN 7 — SỬA HÓA ĐƠN ĐÃ GHI SỔ. Spec §6, §7.2.
@@ -18,55 +18,40 @@ const pct = (value: number) => ({ value, unit: "pct" as const })
 
 describe("vì sao chưa lập lại được", () => {
   /**
-   * ⚠ ĐÂY LÀ MÂU THUẪN GIỮA BẢN THIẾT KẾ VÀ CƠ CHẾ ĐANG CHẠY.
-   *
-   * Artboard 7 để nhãn "ĐÃ THU — GIỮ NGUYÊN QUA LẬP LẠI". Nhưng
-   * `reissue_invoice` gọi `cancel_invoice`, và `cancel_invoice` TỪ CHỐI
-   * THẲNG khi có tiền thu:
-   *
-   *   RAISE EXCEPTION 'LOCKED_HAS_PAYMENT: hóa đơn đã có tiền thu,
-   *                    huỷ phiếu thu trước'
-   *
-   * Tiền đã thu không đi qua được lần lập lại — nó CHẶN hẳn. Spec §7.2
-   * cho phép chỉnh câu chữ cho khớp hành vi thật, và đây là chỗ đó.
+   * ⚠ ĐỔI LUẬT 24/09/2026 (mig 184) — chủ nhà chốt: "Hủy hóa đơn cũ và tạo hóa
+   *   đơn mới · Tất cả các phiếu thanh toán của hóa đơn cũ sẽ được gắn với hóa
+   *   đơn mới". Tiền thu KHÔNG còn khoá lập lại; `reissue_invoice` chuyển phiếu
+   *   thu sang tờ mới trong cùng giao dịch. (Trước đó: LOCKED_HAS_PAYMENT.)
    */
-  it("có tiền thu thì KHOÁ, không phải giữ nguyên qua lập lại", () => {
-    const k = reissueLock({ paidAmount: 1_500_000, receiptCount: 1, eInvoiceIssued: false })
-    expect(k).not.toBeNull()
-    expect(k!.code).toBe("LOCKED_HAS_PAYMENT")
-    expect(k!.message, "phải nói việc cần làm, không chỉ nói lý do").toContain("Huỷ phiếu thu")
+  it("có tiền thu vẫn lập lại được — không khoá", () => {
+    expect(reissueLock({ paidAmount: 1_500_000, receiptCount: 1, eInvoiceIssued: false })).toBeNull()
+    expect(reissueLock({ paidAmount: 0, receiptCount: 1, eInvoiceIssued: false })).toBeNull()
   })
 
-  /**
-   * ⚠ CHẶN RỘNG: CÓ PHIẾU THU LÀ ĐỦ, KHÔNG ĐỢI `paid > 0`.
-   * `cancel_invoice` có hẳn nhánh thứ hai cho phiếu thu cũ
-   * (`crl.invoice_id IS NULL AND crl.order_id = …`) vì `create_cash_receipt`
-   * của mig 120 chưa ghi `invoice_id`. Giao diện chặn hẹp hơn máy chủ
-   * là mời người dùng đi vào một lỗi.
-   */
-  it("có phiếu thu là khoá, kể cả khi số đã thu chưa về", () => {
-    const k = reissueLock({ paidAmount: 0, receiptCount: 1, eInvoiceIssued: false })
-    expect(k?.code).toBe("LOCKED_HAS_PAYMENT")
+  it("có tiền thu thì NÓI RA là phiếu thu đi sang tờ mới, không bảo huỷ phiếu", () => {
+    const c = reissuePaymentNote({ paidAmount: 1_500_000, receiptRefs: ["PT-0031"] })!
+    expect(c).toContain("1.500.000")
+    expect(c).toContain("PT-0031")
+    expect(c).toContain("hóa đơn mới")
+    expect(c).not.toMatch(/huỷ phiếu thu trước/i)
+    expect(reissuePaymentNote({ paidAmount: 0, receiptRefs: [] })).toBeNull()
   })
 
-  /** ⚠ Khoá hóa đơn điện tử là khoá nặng hơn — `LOCKED_EINVOICE` (mig 120). */
+  /** ⚠ Khoá hóa đơn điện tử vẫn còn — `LOCKED_EINVOICE` (mig 120). */
   it("phát hành hóa đơn điện tử thì khoá, và nói đúng mã", () => {
-    const k = reissueLock({ paidAmount: 0, receiptCount: 0, eInvoiceIssued: true })
-    expect(k?.code).toBe("LOCKED_EINVOICE")
+    expect(reissueLock({ paidAmount: 0, receiptCount: 0, eInvoiceIssued: true })?.code).toBe("LOCKED_EINVOICE")
+    expect(reissueLock({ paidAmount: 1_500_000, receiptCount: 1, eInvoiceIssued: true })?.code).toBe("LOCKED_EINVOICE")
   })
 
-  /**
-   * ⚠ HAI KHOÁ CÙNG BẬT THÌ NÓI KHOÁ NẶNG HƠN TRƯỚC. Nói khoá tiền thu
-   * trước là người dùng huỷ phiếu thu xong mới biết vẫn không lập lại
-   * được — mất một thao tác ghi sổ cho một việc không thành.
-   */
-  it("cùng lúc hai khoá thì nói hóa đơn điện tử trước", () => {
-    const k = reissueLock({ paidAmount: 1_500_000, receiptCount: 1, eInvoiceIssued: true })
-    expect(k?.code).toBe("LOCKED_EINVOICE")
-  })
-
-  it("không tiền thu, không hóa đơn điện tử thì lập lại được", () => {
+  it("không hóa đơn điện tử thì lập lại được", () => {
     expect(reissueLock({ paidAmount: 0, receiptCount: 0, eInvoiceIssued: false })).toBeNull()
+  })
+
+  it("migration 184: chỉ reissue_invoice bật cờ bỏ khoá, và tự tắt; Huỷ HĐ trực tiếp vẫn khoá", () => {
+    const m = read("supabase/migrations/184_lap_lai_hoa_don_chuyen_phieu_thu.sql")
+    expect(m).toContain("npp.reissue_chuyen_thu")
+    expect(m).toContain("LOCKED_HAS_PAYMENT")
+    expect(m).toContain("PERFORM set_config(''npp.reissue_chuyen_thu'', '''', true);")
   })
 })
 

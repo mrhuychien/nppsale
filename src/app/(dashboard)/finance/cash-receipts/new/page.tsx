@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SearchSelect } from "@/components/ui/search-select"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -164,7 +164,14 @@ export default function NewCashReceiptPage() {
   const [customers, setCustomers] = useState<
     Array<{ id: string; store_name: string; owner_name: string | null; phone: string | null }>
   >([])
-  const [customerId, setCustomerId] = useState("")
+  /**
+   * ⚠ MỞ TỪ XEM NHANH HÓA ĐƠN (`?customerId=&invoiceId=`, chủ nhà 24/09/2026:
+   *   "Thu tiền -> tạo phiếu thu gắn với Hoá đơn và khách hàng"): khách chọn
+   *   sẵn, số còn nợ của ĐÚNG tờ ấy điền sẵn — qua cùng luật `pendingPick`.
+   */
+  const thamSo = useSearchParams()
+  const [customerId, setCustomerId] = useState(() => thamSo.get("customerId") ?? "")
+  const pendingInvoice = useRef<string | null>(thamSo.get("invoiceId"))
   /* ⚠ Dựng một lần theo `customers` — dựng lại mỗi lần vẽ là một mảng
      mới mỗi lần, và ô tìm nhận một danh sách "đổi" liên tục. */
   const customerOptions = useMemo(
@@ -359,6 +366,15 @@ export default function NewCashReceiptPage() {
       pendingPick.current = null
       if (seed && rows.some((r) => r.id === seed.receivableId)) {
         setAmounts({ [seed.receivableId]: seed.amount })
+      }
+      /* Hóa đơn truyền qua đường dẫn: điền số còn nợ của tờ ấy — chỉ khi nó
+         đang mở trong danh sách vừa đọc; không thì nói ra, đừng đoán. */
+      const hd = pendingInvoice.current
+      pendingInvoice.current = null
+      if (hd) {
+        const r = rows.find((x) => x.invoice_id === hd)
+        if (r) setAmounts({ [r.id]: outstandingOf(r) })
+        else toast({ title: "Hóa đơn này không còn khoản nợ mở", description: "Chọn khoản khác của khách để thu, hoặc kiểm tra lại hóa đơn." })
       }
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps

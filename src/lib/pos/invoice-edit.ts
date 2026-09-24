@@ -1,21 +1,12 @@
 /**
  * SỬA HÓA ĐƠN ĐÃ GHI SỔ — quy tắc của màn 7 (spec §6, §7.2).
  *
- * ⚠ BẢN THIẾT KẾ NÓI SAI MỘT CHỖ, VÀ SPEC CHO PHÉP SỬA CÂU CHỮ.
- * Artboard 7 để nhãn "ĐÃ THU — GIỮ NGUYÊN QUA LẬP LẠI". Cơ chế đang
- * chạy KHÔNG như vậy: `reissue_invoice` gọi `cancel_invoice`, và
- * `cancel_invoice` **TỪ CHỐI THẲNG** khi hóa đơn đã có tiền thu:
- *
- *     IF EXISTS (SELECT 1 FROM receivables r
- *                WHERE r.invoice_id = … AND COALESCE(r.paid,0) > 0)
- *        OR EXISTS (SELECT 1 FROM cash_receipt_lines crl … )
- *     THEN RAISE EXCEPTION 'LOCKED_HAS_PAYMENT: hóa đơn đã có tiền thu,
- *                           huỷ phiếu thu trước'
- *
- * Nên tiền đã thu không "giữ nguyên qua lập lại" — nó CHẶN hẳn việc
- * lập lại cho tới khi phiếu thu bị huỷ. Spec §7.2 chốt: *"Nội dung
- * banner mô tả cơ chế đang có… Chỉnh lại câu chữ cho khớp hành vi thật
- * nếu khác."* Đây là chỗ phải chỉnh.
+ * ⚠ TIỀN ĐÃ THU ĐI QUA LẬP LẠI (mig 184, chủ nhà chốt 24/09/2026). Trước đó
+ * `cancel_invoice` từ chối tờ đã có tiền thu (LOCKED_HAS_PAYMENT) và người dùng
+ * phải huỷ phiếu thu rồi thu lại. Nay `reissue_invoice` huỷ tờ cũ, lập tờ mới
+ * và gắn MỌI phiếu thu của tờ cũ sang tờ mới trong cùng giao dịch — khớp nhãn
+ * "ĐÃ THU — GIỮ NGUYÊN QUA LẬP LẠI" của bản thiết kế. Huỷ HĐ trực tiếp (không
+ * lập lại) vẫn bị khoá như cũ. Khoá còn lại ở màn này: hóa đơn điện tử.
  *
  * ⚠ CHẶN SỚM Ở GIAO DIỆN, CHẶN THẬT Ở MÁY CHỦ. Cùng lối spec §8 dùng
  * cho lô hàng: nút mờ + nói rõ lý do, nhưng phép chặn thật vẫn nằm
@@ -65,16 +56,23 @@ export function reissueLock(i: ReissueLockInput): ReissueLock | null {
         "Muốn sửa thì phải điều chỉnh/thay thế tờ điện tử theo đúng quy định thuế.",
     }
   }
-  const coTien = Number(i.paidAmount) > 0 || Number(i.receiptCount) > 0
-  if (coTien) {
-    return {
-      code: "LOCKED_HAS_PAYMENT",
-      message:
-        "Hóa đơn đã có tiền thu nên chưa lập lại được. Huỷ phiếu thu đang gắn " +
-        "rồi quay lại — tiền sẽ ghi lại vào tờ hóa đơn mới.",
-    }
-  }
+  /**
+   * ⚠ TIỀN THU KHÔNG CÒN KHOÁ (chủ nhà chốt 24/09/2026, mig 184): "Hủy hóa đơn
+   *   cũ và tạo hóa đơn mới · Tất cả các phiếu thanh toán của hóa đơn cũ sẽ
+   *   được gắn với hóa đơn mới". Nói điều đó ra bằng `reissuePaymentNote`.
+   */
   return null
+}
+
+/**
+ * Câu báo trước khi lập lại một tờ ĐÃ CÓ tiền thu — `null` khi chưa thu gì.
+ * Tiền không mất, không phải huỷ phiếu thu: nó đi sang tờ mới (mig 184).
+ */
+export function reissuePaymentNote(i: { paidAmount: number; receiptRefs: readonly (string | null)[] }): string | null {
+  const co = Number(i.paidAmount) > 0 || i.receiptRefs.length > 0
+  if (!co) return null
+  const ma = i.receiptRefs.map((r) => r || "phiếu thu").join(", ")
+  return `Đã thu ${Math.round(Number(i.paidAmount) || 0).toLocaleString("vi-VN")}đ${ma ? ` qua ${ma}` : ""} — lập lại thì phiếu thu tự gắn sang hóa đơn mới, không cần huỷ.`
 }
 
 /* ==================================================================

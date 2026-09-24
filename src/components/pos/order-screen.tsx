@@ -48,6 +48,7 @@
  *     màn cũ đang dùng — không chép lại phép tính nào.
  */
 
+import { posNewInvoiceHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
@@ -692,16 +693,26 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    *
    * ⚠ `F3` GIỮ LÀM BÍ DANH của `F2` — thói quen tay của người đang dùng.
    */
+  /** Đơn đã gửi (không còn nháp) — bộ nút đổi thành In · Tạo hoá đơn · Lưu. */
+  const daGui = !!orderId && orderStatus !== "draft"
+  /** Có thay đổi trên màn chưa ghi xuống — xem `usePosDirty`. */
+  const chuaLuuThayDoi = mocChuaLuu !== null && chuKy !== mocChuaLuu
+  /** Không còn gì để xuất: đơn hoàn thành / đã đóng. */
+  const daXuatHet = orderStatus === "completed" || orderStatus === "closed"
+
   usePosKeys({
     F2: focusPosPicker,
     F3: focusPosPicker,
     F4: () => setMoTimKhach(true),
     /* ⚠ PHÍM PHẢI THEO ĐÚNG ĐIỀU KIỆN CỦA NÚT. Nút mờ mà phím vẫn chạy
        thì cái mờ ấy chỉ là trang trí — xem `donHo`. */
-    F6: () => { if (!dangLuu && lines.length > 0 && !donHo) void luuDon(true) },
+    /* ⚠ Đơn ĐÃ GỬI không có "Lưu nháp" — F6 lúc ấy là kéo đơn về nháp. */
+    F6: () => { if (!dangLuu && lines.length > 0 && !donHo && !daGui) void luuDon(true) },
     F8: () => setRetLines((c) => [...c, emptyReturnLine(false)]),
     F9: () => {
       if (dangLuu || lines.length === 0 || !khach || coGiaXau) return
+      /* Đơn đã gửi: F9 = nút "Lưu", chỉ chạy khi có thay đổi. */
+      if (daGui && !chuaLuuThayDoi) return
       void luuDon(false)
     },
     /* ⚠ `ProductPicker` tự xử `Esc` của nó; ở đây chỉ đóng ô tìm khách. */
@@ -1853,7 +1864,52 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             ⚠ VÀ `F9` ĐI THEO. Dòng gợi ý chân bảng ghi "F9 gửi đơn";
               phím ấy gọi `luuDon(false)`, nay đúng là gửi đơn.
           */}
-          <PanelActions>
+          {/*
+            ⚠ CHỦ NHÀ CHỐT 24/09/2026: "Sau khi gửi đơn -> Các nút chuyển thành:
+              In · Tạo hoá đơn · Lưu (trường hợp thay đổi sau khi tạo ngay trên
+              màn hình đó)". Đơn còn NHÁP vẫn đúng hai nút Lưu nháp · Gửi đơn.
+          */}
+          {daGui ? (
+            <PanelActions>
+              <PanelButton
+                width={70}
+                disabled={!orderId}
+                onClick={() => { if (orderId) window.open(`/orders/${orderId}/print?auto=1`, "_blank") }}
+                title="In đơn đặt hàng"
+              >
+                In
+              </PanelButton>
+              <PanelButton
+                width={130}
+                disabled={!orderId || dangLuu || daXuatHet || chuaLuuThayDoi || orderStatus === "cancelled"}
+                onClick={() => { if (orderId) router.push(posNewInvoiceHref(orderId)) }}
+                title={
+                  chuaLuuThayDoi
+                    ? "Đơn có thay đổi chưa lưu — bấm Lưu trước rồi mới tạo hóa đơn"
+                    : daXuatHet
+                      ? "Đơn đã xuất hết — không còn gì để lập hóa đơn"
+                      : "Xuất hàng · lập hóa đơn cho phần còn lại của đơn"
+                }
+              >
+                Tạo hoá đơn
+              </PanelButton>
+              <PanelButton
+                variant="primary"
+                disabled={!chuaLuuThayDoi || lines.length === 0 || !khach || coGiaXau || dangLuu}
+                onClick={() => luuDon(false)}
+                title={
+                  !chuaLuuThayDoi
+                    ? "Chưa có thay đổi nào để lưu"
+                    : coGiaXau
+                      ? "Có dòng đặt giá ngoài hạn mức của bạn"
+                      : "Lưu thay đổi của đơn đã gửi"
+                }
+              >
+                {dangLuu ? "Đang lưu…" : "Lưu (F9)"}
+              </PanelButton>
+            </PanelActions>
+          ) : (
+            <PanelActions>
             <PanelButton
               width={150}
               disabled={dangLuu || lines.length === 0 || donHo}
@@ -1885,6 +1941,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               {dangLuu ? "Đang gửi…" : mode === "sua" ? "Lưu thay đổi" : "Gửi đơn (F9)"}
             </PanelButton>
           </PanelActions>
+          )}
         </aside>
       </div>
     </>

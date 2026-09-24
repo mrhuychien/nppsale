@@ -45,7 +45,7 @@ import {
   seedForNew, seedForReissue, makeAddedRow, toDraft, toDraftCoGiam, rowsOverOrdered,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
-import { reissueLock } from "@/lib/pos/invoice-edit"
+import { reissueLock, reissuePaymentNote } from "@/lib/pos/invoice-edit"
 import { dongHangDoi, giaTheoHeSo } from "@/lib/pos/invoice-exchange"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { viMatchAllWords } from "@/lib/search"
@@ -1255,11 +1255,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           <div className="mt-1 border-t border-[var(--pos-line-soft)] pt-2">
             <MoneyRow label="Khách cần trả" value={khachTra} strong />
           </div>
-          {sua && (receipts.length > 0 || receiptErr) && (
-            <p className="mt-3 text-[11.5px] font-semibold text-[var(--pos-warn)]">
+          {/* ⚠ Tiền đã thu KHÔNG còn chặn lập lại — nó đi sang tờ mới (mig 184). */}
+          {sua && (receiptErr || reissuePaymentNote({ paidAmount: daThu, receiptRefs: receipts.map((r) => r.ref) })) && (
+            <p data-testid="ghi-chu-tien-thu" className="mt-3 text-[11.5px] font-semibold text-[var(--pos-primary-deep)]">
               {receiptErr
-                ? `Không đọc được phiếu thu — ${receiptErr}. Màn đang coi như có tiền thu.`
-                : `Đã thu ${formatCurrency(daThu)} qua ${receipts.map((r) => r.ref || "phiếu thu").join(", ")} — huỷ phiếu thu trước khi lập lại.`}
+                ? `Không đọc được phiếu thu — ${receiptErr}. Lập lại vẫn chạy: phiếu thu (nếu có) tự gắn sang hóa đơn mới.`
+                : reissuePaymentNote({ paidAmount: daThu, receiptRefs: receipts.map((r) => r.ref) })}
             </p>
           )}
           <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[var(--pos-line-soft)] pt-3">

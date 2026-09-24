@@ -214,4 +214,10 @@ SELECT 23, 'Mig 183 (hóa đơn bê đủ: thuế dòng, giảm giá đơn, lý 
             AND position('(mig 183)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
             AND position('(mig 183)' IN pg_get_functiondef('public._apply_return_adds(uuid, uuid, jsonb)'::regprocedure)) > 0
        THEN 'OK — đã vá' ELSE 'CHƯA — hóa đơn lấy thuế danh mục, mất giảm giá đơn; hàng trả thêm ở HĐ mất lý do dòng' END, ''
+UNION ALL
+-- 24. Mig 184 — sửa hóa đơn đã có tiền thu: phiếu thu chuyển sang tờ mới
+SELECT 24, 'Mig 184 (sửa HĐ đã thu tiền: phiếu thu gắn sang HĐ mới)',
+  CASE WHEN position('(mig 184)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
+            AND position('(mig 184)' IN pg_get_functiondef('public.cancel_invoice(uuid, text)'::regprocedure)) > 0
+       THEN 'OK — đã vá' ELSE 'CHƯA — sửa HĐ đã có phiếu thu báo LOCKED_HAS_PAYMENT' END, ''
 ) t ORDER BY stt;

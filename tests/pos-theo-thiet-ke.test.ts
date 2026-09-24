@@ -420,14 +420,31 @@ describe("ba chỗ chủ nhà chỉ ra 22/09/2026", () => {
    * và lý do ở `tests/pos-cau-truc.test.ts` — ở đây chỉ canh hai cái
    * nhãn, vì chúng là thứ chủ nhà khoanh trên ảnh.
    */
-  it("hai nút cuối trang là Lưu nháp và Gửi đơn", () => {
-    const hang = DON.slice(DON.indexOf("<PanelActions>"), DON.indexOf("</PanelActions>"))
+  it("đơn NHÁP: hai nút cuối trang là Lưu nháp và Gửi đơn", () => {
+    const tu = DON.indexOf("<PanelActions>", DON.indexOf("daGui ? ("))
+    const nhap = DON.slice(DON.indexOf("<PanelActions>", DON.indexOf(") : (", tu)))
+    const hang = nhap.slice(0, nhap.indexOf("</PanelActions>"))
     expect(hang, "mất nút Lưu nháp").toContain("Lưu nháp (F6)")
     expect(hang, "mất nút Gửi đơn").toContain("Gửi đơn (F9)")
-    expect(
-      hang.split("<PanelButton").length - 1,
-      "hàng nút cuối trang không còn đúng hai nút"
-    ).toBe(2)
+    expect(hang.split("<PanelButton").length - 1, "hàng nút đơn nháp không còn đúng hai nút").toBe(2)
+  })
+
+  /**
+   * ⚠ CHỦ NHÀ CHỐT 24/09/2026: "Sau khi gửi đơn -> Các nút chuyển thành: In ·
+   *   Tạo hoá đơn · Lưu (trường hợp thay đổi sau khi tạo ngay trên màn hình đó)".
+   */
+  it("đơn ĐÃ GỬI: ba nút In · Tạo hoá đơn · Lưu, không còn Lưu nháp", () => {
+    const tu = DON.indexOf("daGui ? (")
+    expect(tu, "không có nhánh nút cho đơn đã gửi").toBeGreaterThan(-1)
+    const khoi = DON.slice(tu, DON.indexOf("</PanelActions>", tu))
+    expect(khoi.split("<PanelButton").length - 1).toBe(3)
+    for (const nhan of [">\n                In\n", "Tạo hoá đơn", "Lưu (F9)"]) {
+      expect(khoi.replace(/\\n/g, "\n"), `thiếu nút ${nhan}`).toContain(nhan.replace(/\\n/g, "\n").trim())
+    }
+    expect(khoi).not.toContain("Lưu nháp")
+    // Lưu chỉ bật khi có thay đổi; Tạo hoá đơn tắt khi còn thay đổi chưa lưu.
+    expect(khoi).toMatch(/disabled=\{!chuaLuuThayDoi/)
+    expect(khoi).toMatch(/disabled=\{[^}]*chuaLuuThayDoi[^}]*\}\s*onClick=\{\(\) => \{ if \(orderId\) router\.push\(posNewInvoiceHref\(orderId\)\)/)
   })
 })
 

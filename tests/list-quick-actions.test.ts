@@ -69,7 +69,10 @@ describe("mở sang tab mới", () => {
     for (const h of ["/edit`}", "/print?auto=1`}", "<NewTabLink href={`/sales-invoices/${invoice.id}`}"]) {
       expect(flat).toContain(h)
     }
-    expect((flat.match(/<NewTabLink/g) ?? []).length).toBe(3)
+    // 5 từ 24/09/2026: thêm "Trả hàng" và "Thu tiền" (chủ nhà chốt) — cũng mở tab mới.
+    expect((flat.match(/<NewTabLink/g) ?? []).length).toBe(5)
+    expect(flat).toContain("posNewReturnHref({ invoiceId: invoice.id")
+    expect(flat).toContain("/finance/cash-receipts/new?")
   })
 
   /**

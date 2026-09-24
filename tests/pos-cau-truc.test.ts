@@ -226,7 +226,10 @@ describe("sửa đơn dùng đúng component của màn lập đơn", () => {
    *   người dùng đọc "Gửi đơn" rồi kho bị trừ.
    */
   it("đúng hai nút, nút chính gửi đơn chứ không lập hóa đơn", () => {
-    const s = code(read("src/components/pos/order-screen.tsx"))
+    /* Từ 24/09/2026 có HAI bộ nút: đơn đã gửi (In · Tạo hoá đơn · Lưu) và đơn
+       nháp (Lưu nháp · Gửi đơn). Luật "nút chính gửi đơn" là của bộ NHÁP. */
+    const s0 = code(read("src/components/pos/order-screen.tsx"))
+    const s = s0.slice(s0.indexOf(") : (", s0.indexOf("daGui ? (")))
     const i = s.indexOf('variant="primary"')
     expect(i, "không thấy nút chính").toBeGreaterThan(-1)
     /* ⚠ QUÉT TỚI HẾT THẺ, ĐỪNG CẮT CỨNG SỐ KÝ TỰ — bản đầu cắt 400 ký

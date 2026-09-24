@@ -1,5 +1,6 @@
 "use client"
 
+import { docChonNhieu, ghiChonNhieu } from "@/lib/sell/chon-nhieu-pref"
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, ScanBarcode, FileText, History, ChevronRight, User, Tag, RotateCcw, ListChecks, X } from "lucide-react"
@@ -102,10 +103,11 @@ export default function SellPage() {
     const j = findLine(cart.cart, productId, unit)
     return j >= 0 ? cart.cart[j].qty : 0
   }
-  // Chuyển giữa đặt hàng ↔ chọn hàng trả thì bỏ số đang gõ dở của việc kia.
+  /* Chuyển giữa đặt hàng ↔ chọn hàng trả thì bỏ số đang gõ dở của việc kia,
+     và lấy lại công tắc ĐÃ NHỚ của việc mới — xem `chon-nhieu-pref.ts`. */
   useEffect(() => {
     setNhap({})
-    setChonNhieu(false)
+    setChonNhieu(docChonNhieu(returning ? "tra" : "dat"))
   }, [returning])
   useEffect(() => {
     listMemory.current.q = q
@@ -347,9 +349,15 @@ export default function SellPage() {
   const soMatHangChon = dongChon.filter((l) => l.qty > 0).length
   const tienChon = dongChon.reduce((t, l) => t + (l.qty > 0 ? l.qty * l.price : 0), 0)
 
+  /** Người dùng TỰ TẮT — chỉ đường này mới xoá công tắc đã nhớ. */
   const tatChonNhieu = () => {
     setNhap({})
     setChonNhieu(false)
+    ghiChonNhieu(returning ? "tra" : "dat", false)
+  }
+  const batChonNhieu = () => {
+    setChonNhieu(true)
+    ghiChonNhieu(returning ? "tra" : "dat", true)
   }
   const xacNhanChonNhieu = () => {
     /* Màn hàng trả: đặt số vào PHIẾU TRẢ, mặc định TRẢ TIỀN — cùng luật với
@@ -361,7 +369,8 @@ export default function SellPage() {
           vatRate: l.vatRate, isExchange: false, note: "",
         }))
       )
-      tatChonNhieu()
+      /* ⚠ Xác nhận xong GIỮ chế độ, chỉ bỏ số vừa gõ — chủ nhà 24/09/2026. */
+      setNhap({})
       clearSearchMemory()
       backToReturnSlip(router)
       return
@@ -383,7 +392,7 @@ export default function SellPage() {
         description: `${vuot.slice(0, 3).join(", ")}${vuot.length > 3 ? "…" : ""} — vẫn thêm vào đơn; kho sẽ báo lại lúc xuất hàng.`,
       })
     }
-    tatChonNhieu()
+    setNhap({})
     clearSearchMemory()
     router.push("/sell/cart")
   }
@@ -392,7 +401,7 @@ export default function SellPage() {
   const nutChonNhieu = (
     <button
       type="button"
-      onClick={() => (chonNhieu ? tatChonNhieu() : setChonNhieu(true))}
+      onClick={() => (chonNhieu ? tatChonNhieu() : batChonNhieu())}
       aria-label="Chọn nhiều sản phẩm"
       aria-pressed={chonNhieu}
       title={chonNhieu ? "Tắt chọn nhiều (bỏ các số vừa gõ)" : "Chọn nhiều sản phẩm một lúc"}
@@ -675,15 +684,22 @@ export default function SellPage() {
           <button
             type="button"
             onClick={tatChonNhieu}
-            aria-label="Huỷ chọn nhiều"
+            aria-label="Tắt chọn nhiều"
             className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-surface-container-lowest text-on-surface shadow-card"
           >
             <X className="h-5 w-5" />
           </button>
+          {/* ⚠ CHẾ ĐỘ NAY GIỮ QUA CÁC LẦN VÀO RA (24/09/2026) nên thanh này đứng
+              chỗ thanh "Xem đơn". Chưa gõ số nào mà đơn / phiếu trả đã có hàng
+              thì nút đi thẳng tới đó — không bắt tắt chế độ mới xem được đơn. */}
           <button
             type="button"
-            disabled={dongChon.length === 0}
-            onClick={xacNhanChonNhieu}
+            disabled={dongChon.length === 0 && (returning ? cart.returnLines.length === 0 : cartCount === 0)}
+            onClick={() => {
+              if (dongChon.length > 0) return xacNhanChonNhieu()
+              if (returning) backToReturnSlip(router)
+              else router.push("/sell/cart")
+            }}
             className="flex h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl bg-primary pl-4 pr-2 text-on-primary shadow-[0_12px_28px_-8px_rgba(37,99,235,.55)] disabled:opacity-50"
           >
             <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-white/20 px-1.5 text-sm font-extrabold">
@@ -693,7 +709,9 @@ export default function SellPage() {
               {formatCurrency(tienChon)}
             </span>
             <span className="flex h-10 shrink-0 items-center gap-1 rounded-xl bg-white px-3 text-sm font-extrabold text-primary">
-              {returning ? "Vào phiếu trả" : "Vào đơn"} <ChevronRight className="h-3.5 w-3.5" />
+              {dongChon.length > 0
+                ? (returning ? "Vào phiếu trả" : "Vào đơn")
+                : (returning ? "Xem phiếu trả" : "Xem đơn")} <ChevronRight className="h-3.5 w-3.5" />
             </span>
           </button>
         </div>

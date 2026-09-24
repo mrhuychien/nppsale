@@ -123,3 +123,48 @@ test("/sell?mode=return: chọn nhiều mặt hàng trả rồi vào phiếu tr�
     .toEqual(["gói:1:5000:false", "hộp:3:20000:false"])
   expect((s as unknown as { cart: unknown[] }).cart ?? [], "hàng trả lọt vào giỏ bán").toHaveLength(0)
 })
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "đã bấm nút chọn nhiều sản phẩm thì phải luôn lưu
+ *   trạng thái đến khi người dùng tự tắt. Hiện tại vào đơn xong quay lại lại mất".
+ */
+test("/sell: chế độ chọn nhiều GIỮ qua lần vào đơn rồi quay lại, tới khi tự tắt", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  const cong = page.getByRole("button", { name: "Chọn nhiều sản phẩm" })
+  await cong.click()
+  await page.getByLabel("Số lượng Sữa hộp", { exact: true }).fill("5")
+  await page.getByRole("button", { name: /Vào đơn/ }).click()
+  await expect(page).toHaveURL(/\/sell\/cart/)
+
+  // Quay lại chọn hàng: chế độ vẫn bật, số vừa gõ đã vào đơn nên ô hiện số trong giỏ.
+  await page.goto("/sell")
+  await expect(cong).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByLabel("Số lượng Sữa hộp", { exact: true })).toHaveValue("5")
+  // Chưa gõ gì mới mà đơn có hàng: nút lớn đi thẳng tới đơn.
+  await page.getByRole("button", { name: /Xem đơn/ }).click()
+  await expect(page).toHaveURL(/\/sell\/cart/)
+
+  // Tải lại cả trang vẫn nhớ.
+  await page.goto("/sell")
+  await page.reload()
+  await expect(cong).toHaveAttribute("aria-pressed", "true")
+
+  // Người dùng TỰ TẮT thì mới tắt — và tắt thì nhớ là tắt.
+  await page.getByRole("button", { name: "Tắt chọn nhiều" }).click()
+  await expect(cong).toHaveAttribute("aria-pressed", "false")
+  await page.reload()
+  await expect(cong).toHaveAttribute("aria-pressed", "false")
+})
+
+test("/sell: công tắc đặt hàng và hàng trả nhớ RIÊNG", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  const cong = page.getByRole("button", { name: "Chọn nhiều sản phẩm" })
+  await cong.click()
+  await expect(cong).toHaveAttribute("aria-pressed", "true")
+  await page.goto("/sell?mode=return")
+  await expect(cong, "bật ở đặt hàng mà hàng trả cũng bật theo").toHaveAttribute("aria-pressed", "false")
+  await page.goto("/sell")
+  await expect(cong).toHaveAttribute("aria-pressed", "true")
+})

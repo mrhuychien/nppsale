@@ -27,6 +27,10 @@ import { formatDate, getExpiryStatus } from "@/lib/utils"
 import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, RefreshCw } from "lucide-react"
 import type { Batch, Product } from "@/types"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { khopLoc } from "@/lib/search/advanced-filter"
+import { LOC_LO_HANG } from "@/lib/search/list-filter-fields"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import {
   BATCH_COLUMNS,
@@ -62,6 +66,8 @@ export default function BatchesPage() {
     []
   )
   const show = (k: BatchColumnKey) => visibleColumns.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
+  const locNC = useAdvancedFilter("inventory-batches", LOC_LO_HANG)
 
   /**
    * ⚠ ĐỌC ĐỦ MỌI TRANG. Bản cũ đọc trơn, sắp `expires_at` tăng dần —
@@ -84,7 +90,7 @@ export default function BatchesPage() {
           .range(from, to)
       )
     let res = await load(
-      "id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, created_at, product:products(*)"
+      "id, org_id, product_id, batch_code, manufactured_at, expires_at, location, qty_initial, qty_on_hand, unit_cost, status, warehouse_zone, zone_moved_at, zone_moved_by, received_at, created_at, product:products(*)"
     )
     if (res.error) {
       // eslint-disable-next-line no-restricted-syntax
@@ -104,23 +110,29 @@ export default function BatchesPage() {
     fetch()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Mọi thẻ / tab đọc từ đây — bộ lọc nâng cao áp lên cả bộ đếm. */
+  const locBatches = useMemo(
+    () => batches.filter((b) => khopLoc(b, LOC_LO_HANG, locNC.dieuKien)),
+    [batches, locNC.key] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
   const expiring = useMemo(
-    () => batches.filter((b) => daysUntil(b.expires_at) < 30 && daysUntil(b.expires_at) >= 0),
-    [batches]
+    () => locBatches.filter((b) => daysUntil(b.expires_at) < 30 && daysUntil(b.expires_at) >= 0),
+    [locBatches]
   )
 
   const saleBatches = useMemo(
-    () => batches.filter((b) => b.warehouse_zone !== "date"),
-    [batches]
+    () => locBatches.filter((b) => b.warehouse_zone !== "date"),
+    [locBatches]
   )
   const dateBatches = useMemo(
-    () => batches.filter((b) => b.warehouse_zone === "date"),
-    [batches]
+    () => locBatches.filter((b) => b.warehouse_zone === "date"),
+    [locBatches]
   )
 
   const fefoBatches = useMemo(
-    () => [...batches].sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime()),
-    [batches]
+    () => [...locBatches].sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime()),
+    [locBatches]
   )
 
   /* ⚠ ĐÃ GỠ NÚT "→ Date / → Bán" (chủ nhà chốt 23/09/2026: "bỏ cái đó.
@@ -330,6 +342,7 @@ export default function BatchesPage() {
     <div className="space-y-4">
       <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} backHref="/inventory">
         <div className="flex items-center gap-2">
+          <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
           <ColumnPicker
             available={BATCH_COLUMNS}
             value={visibleColumns}
@@ -403,7 +416,7 @@ export default function BatchesPage() {
       ) : (
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList>
-            <TabsTrigger value="all">Tất cả ({batches.length})</TabsTrigger>
+            <TabsTrigger value="all">Tất cả ({locBatches.length})</TabsTrigger>
             <TabsTrigger value="sale">Kho hàng bán ({saleBatches.length})</TabsTrigger>
             <TabsTrigger value="date">Kho hàng date ({dateBatches.length})</TabsTrigger>
             <TabsTrigger value="fefo">FEFO (ưu tiên xuất)</TabsTrigger>
@@ -412,7 +425,7 @@ export default function BatchesPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="all" className="mt-4">
-            {renderTable(batches)}
+            {renderTable(locBatches)}
           </TabsContent>
           <TabsContent value="sale" className="mt-4">
             <p className="text-xs text-muted-foreground mb-2">

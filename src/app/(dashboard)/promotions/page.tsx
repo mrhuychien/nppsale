@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { khopLoc } from "@/lib/search/advanced-filter"
+import { LOC_KHUYEN_MAI } from "@/lib/search/list-filter-fields"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -75,12 +79,14 @@ export default function PromotionsPage() {
   )
   const show = (k: PromotionColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: PromotionFilterKey) => activeFilters.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
+  const locNC = useAdvancedFilter("promotions", LOC_KHUYEN_MAI)
 
   useEffect(() => {
     async function fetch() {
       const { data, error: dataErr } = await supabase
         .from("promotions")
-        .select("id, name, type, priority, starts_at, ends_at, is_active")
+        .select("id, name, type, priority, starts_at, ends_at, is_active, created_at")
         .order("priority", { ascending: false })
       if (dataErr) console.error("[app/promotions] truy vấn lỗi:", dataErr.message)
       setPromotions((data as Promotion[]) || [])
@@ -103,9 +109,10 @@ export default function PromotionsPage() {
         const isActive = statusFilter === "active"
         if (p.is_active !== isActive) return false
       }
+      if (!khopLoc(p, LOC_KHUYEN_MAI, locNC.dieuKien)) return false
       return true
     })
-  }, [promotions, search, typeFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [promotions, search, typeFilter, statusFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const topPromos = [...promotions]
     .filter((p) => p.is_active)
@@ -220,6 +227,7 @@ export default function PromotionsPage() {
           </Select>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={PROMOTION_FILTERS}
             value={activeFilters}

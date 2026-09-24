@@ -22,6 +22,9 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_PHIEU_NHAP_MUA } from "@/lib/search/list-filter-fields"
 import { Search, FileText, Plus, Columns3, X, Pencil } from "lucide-react"
 
 type ColKey = "entry_code" | "supplier" | "invoice_number" | "date" | "total" | "paid" | "remaining" | "debt_status"
@@ -74,6 +77,8 @@ export default function PurchaseInvoicesLookupPage() {
   const [debtFilter, setDebtFilter] = useState(() => searchParams.get("debt") || "all")
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_COLS)
   const pg = usePagination(50)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("purchasing-invoices", LOC_PHIEU_NHAP_MUA)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -104,7 +109,7 @@ export default function PurchaseInvoicesLookupPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, debtFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ HAI LƯỢT TRA RIÊNG. Tên NCC nằm ở `suppliers`; SỐ HOÁ ĐƠN nằm ở
@@ -154,6 +159,7 @@ export default function PurchaseInvoicesLookupPage() {
        *   theo TÊN NCC và SỐ HOÁ ĐƠN ở trình duyệt.
        */
       if (listSearch.filter) q = q.or(listSearch.filter)
+      for (const f of locNC.menhDe) q = q.or(f)
       if (debtFilter === "open") q = q.neq("debt.status", "paid")
       else if (debtFilter === "paid") q = q.eq("debt.status", "paid")
       else if (debtFilter === "no_supplier") q = q.is("supplier_id", null)
@@ -186,7 +192,7 @@ export default function PurchaseInvoicesLookupPage() {
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, debtFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, debtFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pass-through, đã filter ở effect trên.
   const filtered = rows
@@ -285,6 +291,7 @@ export default function PurchaseInvoicesLookupPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Tìm mã phiếu, NCC, số HĐ…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
+        <AdvancedFilter truong={LOC_PHIEU_NHAP_MUA} value={locNC.dieuKien} onApply={locNC.apDung} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline"><Columns3 className="h-4 w-4 mr-1.5" /> Cột hiển thị</Button>

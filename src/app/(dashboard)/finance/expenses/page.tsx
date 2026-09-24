@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_CHI_PHI } from "@/lib/search/list-filter-fields"
 import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
@@ -59,6 +62,8 @@ export default function ExpensesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("expenses", LOC_CHI_PHI)
 
   // Form state
   const [formDate, setFormDate] = useState(today.toISOString().slice(0, 10))
@@ -70,12 +75,13 @@ export default function ExpensesPage() {
   const [formPaymentMethod, setFormPaymentMethod] = useState<string>("cash")
 
   const fetch = useCallback(async () => {
-    if (!user?.org_id) return
+    /* Chờ đọc xong điều kiện lọc đã lưu — khỏi một lượt chưa lọc về sau đè lên. */
+    if (!user?.org_id || !locNC.ready) return
     setLoading(true)
     const [expensesRes, categoriesRes] = await Promise.all([
       // Cộng tổng chi phí trong kỳ → phải lấy đủ.
-      fetchAllForAggregate((from, to) =>
-        supabase
+      fetchAllForAggregate((from, to) => {
+        let q = supabase
           .from("expenses")
           .select(
             "id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, category:expense_categories(*)",
@@ -84,10 +90,13 @@ export default function ExpensesPage() {
           .eq("org_id", user.org_id)
           .gte("expense_date", dateFrom)
           .lte("expense_date", dateTo)
+        /* Lọc ở máy chủ → tổng thẻ trên (tính từ `filtered`) khớp danh sách. */
+        for (const f of locNC.menhDe) q = q.or(f)
+        return q
           .order("expense_date", { ascending: false })
           .order("created_at", { ascending: false })
           .range(from, to)
-      ),
+      }),
       supabase
         .from("expense_categories")
         .select("id, name, bucket")
@@ -103,7 +112,7 @@ export default function ExpensesPage() {
     setExpenses(expensesRes.rows as unknown as Expense[])
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)
-  }, [user?.org_id, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, dateFrom, dateTo, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetch() }, [fetch])
 
@@ -304,14 +313,17 @@ export default function ExpensesPage() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Tìm mô tả, mã tham chiếu..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Tìm mô tả, mã tham chiếu..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} />
       </div>
 
       {/* List */}

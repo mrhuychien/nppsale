@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { LOC_VI_HOA_HONG } from "@/lib/search/list-filter-fields"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,27 +36,34 @@ export default function CommissionsPage() {
   const [wallets, setWallets] = useState<CommissionWallet[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("commissions", LOC_VI_HOA_HONG)
 
   useEffect(() => {
+    /* Chờ đọc xong điều kiện đã lưu — khỏi một lượt tải chưa lọc về sau đè lên. */
+    if (!locNC.ready) return
     async function fetch() {
-      const res = await fetchAllForAggregate((from, to) =>
-        supabase
+      const res = await fetchAllForAggregate((from, to) => {
+        let q = supabase
           .from("commission_wallets")
           .select("id, org_id, user_id, period, earned, paid, balance, user:users(*)", {
             count: "exact",
           })
+        /* Lọc ở máy chủ → mọi thẻ KPI (cộng từ `wallets`) khớp danh sách. */
+        for (const f of locNC.menhDe) q = q.or(f)
+        return q
           .order("earned", { ascending: false })
           // ⚠ Khoá phụ `id`: nhiều ví cùng số "earned" (nhất là 0), trang
           //   song song thiếu khoá duy nhất là lặp / sót ví → tổng sai.
           .order("id")
           .range(from, to)
-      )
+      })
       if (res.error) console.error("[app/commissions] truy vấn lỗi:", res.error)
       setWallets(res.rows as unknown as CommissionWallet[])
       setLoading(false)
     }
     fetch()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
@@ -67,6 +77,7 @@ export default function CommissionsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={isSales ? "Ví hoa hồng của tôi" : "Hoa hồng"} description="Tự thưởng và bảng xếp hạng NV">
+        <AdvancedFilter truong={LOC_VI_HOA_HONG} value={locNC.dieuKien} onApply={locNC.apDung} />
         <Button variant="outline" asChild>
           <Link href="/commissions/policies">Chính sách hoa hồng</Link>
         </Button>
@@ -164,8 +175,8 @@ export default function CommissionsPage() {
       {wallets.length === 0 ? (
         <EmptyState
           icon={<Award className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có dữ liệu hoa hồng"
-          description="Hoa hồng sẽ được tính từ đơn hàng đã giao"
+          title={locNC.soDangAp > 0 ? "Không có ví khớp bộ lọc" : "Chưa có dữ liệu hoa hồng"}
+          description={locNC.soDangAp > 0 ? "Thử đổi bộ lọc nâng cao" : "Hoa hồng sẽ được tính từ đơn hàng đã giao"}
         />
       ) : (
         <div>

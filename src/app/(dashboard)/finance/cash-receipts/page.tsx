@@ -19,6 +19,9 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import type { CashReceipt } from "@/types"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_PHIEU_THU } from "@/lib/search/list-filter-fields"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -47,15 +50,17 @@ export default function CashReceiptsListPage() {
   const [loading, setLoading] = useState(true)
   /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
   const [canhBao, setCanhBao] = useState<string | null>(null)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("cash-receipts", LOC_PHIEU_THU)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       /* ⚠ ĐỌC ĐỦ. Bản cũ một lệnh đọc không phân trang — PostgREST cắt ngầm
          ở 1.000 phiếu; phiếu thứ 1.001 không hiện và tổng hụt theo. */
-      const res = await fetchAllForAggregate<CashReceipt>((from, to) =>
+      const res = await fetchAllForAggregate<CashReceipt>((from, to) => {
         // audit-ok: lỗi đi vào `res.error` ngay dưới.
-        supabase
+        let q = supabase
           .from("cash_receipts")
           .select(
             "id, receipt_code, receipt_date, status, expected_amount, submitted_amount, received_at, collector:users!cash_receipts_collected_by_fkey(full_name), creator:users!cash_receipts_created_by_fkey(full_name), receiver:users!cash_receipts_received_by_fkey(full_name)",
@@ -63,8 +68,9 @@ export default function CashReceiptsListPage() {
           )
           .order("created_at", { ascending: false })
           .order("id")
-          .range(from, to)
-      )
+        for (const f of locNC.menhDe) q = q.or(f)
+        return q.range(from, to)
+      })
       if (res.error) console.error("[finance/cash-receipts] truy vấn lỗi:", res.error)
       if (!cancelled) {
         setCanhBao(res.error ? `Không đọc được danh sách phiếu thu — ${res.error}` : res.truncated ? truncationWarning() : null)
@@ -73,7 +79,7 @@ export default function CashReceiptsListPage() {
       }
     })()
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Phiếu đã huỷ (`voided`) không vào tổng. */
   const tongPhieu = tongChungTu(receipts, (r) => r.expected_amount, (r) => r.status === "voided", !canhBao)
@@ -96,6 +102,10 @@ export default function CashReceiptsListPage() {
         )}
       </PageHeader>
 
+      <div className="flex justify-end">
+        <AdvancedFilter truong={LOC_PHIEU_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
+      </div>
+
       {canhBao && (
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
       )}
@@ -110,8 +120,8 @@ export default function CashReceiptsListPage() {
       {receipts.length === 0 ? (
         <EmptyState
           icon={<Receipt className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có phiếu thu"
-          description="Phiếu thu được tự động tạo khi quyết toán chuyến giao."
+          title={locNC.soDangAp ? "Không có phiếu thu nào khớp bộ lọc" : "Chưa có phiếu thu"}
+          description={locNC.soDangAp ? "Sửa hoặc bỏ bớt điều kiện ở Bộ lọc nâng cao." : "Phiếu thu được tự động tạo khi quyết toán chuyến giao."}
         />
       ) : (
         <div className="space-y-2">

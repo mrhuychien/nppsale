@@ -75,7 +75,17 @@ describe("trường của các danh sách", () => {
   const BANG: Record<string, string> = {
     LOC_DON_HANG: "sales_orders", LOC_HOA_DON: "sales_invoices", LOC_TRA_HANG: "returns",
     LOC_KHACH_HANG: "customers", LOC_SAN_PHAM: "products", LOC_NHA_CUNG_CAP: "suppliers",
+    // Đợt 2 (V4b, 24/09/2026)
+    LOC_CONG_NO_PHAI_THU: "receivables", LOC_CONG_NO_PHAI_TRA: "payables", LOC_CHUYEN_GIAO: "deliveries",
+    LOC_HOA_DON_DIEN_TU: "invoices", LOC_PHIEU_NHAP_MUA: "stock_entries", LOC_HOA_DON_MUA: "purchase_invoices",
+    LOC_TRA_HANG_NCC: "supplier_returns", LOC_PHIEU_THU: "cash_receipts", LOC_CHI_PHI: "expenses",
+    LOC_PHIEU_KHO: "stock_entries", LOC_LO_HANG: "batches", LOC_KHUYEN_MAI: "promotions",
+    LOC_VI_HOA_HONG: "commission_wallets",
   }
+  it("mọi bộ trường đều được soi cột", () => {
+    const xuat = Object.keys(F).filter((k) => k.startsWith("LOC_"))
+    expect(xuat.filter((k) => !(k in BANG)), "bộ trường chưa khai bảng để soi cột").toEqual([])
+  })
   it.each(Object.entries(BANG))("%s: mọi cột có trong migration của bảng %s", (ten, bang) => {
     const ds = (F as Record<string, readonly TruongLoc[]>)[ten]
     expect(ds.length).toBeGreaterThan(3)
@@ -93,15 +103,36 @@ describe("trường của các danh sách", () => {
 })
 
 describe("các danh sách gắn lọc nâng cao vào CÙNG đường truy vấn", () => {
-  const TRANG: Array<[string, string]> = [
-    ["orders", "LOC_DON_HANG"], ["sales-invoices", "LOC_HOA_DON"], ["returns", "LOC_TRA_HANG"],
-    ["customers", "LOC_KHACH_HANG"], ["products", "LOC_SAN_PHAM"], ["suppliers", "LOC_NHA_CUNG_CAP"],
+  /* [thư mục trang, khoá lưu, bộ trường, lọc ở máy chủ | ở trình duyệt]. Trang
+     nạp CẢ danh sách về máy thì lọc bằng `khopLoc` — cùng luật với máy chủ. */
+  const TRANG: Array<[string, string, string, "may_chu" | "trinh_duyet"]> = [
+    ["orders", "orders", "LOC_DON_HANG", "may_chu"], ["sales-invoices", "sales-invoices", "LOC_HOA_DON", "may_chu"],
+    ["returns", "returns", "LOC_TRA_HANG", "may_chu"], ["customers", "customers", "LOC_KHACH_HANG", "may_chu"],
+    ["products", "products", "LOC_SAN_PHAM", "may_chu"], ["suppliers", "suppliers", "LOC_NHA_CUNG_CAP", "may_chu"],
+    ["receivables", "receivables", "LOC_CONG_NO_PHAI_THU", "may_chu"],
+    ["payables", "payables", "LOC_CONG_NO_PHAI_TRA", "may_chu"],
+    ["deliveries", "deliveries", "LOC_CHUYEN_GIAO", "may_chu"],
+    ["invoices", "invoices", "LOC_HOA_DON_DIEN_TU", "may_chu"],
+    ["purchasing/invoices", "purchasing-invoices", "LOC_PHIEU_NHAP_MUA", "may_chu"],
+    ["purchasing/receipts", "purchasing-receipts", "LOC_HOA_DON_MUA", "trinh_duyet"],
+    ["purchase-returns", "purchase-returns", "LOC_TRA_HANG_NCC", "may_chu"],
+    ["finance/cash-receipts", "cash-receipts", "LOC_PHIEU_THU", "may_chu"],
+    ["finance/expenses", "expenses", "LOC_CHI_PHI", "may_chu"],
+    ["inventory/entries", "inventory-entries", "LOC_PHIEU_KHO", "trinh_duyet"],
+    ["inventory/batches", "inventory-batches", "LOC_LO_HANG", "trinh_duyet"],
+    ["promotions", "promotions", "LOC_KHUYEN_MAI", "trinh_duyet"],
+    ["commissions", "commissions", "LOC_VI_HOA_HONG", "may_chu"],
   ]
-  it.each(TRANG)("/%s", (duong, hang) => {
+  it.each(TRANG)("/%s", (duong, khoa, hang, cach) => {
     const S = readFileSync(`src/app/(dashboard)/${duong}/page.tsx`, "utf8")
-    expect(S).toContain(`useAdvancedFilter("${duong}", ${hang})`)
-    expect(S).toMatch(/for \(const f of locNC\.menhDe\) \w+ = \w+\.or\(f\)/)
+    expect(S).toContain(`useAdvancedFilter("${khoa}", ${hang})`)
+    if (cach === "may_chu") expect(S).toMatch(/for \(const f of locNC\.menhDe\) \w+ = \w+\.or\(f\)/)
+    else expect(S).toMatch(new RegExp(`khopLoc\\([^)]*${hang}, locNC\\.dieuKien\\)`))
     expect(S).toContain(`<AdvancedFilter truong={${hang}} value={locNC.dieuKien} onApply={locNC.apDung}`)
-    expect(S, "đổi điều kiện mà không tải lại").toMatch(/locNC\.key/)
+    // Mảng phụ thuộc (hiệu ứng tải / memo lọc) phải có điều kiện lọc.
+    expect(S, "đổi điều kiện mà không tải lại").toMatch(/\[[^\]\n]*locNC\.(key|dieuKien)[^\]\n]*\]/)
+  })
+  it("khoá lưu không trùng giữa hai danh sách", () => {
+    expect(new Set(TRANG.map((t) => t[1])).size).toBe(TRANG.length)
   })
 })

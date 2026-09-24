@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { khopLoc } from "@/lib/search/advanced-filter"
+import { LOC_PHIEU_KHO } from "@/lib/search/list-filter-fields"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -82,6 +86,8 @@ export default function StockEntriesPage() {
   )
   const show = (k: StockEntryColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: StockEntryFilterKey) => activeFilters.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
+  const locNC = useAdvancedFilter("inventory-entries", LOC_PHIEU_KHO)
 
   const fetchData = async () => {
     setLoading(true)
@@ -94,7 +100,7 @@ export default function StockEntriesPage() {
       supabase
         .from("stock_entries")
         .select(
-          "id, entry_code, type, status, notes, created_at, warehouse_zone, creator:users!stock_entries_created_by_fkey(*)",
+          "id, entry_code, type, status, notes, created_at, posted_at, issue_reason, warehouse_zone, dest_warehouse_zone, creator:users!stock_entries_created_by_fkey(*)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -200,9 +206,10 @@ export default function StockEntriesPage() {
       if (typeFilter !== "all" && e.type !== typeFilter) return false
       if (filterActive("status") && statusFilter !== "all" && (e.status || "posted") !== statusFilter)
         return false
+      if (!khopLoc(e, LOC_PHIEU_KHO, locNC.dieuKien)) return false
       return true
     })
-  }, [entries, search, typeFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entries, search, typeFilter, statusFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length
 
@@ -473,6 +480,7 @@ export default function StockEntriesPage() {
           </Select>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={STOCK_ENTRY_FILTERS}
             value={activeFilters}

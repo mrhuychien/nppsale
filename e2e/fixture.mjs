@@ -76,8 +76,8 @@ export function tables() {
       { id: "u2", product_id: MI, unit_name: "thùng", conversion: 30 },
     ],
     batches: [
-      { id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expiry_date: "2027-12-31" },
-      { id: "b2", org_id: ORG, product_id: MI, qty_on_hand: 900, warehouse_zone: "sale", batch_code: "L2", expiry_date: "2027-12-31" },
+      { id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expires_at: "2027-12-31" },
+      { id: "b2", org_id: ORG, product_id: MI, qty_on_hand: 900, warehouse_zone: "sale", batch_code: "L2", expires_at: "2027-12-31" },
     ],
     suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
     role_permissions: [],

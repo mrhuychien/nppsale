@@ -20,6 +20,9 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import type { SupplierReturn, Supplier } from "@/types"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_TRA_HANG_NCC } from "@/lib/search/list-filter-fields"
 import {
   PURCHASE_RETURN_COLUMNS,
   DEFAULT_PURCHASE_RETURN_COLUMNS,
@@ -53,6 +56,8 @@ export default function PurchaseReturnsPage() {
   /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
   const [canhBao, setCanhBao] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("purchase-returns", LOC_TRA_HANG_NCC)
   const {
     columns: visibleColumns,
     setColumns,
@@ -81,6 +86,7 @@ export default function PurchaseReturnsPage() {
           .order("created_at", { ascending: false })
           .order("id")
         if (filter !== "all") q = q.eq("status", filter)
+        for (const f of locNC.menhDe) q = q.or(f)
         return q.range(from, to)
       })
       if (res.error) console.error("[purchase-returns] truy vấn lỗi:", res.error)
@@ -89,7 +95,7 @@ export default function PurchaseReturnsPage() {
       setLoading(false)
     }
     fetch()
-  }, [user?.org_id, filter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, filter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => filter !== "cancelled" && r.status === "cancelled", !canhBao)
 
@@ -117,7 +123,8 @@ export default function PurchaseReturnsPage() {
               {f === "all" ? "Tất cả" : STATUS_LABEL[f]?.label || f}
             </Button>
           ))}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} />
             <ColumnPicker
               available={PURCHASE_RETURN_COLUMNS}
               value={visibleColumns}
@@ -144,7 +151,7 @@ export default function PurchaseReturnsPage() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />}
-          title="Chưa có phiếu trả NCC nào"
+          title={locNC.soDangAp ? "Không có phiếu nào khớp bộ lọc" : "Chưa có phiếu trả NCC nào"}
           description='Bấm "Tạo phiếu trả" để hoàn trả hàng cho NCC. Khi gửi phiếu hệ thống tự xuất kho và giảm công nợ.'
         />
       ) : (

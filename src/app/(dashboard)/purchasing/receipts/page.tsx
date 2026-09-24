@@ -32,6 +32,10 @@ import { StatusChips } from "@/components/ui/status-chips"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { khopLoc } from "@/lib/search/advanced-filter"
+import { LOC_HOA_DON_MUA } from "@/lib/search/list-filter-fields"
 import {
   RECEIPT_STATUS, receiptStatusLabel, receiptStatusTone,
 } from "@/lib/purchasing/receipt-status"
@@ -44,6 +48,13 @@ interface Row {
   status: string
   total: number | null
   warehouse_zone: string | null
+  /* Chỉ để lọc nâng cao ở trình duyệt. */
+  subtotal: number | null
+  vat: number | null
+  vat_override: number | null
+  notes: string | null
+  created_at: string
+  completed_at: string | null
   supplier?: { name?: string | null; code?: string | null } | null
 }
 
@@ -60,6 +71,8 @@ export default function PurchaseReceiptsPage() {
   const [q, setQ] = useState("")
   /** "" = chưa chạm tab nào → hiện tất cả. */
   const [tab, setTab] = useState("")
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết nên lọc ở trình duyệt bằng `khopLoc`. */
+  const locNC = useAdvancedFilter("purchasing-receipts", LOC_HOA_DON_MUA)
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -71,7 +84,7 @@ export default function PurchaseReceiptsPage() {
       // audit-ok: lỗi đi vào `res.error` ngay dưới.
       supabase
         .from("purchase_invoices")
-        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, supplier:suppliers(name, code)", { count: "exact" })
+        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, subtotal, vat, vat_override, notes, created_at, completed_at, supplier:suppliers(name, code)", { count: "exact" })
         .eq("org_id", user.org_id)
         .order("created_at", { ascending: false })
         .order("id")
@@ -85,21 +98,27 @@ export default function PurchaseReceiptsPage() {
 
   useEffect(() => { load() }, [load, focusTick])
 
+  /* Số trên dải trạng thái đếm theo đúng bộ lọc nâng cao đang áp. */
+  const locRows = useMemo(
+    () => (locNC.dieuKien.length ? rows.filter((r) => khopLoc(r, LOC_HOA_DON_MUA, locNC.dieuKien)) : rows),
+    [rows, locNC.dieuKien]
+  )
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: rows.length }
+    const c: Record<string, number> = { all: locRows.length }
     for (const s of RECEIPT_STATUS) c[s] = 0
-    for (const r of rows) if (c[r.status] !== undefined) c[r.status] += 1
+    for (const r of locRows) if (c[r.status] !== undefined) c[r.status] += 1
     return c
-  }, [rows])
+  }, [locRows])
 
   const shown = useMemo(() => {
     const term = q.trim()
-    return rows.filter((r) => {
+    return locRows.filter((r) => {
       if (tab && tab !== "all" && r.status !== tab) return false
       if (!term) return true
       return viMatchAllWords(term, r.receipt_code, r.invoice_number, r.supplier?.name, r.supplier?.code)
     })
-  }, [rows, q, tab])
+  }, [locRows, q, tab])
 
   const tongPhieu = tongChungTu(
     shown,
@@ -130,12 +149,15 @@ export default function PurchaseReceiptsPage() {
         onPick={setTab}
       />
 
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="Mã phiếu, số hoá đơn, tên NCC…" className="pl-8"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Mã phiếu, số hoá đơn, tên NCC…" className="pl-8"
+          />
+        </div>
+        <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} />
       </div>
 
       {canhBao && (
@@ -157,7 +179,7 @@ export default function PurchaseReceiptsPage() {
         <p className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">
           {/* ⚠ "Chưa có phiếu nào" là một KẾT LUẬN màn hình không có cơ sở
               để rút ra: 0 dòng cũng là thứ ta nhận được khi RLS chặn. */}
-          {q.trim() || tab
+          {q.trim() || tab || locNC.soDangAp
             ? "Không có phiếu nào khớp bộ lọc."
             : "Chưa thấy phiếu nhập nào. Bấm Tạo phiếu để bắt đầu."}
         </p>

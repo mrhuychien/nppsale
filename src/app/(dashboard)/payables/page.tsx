@@ -10,6 +10,9 @@ import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregat
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_CONG_NO_PHAI_TRA } from "@/lib/search/list-filter-fields"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   PAYABLE_COLUMNS,
@@ -64,6 +67,8 @@ export default function PayablesPage() {
     resetColumns,
   } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [], PAYABLE_COLUMNS, [])
   const show = (k: PayableColumnKey) => visibleColumns.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("payables", LOC_CONG_NO_PHAI_TRA)
 
   // Stats: load all UNPAID light fields cho aging summary.
   useEffect(() => {
@@ -94,7 +99,7 @@ export default function PayablesPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÊN NCC PHẢI TRA RIÊNG: PostgREST không cho `or` bắc qua bảng
@@ -111,7 +116,8 @@ export default function PayablesPage() {
     async function fetchData() {
       setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ NCC — xem `useListSearch`. */
-      if (!listSearch.ready) return
+      const searchReady = listSearch.ready && locNC.ready
+      if (!searchReady) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
       const build = (select: string) => {
@@ -131,6 +137,7 @@ export default function PayablesPage() {
          *   tổng của phép đếm chưa lọc.
          */
         if (listSearch.filter) q = q.or(listSearch.filter)
+        for (const f of locNC.menhDe) q = q.or(f)
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         return q
       }
@@ -148,7 +155,7 @@ export default function PayablesPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, statusFilter, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT. Máy chủ đã lọc cả số hoá đơn lẫn
@@ -279,6 +286,7 @@ export default function PayablesPage() {
                 )
               })}
             </div>
+            <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} />
             <ColumnPicker
               available={PAYABLE_COLUMNS}
               value={visibleColumns}

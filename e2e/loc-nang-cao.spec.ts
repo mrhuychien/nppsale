@@ -85,3 +85,31 @@ test("hóa đơn bán: lọc nâng cao Tổng tiền ≥ áp ngay", async ({ pag
   await expect(page.getByText("HD-E2E-2")).toHaveCount(0)
   await expect(page.getByText("HD-E2E-1").first()).toBeVisible()
 })
+
+/**
+ * Đợt 2 (V4b): 13 danh sách còn lại. Mỗi màn: nút "Bộ lọc nâng cao" mở được,
+ * áp một điều kiện không làm sập trang (hook sai thứ tự, cột lạ, render lỗi…).
+ */
+const DOT_2 = [
+  "/receivables", "/payables", "/deliveries", "/invoices", "/purchasing/invoices", "/purchasing/receipts",
+  "/purchase-returns", "/finance/cash-receipts", "/finance/expenses", "/inventory/entries",
+  "/inventory/batches", "/promotions", "/commissions",
+]
+for (const duong of DOT_2) {
+  test(`${duong}: có bộ lọc nâng cao, áp điều kiện không lỗi trang`, async ({ page }) => {
+    const loi: string[] = []
+    page.on("pageerror", (e) => loi.push(e.message))
+    await dangNhap(page)
+    await page.goto(duong)
+    const nut = page.getByRole("button", { name: "Bộ lọc nâng cao", exact: true }).first()
+    await expect(nut).toBeVisible()
+    await nut.click()
+    await expect(page.getByRole("combobox", { name: "Trường điều kiện 1" })).toBeVisible()
+    const o = page.getByLabel("Giá trị điều kiện 1", { exact: true })
+    if (await o.count()) await o.fill((await o.getAttribute("type")) === "date" ? "2026-01-01" : "1")
+    await page.getByRole("button", { name: "Áp dụng" }).click()
+    await expect(nut).toContainText("1")
+    await expect(page.getByText("Application error")).toHaveCount(0)
+    expect(loi, `lỗi trang ở ${duong}`).toEqual([])
+  })
+}

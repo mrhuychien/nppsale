@@ -17,6 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_HOA_DON_DIEN_TU } from "@/lib/search/list-filter-fields"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
@@ -83,6 +86,8 @@ export default function InvoicesPage() {
   )
   const show = (k: InvoiceColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("invoices", LOC_HOA_DON_DIEN_TU)
 
   // Tách stats query khỏi list query — gọi 1 lần khi mount, không reload theo
   // filter (số tổng vẫn chính xác).
@@ -129,10 +134,11 @@ export default function InvoicesPage() {
   // Reset về trang 1 khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query: filter + sort + pagination ở server.
   useEffect(() => {
+    if (!locNC.ready) return
     let cancelled = false
     async function fetch() {
       setLoading(true)
@@ -150,6 +156,7 @@ export default function InvoicesPage() {
       if (filterActive("search") && debouncedSearch) {
         q = q.or(["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
       }
+      for (const f of locNC.menhDe) q = q.or(f)
       if (filterActive("status") && statusFilter !== "all") {
         q = q.eq("status", statusFilter)
       }
@@ -172,7 +179,7 @@ export default function InvoicesPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = invoices // đã filter server-side
   if (authLoading) return <Skeleton className="h-96" />
@@ -261,6 +268,7 @@ export default function InvoicesPage() {
           <Link href="/invoices/reconcile">Đối soát MISA</Link>
         </Button>
         <div className="ml-auto flex items-center gap-2">
+          <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={INVOICE_FILTERS}
             value={activeFilters}

@@ -14,6 +14,9 @@ import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_CONG_NO_PHAI_THU } from "@/lib/search/list-filter-fields"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   RECEIVABLE_COLUMNS,
@@ -80,6 +83,8 @@ export default function ReceivablesPage() {
     resetColumns,
   } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [], RECEIVABLE_COLUMNS, [])
   const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("receivables", LOC_CONG_NO_PHAI_THU)
 
   // Tổng công nợ + phân nhóm tuổi nợ: một lời gọi, Postgres cộng trên TOÀN
   // BỘ dữ liệu. Không phụ thuộc phân trang, không phụ thuộc `db.max_rows`.
@@ -102,14 +107,20 @@ export default function ReceivablesPage() {
     loadSummary()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset page khi bộ lọc nâng cao đổi.
+  useEffect(() => {
+    pg.reset()
+  }, [locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Paginated table query (gồm join customer + sales_user).
   useEffect(() => {
+    if (!locNC.ready) return
     let cancelled = false
     async function fetch() {
       setLoading(true)
       // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
-      const build = (select: string) =>
-        supabase
+      const build = (select: string) => {
+        let q = supabase
           .from("receivables")
           .select(select, { count: "exact" })
           // Hạn cũ nhất TRƯỚC = quá hạn nhiều ngày nhất trước. NVBH đi
@@ -121,6 +132,9 @@ export default function ReceivablesPage() {
           // giới trang do máy chủ tự quyết, khoản nợ lặp / sót giữa hai trang.
           .order("id")
           .range(pg.from, pg.to)
+        for (const f of locNC.menhDe) q = q.or(f)
+        return q
+      }
       const res = await selectResilient<Receivable>(
         build,
         "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
@@ -136,7 +150,7 @@ export default function ReceivablesPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -302,13 +316,16 @@ export default function ReceivablesPage() {
         </CardContent>
       </Card>
 
-      <div className="hidden lg:flex justify-end">
-        <ColumnPicker
-          available={RECEIVABLE_COLUMNS}
-          value={visibleColumns}
-          onChange={setColumns}
-          onReset={resetColumns}
-        />
+      <div className="flex items-center justify-end gap-2">
+        <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
+        <div className="hidden lg:block">
+          <ColumnPicker
+            available={RECEIVABLE_COLUMNS}
+            value={visibleColumns}
+            onChange={setColumns}
+            onReset={resetColumns}
+          />
+        </div>
       </div>
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}

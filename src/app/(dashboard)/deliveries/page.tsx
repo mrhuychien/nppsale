@@ -42,6 +42,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { Input } from "@/components/ui/input"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
+import { AdvancedFilter } from "@/components/ui/advanced-filter"
+import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { LOC_CHUYEN_GIAO } from "@/lib/search/list-filter-fields"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import {
   DELIVERY_COLUMNS,
@@ -177,25 +180,32 @@ export default function DeliveriesPage() {
   )
   const show = (k: DeliveryColumnKey) => visibleColumns.includes(k)
   const supabase = createClient()
+  /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+  const locNC = useAdvancedFilter("deliveries", LOC_CHUYEN_GIAO)
 
   // Reset page khi filter/tab đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, activeTab, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stats counts theo derived status — chính xác toàn tổng, không phụ thuộc page.
   useEffect(() => {
+    if (!locNC.ready) return
     async function loadCounts() {
+      /* Số trên tab theo cùng bộ lọc nâng cao với danh sách. */
+      const dem = () => {
+        let q = supabase.from("deliveries").select("id", { count: "exact", head: true })
+        for (const f of locNC.menhDe) q = q.or(f)
+        return q
+      }
       const [cancelledRes, inTransitRes, settledRes, deliveredRes, pendingRes] = await Promise.all([
-        supabase.from("deliveries").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
-        supabase.from("deliveries").select("id", { count: "exact", head: true }).eq("status", "in_transit"),
-        supabase.from("deliveries").select("id", { count: "exact", head: true })
-          .not("settled_at", "is", null).not("status", "eq", "cancelled"),
-        supabase.from("deliveries").select("id", { count: "exact", head: true })
-          .eq("status", "completed").is("settled_at", null),
+        dem().eq("status", "cancelled"),
+        dem().eq("status", "in_transit"),
+        dem().not("settled_at", "is", null).not("status", "eq", "cancelled"),
+        dem().eq("status", "completed").is("settled_at", null),
         // pending: status null OR status not in (cancelled,in_transit,completed)
         // Đơn giản hoá: count(all) - count(các trên).
-        supabase.from("deliveries").select("id", { count: "exact", head: true }),
+        dem(),
       ])
       const qErr = ([cancelledRes, inTransitRes, settledRes, deliveredRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
@@ -216,9 +226,10 @@ export default function DeliveriesPage() {
       // Để đơn giản, skip computing chính xác — sẽ tính trên page hiện tại.
     }
     loadCounts()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!locNC.ready) return
     let cancelled = false
     async function fetchAll() {
       setLoading(true)
@@ -229,6 +240,7 @@ export default function DeliveriesPage() {
           .select(select, { count: "exact" })
           .order("created_at", { ascending: false })
           .range(pg.from, pg.to)
+        for (const f of locNC.menhDe) q = q.or(f)
         // Filter status theo activeTab (cố gắng server-side cho 4/5 trường hợp đơn giản).
         if (activeTab === "cancelled") q = q.eq("status", "cancelled")
         else if (activeTab === "in_transit") q = q.eq("status", "in_transit")
@@ -317,7 +329,7 @@ export default function DeliveriesPage() {
     return () => {
       cancelled = true
     }
-  }, [supabase, pg.from, pg.to, activeTab, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase, pg.from, pg.to, activeTab, debouncedSearch, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const counts: Record<DerivedStatus, number> = {
@@ -441,7 +453,7 @@ export default function DeliveriesPage() {
             ))}
           </TabsList>
         </Tabs>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -451,6 +463,7 @@ export default function DeliveriesPage() {
               className="pl-9 h-9 w-56"
             />
           </div>
+          <AdvancedFilter truong={LOC_CHUYEN_GIAO} value={locNC.dieuKien} onApply={locNC.apDung} />
           <ColumnPicker
             available={DELIVERY_COLUMNS}
             value={visibleColumns}

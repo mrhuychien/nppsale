@@ -6,6 +6,7 @@ import {
   truncationWarning,
 } from "@/lib/supabase/aggregate"
 import type { DateRange } from "./period"
+import { heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
 
 /**
  * Đổi một khoảng NGÀY (theo lịch Việt Nam) thành khoảng thời điểm để so với
@@ -103,7 +104,9 @@ export interface ReturnRow {
 export interface StockExportLineRow {
   entry_id: string
   product_id: string
+  /** SL ĐƠN VỊ CƠ SỞ (dương) — đã quy đổi, nhân thẳng với `unit_cost`. */
   quantity: number
+  /** Giá mỗi đơn vị cơ sở. */
   unit_cost: number
   posted_at: string
 }
@@ -395,16 +398,88 @@ export async function fetchOrderLines(
 export interface StockEntryLineRow {
   entry_id: string
   product_id: string
+  /** SL theo ĐƠN VỊ GIAO DỊCH (thùng/khay…), làm tròn nguyên — đừng nhân với `unit_cost`. */
   quantity: number
-  /** ⚠ `NOT NULL` dưới database — đo bằng `pg_attribute`, không đoán. */
+  /** SL theo đơn vị cơ sở (mig 039, NOT NULL) — cột kho thật. */
+  qty_in_base_uom?: number | null
+  conversion_factor_snapshot?: number | null
+  /** ⚠ `NOT NULL` dưới database — đo bằng `pg_attribute`, không đoán. Giá MỖI ĐƠN VỊ CƠ SỞ (mig 016). */
   unit_cost: number
 }
 
 export interface ReturnLineRow {
   return_id: string
   product_id: string
+  /** Đơn vị của dòng trả — không có cột hệ số, tra danh mục (`heSoQuyDoi`). */
+  unit_name?: string | null
   quantity: number
   line_total: number
+}
+
+/** Cột dòng phiếu kho đủ để quy về đơn vị cơ sở. */
+const COT_DONG_KHO = "entry_id, product_id, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost"
+
+/**
+ * Cột nhúng của `products` để quy đổi đơn vị + giá niêm yết theo đơn vị
+ * (`@/lib/analytics/units`). Nhúng một-nhiều nên phân trang vẫn theo `products.id`.
+ */
+export const COT_SP_QUY_DOI =
+  "units:product_units(unit_name, conversion), price_lists(unit_name, price, group_id)"
+
+/**
+ * SL đơn vị cơ sở của một dòng phiếu kho (luôn dương).
+ *
+ * ⚠ `unit_cost` là giá MỖI ĐƠN VỊ CƠ SỞ (mig 016) còn `quantity` là SL giao
+ *   dịch — xuất 64 khay mà nhân `quantity` là giá vốn hụt 10 lần. Ưu tiên
+ *   `qty_in_base_uom`; dòng thiếu cột thì `quantity × hệ số chụp`.
+ */
+export function soLuongCoSoDongKho(
+  l: Pick<StockEntryLineRow, "quantity" | "qty_in_base_uom" | "conversion_factor_snapshot">
+): number {
+  if (l.qty_in_base_uom != null && Number.isFinite(Number(l.qty_in_base_uom))) {
+    return Math.abs(Number(l.qty_in_base_uom))
+  }
+  const h = Number(l.conversion_factor_snapshot)
+  return Math.abs(Number(l.quantity) || 0) * (Number.isFinite(h) && h > 0 ? h : 1)
+}
+
+/** Tiền giá vốn của một dòng phiếu kho = SL cơ sở × giá mỗi đơn vị cơ sở. */
+export function giaTriDongKho(
+  l: Pick<StockEntryLineRow, "quantity" | "qty_in_base_uom" | "conversion_factor_snapshot" | "unit_cost">
+): number {
+  return soLuongCoSoDongKho(l) * (Number(l.unit_cost) || 0)
+}
+
+/** Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng, từ các dòng phiếu xuất. */
+export function giaVonBinhQuanCoSo(
+  lines: ReadonlyArray<Pick<StockEntryLineRow, "product_id" | "quantity" | "qty_in_base_uom" | "conversion_factor_snapshot" | "unit_cost">>
+): Map<string, number> {
+  const gom = new Map<string, { qty: number; value: number }>()
+  for (const l of lines) {
+    const e = gom.get(l.product_id) || { qty: 0, value: 0 }
+    e.qty += soLuongCoSoDongKho(l)
+    e.value += giaTriDongKho(l)
+    gom.set(l.product_id, e)
+  }
+  const m = new Map<string, number>()
+  for (const [pid, v] of Array.from(gom.entries())) m.set(pid, v.qty > 0 ? v.value / v.qty : 0)
+  return m
+}
+
+/** SL đơn vị cơ sở của một dòng hóa đơn — ưu tiên hệ số chụp trên dòng. */
+export function soLuongCoSoDongHd(
+  l: Pick<InvoiceLineRow, "quantity" | "unit_name"> & { conversion_factor?: number | null },
+  sp: SanPhamQuyDoi | null | undefined
+): number {
+  return soLuongCoSo(l.quantity, heSoQuyDoi(sp, l.unit_name || "", l.conversion_factor))
+}
+
+/** SL đơn vị cơ sở của một dòng hàng trả — không có hệ số chụp, tra danh mục. */
+export function soLuongCoSoDongTra(
+  l: Pick<ReturnLineRow, "quantity" | "unit_name">,
+  sp: SanPhamQuyDoi | null | undefined
+): number {
+  return soLuongCoSo(l.quantity, heSoQuyDoi(sp, l.unit_name || ""))
 }
 
 /**
@@ -433,7 +508,7 @@ export async function fetchStockEntryLines(
     (lo, from, to) =>
       supabase
         .from("stock_entry_lines")
-        .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+        .select(COT_DONG_KHO, { count: "exact" })
         .in("entry_id", lo)
         .order("id")
         .range(from, to),
@@ -452,7 +527,7 @@ export async function fetchReturnLines(
     (lo, from, to) =>
       supabase
         .from("return_lines")
-        .select("return_id, product_id, quantity, line_total", { count: "exact" })
+        .select("return_id, product_id, unit_name, quantity, line_total", { count: "exact" })
         .in("return_id", lo)
         .order("id")
         .range(from, to),
@@ -604,17 +679,12 @@ export async function fetchCogsForRange(
 
   /* ⚠ CHIA LÔ. `ids` đi ra từ một phép đọc đã phân trang nên nó có thể
      tới 20.000 uuid — nhét cả vào một `.in(...)` là URL vài trăm KB. */
-  const lines = await docTheoLoId<{
-    entry_id: string
-    product_id: string
-    quantity: number
-    unit_cost: number
-  }>(
+  const lines = await docTheoLoId<StockEntryLineRow>(
     ids,
     (lo, from, to) =>
       supabase
         .from("stock_entry_lines")
-        .select("entry_id, product_id, quantity, unit_cost", { count: "exact" })
+        .select(COT_DONG_KHO, { count: "exact" })
         .in("entry_id", lo)
         .order("id")
         .range(from, to),
@@ -623,7 +693,8 @@ export async function fetchCogsForRange(
   let cogs = 0
   const enriched: StockExportLineRow[] = []
   for (const l of lines) {
-    const q = Math.abs(Number(l.quantity))
+    // ⚠ SL CƠ SỞ: `unit_cost` là giá mỗi đơn vị cơ sở. `quantity` trả ra cũng là SL cơ sở.
+    const q = soLuongCoSoDongKho(l)
     const c = Number(l.unit_cost || 0)
     cogs += q * c
     enriched.push({

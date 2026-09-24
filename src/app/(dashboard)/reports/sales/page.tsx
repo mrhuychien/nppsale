@@ -17,11 +17,15 @@ import {
   fetchOrgRows,
   vnDateOf,
   giamGiaHoaDon,
+  giaVonBinhQuanCoSo,
+  giaTriDongKho,
+  soLuongCoSoDongHd,
   type InvoiceLineRow,
   type RevenueInvoiceRow,
   type StockExportLineRow,
   type ReturnSummaryRow as ReturnRowMeta,
 } from "@/lib/analytics/sales"
+import type { SanPhamQuyDoi } from "@/lib/analytics/units"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -50,6 +54,8 @@ interface CustomerRow {
   id: string
   store_name: string
 }
+/** Mặt hàng: NCC + đơn vị quy đổi (dòng hóa đơn thiếu hệ số chụp mới cần). */
+type SanPhamBaoCao = SanPhamQuyDoi & { id: string; primary_supplier_id: string | null }
 interface UserRow {
   id: string
   full_name: string
@@ -85,6 +91,7 @@ export default function SalesReportPage() {
   const [truncated, setTruncated] = useState(false)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
   const [productSupplierMap, setProductSupplierMap] = useState<Map<string, string | null>>(new Map())
+  const [productMap, setProductMap] = useState<Map<string, SanPhamBaoCao>>(new Map())
   const [supplierFilter, setSupplierFilter] = useState<string[]>([])
   const [priceListFilter, setPriceListFilter] = useState<string[]>([])
   const [routeFilter, setRouteFilter] = useState<string[]>([])
@@ -116,8 +123,8 @@ export default function SalesReportPage() {
         fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role", "đọc nhân viên"),
         fetchCogsForRange(supabase, orgId, range),
         fetchOrgRows<{ id: string; name: string }>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
-        fetchOrgRows<{ id: string; primary_supplier_id: string | null }>(
-          supabase, "products", orgId, "id, primary_supplier_id", "đọc mặt hàng"
+        fetchOrgRows<SanPhamBaoCao>(
+          supabase, "products", orgId, "id, base_unit, primary_supplier_id, units:product_units(unit_name, conversion)", "đọc mặt hàng"
         ),
       ])
       const linesList = await fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id))
@@ -141,10 +148,13 @@ export default function SalesReportPage() {
       setStockLines(cogsRes.lines)
       setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
       const psMap = new Map<string, string | null>()
+      const spMap = new Map<string, SanPhamBaoCao>()
       for (const p of productsRes.rows) {
         psMap.set(p.id, p.primary_supplier_id)
+        spMap.set(p.id, p)
       }
       setProductSupplierMap(psMap)
+      setProductMap(spMap)
     } catch (err) {
       setLoadError(errorMessage(err))
     } finally {
@@ -278,7 +288,8 @@ export default function SalesReportPage() {
       const dd = d.split("-")
       const label = `${dd[2]}/${dd[1]}/${dd[0]}`
       const e = map.get(d) || { date: d, label, revenue: 0, cogs: 0, profit: 0, margin: 0 }
-      e.cogs += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
+      // SL cơ sở × giá vốn mỗi đơn vị cơ sở (`fetchCogsForRange` đã quy đổi).
+      e.cogs += giaTriDongKho(l)
       map.set(d, e)
     }
     return Array.from(map.values())
@@ -373,24 +384,16 @@ export default function SalesReportPage() {
       a.push(l)
       lineByInvoice.set(l.invoice_id, a)
     }
-    const productCogs = new Map<string, { qty: number; value: number }>()
-    for (const l of stockLines) {
-      const e = productCogs.get(l.product_id) || { qty: 0, value: 0 }
-      e.qty += Math.abs(Number(l.quantity || 0))
-      e.value += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
-      productCogs.set(l.product_id, e)
-    }
-    const avgCost = new Map<string, number>()
-    for (const [pid, v] of Array.from(productCogs.entries())) {
-      avgCost.set(pid, v.qty > 0 ? v.value / v.qty : 0)
-    }
+    // Giá vốn bình quân mỗi đơn vị cơ sở (dòng từ `fetchCogsForRange` đã là SL cơ sở).
+    const avgCost = giaVonBinhQuanCoSo(stockLines)
     for (const o of filteredInvoices) {
       const e = m.get(o.sales_user_id)
       if (!e) continue
       const ls = lineByInvoice.get(o.id) || []
       let cogs = 0
       for (const l of ls) {
-        cogs += Number(l.quantity || 0) * (avgCost.get(l.product_id) || 0)
+        // SL dòng hóa đơn quy về đơn vị cơ sở trước khi nhân giá vốn cơ sở.
+        cogs += soLuongCoSoDongHd(l, productMap.get(l.product_id)) * (avgCost.get(l.product_id) || 0)
       }
       e.cogs += cogs
     }
@@ -405,7 +408,7 @@ export default function SalesReportPage() {
         return viIncludes(r.name, viNormalize(search))
       })
       .sort((a, b) => b.revenue - a.revenue)
-  }, [filteredInvoices, filteredLines, stockLines, userMap, search])
+  }, [filteredInvoices, filteredLines, stockLines, userMap, productMap, search])
 
   const handleExport = () => {
     if (variant === "time") {

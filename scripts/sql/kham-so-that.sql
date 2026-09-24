@@ -233,4 +233,9 @@ SELECT 26, 'Mig 186 (công nợ âm khi hàng trả > hàng xuất)',
   CASE WHEN position('GREATEST(0' IN pg_get_functiondef('public._wf2b_recompute_receivable(uuid)'::regprocedure)) = 0
             AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_cong_no_am_trang_thai')
        THEN 'OK — đã vá' ELSE 'CHƯA — hóa đơn có hàng trả lớn hơn hàng xuất ghi công nợ 0, mất phần khách được trừ' END, ''
+UNION ALL
+-- 27. Mig 187 — giá vốn ở báo cáo lãi/lỗ theo đơn vị cơ sở
+SELECT 27, 'Mig 187 (giá vốn lãi/lỗ theo đơn vị cơ sở)',
+  CASE WHEN position('qty_in_base_uom' IN pg_get_functiondef('public.finance_pnl(date, date)'::regprocedure)) > 0
+       THEN 'OK — đã vá' ELSE 'CHƯA — xuất theo thùng thì giá vốn lãi/lỗ chỉ còn 1/hệ số' END, ''
 ) t ORDER BY stt;

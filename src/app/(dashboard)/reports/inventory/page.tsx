@@ -32,6 +32,7 @@ import {
   Download,
 } from "lucide-react"
 import type { Batch, Product, SalesOrderLine } from "@/types"
+import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 
 interface SupplierOption {
   id: string
@@ -82,7 +83,7 @@ export default function InventoryReportPage() {
             (from, to) =>
               supabase
                 .from("batches")
-                .select("id, product_id, batch_code, qty_on_hand, expires_at, product:products(*)", {
+                .select("id, product_id, batch_code, qty_on_hand, unit_cost, expires_at, product:products(*)", {
                   count: "exact",
                 })
                 .gt("qty_on_hand", 0)
@@ -95,7 +96,9 @@ export default function InventoryReportPage() {
             (from, to) =>
               supabase
                 .from("sales_order_lines")
-                .select("id, product_id, quantity, don:sales_orders!inner(order_date, status)", { count: "exact" })
+                .select("id, product_id, unit_name, conversion_factor, quantity, don:sales_orders!inner(order_date, status)", {
+                  count: "exact",
+                })
                 .gte("don.order_date", range.from)
                 .lte("don.order_date", range.to)
                 .neq("don.status", "cancelled")
@@ -163,7 +166,10 @@ export default function InventoryReportPage() {
     const lowStockCount = Array.from(stockByProduct.values()).filter(
       (q) => q > 0 && q <= lowStockThreshold
     ).length
-    const totalValue = batches.reduce((sum, b) => sum + b.qty_on_hand * 50000, 0)
+    /* ⚠ TỪNG LÀ `qty_on_hand * 50000` — một giá bịa cho mọi mặt hàng.
+       Tồn lô là đơn vị cơ sở, `batches.unit_cost` là giá vốn MỘT đơn vị cơ
+       sở (mig 016) — cùng công thức `stock_value_summary` (mig 093). */
+    const totalValue = batches.reduce((sum, b) => sum + Number(b.qty_on_hand || 0) * Number(b.unit_cost || 0), 0)
     return { totalItems, uniqueSkus, expiringCount, lowStockCount, totalValue, stockByProduct }
   }, [batches])
 
@@ -224,7 +230,8 @@ export default function InventoryReportPage() {
 
     const salesCount = new Map<string, number>()
     salesLines.forEach((l) => {
-      salesCount.set(l.product_id, (salesCount.get(l.product_id) || 0) + l.quantity)
+      // Quy về đơn vị cơ sở như tồn lô: 1 thùng không phải "1" (24/09/2026).
+      salesCount.set(l.product_id, (salesCount.get(l.product_id) || 0) + slCoSoDong(l))
     })
 
     const slowMovers = batches
@@ -383,7 +390,7 @@ export default function InventoryReportPage() {
             <h3 className="mt-1 text-2xl font-black text-foreground">
               {formatCurrency(stats.totalValue)}
             </h3>
-            <p className="mt-2 text-xs text-muted-foreground">Ước tính theo giá trung bình</p>
+            <p className="mt-2 text-xs text-muted-foreground">Theo giá vốn của từng lô</p>
           </CardContent>
         </Card>
 

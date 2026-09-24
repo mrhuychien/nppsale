@@ -45,7 +45,10 @@ type MovementRow = {
   batch_id: string | null
   batch_code: string | null
   unit_name: string
+  /** SL theo ĐƠN VỊ CƠ SỞ — tồn chạy, tổng nhập/xuất và giá trị đều đọc số này. */
   quantity: number
+  /** SL như ghi trên phiếu (đơn vị giao dịch), chỉ để hiện kèm. */
+  qtyGd: number
   unit_cost: number
   notes: string | null
   source: string
@@ -100,7 +103,7 @@ export default function StockCardPage() {
       supabase
         .from("stock_entry_lines")
         .select(
-          "id, batch_id, unit_name, quantity, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))"
+          "id, batch_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))"
         )
         .eq("product_id", productId),
       /**
@@ -139,6 +142,8 @@ export default function StockCardPage() {
       batch_id: string | null
       unit_name: string
       quantity: number
+      qty_in_base_uom?: number | null
+      conversion_factor_snapshot?: number | null
       unit_cost: number
       notes: string | null
       batch?: { batch_code?: string } | null
@@ -186,7 +191,14 @@ export default function StockCardPage() {
         batch_id: l.batch_id,
         batch_code: l.batch?.batch_code || null,
         unit_name: l.unit_name,
-        quantity: Number(l.quantity) || 0,
+        /* ⚠ PHIẾU XUẤT GHI `quantity` THEO ĐƠN VỊ GIAO DỊCH (thùng), còn tồn lô và
+           `unit_cost` theo ĐƠN VỊ CƠ SỞ — cộng thẳng là tồn chạy lệch, giá trị
+           chia cho hệ số (chủ nhà 24/09/2026: rà lỗi quy đổi). */
+        quantity:
+          l.qty_in_base_uom != null
+            ? Number(l.qty_in_base_uom) || 0
+            : (Number(l.quantity) || 0) * (Number(l.conversion_factor_snapshot) || 1),
+        qtyGd: Number(l.quantity) || 0,
         unit_cost: Number(l.unit_cost) || 0,
         notes: l.notes,
         source: l.entry!.entry_code,
@@ -448,9 +460,15 @@ export default function StockCardPage() {
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         {isIn ? `+${m.quantity}` : meta.sign === "adjust" && m.quantity > 0 ? `+${m.quantity}` : "-"}
+                        {isIn && m.unit_name && m.unit_name !== product?.base_unit && (
+                          <span className="block text-[11px] font-normal text-muted-foreground">{m.qtyGd} {m.unit_name}</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-error">
                         {isOut ? `-${m.quantity}` : "-"}
+                        {isOut && m.unit_name && m.unit_name !== product?.base_unit && (
+                          <span className="block text-[11px] font-normal text-muted-foreground">{m.qtyGd} {m.unit_name}</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-bold">{m.running}</TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
-import type { InvoiceLineRow } from "@/lib/analytics/sales"
+import { soLuongCoSoDongHd, type InvoiceLineRow } from "@/lib/analytics/sales"
+import type { SanPhamQuyDoi } from "@/lib/analytics/units"
 
 export interface ProductMeta {
   id: string
@@ -13,6 +14,8 @@ export interface SalesByProductRow {
   id: string
   sku: string
   name: string
+  /** Đơn vị cơ sở ("" khi gộp theo nhóm) — `qty`/`returnQty` đã quy về nó. */
+  unit: string
   qty: number
   revenue: number
   returnQty: number
@@ -31,9 +34,17 @@ interface Props {
   rows: SalesByProductRow[]
   orderLines: InvoiceLineRow[]
   orderMap: Map<string, OrderMeta>
+  /** Để quy SL dòng về đơn vị cơ sở khi mở chi tiết. */
+  productMap: ReadonlyMap<string, SanPhamQuyDoi>
 }
 
-export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
+/** SL kèm đơn vị cơ sở, vd "640 hộp". */
+function slDonVi(qty: number, unit: string): string {
+  const s = qty.toLocaleString("vi-VN")
+  return unit ? `${s} ${unit}` : s
+}
+
+export function SalesByProductView({ rows, orderLines, orderMap, productMap }: Props) {
   const totals = rows.reduce(
     (acc, r) => ({
       qty: acc.qty + r.qty,
@@ -52,9 +63,9 @@ export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
       columns={[
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
-        { key: "qty", label: "SL Bán", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+        { key: "qty", label: "SL Bán", align: "right", render: (r) => slDonVi(r.qty, r.unit) },
         { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "rqty", label: "SL Trả", align: "right", render: (r) => r.returnQty.toLocaleString("vi-VN") },
+        { key: "rqty", label: "SL Trả", align: "right", render: (r) => slDonVi(r.returnQty, r.unit) },
         { key: "rval", label: "Giá trị trả", align: "right", render: (r) => (r.returnValue > 0 ? `-${formatCurrency(r.returnValue)}` : "0") },
         { key: "net", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.netRevenue)}</span> },
       ]}
@@ -78,7 +89,8 @@ export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
         const grouped = new Map<string, { qty: number; line_total: number }>()
         for (const l of lines) {
           const e = grouped.get(l.invoice_id) || { qty: 0, line_total: 0 }
-          e.qty += Number(l.quantity || 0)
+          // SL dòng (thùng/khay…) quy về đơn vị cơ sở trước khi cộng.
+          e.qty += soLuongCoSoDongHd(l, productMap.get(l.product_id))
           e.line_total += Number(l.line_total || 0)
           grouped.set(l.invoice_id, e)
         }
@@ -126,7 +138,7 @@ export function SalesByProductView({ rows, orderLines, orderMap }: Props) {
                       </td>
                       <td className="px-3 py-1.5">{d.customer_name}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {d.qty.toLocaleString("vi-VN")}
+                        {slDonVi(d.qty, r.unit)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
                         {formatCurrency(d.line_total)}

@@ -20,7 +20,18 @@ import {
   type ReturnSummaryRow,
   fetchStockEntryLines,
   fetchReturnLines,
+  giaVonBinhQuanCoSo,
+  soLuongCoSoDongHd,
+  COT_SP_QUY_DOI,
+  type ReturnLineRow,
+  type StockEntryLineRow,
 } from "@/lib/analytics/sales"
+import {
+  congHangBanNhanVien,
+  type HangBanNhanVien,
+  type HangBanSanPham,
+  type SanPhamHangBan,
+} from "@/lib/analytics/hang-ban-nhan-vien"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -55,30 +66,14 @@ interface CustomerRow {
   group_id?: string | null
   channel?: string | null
 }
-interface ProductRow {
-  id: string
-  sku: string
-  name: string
+/** Mặt hàng kèm đơn vị quy đổi + bảng giá (`COT_SP_QUY_DOI`). */
+interface ProductRow extends SanPhamHangBan {
   category?: string | null
   brand?: string | null
-  base_unit?: string | null
-  sell_price?: number | null
-}
-interface ReturnLineRow {
-  return_id: string
-  product_id: string
-  quantity: number
-  line_total: number
 }
 interface StockEntry {
   id: string
   type: string
-}
-interface StockEntryLine {
-  entry_id: string
-  product_id: string
-  quantity: number
-  unit_cost: number
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -115,7 +110,7 @@ export default function EmployeesReportPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
-  const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -146,7 +141,7 @@ export default function EmployeesReportPage() {
           fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
-            "id, sku, name, base_unit, sell_price, category, brand", "đọc mặt hàng"
+            `id, sku, name, base_unit, sell_price, category, brand, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
           fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
@@ -211,21 +206,8 @@ export default function EmployeesReportPage() {
     return m
   }, [products])
 
-  // Average COGS per product over the period
-  const avgCostMap = useMemo(() => {
-    const productCogs = new Map<string, { qty: number; value: number }>()
-    for (const l of stockLines) {
-      const e = productCogs.get(l.product_id) || { qty: 0, value: 0 }
-      e.qty += Math.abs(Number(l.quantity || 0))
-      e.value += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
-      productCogs.set(l.product_id, e)
-    }
-    const m = new Map<string, number>()
-    for (const [pid, v] of Array.from(productCogs.entries())) {
-      m.set(pid, v.qty > 0 ? v.value / v.qty : 0)
-    }
-    return m
-  }, [stockLines])
+  // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ.
+  const avgCostMap = useMemo(() => giaVonBinhQuanCoSo(stockLines), [stockLines])
 
   // Map invoice_id -> [dòng hóa đơn]
   const linesByInvoice = useMemo(() => {
@@ -426,7 +408,8 @@ export default function EmployeesReportPage() {
       const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
         if (!productPasses(l.product_id)) continue
-        e.cogs += Number(l.quantity || 0) * (avgCostMap.get(l.product_id) || 0)
+        // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
+        e.cogs += soLuongCoSoDongHd(l, productMap.get(l.product_id)) * (avgCostMap.get(l.product_id) || 0)
       }
       m.set(o.sales_user_id, e)
     }
@@ -436,7 +419,7 @@ export default function EmployeesReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [invoices, linesByInvoice, avgCostMap, userMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, avgCostMap, userMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên ==============
   type EmployeeProductRow = {
@@ -481,9 +464,11 @@ export default function EmployeesReportPage() {
           pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0, customers: [] }
           e.products.push(pr)
         }
-        pr.qty += Number(l.quantity || 0)
+        // SL quy về đơn vị cơ sở trước khi cộng (3 thùng + 5 hộp ≠ 8).
+        const qty = soLuongCoSoDongHd(l, prod)
+        pr.qty += qty
         pr.revenue += Number(l.line_total || 0)
-        e.qty += Number(l.quantity || 0)
+        e.qty += qty
         const c = customerMap.get(o.customer_id)
         let cust = pr.customers.find((x) => x.id === o.customer_id)
         if (!cust) {
@@ -495,7 +480,7 @@ export default function EmployeesReportPage() {
           }
           pr.customers.push(cust)
         }
-        cust.qty += Number(l.quantity || 0)
+        cust.qty += qty
         cust.revenue += Number(l.line_total || 0)
       }
       m.set(o.sales_user_id, e)
@@ -562,14 +547,15 @@ export default function EmployeesReportPage() {
         if (!productPasses(l.product_id)) continue
         const prod = productMap.get(l.product_id)
         if (!prod) continue
-        cust.qty += Number(l.quantity || 0)
-        e.qty += Number(l.quantity || 0)
+        const qty = soLuongCoSoDongHd(l, prod)
+        cust.qty += qty
+        e.qty += qty
         let pr = cust.products.find((x) => x.id === l.product_id)
         if (!pr) {
           pr = { id: l.product_id, sku: prod.sku, name: prod.name, qty: 0, revenue: 0 }
           cust.products.push(pr)
         }
-        pr.qty += Number(l.quantity || 0)
+        pr.qty += qty
         pr.revenue += Number(l.line_total || 0)
       }
       m.set(o.sales_user_id, e)
@@ -582,108 +568,18 @@ export default function EmployeesReportPage() {
   }, [invoices, linesByInvoice, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   // ============== Hàng bán theo nhân viên (summary 9 cột) ==============
-  // Map customer→sales_user thông qua đơn (returns không tham chiếu trực tiếp
-  // sales_user, nên dùng đơn gần nhất của KH trong kỳ để gán).
-  type SummaryProduct = {
-    productId: string
-    sku: string
-    name: string
-    unit: string
-    qty: number
-    listed: number
-    revenue: number
-    diff: number
-    returnQty: number
-    returnValue: number
-    netRevenue: number
-  }
-  type SummaryRow = {
-    id: string
-    name: string
-    role: string
-    qty: number
-    listed: number
-    revenue: number
-    diff: number
-    returnQty: number
-    returnValue: number
-    netRevenue: number
-    products: SummaryProduct[]
-  }
+  // SL quy về đơn vị cơ sở, niêm yết theo giá của đúng đơn vị dòng — `congHangBanNhanVien`.
+  type SummaryProduct = HangBanSanPham
+  type SummaryRow = Omit<HangBanNhanVien, "products"> & { name: string; role: string; products: SummaryProduct[] }
 
   const employeeSummaryRows: SummaryRow[] = useMemo(() => {
-    const m = new Map<string, SummaryRow & { _byProduct: Map<string, SummaryProduct> }>()
-
-    const ensureRow = (uid: string): SummaryRow & { _byProduct: Map<string, SummaryProduct> } => {
-      const existing = m.get(uid)
-      if (existing) return existing
-      const u = userMap.get(uid)
-      const r: SummaryRow & { _byProduct: Map<string, SummaryProduct> } = {
-        id: uid,
-        name: u?.full_name || "—",
-        role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
-        qty: 0,
-        listed: 0,
-        revenue: 0,
-        diff: 0,
-        returnQty: 0,
-        returnValue: 0,
-        netRevenue: 0,
-        products: [],
-        _byProduct: new Map(),
-      }
-      m.set(uid, r)
-      return r
-    }
-
-    const ensureProduct = (
-      row: SummaryRow & { _byProduct: Map<string, SummaryProduct> },
-      productId: string
-    ): SummaryProduct => {
-      const existing = row._byProduct.get(productId)
-      if (existing) return existing
-      const p = productMap.get(productId)
-      const created: SummaryProduct = {
-        productId,
-        sku: p?.sku || "—",
-        name: p?.name || "—",
-        unit: p?.base_unit || "",
-        qty: 0,
-        listed: 0,
-        revenue: 0,
-        diff: 0,
-        returnQty: 0,
-        returnValue: 0,
-        netRevenue: 0,
-      }
-      row._byProduct.set(productId, created)
-      row.products.push(created)
-      return created
-    }
-
-    // Order lines → tính SL bán + Giá trị niêm yết + Doanh thu
+    const ban: { uid: string; line: InvoiceLineRow }[] = []
     for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
-      const row = ensureRow(o.sales_user_id)
-      const ls = linesByInvoice.get(o.id) || []
-      for (const l of ls) {
+      for (const l of linesByInvoice.get(o.id) || []) {
         if (!productPasses(l.product_id)) continue
-        const p = productMap.get(l.product_id)
-        if (!p) continue
-        const qty = Number(l.quantity || 0)
-        const unitListPrice = Number(p.sell_price || 0) > 0
-          ? Number(p.sell_price)
-          : Number(l.unit_price || 0)
-        const listed = qty * unitListPrice
-        const revenue = Number(l.line_total || 0)
-        row.qty += qty
-        row.listed += listed
-        row.revenue += revenue
-        const pr = ensureProduct(row, l.product_id)
-        pr.qty += qty
-        pr.listed += listed
-        pr.revenue += revenue
+        ban.push({ uid: o.sales_user_id, line: l })
       }
     }
 
@@ -695,7 +591,6 @@ export default function EmployeesReportPage() {
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
-    const lineByOrderId = linesByInvoice
     const lastSalesUserByCustomer = new Map<string, string>()
     const sortedOrders = [...invoices].sort((a, b) => b.invoice_date.localeCompare(a.invoice_date))
     for (const o of sortedOrders) {
@@ -708,34 +603,17 @@ export default function EmployeesReportPage() {
       const uid = r.sales_user_id || lastSalesUserByCustomer.get(r.customer_id)
       if (uid) returnIdToSalesUser.set(r.id, uid)
     }
-
+    const tra: { uid: string; line: ReturnLineRow }[] = []
     for (const rl of returnLines) {
       const uid = returnIdToSalesUser.get(rl.return_id)
       if (!uid || !matchSearchUser(uid)) continue
-      const row = ensureRow(uid)
-      const qty = Number(rl.quantity || 0)
-      const value = Number(rl.line_total || 0)
-      row.returnQty += qty
-      row.returnValue += value
-      const pr = ensureProduct(row, rl.product_id)
-      pr.returnQty += qty
-      pr.returnValue += value
+      tra.push({ uid, line: rl })
     }
 
-    // Suppress unused warning
-    void lineByOrderId
-
-    // Tính chênh lệch + doanh thu thuần
-    for (const row of Array.from(m.values())) {
-      row.diff = row.revenue - row.listed
-      row.netRevenue = row.revenue - row.returnValue
-      for (const p of row.products) {
-        p.diff = p.revenue - p.listed
-        p.netRevenue = p.revenue - p.returnValue
-      }
-      row.products.sort((a, b) => b.revenue - a.revenue)
-    }
-    return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
+    return congHangBanNhanVien({ ban, tra, sanPham: productMap }).map((r) => {
+      const u = userMap.get(r.id)
+      return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
+    })
   }, [invoices, linesByInvoice, returns, returnLines, userMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   const handleExport = () => {

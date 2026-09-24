@@ -17,7 +17,8 @@ import {
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { fetchStockEntryLines, fetchPostedStockEntries, fetchOrgRows } from "@/lib/analytics/sales"
+import { fetchPostedStockEntries, fetchOrgRows } from "@/lib/analytics/sales"
+import { giaTriVonDongKho, slCoSoDong, slCoSoDongKho } from "@/lib/analytics/quy-doi-dong"
 import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import { toast } from "@/hooks/use-toast"
@@ -42,6 +43,8 @@ interface ProductRow {
   id: string
   sku: string
   name: string
+  base_unit: string
+  units?: { unit_name: string; conversion: number }[] | null
 }
 
 interface PurchaseInvoiceRow {
@@ -57,6 +60,8 @@ interface PurchaseInvoiceRow {
 interface POLineRow {
   po_id: string
   product_id: string
+  /** Đơn vị của `quantity` / `received_qty` — không có số chụp, tra danh mục. */
+  unit_name: string
   quantity: number
   line_total: number
   received_qty: number
@@ -84,6 +89,8 @@ interface StockEntryLineRow {
   entry_id: string
   product_id: string
   quantity: number
+  /** Số lượng cơ sở — `unit_cost` là giá vốn MỘT đơn vị cơ sở (mig 016). */
+  qty_in_base_uom: number | null
   unit_cost: number
 }
 
@@ -130,7 +137,13 @@ export default function SuppliersReportPage() {
          chạy song song, không có mốc thì dòng lặp/sót. */
       const [suppliersRes, productsRes, invoicesRes, payablesRes, stockEntriesRes] = await Promise.all([
         fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name, code, category, phone", "đọc nhà cung cấp"),
-        fetchOrgRows<ProductRow>(supabase, "products", orgId, "id, sku, name", "đọc mặt hàng"),
+        fetchOrgRows<ProductRow>(
+          supabase,
+          "products",
+          orgId,
+          "id, sku, name, base_unit, units:product_units(unit_name, conversion)",
+          "đọc mặt hàng"
+        ),
         docDuHoacNem<PurchaseInvoiceRow>(
           (from, to) =>
             supabase
@@ -170,13 +183,26 @@ export default function SuppliersReportPage() {
           (lo, from, to) =>
             supabase
               .from("purchase_order_lines")
-              .select("po_id, product_id, quantity, line_total, received_qty", { count: "exact" })
+              .select("po_id, product_id, unit_name, quantity, line_total, received_qty", { count: "exact" })
               .in("po_id", lo)
               .order("id")
               .range(from, to),
           "đọc dòng đơn mua"
         ),
-        fetchStockEntryLines(supabase, stockEntryIds),
+        /* ⚠ ĐỌC `qty_in_base_uom`, KHÔNG CHỈ `quantity` (24/09/2026). Cột
+           `quantity` không chắc là đơn vị cơ sở (phiếu xuất ghi theo đơn vị
+           giao dịch); nhân nó với giá vốn cơ sở là sai. */
+        docTheoLoId<StockEntryLineRow>(
+          stockEntryIds,
+          (lo, from, to) =>
+            supabase
+              .from("stock_entry_lines")
+              .select("entry_id, product_id, quantity, qty_in_base_uom, unit_cost", { count: "exact" })
+              .in("entry_id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc dòng phiếu kho"
+        ),
       ])
       setTruncated(
         suppliersRes.truncated || productsRes.truncated || invoicesRes.truncated ||
@@ -317,7 +343,7 @@ export default function SuppliersReportPage() {
     name: string
     qty: number
     value: number
-    products: { id: string; sku: string; name: string; qty: number; value: number }[]
+    products: { id: string; sku: string; name: string; unit: string; qty: number; value: number }[]
   }
   const supplierProductRows: SupplierProductRow[] = useMemo(() => {
     const m = new Map<string, SupplierProductRow>()
@@ -338,8 +364,8 @@ export default function SuppliersReportPage() {
         products: [],
       }
       const p = productMap.get(l.product_id)
-      const q = Math.abs(Number(l.quantity || 0))
-      const v = q * Number(l.unit_cost || 0)
+      const q = slCoSoDongKho(l)
+      const v = giaTriVonDongKho(l)
       e.qty += q
       e.value += v
       const existing = e.products.find((x) => x.id === l.product_id)
@@ -351,6 +377,7 @@ export default function SuppliersReportPage() {
           id: l.product_id,
           sku: p?.sku || "—",
           name: p?.name || "—",
+          unit: p?.base_unit || "",
           qty: q,
           value: v,
         })
@@ -377,7 +404,8 @@ export default function SuppliersReportPage() {
           products: [],
         }
         const p = productMap.get(l.product_id)
-        const q = Number(l.received_qty || l.quantity || 0)
+        // SL đơn mua theo `unit_name` của dòng → quy về đơn vị cơ sở.
+        const q = slCoSoDong({ quantity: l.received_qty || l.quantity || 0, unit_name: l.unit_name }, p)
         const v = Number(l.line_total || 0)
         e.qty += q
         e.value += v
@@ -390,6 +418,7 @@ export default function SuppliersReportPage() {
             id: l.product_id,
             sku: p?.sku || "—",
             name: p?.name || "—",
+            unit: p?.base_unit || "",
             qty: q,
             value: v,
           })
@@ -420,11 +449,11 @@ export default function SuppliersReportPage() {
       downloadXlsx(`bao-cao-ncc-congno-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
-        ["Mã NCC", "Tên NCC", "Mã hàng", "Tên hàng", "SL", "Giá trị"],
+        ["Mã NCC", "Tên NCC", "Mã hàng", "Tên hàng", "ĐV cơ sở", "SL (ĐV cơ sở)", "Giá trị"],
       ]
       for (const r of supplierProductRows) {
         for (const p of r.products) {
-          out.push([r.code, r.name, p.sku, p.name, p.qty, p.value])
+          out.push([r.code, r.name, p.sku, p.name, p.unit, p.qty, p.value])
         }
       }
       downloadXlsx(`bao-cao-ncc-hangnhap-${range.from}-${range.to}`, out)
@@ -570,7 +599,7 @@ export default function SuppliersReportPage() {
           columns={[
             { key: "code", label: "Mã NCC", render: (r) => <span className="font-mono text-xs text-primary">{r.code}</span> },
             { key: "name", label: "Tên NCC", render: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "qty", label: "Tổng SL nhập", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "qty", label: "Tổng SL nhập (ĐV cơ sở)", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
             { key: "val", label: "Giá trị nhập", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.value)}</span> },
           ]}
           totalsRow={
@@ -589,7 +618,7 @@ export default function SuppliersReportPage() {
                   <tr className="bg-[#ecfdf3]/60">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL nhập</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL nhập (ĐV cơ sở)</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị</th>
                   </tr>
                 </thead>
@@ -598,7 +627,10 @@ export default function SuppliersReportPage() {
                     <tr key={p.id} className="border-t border-border/30">
                       <td className="px-3 py-1.5 font-mono text-xs text-primary">{p.sku}</td>
                       <td className="px-3 py-1.5">{p.name}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{p.qty.toLocaleString("vi-VN")}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
+                        {p.qty.toLocaleString("vi-VN")}
+                        {p.unit ? ` ${p.unit}` : ""}
+                      </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(p.value)}</td>
                     </tr>
                   ))}

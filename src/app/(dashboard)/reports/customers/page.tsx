@@ -20,7 +20,12 @@ import {
   type ReturnSummaryRow as ReturnRowMeta,
   fetchStockEntryLines,
   fetchReturnLines,
+  giaVonBinhQuanCoSo,
+  soLuongCoSoDongHd,
+  soLuongCoSoDongTra,
+  type StockEntryLineRow,
 } from "@/lib/analytics/sales"
+import type { SanPhamQuyDoi } from "@/lib/analytics/units"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -50,7 +55,8 @@ interface CustomerRow {
   credit_limit: number
   phone: string | null
 }
-interface ProductRow {
+/** Mặt hàng kèm đơn vị quy đổi — SL cộng dồn quy về đơn vị cơ sở. */
+interface ProductRow extends SanPhamQuyDoi {
   id: string
   sku: string
   name: string
@@ -59,6 +65,7 @@ interface ReturnLineRow {
   return_id: string
   customer_id?: string
   product_id: string
+  unit_name?: string | null
   quantity: number
   line_total: number
 }
@@ -70,12 +77,6 @@ interface ReceivableRow {
   due_date: string | null
   status: string
   created_at: string
-}
-interface StockEntryLine {
-  entry_id: string
-  product_id: string
-  quantity: number
-  unit_cost: number
 }
 interface StockEntry {
   id: string
@@ -103,7 +104,7 @@ export default function CustomersReportPage() {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [receivables, setReceivables] = useState<ReceivableRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
-  const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
@@ -133,7 +134,9 @@ export default function CustomersReportPage() {
           fetchOrgRows<CustomerRow>(
             supabase, "customers", orgId, "id, store_name, channel, credit_limit, phone", "đọc khách hàng"
           ),
-          fetchOrgRows<ProductRow>(supabase, "products", orgId, "id, sku, name", "đọc mặt hàng"),
+          fetchOrgRows<ProductRow>(
+            supabase, "products", orgId, "id, sku, name, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"
+          ),
           docDuHoacNem<ReceivableRow>(
             (from, to) =>
               supabase
@@ -273,18 +276,8 @@ export default function CustomersReportPage() {
   // -------------------- Lợi nhuận (theo khách) --------------------
   type ProfitRow = SalesRow & { cogs: number; profit: number; margin: number }
   const profitRows: ProfitRow[] = useMemo(() => {
-    // average COGS per product across the period
-    const productCogs = new Map<string, { qty: number; value: number }>()
-    for (const l of stockLines) {
-      const e = productCogs.get(l.product_id) || { qty: 0, value: 0 }
-      e.qty += Math.abs(Number(l.quantity || 0))
-      e.value += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
-      productCogs.set(l.product_id, e)
-    }
-    const avgCost = new Map<string, number>()
-    for (const [pid, v] of Array.from(productCogs.entries())) {
-      avgCost.set(pid, v.qty > 0 ? v.value / v.qty : 0)
-    }
+    // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ.
+    const avgCost = giaVonBinhQuanCoSo(stockLines)
     const linesByInvoice = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
       const a = linesByInvoice.get(l.invoice_id) || []
@@ -311,7 +304,8 @@ export default function CustomersReportPage() {
       e.revenue += Number(o.total || 0)
       const ls = linesByInvoice.get(o.id) || []
       for (const l of ls) {
-        e.cogs += Number(l.quantity || 0) * (avgCost.get(l.product_id) || 0)
+        // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
+        e.cogs += soLuongCoSoDongHd(l, productMap.get(l.product_id)) * (avgCost.get(l.product_id) || 0)
       }
       m.set(o.customer_id, e)
     }
@@ -321,7 +315,7 @@ export default function CustomersReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [invoices, lines, stockLines, customerMap, matchSearch])
+  }, [invoices, lines, stockLines, customerMap, productMap, matchSearch])
 
   // -------------------- Công nợ --------------------
   type RecvRow = {
@@ -340,7 +334,7 @@ export default function CustomersReportPage() {
       const c = customerMap.get(r.customer_id)
       if (!matchSearch(c)) continue
       const outstanding = Number(r.amount || 0) - Number(r.paid || 0)
-      if (outstanding <= 0) continue
+      if (outstanding === 0) continue
       const e = m.get(r.customer_id) || {
         id: r.customer_id,
         name: c?.store_name || "—",
@@ -350,10 +344,14 @@ export default function CustomersReportPage() {
         outstanding: 0,
         overdueDays: 0,
       }
-      e.invoices += 1
+      /* Dòng ÂM (hàng trả > hàng xuất, mig 186) là dư có: TRỪ vào nợ, không
+         phải một hóa đơn còn nợ, không bao giờ quá hạn. */
       e.outstanding += outstanding
-      const days = r.due_date ? Math.ceil((now - new Date(r.due_date).getTime()) / 86400000) : 0
-      if (days > e.overdueDays) e.overdueDays = days
+      if (outstanding > 0) {
+        e.invoices += 1
+        const days = r.due_date ? Math.ceil((now - new Date(r.due_date).getTime()) / 86400000) : 0
+        if (days > e.overdueDays) e.overdueDays = days
+      }
       m.set(r.customer_id, e)
     }
     return Array.from(m.values()).sort((a, b) => b.outstanding - a.outstanding)
@@ -403,10 +401,12 @@ export default function CustomersReportPage() {
           returnQty: 0,
           returnValue: 0,
         }
-        pr.qty += Number(l.quantity || 0)
+        // SL quy về đơn vị cơ sở trước khi cộng.
+        const qty = soLuongCoSoDongHd(l, p)
+        pr.qty += qty
         pr.revenue += Number(l.line_total || 0)
         prodMap.set(l.product_id, pr)
-        e.qty += Number(l.quantity || 0)
+        e.qty += qty
       }
       e.products = Array.from(prodMap.values())
       m.set(o.customer_id, e)
@@ -420,8 +420,10 @@ export default function CustomersReportPage() {
       const p = productMap.get(rl.product_id)
       if (!p) continue
       const pr = e.products.find((x) => x.id === rl.product_id)
+      // Dòng trả không có hệ số chụp → tra danh mục.
+      const rqty = soLuongCoSoDongTra(rl, p)
       if (pr) {
-        pr.returnQty += Number(rl.quantity || 0)
+        pr.returnQty += rqty
         pr.returnValue += Number(rl.line_total || 0)
       } else {
         e.products.push({
@@ -430,7 +432,7 @@ export default function CustomersReportPage() {
           name: p.name,
           qty: 0,
           revenue: 0,
-          returnQty: Number(rl.quantity || 0),
+          returnQty: rqty,
           returnValue: Number(rl.line_total || 0),
         })
       }

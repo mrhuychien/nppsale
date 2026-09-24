@@ -29,6 +29,7 @@ import {
   type InvoiceLineRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
@@ -295,14 +296,15 @@ export default function BusinessOverviewPage() {
     for (const l of lines) {
       const e = cur.get(l.product_id) || { revenue: 0, qty: 0, orders: new Set() }
       e.revenue += Number(l.line_total || 0)
-      e.qty += Number(l.quantity || 0)
+      // SL hóa đơn theo `unit_name` → quy về đơn vị cơ sở bằng hệ số chụp (24/09/2026).
+      e.qty += slCoSoDong(l)
       e.orders.add(l.invoice_id)
       cur.set(l.product_id, e)
     }
     for (const l of prevLines) {
       const e = prev.get(l.product_id) || { revenue: 0, qty: 0, orders: new Set() }
       e.revenue += Number(l.line_total || 0)
-      e.qty += Number(l.quantity || 0)
+      e.qty += slCoSoDong(l)
       e.orders.add(l.invoice_id)
       prev.set(l.product_id, e)
     }

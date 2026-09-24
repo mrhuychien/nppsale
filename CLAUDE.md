@@ -30,6 +30,14 @@ Chủ nhà chốt 24/09/2026: *"làm tiếp phần doanh thu tính theo hoá đ�
   liệu HOẠT ĐỘNG (số đơn đã đặt, nháp…).
 - `invoice_date` là DATE: so bằng ngày theo giờ VN (`vnDateKey`), không so với mốc ISO/UTC.
 
+### Quy đổi đơn vị trong báo cáo
+Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).
+- Cộng / hiện số lượng qua nhiều dòng → quy về **đơn vị cơ sở** trước (`soLuongCoSo`,
+  `heSoQuyDoi` trong `src/lib/analytics/units.ts`; ưu tiên hệ số chụp trên dòng).
+- Tiền = SL × giá thì giá phải là giá **của đúng đơn vị đó** (`giaNiemYetDonVi`).
+- `unit_cost` (kho) là giá **mỗi đơn vị cơ sở**.
+- Doanh số theo hóa đơn; báo cáo Đặt hàng theo đơn hàng.
+
 ### Chuyến giao
 Chủ nhà 24/09/2026: không dùng chuyến giao nữa — không làm thêm gì cho luồng chuyến giao.
 

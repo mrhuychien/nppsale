@@ -23,9 +23,17 @@ import {
   fetchStockEntryLines,
   fetchPostedStockEntries,
   fetchOrgRows,
+  soLuongCoSoDongHd,
+  soLuongCoSoDongTra,
+  soLuongCoSoDongKho,
+  giaTriDongKho,
+  COT_SP_QUY_DOI,
   type InvoiceLineRow,
   type RevenueInvoiceRow,
+  type ReturnLineRow,
+  type StockEntryLineRow,
 } from "@/lib/analytics/sales"
+import type { SanPhamQuyDoi } from "@/lib/analytics/units"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
@@ -50,7 +58,8 @@ const VARIANTS = [
   { key: "movement_detail" as const, label: "Xuất nhập tồn chi tiết" },
 ] as const
 
-interface ProductRow {
+/** Mặt hàng kèm đơn vị quy đổi (`COT_SP_QUY_DOI`) — SL cộng dồn quy về đơn vị cơ sở. */
+interface ProductRow extends SanPhamQuyDoi {
   id: string
   sku: string
   name: string
@@ -72,26 +81,12 @@ interface BatchRow {
   unit_cost: number
 }
 
-interface ReturnLineRow {
-  return_id: string
-  product_id: string
-  quantity: number
-  line_total: number
-}
-
 interface StockEntry {
   id: string
   type: "import" | "export" | "stocktake" | "transfer"
   status: string
   posted_at: string | null
   entry_code: string
-}
-
-interface StockEntryLine {
-  entry_id: string
-  product_id: string
-  quantity: number
-  unit_cost: number
 }
 
 interface CustomerRow {
@@ -117,7 +112,7 @@ export default function ProductsReportPage() {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [batches, setBatches] = useState<BatchRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
-  const [stockLines, setStockLines] = useState<StockEntryLine[]>([])
+  const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
   const [supplierFilter, setSupplierFilter] = useState<string[]>([])
@@ -147,7 +142,7 @@ export default function ProductsReportPage() {
           fetchRevenueInvoicesDu(supabase, orgId, range),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
-            "id, sku, name, category, brand, base_unit, primary_supplier_id", "đọc mặt hàng"
+            `id, sku, name, category, brand, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
           /* ⚠ CHỈ LÔ CÒN HÀNG. Lô đã hết vẫn nằm trong bảng mãi mãi; đọc cả
              chúng thì trần 1.000 dòng cạn nhanh gấp mấy lần, mà giá trị kho
@@ -276,8 +271,9 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
-      e.qty += Number(l.quantity || 0)
+      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
+      // SL quy về đơn vị cơ sở (ưu tiên hệ số chụp trên dòng hóa đơn).
+      e.qty += soLuongCoSoDongHd(l, p)
       e.revenue += Number(l.line_total || 0)
       m.set(k, e)
     }
@@ -286,15 +282,16 @@ export default function ProductsReportPage() {
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
-      e.returnQty += Number(l.quantity || 0)
+      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit, qty: 0, revenue: 0, returnQty: 0, returnValue: 0, netRevenue: 0 }
+      // Dòng trả không có hệ số chụp → tra danh mục.
+      e.returnQty += soLuongCoSoDongTra(l, p)
       e.returnValue += Number(l.line_total || 0)
       m.set(k, e)
     }
     return Array.from(m.values())
       .map((r) => ({ ...r, netRevenue: r.revenue - r.returnValue }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [lines, returnLines, productMap, filterFn, groupKey, groupLabel])
+  }, [lines, returnLines, productMap, filterFn, groupKey, groupLabel, groupSameType])
 
   // -------------------- Lợi nhuận --------------------
   const profitRows: ProfitByProductRow[] = useMemo(() => {
@@ -310,7 +307,7 @@ export default function ProductsReportPage() {
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
       const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, cogs: 0, profit: 0, margin: 0 }
-      e.qty += Number(l.quantity || 0)
+      e.qty += soLuongCoSoDongHd(l, p)
       e.revenue += Number(l.line_total || 0)
       m.set(k, e)
     }
@@ -320,7 +317,8 @@ export default function ProductsReportPage() {
       const k = groupKey(p)
       const lbl = groupLabel(k, p)
       const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, revenue: 0, cogs: 0, profit: 0, margin: 0 }
-      e.cogs += Math.abs(Number(l.quantity || 0)) * Number(l.unit_cost || 0)
+      // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
+      e.cogs += giaTriDongKho(l)
       m.set(k, e)
     }
     return Array.from(m.values())
@@ -417,7 +415,8 @@ export default function ProductsReportPage() {
         exportValue: 0,
         endQty: 0,
       }
-      const q = Math.abs(Number(l.quantity || 0))
+      // SL cơ sở — cùng đơn vị với tồn lô (`qty_on_hand`) và `unit_cost`.
+      const q = soLuongCoSoDongKho(l)
       const c = Number(l.unit_cost || 0)
       if (entry.type === "import") {
         e.importQty += q
@@ -452,10 +451,10 @@ export default function ProductsReportPage() {
   const handleExport = () => {
     if (variant === "sales") {
       const out: (string | number)[][] = [
-        ["Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "SL trả", "Giá trị trả", "Doanh thu thuần"],
+        ["Mã hàng", "Tên hàng", "Đơn vị", "SL bán", "Doanh thu", "SL trả", "Giá trị trả", "Doanh thu thuần"],
       ]
       for (const r of salesRows) {
-        out.push([r.sku, r.name, r.qty, r.revenue, r.returnQty, -r.returnValue, r.netRevenue])
+        out.push([r.sku, r.name, r.unit, r.qty, r.revenue, r.returnQty, -r.returnValue, r.netRevenue])
       }
       downloadXlsx(`bao-cao-hh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
@@ -577,7 +576,7 @@ export default function ProductsReportPage() {
       ) : loading ? (
         <Skeleton className="h-72" />
       ) : variant === "sales" ? (
-        <SalesByProductView rows={salesRows} orderLines={lines} orderMap={orderMap} />
+        <SalesByProductView rows={salesRows} orderLines={lines} orderMap={orderMap} productMap={productMap} />
       ) : variant === "profit" ? (
         <ProfitByProductView rows={profitRows} />
       ) : variant === "stock_value" ? (

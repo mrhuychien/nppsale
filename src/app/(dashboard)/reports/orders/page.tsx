@@ -12,7 +12,9 @@ import {
   ReportTable,
   TotalsRow,
 } from "@/components/analytics/report-table"
-import { fetchAllOrdersDu, fetchOrderLines, fetchOrgRows, type SalesOrderLineRow, type SalesOrderRow } from "@/lib/analytics/sales"
+import { fetchAllOrdersDu, fetchOrgRows, type SalesOrderLineRow, type SalesOrderRow } from "@/lib/analytics/sales"
+import { docTheoLoId } from "@/lib/supabase/aggregate"
+import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -52,7 +54,12 @@ interface ProductMeta {
   name: string
   category?: string | null
   brand?: string | null
+  base_unit: string
+  units?: { unit_name: string; conversion: number }[] | null
 }
+
+/** Dòng đơn kèm hệ số chụp — số lượng đặt phải quy về đơn vị cơ sở. */
+type DongDon = SalesOrderLineRow & { conversion_factor?: number | null }
 interface CustomerMeta {
   id: string
   store_name: string
@@ -84,7 +91,7 @@ export default function OrdersReportPage() {
   const [loading, setLoading] = useState(true)
 
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
-  const [lines, setLines] = useState<SalesOrderLineRow[]>([])
+  const [lines, setLines] = useState<DongDon[]>([])
   const [products, setProducts] = useState<ProductMeta[]>([])
   const [customers, setCustomers] = useState<CustomerMeta[]>([])
   const [users, setUsers] = useState<UserMeta[]>([])
@@ -102,14 +109,28 @@ export default function OrdersReportPage() {
       const orgId = user.org_id
       const [orderRes, productsRes, customersRes, usersRes] = await Promise.all([
         fetchAllOrdersDu(supabase, orgId, range),
-        fetchOrgRows<ProductMeta>(supabase, "products", orgId, "id, sku, name, category, brand", "đọc mặt hàng"),
+        fetchOrgRows<ProductMeta>(supabase, "products", orgId, "id, sku, name, category, brand, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"),
         fetchOrgRows<CustomerMeta>(supabase, "customers", orgId, "id, store_name, group_id", "đọc khách hàng"),
         fetchOrgRows<UserMeta>(supabase, "users", orgId, "id, full_name", "đọc nhân viên"),
       ])
       const orderIds = orderRes.rows
         .filter((o) => (status ? o.status === status : true))
         .map((o) => o.id)
-      const linesList = await fetchOrderLines(supabase, orderIds)
+      /* ⚠ ĐỌC KÈM `conversion_factor` (mig 039). Dòng đặt 3 thùng + 5 hộp
+         cộng thẳng `quantity` là "8" — sai. Quy về đơn vị cơ sở (24/09/2026). */
+      const linesList = await docTheoLoId<DongDon>(
+        orderIds,
+        (lo, from, to) =>
+          supabase
+            .from("sales_order_lines")
+            .select("id, order_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total", {
+              count: "exact",
+            })
+            .in("order_id", lo)
+            .order("id")
+            .range(from, to),
+        "đọc dòng đơn hàng"
+      )
       setTruncated(orderRes.truncated || productsRes.truncated || customersRes.truncated || usersRes.truncated)
       setOrders(orderRes.rows)
       setLines(linesList)
@@ -170,6 +191,8 @@ export default function OrdersReportPage() {
     id: string
     sku: string
     name: string
+    /** Đơn vị cơ sở của mặt hàng; gộp cùng loại mà khác đơn vị thì rỗng. */
+    unit: string
     qty: number
     value: number
   }
@@ -198,8 +221,10 @@ export default function OrdersReportPage() {
       }
       const k = groupSameType ? p.name.split(" ")[0] : p.id
       const sku = groupSameType ? "" : p.sku
-      const e = m.get(k) || { id: k, sku, name: p.name, qty: 0, value: 0, orderRefs: [] }
-      e.qty += Number(l.quantity || 0)
+      const e = m.get(k) || { id: k, sku, name: p.name, unit: p.base_unit || "", qty: 0, value: 0, orderRefs: [] }
+      if (e.unit !== (p.base_unit || "")) e.unit = ""
+      const slCoSo = slCoSoDong(l, p)
+      e.qty += slCoSo
       e.value += Number(l.line_total || 0)
       const o = orders.find((x) => x.id === l.order_id)
       if (o) {
@@ -208,7 +233,7 @@ export default function OrdersReportPage() {
           order_code: o.order_code,
           order_date: o.order_date,
           customer: customerMap.get(o.customer_id)?.store_name || "—",
-          qty: Number(l.quantity || 0),
+          qty: slCoSo,
           value: Number(l.line_total || 0),
         })
       }
@@ -231,7 +256,7 @@ export default function OrdersReportPage() {
   const txRows: TxRow[] = useMemo(() => {
     const lineQty = new Map<string, number>()
     for (const l of lines) {
-      lineQty.set(l.order_id, (lineQty.get(l.order_id) || 0) + Number(l.quantity || 0))
+      lineQty.set(l.order_id, (lineQty.get(l.order_id) || 0) + slCoSoDong(l, productMap.get(l.product_id)))
     }
     return filteredOrders.map((o) => ({
       id: o.id,
@@ -243,16 +268,16 @@ export default function OrdersReportPage() {
       qty: lineQty.get(o.id) || 0,
       total: Number(o.total || 0),
     }))
-  }, [filteredOrders, lines, customerMap, userMap])
+  }, [filteredOrders, lines, customerMap, userMap, productMap])
 
   const handleExport = () => {
     if (variant === "by_product") {
-      const out: (string | number)[][] = [["Mã hàng", "Tên hàng", "SL đặt", "Giá trị hàng đặt"]]
-      for (const r of byProductRows) out.push([r.sku, r.name, r.qty, r.value])
+      const out: (string | number)[][] = [["Mã hàng", "Tên hàng", "ĐV cơ sở", "SL đặt (ĐV cơ sở)", "Giá trị hàng đặt"]]
+      for (const r of byProductRows) out.push([r.sku, r.name, r.unit, r.qty, r.value])
       downloadXlsx(`bao-cao-dathang-hanghoa-${range.from}-${range.to}`, out)
     } else {
       const out: (string | number)[][] = [
-        ["Mã đơn", "Ngày đặt", "Khách hàng", "Nhân viên", "Trạng thái", "Tổng SL", "Tổng tiền"],
+        ["Mã đơn", "Ngày đặt", "Khách hàng", "Nhân viên", "Trạng thái", "Tổng SL (ĐV cơ sở)", "Tổng tiền"],
       ]
       for (const r of txRows)
         out.push([r.order_code, r.order_date, r.customer, r.sales_user, r.status, r.qty, r.total])
@@ -383,7 +408,12 @@ export default function OrdersReportPage() {
           columns={[
             { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku || "—"}</span> },
             { key: "name", label: "Tên hàng", render: (r) => r.name },
-            { key: "qty", label: "SL đặt", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            {
+              key: "qty",
+              label: "SL đặt (ĐV cơ sở)",
+              align: "right",
+              render: (r) => `${r.qty.toLocaleString("vi-VN")}${r.unit ? ` ${r.unit}` : ""}`,
+            },
             { key: "val", label: "Giá trị hàng đặt", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.value)}</span> },
           ]}
           totalsRow={
@@ -403,7 +433,7 @@ export default function OrdersReportPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Mã phiếu</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Thời gian</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Khách hàng</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL đặt</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL đặt (ĐV cơ sở)</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị hàng đặt</th>
                   </tr>
                 </thead>
@@ -444,7 +474,7 @@ export default function OrdersReportPage() {
             { key: "cust", label: "Khách hàng", render: (r) => r.customer },
             { key: "user", label: "Nhân viên", render: (r) => r.sales_user },
             { key: "status", label: "Trạng thái", render: (r) => r.status },
-            { key: "qty", label: "Tổng SL", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
+            { key: "qty", label: "Tổng SL (ĐV cơ sở)", align: "right", render: (r) => r.qty.toLocaleString("vi-VN") },
             { key: "total", label: "Tổng tiền", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.total)}</span> },
           ]}
           totalsRow={

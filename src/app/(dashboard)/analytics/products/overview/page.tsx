@@ -23,6 +23,7 @@ import {
   type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
@@ -112,10 +113,11 @@ export default function ProductsOverviewPage() {
   }, [products])
 
   const stats = useMemo(() => {
-    const totalQty = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
+    // SL hóa đơn theo `unit_name` → quy về đơn vị cơ sở bằng hệ số chụp (24/09/2026).
+    const totalQty = lines.reduce((s, l) => s + slCoSoDong(l), 0)
     const totalRevenue = lines.reduce((s, l) => s + Number(l.line_total || 0), 0)
     const skusSold = new Set(lines.map((l) => l.product_id)).size
-    const prevQty = prevLines.reduce((s, l) => s + Number(l.quantity || 0), 0)
+    const prevQty = prevLines.reduce((s, l) => s + slCoSoDong(l), 0)
     const prevRevenue = prevLines.reduce((s, l) => s + Number(l.line_total || 0), 0)
     const prevSkus = new Set(prevLines.map((l) => l.product_id)).size
     return {
@@ -134,7 +136,7 @@ export default function ProductsOverviewPage() {
     const prev = new Map<string, { qty: number; revenue: number; orders: Set<string> }>()
     for (const l of lines) {
       const e = cur.get(l.product_id) || { qty: 0, revenue: 0, orders: new Set() }
-      e.qty += Number(l.quantity || 0)
+      e.qty += slCoSoDong(l)
       e.revenue += Number(l.line_total || 0)
       e.orders.add(l.invoice_id)
       cur.set(l.product_id, e)
@@ -162,7 +164,7 @@ export default function ProductsOverviewPage() {
     const cur = new Map<string, { qty: number; revenue: number }>()
     for (const l of lines) {
       const e = cur.get(l.product_id) || { qty: 0, revenue: 0 }
-      e.qty += Number(l.quantity || 0)
+      e.qty += slCoSoDong(l)
       e.revenue += Number(l.line_total || 0)
       cur.set(l.product_id, e)
     }

@@ -18,6 +18,7 @@ import {
 } from "@/lib/analytics/period"
 import { fetchRevenueInvoices, fetchInvoiceLines, type InvoiceLineRow } from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
@@ -105,7 +106,8 @@ export default function ProductsCategoriesPage() {
         const p = productMap.get(l.product_id)
         const k = (p?.[key] as string | null | undefined) || "Khác"
         const e = m.get(k) || { qty: 0, revenue: 0, skuSet: new Set() }
-        e.qty += Number(l.quantity || 0)
+        // SL hóa đơn theo `unit_name` → quy về đơn vị cơ sở bằng hệ số chụp (24/09/2026).
+        e.qty += slCoSoDong(l)
         e.revenue += Number(l.line_total || 0)
         e.skuSet.add(l.product_id)
         m.set(k, e)

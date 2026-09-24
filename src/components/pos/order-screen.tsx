@@ -483,7 +483,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
            * tưởng mất và nhập lại → hai phiếu trả cho một đơn.
            */
           sb.from("returns")
-            .select("id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note)")
+            .select("id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason)")
             .eq("order_id", orderId)
             .neq("status", "cancelled"),
         ])
@@ -535,7 +535,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 const p = productById(r.productId)
                 return p ? unitPriceFor(p, r.unitName, head.customer?.group_id ?? null) : r.unitPrice
               })(),
-              vatRate: Number(productById(r.productId)?.vat_rate) || 0,
+              /* ⚠ THUẾ CỦA DÒNG ĐƠN (mig 183), không phải thuế danh mục —
+                 đơn cũ chưa có thì RPC tự rơi về thuế mặt hàng. */
+              vatRate: Number(r.vatRate) || 0,
               discount: { value: 0, unit: "vnd" as const },
               stock: r.availableBase,
               ordered: r.orderedQty,
@@ -577,6 +579,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 isExchange: l.is_exchange === true,
                 giaTheoHoaDon: true,
                 note: l.note ?? undefined,
+                /* ⚠ LÝ DO TỪNG DÒNG PHẢI NẠP (24/09/2026): lưu đơn là xoá rồi
+                   chèn lại dòng trả — không nạp là xoá mất lý do đã chọn. */
+                ...(l.reason ? { reason: l.reason } : {}),
               }))
             )
           }

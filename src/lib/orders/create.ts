@@ -14,6 +14,11 @@ export interface OfflineOrderLine {
   line_total: number
   conversion_factor: number
   note?: string
+  /**
+   * Thuế suất của dòng (tỉ lệ 0..1) người bán đã chọn — `sales_order_lines.vat_rate`
+   * (mig 183). Thiếu thì hóa đơn lấy thuế của mặt hàng.
+   */
+  vat_rate?: number
 }
 
 export interface OfflineReturnLine {
@@ -276,8 +281,16 @@ async function ghiPhanConLai(
     line_total: l.line_total,
     conversion_factor: l.conversion_factor,
     ...(l.note ? { note: l.note } : {}),
+    ...(l.vat_rate != null ? { vat_rate: l.vat_rate } : {}),
   }))
-  const { error: linesErr } = await supabase.from("sales_order_lines").insert(lineRows)
+  let { error: linesErr } = await supabase.from("sales_order_lines").insert(lineRows)
+  /* ⚠ Máy chủ chưa chạy mig 183: bỏ RIÊNG `vat_rate` rồi thử lại — giữ ghi
+     chú và hệ số. Chỉ khi vẫn hỏng mới rơi xuống bản trần bên dưới. */
+  if (linesErr && isMissingColumn(linesErr) && lineRows.some((r) => "vat_rate" in r)) {
+    ;({ error: linesErr } = await supabase
+      .from("sales_order_lines")
+      .insert(lineRows.map(({ vat_rate: _bo, ...r }) => { void _bo; return r })))
+  }
   if (linesErr) {
     if (!isMissingColumn(linesErr)) throw linesErr
     const stripped = payload.lines.map((l) => ({

@@ -179,8 +179,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const chuKy = useMemo(
     () =>
       JSON.stringify([
-        traLines.map((l) => [l.productId, l.qty, l.price, l.lotId ?? null]),
-        doiLines.map((l) => [l.productId, l.qty, l.price]),
+        traLines.map((l) => [l.productId, l.unit, l.qty, l.price, l.lotId ?? null, l.note ?? "", l.reason ?? ""]),
+        doiLines.map((l) => [l.productId, l.unit, l.qty, l.price, l.note ?? ""]),
         khach?.id ?? null, lyDo, ghiChu, zone, invoiceId,
       ]),
     [traLines, doiLines, khach?.id, lyDo, ghiChu, zone, invoiceId]
@@ -226,7 +226,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         const sb = createClient()
         const { data, error } = await sb
           .from("returns")
-          .select("id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, is_exchange, note, product:products(name, sku))")
+          .select("id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, destination_zone, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))")
           .eq("id", returnId)
           .maybeSingle()
         if (huy) return
@@ -235,10 +235,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           customer_id: string; invoice_id: string | null
           reason: string | null; notes: string | null
           requested_by?: string | null; sales_user_id?: string | null
+          destination_zone?: string | null
           customer?: { store_name?: string | null; phone?: string | null } | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
-            unit_price: number; is_exchange: boolean; note: string | null
+            unit_price: number; vat_rate?: number | null; is_exchange: boolean; note: string | null
+            reason?: string | null
             product?: { name?: string | null; sku?: string | null } | null
           }> | null
         } | null
@@ -253,6 +255,10 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setGhiChu(r.notes || "")
         setKhach({ id: r.customer_id, name: r.customer?.store_name || "Khách lẻ", meta: r.customer?.phone ?? "" })
         setNguoi({ taoId: r.requested_by ?? null, ganId: r.sales_user_id ?? null })
+        /* ⚠ KHO NHẬN ĐÃ CHỌN phải nạp lại — không thì ghi nhận lại là về kho mặc định. */
+        if (r.destination_zone && RETURN_ZONES.some((z) => z.value === r.destination_zone)) {
+          setZone(r.destination_zone as ReturnZone)
+        }
         const ds = (r.lines ?? []).map((x) => ({
           key: newKey(),
           productId: x.product_id,
@@ -268,6 +274,10 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           isExchange: x.is_exchange === true,
           giaTheoHoaDon: true,
           note: x.note ?? undefined,
+          /* ⚠ LƯU LÀ XOÁ RỒI CHÈN LẠI DÒNG — cột nào không nạp là cột ấy mất
+             (chủ nhà 24/09/2026: "các trường … phải đủ ko được bớt đi"). */
+          ...(x.reason ? { reason: x.reason } : {}),
+          vatRate: Number(x.vat_rate) || 0,
         }))
         setTraLines(ds.filter((x) => !x.isExchange))
         setDoiLines(ds.filter((x) => x.isExchange))
@@ -647,6 +657,16 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                     <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{l.sku}</span>
                   )}
                 </div>
+                {/* ⚠ LÝ DO TỪNG DÒNG như màn đơn (`return_lines.reason`, mig 159) — trống thì theo lý do cả phiếu. */}
+                {!doi && (
+                  <CompactSelect
+                    ariaLabel={`Lý do trả dòng ${i + 1}`}
+                    value={l.reason ?? lyDo}
+                    onChange={(v) => patch(l.key, { reason: v })}
+                    options={LY_DO}
+                    className="mt-1 h-[26px] w-[150px] border-[var(--pos-edge)] bg-white text-[11.5px] text-[var(--pos-ink)]"
+                  />
+                )}
                 <input
                   aria-label={`Ghi chú dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
                   value={l.note ?? ""}

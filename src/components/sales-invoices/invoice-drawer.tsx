@@ -1,5 +1,6 @@
 "use client"
 
+import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { useEffect, useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -281,6 +282,8 @@ export function InvoiceDrawer({
                       total: invoice.total,
                       subtotal: tien?.subtotal ?? null,
                       vat: tien?.vat ?? null,
+                      /* Giảm giá đơn (mig 183) — chỉ khi đã đọc đủ dòng và tiền hàng. */
+                      discount: tien && lines ? giamCuaHoaDon(lines, tien.subtotal) : null,
                     }}
                     returns={returns}
                   />

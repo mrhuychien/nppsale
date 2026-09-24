@@ -206,4 +206,12 @@ SELECT 22, 'Mig 182 (gán HĐ kéo theo phiếu trả; lập lại giữ ngườ
   CASE WHEN position('(mig 182)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
             AND position('(mig 182)' IN pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure)) > 0
        THEN 'OK — đã vá' ELSE 'CHƯA — gán lại HĐ thì phiếu trả vẫn đứng tên người cũ' END, ''
+UNION ALL
+-- 23. Mig 183 — hóa đơn / phiếu trả bê đủ trường từ đơn
+SELECT 23, 'Mig 183 (hóa đơn bê đủ: thuế dòng, giảm giá đơn, lý do dòng trả)',
+  CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'sales_order_lines' AND column_name = 'vat_rate')
+            AND position('(mig 183)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
+            AND position('(mig 183)' IN pg_get_functiondef('public._apply_return_adds(uuid, uuid, jsonb)'::regprocedure)) > 0
+       THEN 'OK — đã vá' ELSE 'CHƯA — hóa đơn lấy thuế danh mục, mất giảm giá đơn; hàng trả thêm ở HĐ mất lý do dòng' END, ''
 ) t ORDER BY stt;

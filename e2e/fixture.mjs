@@ -180,8 +180,10 @@ function invoiceableLines({ p_order_id }, { db }) {
         product_name: sp[l.product_id]?.name ?? "—", sku: sp[l.product_id]?.sku ?? null,
         unit_name: l.unit_name, conversion_factor: Number(l.conversion_factor) || 1,
         ordered_qty: qty, invoiced_qty: inv, remaining_qty: Math.max(0, qty - inv),
-        unit_price: gia, list_price: gia, line_discount: 0, vat_rate: 0,
-        available_base: 1000, is_exchange: false, note: null,
+        /* Như mig 183: thuế DÒNG ĐƠN trước, thuế mặt hàng sau; ghi chú dòng đơn đi theo. */
+        unit_price: gia, list_price: gia, line_discount: 0,
+        vat_rate: l.vat_rate ?? sp[l.product_id]?.vat_rate ?? 0,
+        available_base: 1000, is_exchange: false, note: l.note ?? null,
       }
     })
 }

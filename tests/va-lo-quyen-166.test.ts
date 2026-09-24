@@ -175,7 +175,12 @@ describe("hàm nội bộ viết sau 166 phải tự thu quyền", () => {
   for (const f of SAU) {
     const s = DOC(f)
     for (const m of Array.from(s.matchAll(/CREATE (?:OR REPLACE )?FUNCTION public\.(_[a-z0-9_]+)\(/g))) {
-      const than = s.slice(m.index!, s.indexOf("$$;", m.index!))
+      /* ⚠ Cắt đúng thân: tới THẺ ĐÔ-LA CỦA CHÍNH HÀM (`$$`, `$fn$`…), không tới
+         `$$;` đầu tiên — hàm viết bằng `$fn$` mà cắt theo `$$;` là ăn sang
+         cả hàm SECURITY DEFINER phía sau và báo oan (gặp ở mig 183). */
+      const the = /AS\s+(\$[a-zA-Z0-9_]*\$)/.exec(s.slice(m.index!))
+      const moThe = the ? m.index! + the.index + the[0].length : m.index!
+      const than = s.slice(m.index!, the ? s.indexOf(the[1], moThe) : s.indexOf("$$;", m.index!))
       if (/SECURITY DEFINER/i.test(than)) ca.push([f, m[1]])
     }
   }

@@ -10,6 +10,7 @@
  * workflow v2b sinh ra để bỏ đi.
  */
 
+import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
@@ -529,7 +530,7 @@ export default function SalesInvoiceDetailPage() {
               cùng một tờ hóa đơn. */}
           <DetailCard title="Cộng tiền">
             <InvoiceMoneySummary
-              invoice={{ total: inv.total, subtotal: inv.subtotal, vat: inv.vat }}
+              invoice={{ total: inv.total, subtotal: inv.subtotal, vat: inv.vat, discount: giamCuaHoaDon(lines, inv.subtotal) }}
               returns={invReturns}
             />
           </DetailCard>

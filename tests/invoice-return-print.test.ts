@@ -312,10 +312,16 @@ describe("dọn mẫu in theo chốt của chủ nhà", () => {
    * nhưng "Còn phải thu" trừ từ `total`; lấy số khác là một ngày nào đó
    * lệch vài đồng mà không ai lần ra.
    */
-  it("dòng tổng lấy đúng total của hóa đơn", () => {
+  /**
+   * ⚠ ĐỔI CHỦ Ý 24/09/2026 (mig 183 — giảm giá cả đơn sang hóa đơn): "Tổng tiền
+   *   hàng" là cột tiền các dòng cộng lại (`goodsTotal` = total + chiết khấu hóa
+   *   đơn), "Tổng cộng" vẫn là `total`. Không có giảm thì hai số bằng nhau.
+   */
+  it("dòng tổng: tiền hàng = goodsTotal, tổng cộng = total của hóa đơn", () => {
     const row = PRINT.slice(PRINT.indexOf(">Tổng tiền hàng</td>"))
-    expect(row.slice(0, 300)).toContain("{formatCurrency(total)}")
-    expect(row.slice(0, 300)).not.toContain("goodsTotal")
+    expect(row.slice(0, 300)).toContain("{formatCurrency(goodsTotal)}")
+    const cong = PRINT.slice(PRINT.indexOf(">Tổng cộng</td>"))
+    expect(cong.slice(0, 300)).toContain("{formatCurrency(total)}")
   })
 
   /** ⚠ Số ô mỗi hàng phải khớp số cột, nếu không bảng lệch hẳn. */

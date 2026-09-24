@@ -83,6 +83,9 @@ export function toOrderLine(line: CartLine): OfflineOrderLine {
     // cách đóng gói thì số lượng xuất kho lệch, không ai biết vì sao.
     conversion_factor: line.conversion || 1,
     ...(note ? { note } : {}),
+    /* ⚠ THUẾ DÒNG ĐI XUỐNG ĐƠN (mig 183) — trước chỉ tổng thuế vào đầu đơn,
+       và hóa đơn lấy lại thuế của danh mục thay cho thuế người bán đã chọn. */
+    vat_rate: Number(line.vatRate) || 0,
   }
 }
 

@@ -73,15 +73,22 @@ export default function SellEditLoaderPage() {
           )
           .eq("id", id)
           .maybeSingle(),
-        supabase
-          .from("sales_order_lines")
-          .select("product_id, unit_name, quantity, unit_price, conversion_factor, note")
-          .eq("order_id", id)
-          // Bảng dòng đơn KHÔNG ghi lại thứ tự nhập, nên xếp theo một khoá
-          // cố định. Không xếp gì thì mỗi lần mở lại đơn, các dòng có thể
-          // đảo chỗ — nhìn như đơn vừa bị ai sửa.
-          .order("product_id", { ascending: true })
-          .order("unit_name", { ascending: true }),
+        /* ⚠ `vat_rate` là cột của mig 183 — máy chưa chạy thì đọc lại không có nó. */
+        (async () => {
+          const doc = (cot: string) =>
+            supabase
+              .from("sales_order_lines")
+              .select(cot)
+              .eq("order_id", id)
+              // Bảng dòng đơn KHÔNG ghi lại thứ tự nhập, nên xếp theo một khoá
+              // cố định. Không xếp gì thì mỗi lần mở lại đơn, các dòng có thể
+              // đảo chỗ — nhìn như đơn vừa bị ai sửa.
+              .order("product_id", { ascending: true })
+              .order("unit_name", { ascending: true })
+          const COT = "product_id, unit_name, quantity, unit_price, conversion_factor, note"
+          const r = await doc(`${COT}, vat_rate`)
+          return r.error ? doc(COT) : r
+        })(),
         /**
          * ⚠ LẤY CẢ PHIẾU KHÔNG NẮM ĐƯỢC. Lọc sẵn `status = 'draft'` ở đây
          *   thì `editableReturnOf` không phân biệt nổi "đơn không có phiếu
@@ -91,7 +98,7 @@ export default function SellEditLoaderPage() {
         supabase
           .from("returns")
           .select(
-            "id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note)"
+            "id, reason, notes, status, invoice_id, lines:return_lines(product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason)"
           )
           .eq("order_id", id)
           .neq("status", "cancelled"),
@@ -146,7 +153,7 @@ export default function SellEditLoaderPage() {
         return setError("Không mở được đơn này — đơn không tồn tại hoặc bạn không có quyền xem.")
       }
       setHead(headRes.data as OrderHead)
-      setLines((lineRes.data as OrderLineRow[]) ?? [])
+      setLines((lineRes.data as unknown as OrderLineRow[]) ?? [])
     })()
     return () => {
       cancelled = true

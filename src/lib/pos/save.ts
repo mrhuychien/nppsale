@@ -217,6 +217,8 @@ export function dongTraGhiSo(returnId: string, l: PosLine) {
     line_total: Math.round(l.qty * l.price * (1 + vat)),
     is_exchange: l.isExchange === true,
     note: l.note?.trim() || null,
+    /* Lý do từng dòng (mig 159) — dòng đổi không có lý do trả. */
+    ...(l.reason && l.isExchange !== true ? { reason: l.reason } : {}),
   }
 }
 

@@ -12,6 +12,7 @@
  * khớp — xem `grossUpLines` trong `components/printing/sales-invoice.tsx`.
  */
 
+import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -37,6 +38,8 @@ interface InvoiceRow {
   invoice_date: string
   status: string
   total: number
+  /** SAU giảm giá đơn (mig 183) — để in dòng "Chiết khấu hóa đơn". */
+  subtotal?: number | null
   created_at: string | null
   order_id: string
   /** Ghi chú nhập lúc xuất hàng. */
@@ -99,7 +102,7 @@ export default function SalesInvoicePrintPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, total, created_at, notes, order_id, customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code, notes)"
+          "id, org_id, invoice_code, invoice_date, status, subtotal, total, created_at, notes, order_id, customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code, notes)"
         )
         .eq("id", id)
         .maybeSingle(),
@@ -305,6 +308,8 @@ export default function SalesInvoicePrintPage() {
             { label: "Ghi chú hóa đơn", text: inv.notes },
           ]}
           total={Number(inv.total) || 0}
+          /* ⚠ GIẢM GIÁ CẢ ĐƠN (mig 183) — in đúng dòng "Chiết khấu hóa đơn". */
+          invoiceDiscount={inv.subtotal == null ? 0 : giamCuaHoaDon(lines, inv.subtotal)}
           returnCredit={printCredit}
           returnLines={printReturnLines}
           footerNote={

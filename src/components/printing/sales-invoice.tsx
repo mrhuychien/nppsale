@@ -119,6 +119,11 @@ export interface SalesInvoiceProps {
   lines: SalesInvoiceLine[]
   total: number
   /**
+   * Giảm giá CẢ ĐƠN của chứng từ (mig 183) — in ở dòng "Chiết khấu hóa đơn".
+   * Vắng = 0 (chứng từ không có giảm cả đơn).
+   */
+  invoiceDiscount?: number
+  /**
    * Khoản trừ hàng trả ĐÃ HOÀN THÀNH của hóa đơn này.
    *
    * ⚠ KHÔNG SỬA `total`. Dòng "Tổng cộng" vẫn là giá trị lô hàng đã
@@ -180,12 +185,12 @@ export interface GrossedLine extends SalesInvoiceLine {
  * ⚠ Không bịa con số nào: chỉ dùng `total` và `lineTotal` đã lưu. Hoá
  * đơn không thuế thì tỉ lệ bằng 1 — không dòng nào đổi một đồng.
  *
- * ⚠ KHÔNG CÓ THAM SỐ `invoiceDiscount`, DÙ MẪU CÓ DÒNG "Chiết khấu hóa
- * đơn". Hệ thống này KHÔNG có chiết khấu ở mức hóa đơn — chiết khấu chỉ
- * có ở từng dòng (`line_discount`). Dòng ấy trên giấy vì thế luôn là 0,
- * và đó là con số ĐÚNG, không phải chỗ trống chờ điền. Nhận một tham số
- * vào đây thì các dòng sẽ quy lên `total + chiết khấu` trong khi ô tổng
- * hiện `total`, và cột tiền hết cộng ra được.
+ * ⚠ `invoiceDiscount` — GIẢM GIÁ CẢ ĐƠN (mig 183, chủ nhà 24/09/2026). Trước
+ * đó hệ thống không có chiết khấu ở mức chứng từ nên tham số này bị cấm; nay
+ * có. Các dòng quy lên `total + invoiceDiscount` (= tiền hàng gồm thuế, trước
+ * giảm — thuế tính trên giá dòng trước giảm đơn, y như máy chủ), dòng
+ * "Chiết khấu hóa đơn" in đúng khoản giảm, và "Tổng cộng" = `total`. Ba dòng
+ * vẫn cộng khớp: tiền hàng − chiết khấu = tổng.
  *
  * ⚠ CỘT CK PHẢI THAM GIA PHÉP TÍNH, KHÔNG ĐƯỢC IN SỐ THÔ. In thẳng
  * `discount` bên cạnh một đơn giá đã quy đổi là dòng đó không còn cộng
@@ -197,9 +202,10 @@ export interface GrossedLine extends SalesInvoiceLine {
  */
 export function grossUpLines(
   lines: SalesInvoiceLine[],
-  total: number
+  total: number,
+  invoiceDiscount = 0
 ): { rows: GrossedLine[]; goodsTotal: number } {
-  const goodsTotal = Math.max(0, Number(total || 0))
+  const goodsTotal = Math.max(0, Number(total || 0)) + Math.max(0, Math.round(Number(invoiceDiscount) || 0))
   const netSum = lines.reduce((s, l) => s + Number(l.lineTotal || 0), 0)
   const ratio = netSum > 0 ? goodsTotal / netSum : 1
 
@@ -263,14 +269,15 @@ export function SalesInvoice(props: SalesInvoiceProps) {
     org, title = "HÓA ĐƠN BÁN HÀNG", numberLabel = "Số HĐ",
     invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines,
-    total, returnCredit = 0, returnLines = [], notes = [], footerNote,
+    total, invoiceDiscount = 0, returnCredit = 0, returnLines = [], notes = [], footerNote,
   } = props
+  const chietKhauHD = Math.max(0, Math.round(Number(invoiceDiscount) || 0))
 
   const noteBlocks = noteBlocksOf(notes)
 
   const qtyTotal = lines.reduce((s, l) => s + Number(l.quantity || 0), 0)
 
-  const { rows } = grossUpLines(lines, total)
+  const { rows, goodsTotal } = grossUpLines(lines, total, chietKhauHD)
   const netDue = netDueOnInvoice(total, returnCredit)
 
   /**
@@ -417,27 +424,24 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               chúng không thêm thông tin — đúng về mặt số học, nhưng tờ
               giấy đi tới tay khách phải giống tờ họ vẫn quen nhận.
 
-            ⚠ "Chiết khấu hóa đơn" LUÔN LÀ 0, VÀ ĐÓ LÀ SỐ ĐÚNG. Hệ thống
-              này chỉ có chiết khấu ở từng dòng (cột CK); không có chiết
-              khấu ở mức hóa đơn. Đây không phải ô bỏ trống chờ điền.
-
-            ⚠ VẪN LẤY `total`, KHÔNG LẤY `goodsTotal`. Hai số bằng nhau do
-              dựng, nhưng `Còn phải thu` trừ từ `total`; lấy số khác là
-              một ngày nào đó lệch vài đồng mà không ai lần ra.
+            ⚠ "Chiết khấu hóa đơn" = GIẢM GIÁ CẢ ĐƠN (mig 183) — 0 khi chứng
+              từ không có. "Tổng tiền hàng" là cột tiền các dòng cộng lại
+              (`goodsTotal` = total + chiết khấu), "Tổng cộng" vẫn là `total`
+              vì `Còn phải thu` trừ từ đó.
           */}
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={3}>Tổng tiền hàng</td>
             <td className={`${CELL} text-center tabular-nums`}>{qtyTotal}</td>
             <td className={CELL}></td>
             <td className={CELL}></td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(total)}</td>
+            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(goodsTotal)}</td>
           </tr>
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={3}>Chiết khấu hóa đơn ( )</td>
             <td className={CELL}></td>
             <td className={CELL}></td>
             <td className={CELL}></td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(0)}</td>
+            <td className={`${CELL} text-right tabular-nums`}>{chietKhauHD > 0 ? `−${formatCurrency(chietKhauHD)}` : formatCurrency(0)}</td>
           </tr>
           <tr className="font-bold">
             <td className={`${CELL} text-center`} colSpan={3}>Tổng cộng</td>

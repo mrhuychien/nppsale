@@ -40,6 +40,11 @@ export interface InvoiceMoneyInput {
    * Phần còn lại của khối vẫn đúng vì nó chỉ cần `total`.
    */
   subtotal?: number | null
+  /**
+   * Giảm giá CẢ ĐƠN của tờ (mig 183). Có thì "Tiền hàng" hiện TRƯỚC giảm
+   * (`subtotal` là số SAU giảm) và thêm một dòng giảm — ba dòng cộng khớp.
+   */
+  discount?: number | null
   vat?: number | null
 }
 
@@ -71,7 +76,10 @@ export function InvoiceMoneySummary({
     <>
       {/* ⚠ KHÔNG ĐỌC ĐƯỢC THÌ KHÔNG VẼ, đừng điền 0 — xem `subtotal`. */}
       {invoice.subtotal != null && (
-        <DetailRow label="Tiền hàng" value={formatCurrency(invoice.subtotal)} />
+        <DetailRow label="Tiền hàng" value={formatCurrency(invoice.subtotal + (Number(invoice.discount) || 0))} />
+      )}
+      {invoice.subtotal != null && Number(invoice.discount) > 0 && (
+        <DetailRow label="Giảm giá đơn" value={`−${formatCurrency(Number(invoice.discount))}`} />
       )}
       {invoice.vat != null && <DetailRow label="Thuế GTGT" value={formatCurrency(invoice.vat)} />}
       <DetailRow

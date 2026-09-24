@@ -25,6 +25,7 @@
  * hành thật đang nằm); Trả hàng → mở phiếu trả mới nạp sẵn tờ này.
  */
 
+import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { Suspense, useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -69,6 +70,7 @@ interface Line {
   unit_price: number
   line_discount: number | null
   line_total: number
+  note?: string | null
   is_exchange: boolean
   product?: { name?: string | null; sku?: string | null } | null
 }
@@ -120,7 +122,7 @@ function XemHoaDon({ id }: { id: string }) {
           .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, order_id, posted_by, sales_user_id, customer:customers(store_name, phone, address)")
           .eq("id", id).maybeSingle(),
         sb.from("sales_invoice_lines")
-          .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, product:products(name, sku)")
+          .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, note, product:products(name, sku)")
           .eq("invoice_id", id).order("sort_order", { ascending: true }),
         sb.from("returns")
           .select("id, status, credit_note_amount, credit_with_invoice, created_at, reason")
@@ -151,6 +153,8 @@ function XemHoaDon({ id }: { id: string }) {
 
   const credit = creditOnInvoice(rets)
   const tong = Number(head?.total || 0)
+  /** Giảm giá cả đơn của tờ (mig 183) — suy từ dòng và `subtotal`. */
+  const giamDon = head ? giamCuaHoaDon(lines, head.subtotal) : 0
   const conLai = daThu == null ? null : Math.max(0, tong - daThu)
   const netDue = conLai == null ? null : netDueOnInvoice(conLai, credit)
   const g = POS_GRID.invoiceView
@@ -203,8 +207,12 @@ function XemHoaDon({ id }: { id: string }) {
               >
                 <div className="n text-[12px] text-[var(--pos-dim)]">{i + 1}</div>
                 <div className="n truncate text-[11.5px] text-[var(--pos-muted)]">{l.product?.sku ?? "—"}</div>
-                <div className="truncate text-[13px] font-semibold text-[var(--pos-ink)]">
-                  {l.product?.name ?? <span className="italic text-[var(--pos-dim)]">Sản phẩm đã xoá</span>}
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-semibold text-[var(--pos-ink)]">
+                    {l.product?.name ?? <span className="italic text-[var(--pos-dim)]">Sản phẩm đã xoá</span>}
+                  </div>
+                  {/* ⚠ Ghi chú từng dòng — chủ nhà 24/09/2026 báo "mất ghi chú cho từng dòng". */}
+                  {l.note && <div className="truncate text-[11px] text-[var(--pos-muted)]">{l.note}</div>}
                 </div>
                 <div className="truncate text-[12px] text-[var(--pos-muted)]">{l.unit_name}</div>
                 <div className="n text-center text-[13px] font-semibold">{l.quantity}</div>
@@ -263,7 +271,9 @@ function XemHoaDon({ id }: { id: string }) {
           />
 
           <div className="flex min-h-0 flex-grow flex-col overflow-y-auto rounded-xl border border-[var(--pos-line)] bg-white p-3.5">
-            <MoneyRow label="Tiền hàng" value={Number(head?.subtotal || 0)} />
+            {/* ⚠ `subtotal` là số SAU giảm giá đơn (mig 183): tiền hàng hiện trước giảm, giảm một dòng riêng. */}
+            <MoneyRow label="Tiền hàng" value={Number(head?.subtotal || 0) + giamDon} />
+            {giamDon > 0 && <MoneyRow label="Giảm giá đơn" value={`− ${formatCurrency(giamDon)}`} tone="warn" />}
             <MoneyRow label="Thuế GTGT" value={Number(head?.vat || 0)} tone="muted" />
             <TotalsHero label="Tổng cộng" value={tong} />
 

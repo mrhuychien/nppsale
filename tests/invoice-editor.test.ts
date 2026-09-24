@@ -572,7 +572,9 @@ describe("phần sửa phiếu trả đi kèm khi lập lại hóa đơn", () =>
    * `unit_price` và `vat_rate` đang lưu.
    */
   it("chỉ gửi số lượng, không gửi thành tiền", () => {
-    const blk = POST_INV.match(/return_edits: payload\.returnEdits\.map\([\s\S]{0,200}?\}\)\)/)
+    /* Cả hai đường (xuất lần đầu, lập lại) dựng qua MỘT hàm `suaTraGuiLen`. */
+    expect(POST_INV.match(/return_edits: payload\.returnEdits\.map\(suaTraGuiLen\)/g) ?? [], "một đường không đi qua suaTraGuiLen").toHaveLength(2)
+    const blk = POST_INV.match(/function suaTraGuiLen\([\s\S]*?\n\}/)
     expect(blk, "không đọc được phần dựng return_edits").not.toBeNull()
     expect(blk![0]).toContain("line_id")
     expect(blk![0]).toContain("quantity")

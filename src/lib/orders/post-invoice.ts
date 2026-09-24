@@ -70,9 +70,14 @@ export interface InvoiceDraftLine {
 }
 
 export interface InvoiceTotals {
+  /** SAU giảm giá đơn, trước thuế — cùng nghĩa `sales_invoices.subtotal` (mig 183). */
   subtotal: number
   vat: number
   total: number
+  /** Tiền hàng trước giảm giá đơn = Σ SL × giá. */
+  goods: number
+  /** Giảm giá cả đơn thực áp (đã kẹp). */
+  discount: number
 }
 
 /**
@@ -88,7 +93,7 @@ export interface InvoiceTotals {
  *
  * ⚠ KHÔNG trừ `lineDiscount`: chiết khấu đã nằm trong `unitPrice`.
  */
-export function invoiceTotals(lines: InvoiceDraftLine[]): InvoiceTotals {
+export function invoiceTotals(lines: InvoiceDraftLine[], discount = 0): InvoiceTotals {
   let subRaw = 0
   let vatRaw = 0
   for (const l of lines) {
@@ -98,10 +103,15 @@ export function invoiceTotals(lines: InvoiceDraftLine[]): InvoiceTotals {
     subRaw += line
     vatRaw += line * (Number(l.vatRate) || 0)
   }
+  /* ⚠ GIẢM GIÁ ĐƠN (mig 183): CÙNG phép `_giam_gia_don` — làm tròn số gửi
+     lên, kẹp trong [0, tiền hàng], trừ vào subtotal; thuế vẫn trên giá dòng. */
+  const giam = Math.min(Math.max(Math.round(Number(discount) || 0), 0), Math.max(subRaw, 0))
   return {
-    subtotal: Math.round(subRaw),
+    subtotal: Math.round(subRaw - giam),
     vat: Math.round(vatRaw),
-    total: Math.max(0, Math.round(subRaw + vatRaw)),
+    total: Math.max(0, Math.round(subRaw - giam + vatRaw)),
+    goods: Math.round(subRaw),
+    discount: giam,
   }
 }
 
@@ -298,6 +308,39 @@ export interface PostInvoicePayload {
   invoiceDate?: string | null
   paymentTerms?: string | null
   notes?: string | null
+  /**
+   * GIẢM GIÁ CẢ ĐƠN của lần xuất này, số tiền (mig 183). Máy chủ kẹp trong
+   * [0, tiền hàng] và ghi `subtotal` SAU giảm — cùng nghĩa với đơn.
+   */
+  discount?: number
+}
+
+/**
+ * Một dòng hóa đơn lên RPC — MỘT chỗ cho cả xuất lần đầu lẫn lập lại.
+ *
+ * ⚠ CHỦ NHÀ 24/09/2026: "Bê nguyên các trường từ Đơn hàng sang Hóa đơn, ko
+ *   được để sót". Bản trước dựng hai lần, và CẢ HAI bỏ `vat_rate` — thuế trên
+ *   màn chỉ để nhìn, máy chủ lấy thuế danh mục. Thêm cột nào thì thêm ở đây.
+ */
+export function dongGuiLen(l: InvoiceDraftLine) {
+  return {
+    order_line_id: l.orderLineId,
+    product_id: l.productId,
+    unit_name: l.unitName,
+    conversion_factor: l.conversionFactor,
+    quantity: l.quantity,
+    unit_price: l.unitPrice,
+    line_discount: l.lineDiscount,
+    vat_rate: l.vatRate,
+    is_exchange: l.isExchange,
+    note: l.note,
+  }
+}
+
+/** Khoá `discount` chỉ đi lên khi có giảm thật — vắng khoá = không giảm. */
+function giamGiaDonPayload(discount?: number) {
+  const d = Math.round(Number(discount) || 0)
+  return d > 0 ? { discount: d } : {}
 }
 
 /**
@@ -326,20 +369,11 @@ export async function postInvoice(
       invoice_date: payload.invoiceDate || null,
       payment_terms: payload.paymentTerms || null,
       notes: payload.notes || null,
-      lines: lines.map((l) => ({
-        order_line_id: l.orderLineId,
-        product_id: l.productId,
-        unit_name: l.unitName,
-        conversion_factor: l.conversionFactor,
-        quantity: l.quantity,
-        unit_price: l.unitPrice,
-        line_discount: l.lineDiscount,
-        is_exchange: l.isExchange,
-        note: l.note,
-      })),
+      lines: lines.map(dongGuiLen),
+      ...giamGiaDonPayload(payload.discount),
       ...returnAddsPayload(payload.returnAdds),
       ...(payload.returnEdits && payload.returnEdits.length > 0
-        ? { return_edits: payload.returnEdits.map((e) => ({ line_id: e.lineId, quantity: e.quantity, ...(e.unitName ? { unit_name: e.unitName } : {}) })) }
+        ? { return_edits: payload.returnEdits.map(suaTraGuiLen) }
         : {}),
     },
   })
@@ -421,6 +455,20 @@ export interface ReturnLineEdit {
   quantity: number
   /** Quy cách mới (mig 181) — giá máy chủ tự quy theo hệ số. */
   unitName?: string
+  /** Ghi chú / lý do dòng (mig 183). `undefined` = không đổi; chuỗi rỗng = xoá. */
+  note?: string
+  reason?: string
+}
+
+/** Một dòng sửa hàng trả lên RPC — khoá chỉ có mặt khi thật sự đổi. */
+export function suaTraGuiLen(e: ReturnLineEdit) {
+  return {
+    line_id: e.lineId,
+    quantity: e.quantity,
+    ...(e.unitName ? { unit_name: e.unitName } : {}),
+    ...(e.note !== undefined ? { note: e.note } : {}),
+    ...(e.reason !== undefined ? { reason: e.reason } : {}),
+  }
 }
 
 /**
@@ -442,6 +490,8 @@ export interface ReturnLineAdd {
   /** Đổi hàng thì KHÔNG trừ công nợ — chỉ ra khỏi kho. */
   isExchange: boolean
   note?: string | null
+  /** Lý do dòng (mig 159) — `_apply_return_adds` ghi từ mig 183. */
+  reason?: string | null
 }
 
 /** Dựng phần `return_adds` của tải trọng, hoặc bỏ hẳn khoá khi rỗng. */
@@ -456,6 +506,7 @@ function returnAddsPayload(adds?: ReturnLineAdd[]) {
       vat_rate: a.vatRate,
       is_exchange: a.isExchange,
       ...(a.note ? { note: a.note } : {}),
+      ...(a.reason ? { reason: a.reason } : {}),
     })),
   }
 }
@@ -479,17 +530,8 @@ export async function reissueInvoice(
       invoice_date: payload.invoiceDate || null,
       payment_terms: payload.paymentTerms || null,
       notes: payload.notes || null,
-      lines: lines.map((l) => ({
-        order_line_id: l.orderLineId,
-        product_id: l.productId,
-        unit_name: l.unitName,
-        conversion_factor: l.conversionFactor,
-        quantity: l.quantity,
-        unit_price: l.unitPrice,
-        line_discount: l.lineDiscount,
-        is_exchange: l.isExchange,
-        note: l.note,
-      })),
+      lines: lines.map(dongGuiLen),
+      ...giamGiaDonPayload(payload.discount),
       /**
        * ⚠ BỎ QUA HẲN KHI KHÔNG CÓ GÌ SỬA. Gửi `[]` cũng vô hại (RPC
        * đọc ra 0 dòng), nhưng một tải trọng không có khoá ấy là bằng
@@ -497,11 +539,7 @@ export async function reissueInvoice(
        */
       ...(payload.returnEdits && payload.returnEdits.length > 0
         ? {
-            return_edits: payload.returnEdits.map((e) => ({
-              line_id: e.lineId,
-              quantity: e.quantity,
-              ...(e.unitName ? { unit_name: e.unitName } : {}),
-            })),
+            return_edits: payload.returnEdits.map(suaTraGuiLen),
           }
         : {}),
       ...returnAddsPayload(payload.returnAdds),

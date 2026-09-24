@@ -24,6 +24,8 @@ export interface OrderLineRow {
   unit_price: number
   conversion_factor?: number | null
   note?: string | null
+  /** Thuế dòng (mig 183). NULL / vắng = đơn cũ → thuế mặt hàng. */
+  vat_rate?: number | null
 }
 
 /**
@@ -55,7 +57,8 @@ export function orderLinesToCart(
       note: r.note ?? "",
       conversion:
         Number(r.conversion_factor) || (p ? conversionFor(p, r.unit_name) : 1),
-      vatRate: Number(p?.vat_rate ?? 0),
+      /* ⚠ Thuế ĐÃ CHỌN trên dòng đơn đi trước thuế danh mục (mig 183). */
+      vatRate: r.vat_rate != null ? Number(r.vat_rate) : Number(p?.vat_rate ?? 0),
     }
   })
 }
@@ -139,6 +142,8 @@ export interface PendingReturnRow {
     vat_rate?: number | null
     is_exchange?: boolean | null
     note?: string | null
+    /** Lý do TỪNG DÒNG (mig 159) — phải nạp để lưu lại không xoá mất. */
+    reason?: string | null
   }>
 }
 
@@ -175,6 +180,8 @@ export function returnLinesToCart(r: PendingReturnRow): ReturnCartLine[] {
     //   là âm thầm bỏ mất một khoản giảm công nợ của khách.
     isExchange: l.is_exchange === true,
     note: l.note ?? "",
+    /* ⚠ Lý do từng dòng phải đi theo — lưu đơn là xoá rồi chèn lại dòng trả. */
+    ...(l.reason ? { reason: l.reason } : {}),
   }))
 }
 
@@ -252,6 +259,21 @@ export function planOrderLines(
     if (!daDung.has(e.id)) plan.remove.push({ id: e.id, product_id: e.product_id })
   }
   return plan
+}
+
+/**
+ * ⚠ MÁY CHỦ CHƯA CHẠY MIG 183 thì `sales_order_lines.vat_rate` là cột lạ và
+ *   PostgREST từ chối cả lệnh. Bỏ RIÊNG cột ấy rồi ghi lại — thuế dòng rơi
+ *   về thuế mặt hàng như trước, còn mọi thứ khác vẫn lưu.
+ */
+function thieuCotThue(e: { message?: string; code?: string } | null): boolean {
+  if (!e) return false
+  return e.code === "PGRST204" || /vat_rate/i.test(e.message ?? "")
+}
+function boThue<T extends object>(row: T): T {
+  const { vat_rate: _bo, ...con } = row as T & { vat_rate?: unknown }
+  void _bo
+  return con as T
 }
 
 export async function applyOrderEdit(
@@ -367,11 +389,10 @@ export async function applyOrderEdit(
   }
 
   for (const u of plan.update) {
-    const { data: upd, error: updErr } = await supabase
-      .from("sales_order_lines")
-      .update(u.row)
-      .eq("id", u.id)
-      .select("id")
+    const sua = (row: object) =>
+      supabase.from("sales_order_lines").update(row).eq("id", u.id).select("id")
+    let { data: upd, error: updErr } = await sua(u.row)
+    if (thieuCotThue(updErr)) ({ data: upd, error: updErr } = await sua(boThue(u.row)))
     if (updErr) throw updErr
     if (!upd || upd.length === 0) {
       throw new Error(
@@ -382,7 +403,8 @@ export async function applyOrderEdit(
 
   if (plan.insert.length > 0) {
     const rows = plan.insert.map((r) => ({ order_id: opts.orderId, ...r }))
-    const { error: insErr } = await supabase.from("sales_order_lines").insert(rows)
+    let { error: insErr } = await supabase.from("sales_order_lines").insert(rows)
+    if (thieuCotThue(insErr)) ({ error: insErr } = await supabase.from("sales_order_lines").insert(rows.map(boThue)))
     if (insErr) throw insErr
   }
 

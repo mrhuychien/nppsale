@@ -254,11 +254,26 @@ describe("Những chỗ KHÔNG được làm mất", () => {
   it("ô Tổng tiền hàng in số đã quy đổi, không in tổng dòng thô", () => {
     const i = TPL.indexOf(">Tổng tiền hàng</td>")
     const row = TPL.slice(i, i + 400)
-    // ⚠ `total` và `goodsTotal` nay bằng nhau do dựng; ô tổng lấy `total`
-    //   vì "Còn phải thu" trừ từ chính nó.
-    expect(row).toContain("{formatCurrency(total)}")
+    // ⚠ Từ mig 183: ô này là `goodsTotal` (= total + chiết khấu hóa đơn) —
+    //   cột tiền các dòng cộng lại; "Tổng cộng" vẫn là `total`.
+    expect(row).toContain("{formatCurrency(goodsTotal)}")
     expect(row).not.toContain("lineTotal")
-    expect(TPL).toContain("const { rows } = grossUpLines(lines, total)")
+    expect(TPL).toContain("const { rows, goodsTotal } = grossUpLines(lines, total, chietKhauHD)")
+  })
+
+  it("có chiết khấu hóa đơn: các dòng cộng ra tiền hàng, tiền hàng − chiết khấu = tổng cộng", async () => {
+    const { grossUpLines } = await import("../src/components/printing/sales-invoice")
+    const dong = [
+      { id: "a", name: "A", unitName: "hộp", quantity: 2, unitPrice: 100_000, discount: 0, lineTotal: 200_000 },
+      { id: "b", name: "B", unitName: "hộp", quantity: 1, unitPrice: 50_000, discount: 0, lineTotal: 50_000 },
+    ]
+    // Tiền hàng 250.000, thuế 10% = 25.000, giảm đơn 30.000 → tổng 245.000.
+    const { rows, goodsTotal } = grossUpLines(dong as never, 245_000, 30_000)
+    expect(goodsTotal).toBe(275_000)
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(275_000)
+    expect(goodsTotal - 30_000).toBe(245_000)
+    // Không có chiết khấu thì y như trước.
+    expect(grossUpLines(dong as never, 250_000).goodsTotal).toBe(250_000)
   })
 
   /**

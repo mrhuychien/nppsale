@@ -1,5 +1,5 @@
 import type { OfflineOrderLine, OfflineOrderPayload } from "@/lib/orders/create"
-import type { CartLine, CartTotals } from "@/lib/sell/cart"
+import { netPriceOf, type CartLine, type CartTotals } from "@/lib/sell/cart"
 import { toReturnLine, type ReturnCartLine } from "@/lib/sell/returns"
 
 /**
@@ -71,13 +71,16 @@ export function lineTotalOf(line: Pick<CartLine, "qty" | "price">): number {
 
 export function toOrderLine(line: CartLine): OfflineOrderLine {
   const note = line.note?.trim()
+  /* ⚠ Giảm giá dòng quy về đơn giá (`netPriceOf`) — sổ không có cột giảm %;
+     `line_discount` so với giá bảng nên gồm luôn khoản giảm này. */
+  const gia = netPriceOf(line)
   return {
     product_id: line.productId,
     unit_name: line.unit,
     quantity: line.qty,
-    unit_price: line.price,
-    line_discount: lineDiscountOf(line),
-    line_total: lineTotalOf(line),
+    unit_price: gia,
+    line_discount: lineDiscountOf({ ...line, price: gia }),
+    line_total: lineTotalOf({ qty: line.qty, price: gia }),
     // ⚠ Chốt hệ số quy đổi NGAY LÚC NÀY. Đơn nằm trong hàng đợi vài giờ
     // rồi mới đẩy lên; nếu lúc đó mới tra lại hệ số mà ai đó vừa sửa quy
     // cách đóng gói thì số lượng xuất kho lệch, không ai biết vì sao.

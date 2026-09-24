@@ -1,0 +1,54 @@
+import { test, expect } from "@playwright/test"
+import { dangNhap } from "./helpers"
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "Fix ngược cả về phần làm đơn hàng trên sell mobile
+ *   -> Bỏ VAT từng dòng. thêm giảm giá từng dòng theo %, giá trị."
+ *
+ * Mẫu: Sữa hộp 20.000/hộp.
+ */
+test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+type Gio = { cart: Array<{ unit: string; qty: number; price: number; vatRate: number; discount?: { value: number; unit: string } }> }
+const docGio = async (page: import("@playwright/test").Page): Promise<Gio> =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("npp.sell.cart.v1") || '{"cart":[]}'))
+
+test("/sell: giảm giá dòng theo % và theo đồng, không còn ô VAT từng dòng", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sell")
+  await page.locator('[role="button"]', { hasText: "Sữa hộp" }).getByText("Sữa hộp").click()
+  await expect(page).toHaveURL(/\/sell\/cart/)
+
+  // Mở sheet sửa dòng.
+  await page.getByRole("button", { name: /Sữa hộp/ }).first().click()
+  await expect(page.getByText("Giảm giá dòng", { exact: true })).toBeVisible()
+  await expect(page.getByText("Thuế VAT", { exact: true }), "ô thuế từng dòng vẫn còn").toHaveCount(0)
+  await page.getByRole("button", { name: "Tăng" }).click()
+
+  // Giảm 10% trên 2 × 20.000.
+  await page.getByRole("button", { name: /^Đơn vị giảm — đang là đồng/ }).click()
+  await page.getByLabel("Giảm giá dòng", { exact: true }).fill("10")
+  await expect(page.getByText(/^Giảm 4\.000đ? · còn 18\.000đ?\/hộp$/)).toBeVisible()
+
+  // Lật sang đồng: số tiền giữ nguyên (4.000), rồi gõ 5.000.
+  await page.getByRole("button", { name: /^Đơn vị giảm — đang là phần trăm/ }).click()
+  await expect(page.getByLabel("Giảm giá dòng", { exact: true })).toHaveValue("4.000")
+  await page.getByLabel("Giảm giá dòng", { exact: true }).fill("5000")
+  await page.getByRole("button", { name: "Xong" }).click()
+
+  // Giỏ: nhãn giảm, giá sau giảm (35.000 / 2 = 17.500), không nhãn VAT dòng.
+  await expect(page.getByText(/^Giảm 5\.000đ?$/)).toBeVisible()
+  await expect(page.getByText(/^17\.500đ? × 2$/)).toBeVisible()
+  await expect(page.getByText(/^VAT \d+%$/)).toHaveCount(0)
+
+  // Thuế đặt MỘT lần cho cả đơn.
+  await page.getByRole("button", { name: /Tổng tiền/ }).click()
+  const vat = page.getByRole("button", { name: "Thuế VAT cả đơn" })
+  await expect(vat).toBeVisible()
+  const truoc = (await docGio(page)).cart[0].vatRate
+  await vat.click()
+  await expect.poll(async () => (await docGio(page)).cart[0].vatRate).not.toBe(truoc)
+
+  const g = (await docGio(page)).cart[0]
+  expect(g).toMatchObject({ unit: "hộp", qty: 2, price: 20000, discount: { value: 5000, unit: "vnd" } })
+})

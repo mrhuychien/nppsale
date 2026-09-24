@@ -7,6 +7,14 @@
  *   được bằng test.
  */
 
+import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discount"
+import { vatChungCuaDong } from "@/lib/pos/vat"
+
+/* ⚠ Quy tắc SỐ dùng chung với POS (hàm thuần, không store) — `/sell` đọc qua
+   đây, không import thẳng `@/lib/pos` (chốt tách store, tests/pos-cau-truc). */
+export { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
+export { switchUnit, unitLabel, lineGross, type DiscountInput } from "@/lib/pos/discount"
+
 export interface CartLine {
   productId: string
   /** Đơn vị bán — `thùng`, `lốc`, `chai`… */
@@ -20,6 +28,34 @@ export interface CartLine {
   /** Hệ số quy đổi về đơn vị cơ sở, chốt lúc thêm dòng. */
   conversion: number
   vatRate: number
+  /**
+   * Giảm giá của dòng, theo % hoặc theo đồng — chủ nhà 24/09/2026: "sell
+   * mobile … thêm giảm giá từng dòng theo %, giá trị". Cùng quy tắc số với
+   * POS (`@/lib/pos/discount`). Vắng = không giảm.
+   *
+   * ⚠ KHÔNG CÓ CỘT RIÊNG DƯỚI SỔ. Như POS (`posLinesToCart`), khoản giảm quy
+   *   về ĐƠN GIÁ lúc ghi (`netPriceOf`) — mọi phép tiền đọc giá ấy, đừng đọc
+   *   `price` trần.
+   */
+  discount?: DiscountInput
+}
+
+/** Khoản giảm của dòng, quy ra đồng, kẹp trong [0, tiền hàng]. */
+export function lineDiscountAmountOf(l: Pick<CartLine, "qty" | "price" | "discount">): number {
+  return l.discount ? discountAmount(l.discount, lineGross(l.qty, l.price)) : 0
+}
+
+/**
+ * Đơn giá SAU giảm dòng — giá đi xuống sổ, cũng là giá mọi tổng tiền dùng.
+ *
+ * ⚠ LÀM TRÒN VỀ ĐỒNG Ở ĐƠN GIÁ, như POS. Sổ chỉ giữ `unit_price`; tổng tính
+ *   trên giá chưa làm tròn thì tổng đơn lệch vài đồng với tổng máy chủ cộng
+ *   lại từ dòng.
+ */
+export function netPriceOf(l: Pick<CartLine, "qty" | "price" | "discount">): number {
+  const giam = lineDiscountAmountOf(l)
+  if (giam <= 0 || !(l.qty > 0)) return l.price
+  return Math.round((lineGross(l.qty, l.price) - giam) / l.qty)
 }
 
 /**
@@ -53,7 +89,7 @@ export function addLine(cart: CartLine[], line: CartLine): CartLine[] {
     next[i] = { ...next[i], qty: next[i].qty + line.qty }
     return next
   }
-  return [line, ...cart]
+  return [theoThueChung(cart, line), ...cart]
 }
 
 /**
@@ -83,10 +119,30 @@ export function setLinesQty(cart: CartLine[], picks: CartLine[]): CartLine[] {
       if (p.qty <= 0) next = next.filter((_, k) => k !== i)
       else next[i] = { ...next[i], qty: p.qty }
     } else if (p.qty > 0) {
-      moi.push(p)
+      moi.push(theoThueChung(cart, p))
     }
   })
   return [...moi, ...next]
+}
+
+/**
+ * THUẾ CẢ ĐƠN — chủ nhà 24/09/2026: "sell mobile -> Bỏ VAT từng dòng". Thuế
+ * đặt một lần cho cả giỏ (như nút thuế cả đơn của POS), đi xuống MỌI dòng —
+ * sổ vẫn giữ `vat_rate` theo dòng (mig 183), chỉ là không đặt riêng từng dòng.
+ */
+export function setVatAll(cart: CartLine[], rate: number): CartLine[] {
+  return cart.map((l) => ({ ...l, vatRate: rate }))
+}
+
+/**
+ * Dòng MỚI theo thuế chung của giỏ khi cả giỏ đang cùng một thuế — như POS
+ * (`vatChungCuaDong(cu)`). Không có ô thuế dòng thì một dòng lệch thuế là
+ * thứ người dùng không thấy và không sửa được. Giỏ đang lệch sẵn (đơn cũ
+ * nạp lại) thì giữ thuế danh mục.
+ */
+export function theoThueChung(cart: readonly CartLine[], line: CartLine): CartLine {
+  const chung = vatChungCuaDong(cart)
+  return cart.length > 0 && chung !== null ? { ...line, vatRate: chung } : line
 }
 
 /** Đặt số lượng. `qty <= 0` là XOÁ dòng — nút − ở số 1 hiện hình thùng rác. */
@@ -141,8 +197,9 @@ export interface CartTotals {
  */
 export function cartTotals(cart: CartLine[], returnCredit = 0): CartTotals {
   const gross = cart.reduce((s, l) => s + l.qty * l.listPrice, 0)
-  const subtotal = cart.reduce((s, l) => s + l.qty * l.price, 0)
-  const vat = cart.reduce((s, l) => s + l.qty * l.price * (l.vatRate || 0), 0)
+  /* ⚠ Giá SAU giảm dòng — xem `netPriceOf`. */
+  const subtotal = cart.reduce((s, l) => s + l.qty * netPriceOf(l), 0)
+  const vat = cart.reduce((s, l) => s + l.qty * netPriceOf(l) * (l.vatRate || 0), 0)
   const discount = Math.max(0, gross - subtotal)
   const credit = Math.max(0, returnCredit)
   return {

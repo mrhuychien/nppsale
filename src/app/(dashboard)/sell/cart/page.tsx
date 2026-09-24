@@ -16,7 +16,7 @@ import { useSellCart } from "@/hooks/use-sell-cart"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
-import { priceViolation } from "@/lib/sell/cart"
+import { lineDiscountAmountOf, netPriceOf, priceViolation, vatChungCuaDong, vatChungKeTiep } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
@@ -203,6 +203,7 @@ export default function SellCartPage() {
     [sellers, user?.id]
   )
   const canEditPrice = !isSales || rules.allow_price_edit
+  const vatChung = useMemo(() => vatChungCuaDong(cart.cart), [cart.cart])
   const maxIncreasePct = Number(rules.price_edit_max_increase_pct ?? 0)
 
   // Nhu cầu xuất kho gồm CẢ dòng bán lẫn dòng ĐỔI — xem `@/lib/sell/stock`.
@@ -640,8 +641,15 @@ export default function SellCartPage() {
                     </span>
                     <span className="mt-1 flex flex-wrap gap-x-2.5 gap-y-1 text-xs font-semibold text-on-surface-variant">
                       <span>
-                        {formatCurrency(r.line.price)} × {r.line.qty}
+                        {formatCurrency(netPriceOf(r.line))} × {r.line.qty}
                       </span>
+                      {lineDiscountAmountOf(r.line) > 0 && (
+                        <span className="rounded-md bg-primary/10 px-1.5 py-px font-bold text-primary">
+                          Giảm {r.line.discount?.unit === "pct"
+                            ? `${String(r.line.discount.value).replace(".", ",")}%`
+                            : formatCurrency(lineDiscountAmountOf(r.line))}
+                        </span>
+                      )}
                       {r.over && (
                         <span className="font-extrabold text-error">Vượt phần còn đặt được ({r.stockText})</span>
                       )}
@@ -651,10 +659,8 @@ export default function SellCartPage() {
                           Giá sửa
                         </span>
                       )}
-                      {/* Dòng chịu thuế phải NHÌN THẤY được từ danh sách —
-                          tổng tiền có VAT mà không dòng nào nói mình có
-                          thuế thì người dùng không lần ra vì sao. */}
-                      {(r.line.vatRate || 0) > 0 && <span>VAT {vatLabel(r.line.vatRate)}</span>}
+                      {/* Chủ nhà 24/09/2026: "Bỏ VAT từng dòng" — thuế nói MỘT lần ở
+                          nút thuế cả đơn dưới thanh tổng, không lặp trên từng dòng. */}
                       {r.line.note && <span className="italic">“{r.line.note}”</span>}
                     </span>
                   </span>
@@ -673,7 +679,7 @@ export default function SellCartPage() {
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[17px] font-extrabold tabular-data">
-                    {formatCurrency(r.line.qty * r.line.price)}
+                    {formatCurrency(r.line.qty * netPriceOf(r.line))}
                   </span>
                   <div className="w-[164px]">
                     <Stepper qty={r.line.qty} onChange={(q) => cart.setQty(r.i, q)} />
@@ -774,7 +780,23 @@ export default function SellCartPage() {
             {cart.totals.discount > 0 && (
               <Row label="Chiết khấu" value={`−${formatCurrency(cart.totals.discount)}`} error />
             )}
-            <Row label="VAT" value={formatCurrency(cart.totals.vat)} />
+            {/* ⚠ THUẾ CẢ ĐƠN — bấm vòng 0 → 5 → 8 → 10%, đặt cho mọi dòng (như
+                POS). Các dòng đang lệch nhau thì nút nói "nhiều mức". */}
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                VAT
+                <button
+                  type="button"
+                  aria-label="Thuế VAT cả đơn"
+                  disabled={cart.cart.length === 0}
+                  onClick={() => cart.setVatAll(vatChungKeTiep(vatChung))}
+                  className="h-7 rounded-lg border-[1.5px] border-outline-variant px-2 text-xs font-extrabold text-primary disabled:opacity-40"
+                >
+                  {vatChung === null ? "nhiều mức" : vatLabel(vatChung)}
+                </button>
+              </span>
+              <span className="tabular-data text-on-surface">{formatCurrency(cart.totals.vat)}</span>
+            </div>
             {cart.totals.returnCredit > 0 && (
               <Row label="Trừ hàng trả" value={`−${formatCurrency(cart.totals.returnCredit)}`} />
             )}
@@ -901,6 +923,7 @@ export default function SellCartPage() {
         groupId={groupId}
         canEditPrice={canEditPrice}
         maxIncreasePct={maxIncreasePct}
+        lineDiscount
         baseOnHand={edit ? (stockByProduct[edit.productId] ?? 0) : 0}
         onPatch={(patch) => editIdx != null && cart.patchLine(editIdx, patch)}
         onRemove={() => {

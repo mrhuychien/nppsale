@@ -4,8 +4,10 @@ import { useEffect, useState } from "react"
 import { Lock } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn, formatCurrency, formatInt } from "@/lib/utils"
-import { VAT_RATES, vatLabel } from "@/lib/constants"
-import { ceilingFor, priceViolation, type CartLine } from "@/lib/sell/cart"
+import {
+  ceilingFor, lineDiscountAmountOf, lineGross, netPriceOf, priceViolation, switchUnit, unitLabel,
+  type CartLine, type DiscountInput,
+} from "@/lib/sell/cart"
 import {
   conversionFor,
   sellableUnits,
@@ -16,7 +18,10 @@ import {
 import { useViewportInsets, bottomSheetBox } from "@/hooks/use-viewport-insets"
 
 /**
- * Sửa một dòng trong giỏ: đơn vị, số lượng, đơn giá, ghi chú.
+ * Sửa một dòng trong giỏ: đơn vị, số lượng, đơn giá, giảm giá dòng, ghi chú.
+ *
+ * ⚠ KHÔNG CÒN Ô THUẾ TỪNG DÒNG — chủ nhà 24/09/2026: "sell mobile -> Bỏ VAT
+ *   từng dòng". Thuế đặt một lần cho cả đơn ở giỏ hàng, như POS.
  *
  * ⚠ Đổi ĐƠN VỊ là đổi luôn GIÁ. Giữ giá cũ khi chuyển từ chai sang thùng
  * là bán một thùng bằng giá một chai — và con số đó trông vẫn hợp lệ nên
@@ -35,6 +40,7 @@ export function LineEditSheet({
   lockUnit = null,
   canRemove = true,
   freePrice = false,
+  lineDiscount = false,
 }: {
   line: CartLine | null
   product: PricedProduct | undefined
@@ -72,6 +78,11 @@ export function LineEditSheet({
    * "Không được thấp hơn giá bảng" — một câu SAI ở màn này.
    */
   freePrice?: boolean
+  /**
+   * Hiện ô giảm giá dòng (% hoặc đồng). Chỉ giỏ `/sell` bật: màn hóa đơn
+   * mang dòng của đơn, khoản giảm đã nằm sẵn trong đơn giá.
+   */
+  lineDiscount?: boolean
 }) {
   const open = !!line && !!product
   const vp = useViewportInsets(open)
@@ -83,6 +94,12 @@ export function LineEditSheet({
   useEffect(() => {
     if (line) setPriceText(String(line.price))
   }, [line])
+  /* Ô % giữ chuỗi riêng để gõ được "2." trước khi gõ "5". */
+  const [pctText, setPctText] = useState("")
+  const pctValue = line?.discount?.unit === "pct" ? line.discount.value : null
+  useEffect(() => {
+    if (pctValue != null) setPctText((t) => (Number(t) === pctValue ? t : String(pctValue)))
+  }, [pctValue])
 
   if (!line || !product) return null
 
@@ -199,31 +216,15 @@ export function LineEditSheet({
             {hint}
           </p>
 
-          {/* ⚠ NGƯỜI DÙNG BÁO: "bấm vào chi tiết hàng trong đơn chưa có chỗ
-              để tuỳ chọn VAT". Dòng lấy thuế suất của sản phẩm lúc thêm,
-              nhưng cùng một mặt hàng có lúc xuất có hoá đơn, có lúc không —
-              phải đổi được ngay trên dòng. */}
-          <Label>Thuế VAT</Label>
-          <div className="flex gap-1 rounded-[10px] bg-surface-container p-[3px]">
-            {vatChoices(line.vatRate).map((v) => {
-              const active = Math.abs(v.value - (line.vatRate || 0)) < 1e-9
-              return (
-                <button
-                  key={v.value}
-                  type="button"
-                  onClick={() => onPatch({ vatRate: v.value })}
-                  className={cn(
-                    "h-10 flex-1 rounded-lg text-sm font-bold",
-                    active
-                      ? "bg-surface-container-lowest text-primary shadow-sm"
-                      : "text-on-surface-variant"
-                  )}
-                >
-                  {v.label}
-                </button>
-              )
-            })}
-          </div>
+          {lineDiscount && (
+            <DiscountField
+              line={line}
+              disabled={!canEditPrice}
+              pctText={pctText}
+              setPctText={setPctText}
+              onChange={(d) => onPatch({ discount: d })}
+            />
+          )}
 
           <Label>Ghi chú dòng</Label>
           <input
@@ -234,19 +235,12 @@ export function LineEditSheet({
           />
 
           <div className="mt-3.5 flex items-center justify-between text-sm font-bold text-on-surface-variant">
-            Thành tiền{(line.vatRate || 0) > 0 ? ` (chưa VAT)` : ""}
+            Thành tiền
             <span className="text-xl font-extrabold tabular-data text-on-surface">
-              {formatCurrency(line.qty * line.price)}
+              {/* ⚠ Giá SAU giảm dòng — đúng số đi xuống sổ. */}
+              {formatCurrency(line.qty * netPriceOf(line))}
             </span>
           </div>
-          {(line.vatRate || 0) > 0 && (
-            <div className="mt-1 flex items-center justify-between text-sm font-bold text-on-surface-variant">
-              Có VAT {vatLabel(line.vatRate)}
-              <span className="tabular-data text-on-surface">
-                {formatCurrency(line.qty * line.price * (1 + line.vatRate))}
-              </span>
-            </div>
-          )}
         </div>
 
         <div className="mt-auto flex gap-2.5">
@@ -275,16 +269,82 @@ export function LineEditSheet({
 }
 
 /**
- * Các nút thuế suất. Bốn bậc chuẩn, cộng thêm ĐÚNG thuế suất hiện tại của
- * dòng nếu nó không thuộc bậc nào (sản phẩm khai 7%): ép về bậc gần nhất là
- * lặng lẽ đổi số thuế người ta đã khai, và mở sheet ra không thấy nút nào
- * sáng thì người dùng tưởng dòng chưa có thuế.
+ * Ô GIẢM GIÁ DÒNG — chủ nhà 24/09/2026: "thêm giảm giá từng dòng theo %, giá
+ * trị". Cùng quy tắc số với POS (`@/lib/pos/discount`): lật ₫ ↔ % giữ nguyên
+ * số tiền, kẹp trong [0, tiền hàng].
+ *
+ * ⚠ KHÔNG CÓ QUYỀN SỬA GIÁ THÌ KHÔNG GIẢM ĐƯỢC. Giảm dòng là hạ giá bán; để
+ *   mở là lối vòng qua sàn giá bảng của `priceViolation`. Khoá kèm lý do.
  */
-function vatChoices(current: number): Array<{ value: number; label: string }> {
-  const cur = Number(current) || 0
-  const base: Array<{ value: number; label: string }> = [...VAT_RATES]
-  if (base.some((v) => Math.abs(v.value - cur) < 1e-9)) return base
-  return [...base, { value: cur, label: vatLabel(cur) }].sort((a, b) => a.value - b.value)
+function DiscountField({
+  line,
+  disabled,
+  pctText,
+  setPctText,
+  onChange,
+}: {
+  line: CartLine
+  disabled: boolean
+  pctText: string
+  setPctText: (t: string) => void
+  onChange: (d: DiscountInput) => void
+}) {
+  const d: DiscountInput = line.discount ?? { value: 0, unit: "vnd" }
+  const pct = d.unit === "pct"
+  const tien = lineDiscountAmountOf(line)
+  return (
+    <>
+      <Label>Giảm giá dòng</Label>
+      <div className="flex gap-2">
+        <input
+          aria-label="Giảm giá dòng"
+          disabled={disabled}
+          inputMode={pct ? "decimal" : "numeric"}
+          value={pct ? pctText : d.value === 0 ? "" : formatInt(d.value)}
+          placeholder="0"
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => {
+            if (pct) {
+              const t = e.target.value.replace(",", ".").replace(/[^\d.]/g, "")
+              setPctText(t)
+              onChange({ value: Math.min(100, Number(t) || 0), unit: "pct" })
+            } else {
+              const digits = e.target.value.replace(/\D/g, "")
+              onChange({ value: digits === "" ? 0 : parseInt(digits, 10), unit: "vnd" })
+            }
+          }}
+          className={cn(
+            "h-12 w-0 flex-1 rounded-xl border-[1.5px] px-3 text-right text-lg font-extrabold tabular-data outline-none",
+            tien > 0 ? "border-primary" : "border-outline-variant",
+            disabled ? "bg-surface-container" : "bg-surface-container-lowest"
+          )}
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={pct ? "Đơn vị giảm — đang là phần trăm, bấm để đổi sang đồng" : "Đơn vị giảm — đang là đồng, bấm để đổi sang phần trăm"}
+          onClick={() => {
+            const moi = switchUnit(d, lineGross(line.qty, line.price))
+            if (moi.unit === "pct") setPctText(moi.value === 0 ? "" : String(moi.value))
+            onChange(moi)
+          }}
+          className={cn(
+            "h-12 w-14 shrink-0 rounded-xl border-[1.5px] text-lg font-extrabold",
+            pct ? "border-primary bg-primary/10 text-primary" : "border-outline-variant text-on-surface-variant"
+          )}
+        >
+          {unitLabel(d.unit)}
+        </button>
+      </div>
+      <p className="mt-1.5 text-xs font-bold text-on-surface-variant">
+        {disabled
+          ? "Bạn không có quyền sửa giá nên không giảm giá dòng được."
+          : tien > 0
+            ? `Giảm ${formatCurrency(tien)} · còn ${formatCurrency(netPriceOf(line))}/${line.unit}`
+            : "Bấm ₫ / % để đổi cách nhập."}
+      </p>
+    </>
+  )
 }
 
 function Label({ children }: { children: React.ReactNode }) {

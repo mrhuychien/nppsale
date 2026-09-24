@@ -6,6 +6,7 @@ import {
   setLinesQty,
   cartTotals,
   patchLine as patchLineIn,
+  setVatAll as setVatAllIn,
   setQty as setQtyIn,
   type CartLine,
   type CartTotals,
@@ -92,6 +93,8 @@ interface SellCartValue extends SellCartState {
   setManyQty: (picks: CartLine[]) => void
   setQty: (index: number, qty: number) => void
   patchLine: (index: number, patch: Partial<CartLine>) => void
+  /** Thuế cả đơn — đặt cho MỌI dòng (không còn ô thuế từng dòng). */
+  setVatAll: (rate: number) => void
   setCustomerId: (id: string | null) => void
   setNotes: (v: string) => void
   setPaymentTerms: (v: string) => void
@@ -215,6 +218,9 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
   const patchLine = useCallback((index: number, patch: Partial<CartLine>) => {
     setState((s) => ({ ...s, cart: patchLineIn(s.cart, index, patch) }))
   }, [])
+  const setVatAll = useCallback((rate: number) => {
+    setState((s) => ({ ...s, cart: setVatAllIn(s.cart, rate) }))
+  }, [])
   const setCustomerId = useCallback((id: string | null) => {
     // ⚠ ĐỔI KHÁCH KHÔNG XOÁ GIỎ. NVBH hay chọn nhầm khách rồi sửa lại;
     // xoá giỏ lúc đó là bắt họ nhập lại từ đầu. Giá theo nhóm khách được
@@ -264,6 +270,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setManyQty,
       setQty,
       patchLine,
+      setVatAll,
       setCustomerId,
       setNotes,
       setPaymentTerms,
@@ -286,6 +293,7 @@ export function SellCartProvider({ children }: { children: React.ReactNode }) {
       setManyQty,
       setQty,
       patchLine,
+      setVatAll,
       setCustomerId,
       setNotes,
       setPaymentTerms,

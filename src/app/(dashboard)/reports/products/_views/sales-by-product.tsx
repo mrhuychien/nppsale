@@ -2,7 +2,7 @@ import { formatCurrency } from "@/lib/utils"
 import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import { soLuongCoSoDongHd, type InvoiceLineRow } from "@/lib/analytics/sales"
 import type { SanPhamQuyDoi } from "@/lib/analytics/units"
-import { hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
+import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 
 export interface ProductMeta {
   id: string
@@ -25,6 +25,11 @@ export interface SalesByProductRow {
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
+  /**
+   * Các mặt hàng nằm trong dòng. ⚠ Gộp theo nhóm thì `id` là TÊN NHÓM, không
+   * phải mã mặt hàng — lọc chi tiết theo `id` là mở ra luôn trống.
+   */
+  productIds: string[]
 }
 
 interface OrderMeta {
@@ -40,12 +45,6 @@ interface Props {
   orderMap: Map<string, OrderMeta>
   /** Để quy SL dòng về đơn vị cơ sở khi mở chi tiết. */
   productMap: ReadonlyMap<string, SanPhamQuyDoi>
-}
-
-/** SL kèm đơn vị cơ sở, vd "640 hộp". */
-function slDonVi(qty: number, unit: string): string {
-  const s = qty.toLocaleString("vi-VN")
-  return unit ? `${s} ${unit}` : s
 }
 
 export function SalesByProductView({ rows, orderLines, orderMap, productMap }: Props) {
@@ -90,12 +89,14 @@ export function SalesByProductView({ rows, orderLines, orderMap, productMap }: P
         />
       }
       expandable={(r) => {
-        const lines = orderLines.filter((l) => l.product_id === r.id)
-        const grouped = new Map<string, { qty: number; line_total: number }>()
+        const trong = new Set(r.productIds)
+        const lines = orderLines.filter((l) => trong.has(l.product_id))
+        const grouped = new Map<string, { qtyTheoDv: SLTheoDonVi; line_total: number }>()
         for (const l of lines) {
-          const e = grouped.get(l.invoice_id) || { qty: 0, line_total: 0 }
-          // SL dòng (thùng/khay…) quy về đơn vị cơ sở trước khi cộng.
-          e.qty += soLuongCoSoDongHd(l, productMap.get(l.product_id))
+          const e = grouped.get(l.invoice_id) || { qtyTheoDv: {}, line_total: 0 }
+          // SL dòng (thùng/khay…) quy về đơn vị cơ sở; nhóm nhiều mặt hàng thì giữ theo đơn vị.
+          const sp = productMap.get(l.product_id)
+          congSL(e.qtyTheoDv, sp?.base_unit || "", soLuongCoSoDongHd(l, sp))
           e.line_total += Number(l.line_total || 0)
           grouped.set(l.invoice_id, e)
         }
@@ -107,7 +108,7 @@ export function SalesByProductView({ rows, orderLines, orderMap, productMap }: P
               order_code: o?.order_code || "—",
               order_date: o?.order_date || "",
               customer_name: o?.customer_name || "—",
-              qty: e.qty,
+              qtyTheoDv: e.qtyTheoDv,
               line_total: e.line_total,
             }
           })
@@ -143,7 +144,7 @@ export function SalesByProductView({ rows, orderLines, orderMap, productMap }: P
                       </td>
                       <td className="px-3 py-1.5">{d.customer_name}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {slDonVi(d.qty, r.unit)}
+                        {hienSLTheoDonVi(d.qtyTheoDv)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
                         {formatCurrency(d.line_total)}

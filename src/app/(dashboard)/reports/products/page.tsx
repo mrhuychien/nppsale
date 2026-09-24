@@ -270,7 +270,9 @@ export default function ProductsReportPage() {
     const moiDongBan = (k: string, lbl: { sku: string; name: string }, p: ProductRow): SalesByProductRow => ({
       id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit,
       qty: 0, qtyTheoDv: {}, revenue: 0, returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0,
+      productIds: [],
     })
+    const ghiMatHang = (e: SalesByProductRow, id: string) => { if (!e.productIds.includes(id)) e.productIds.push(id) }
     for (const l of lines) {
       const p = productMap.get(l.product_id)
       if (!p || !filterFn(p)) continue
@@ -283,6 +285,7 @@ export default function ProductsReportPage() {
       // Gộp theo nhóm = nhiều mặt hàng → giữ theo từng đơn vị cơ sở.
       congSL(e.qtyTheoDv, p.base_unit, q)
       e.revenue += Number(l.line_total || 0)
+      ghiMatHang(e, p.id)
       m.set(k, e)
     }
     for (const l of returnLines) {
@@ -296,6 +299,7 @@ export default function ProductsReportPage() {
       e.returnQty += q
       congSL(e.returnQtyTheoDv, p.base_unit, q)
       e.returnValue += Number(l.line_total || 0)
+      ghiMatHang(e, p.id)
       m.set(k, e)
     }
     return Array.from(m.values())
@@ -376,7 +380,9 @@ export default function ProductsReportPage() {
     return Array.from(m.values())
       .map(({ _qtyAccum, _valAccum, ...rest }) => ({
         ...rest,
-        unit_cost: _qtyAccum > 0 ? _valAccum / _qtyAccum : 0,
+        /* ⚠ Giá vốn TB chỉ có nghĩa trên MỘT đơn vị cơ sở. Nhóm lẫn hộp + chai thì
+           giá trị ÷ SL lẫn đơn vị là số vô nghĩa → `null` ("—"). */
+        unit_cost: Object.keys(rest.qtyTheoDv).length === 1 && _qtyAccum > 0 ? _valAccum / _qtyAccum : null,
       }))
       .sort((a, b) => b.value - a.value)
   }, [batches, productMap, filterFn, groupKey, groupLabel])
@@ -481,7 +487,7 @@ export default function ProductsReportPage() {
         ["Mã hàng", "Tên hàng", "Nhóm", "SL tồn", "Giá vốn TB", "Giá trị tồn", "Số lô"],
       ]
       for (const r of stockValueRows) {
-        out.push([r.sku, r.name, r.category, slXuat(r.qty, r.qtyTheoDv), r.unit_cost, r.value, r.batches])
+        out.push([r.sku, r.name, r.category, slXuat(r.qty, r.qtyTheoDv), r.unit_cost ?? "—", r.value, r.batches])
       }
       downloadXlsx(`bao-cao-hh-giatrikho-${range.from}-${range.to}`, out)
     } else {

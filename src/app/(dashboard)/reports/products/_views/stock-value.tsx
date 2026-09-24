@@ -10,7 +10,8 @@ export interface StockValueRow {
   /** ⚠ Gộp theo nhóm thì lẫn đơn vị — không hiện. Hiện `qtyTheoDv`. */
   qty: number
   qtyTheoDv: SLTheoDonVi
-  unit_cost: number
+  /** Giá vốn TB mỗi đơn vị cơ sở; `null` khi dòng gộp nhiều đơn vị cơ sở. */
+  unit_cost: number | null
   value: number
   batches: number
 }
@@ -33,7 +34,7 @@ export function StockValueView({ rows }: { rows: StockValueRow[] }) {
         { key: "name", label: "Tên hàng", render: (r) => r.name },
         { key: "cat", label: "Nhóm hàng", render: (r) => r.category },
         { key: "qty", label: "SL tồn", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
-        { key: "cost", label: "Giá vốn TB", align: "right", render: (r) => formatCurrency(r.unit_cost) },
+        { key: "cost", label: "Giá vốn TB", align: "right", render: (r) => (r.unit_cost === null ? "—" : formatCurrency(r.unit_cost)) },
         { key: "val", label: "Giá trị tồn", align: "right", render: (r) => <span className="font-semibold">{formatCurrency(r.value)}</span> },
         { key: "batches", label: "Số lô", align: "right", render: (r) => r.batches },
       ]}

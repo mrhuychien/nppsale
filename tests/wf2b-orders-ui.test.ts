@@ -491,8 +491,9 @@ describe("Màn chi tiết đơn", () => {
     expect(CODE, "maybeSingle() trên công nợ: đơn hai hóa đơn là PGRST116").not.toMatch(
       /\.from\("receivables"\)[\s\S]{0,300}?maybeSingle\(\)/
     )
-    expect(CODE).toContain('recRows.reduce((a, r) => a + Number(r.amount || 0), 0)')
-    expect(CODE).toContain('recRows.reduce((a, r) => a + Number(r.paid || 0), 0)')
+    // Phép gộp nay dùng chung với danh sách đơn — `gopCongNoCuaDon`.
+    expect(CODE).toContain("setReceivable(gopCongNoCuaDon(recRows))")
+    expect(read("src/lib/orders/receivable-sum.ts")).toContain("rows.reduce((a, r) => a + (Number(r.amount) || 0), 0)")
   })
 
   /**
@@ -511,7 +512,7 @@ describe("Màn chi tiết đơn", () => {
    * một đơn có đợt 1 đã thu, đợt 2 chưa thu sẽ hiện "đã thanh toán".
    */
   it("một dòng nợ chưa trả hết thì cả đơn chưa trả hết", () => {
-    expect(CODE).toContain('recRows.some((r) => r.status !== "paid") ? "open" : "paid"')
+    expect(read("src/lib/orders/receivable-sum.ts")).toContain('const conNo = rows.some((r) => r.status !== "paid")')
   })
 
   /**

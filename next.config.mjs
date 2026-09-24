@@ -14,8 +14,10 @@ const nextConfig = {
         source: '/(.*)',
         headers: [
           {
+            // SAMEORIGIN, không DENY: POS in tại chỗ bằng khung ẩn CÙNG MIỀN
+            // (`inTaiCho`). DENY chặn cả khung ấy — bấm In không ra gì.
             key: 'X-Frame-Options',
-            value: 'DENY',
+            value: 'SAMEORIGIN',
           },
           {
             key: 'X-Content-Type-Options',

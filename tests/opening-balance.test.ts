@@ -548,7 +548,9 @@ describe("Sổ chi tiết công nợ theo khách", () => {
   })
 
   it("hiển thị dấu cộng cho đầu kỳ, dấu trừ chỉ cho khoản thu", () => {
-    expect(LEDGER).toContain('entry.type === "payment" ? "-" : "+"')
+    // Công nợ theo hóa đơn: hóa đơn có thể ÂM (mig 186) → dấu theo số thật,
+    // khoản thu vẫn luôn "-".
+    expect(LEDGER).toContain('entry.type === "payment" ? "-" : entry.amount < 0 ? "-" : "+"')
   })
 })
 

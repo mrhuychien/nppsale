@@ -1007,7 +1007,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               width={54}
               disabled={!returnId}
               title={returnId ? "In phiếu trả hàng" : "Lưu phiếu trước rồi mới in được"}
-              onClick={() => { if (returnId) inTaiCho(`/returns/${returnId}/print`) }}
+              onClick={() => { if (returnId) inTaiCho(`/in/tra-hang/${returnId}`) }}
             >
               In
             </PanelButton>

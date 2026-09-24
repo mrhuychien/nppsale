@@ -253,9 +253,11 @@ export default function CustomersPage() {
         const overdueMap: Record<string, number> = {}
         for (const r of recvRes.rows) {
           const remaining = Number(r.amount || 0) - Number(r.paid || 0)
-          if (remaining <= 0) continue
+          if (remaining === 0) continue
+          /* Phiếu ÂM (hàng trả > hàng xuất, mig 186) TRỪ vào nợ của khách —
+             nhưng không bao giờ là nợ quá hạn. */
           debtMap[r.customer_id] = (debtMap[r.customer_id] || 0) + remaining
-          if (daysOverdueOf(r.due_date) > 0) {
+          if (remaining > 0 && daysOverdueOf(r.due_date) > 0) {
             overdueMap[r.customer_id] = (overdueMap[r.customer_id] || 0) + remaining
           }
         }

@@ -36,8 +36,20 @@ interface TimelineEntry {
   amount: number
   balance: number
   label: string
-  orderId?: string
-  orderCode?: string
+  /** Link chứng từ: hóa đơn nếu có, không thì đơn hàng. */
+  refHref?: string
+  refCode?: string
+}
+
+/**
+ * ⚠ Công nợ tính theo HÓA ĐƠN (chủ nhà 24/09/2026): mỗi phiếu nợ gắn
+ *   `invoice_id` → hiện/link mã hóa đơn; chỉ phiếu cũ chưa có hóa đơn mới
+ *   lùi về mã đơn hàng.
+ */
+function chungTuCuaPhieu(r: Pick<Receivable, "invoice" | "order"> | undefined | null): { href: string; code: string } | null {
+  if (r?.invoice?.id) return { href: `/sales-invoices/${r.invoice.id}`, code: r.invoice.invoice_code || `#${r.invoice.id.slice(0, 8)}` }
+  if (r?.order?.id) return { href: `/orders/${r.order.id}`, code: r.order.order_code || `#${r.order.id.slice(0, 8)}` }
+  return null
 }
 
 export default function CustomerDebtDetailPage() {
@@ -62,7 +74,7 @@ export default function CustomerDebtDetailPage() {
           supabase
             .from("receivables")
             .select(
-              "id, amount, paid, due_date, status, created_at, opening_balance, note, order:sales_orders(id, order_code, order_date, total), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+              "id, amount, paid, due_date, status, created_at, opening_balance, note, order:sales_orders(id, order_code, order_date, total), invoice_id, invoice:sales_invoices(id, invoice_code, invoice_date), sales_user:users!receivables_sales_user_id_fkey(full_name)",
               { count: "exact" }
             )
             .eq("customer_id", customerId)
@@ -102,7 +114,7 @@ export default function CustomerDebtDetailPage() {
         const pays = await docThanhToanCuaPhieu<(typeof payments)[number]>(
           supabase,
           recIds,
-          "id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code))"
+          "id, amount, method, collected_at, verified_at, collector:users!payments_collected_by_fkey(full_name), verifier:users!payments_verified_by_fkey(full_name), receivable:receivables(id, order_id, order:sales_orders(id, order_code), invoice_id, invoice:sales_invoices(id, invoice_code))"
         )
         setPayments(pays.sort((a, b) => (b.collected_at ?? "").localeCompare(a.collected_at ?? "")))
       } catch (err) {
@@ -156,18 +168,20 @@ export default function CustomerDebtDetailPage() {
         })
         return
       }
-      if (r.order) {
-        entries.push({
-          id: `order-${r.id}`,
-          date: r.order.order_date || r.created_at,
-          type: "order",
-          amount: r.amount,
-          balance: 0,
-          label: r.order.order_code || `Đơn #${r.id.slice(0, 8)}`,
-          orderId: r.order.id,
-          orderCode: r.order.order_code,
-        })
-      }
+      // ⚠ Theo hóa đơn: mọi phiếu nợ (không chỉ phiếu có `r.order`) đều
+      //   thành một dòng. `amount` có thể ÂM (trả hàng vượt hàng, mig 186) —
+      //   giữ nguyên dấu, KHÔNG kẹp.
+      const ref = chungTuCuaPhieu(r)
+      entries.push({
+        id: `order-${r.id}`,
+        date: r.invoice?.invoice_date || r.order?.order_date || r.created_at,
+        type: "order",
+        amount: r.amount,
+        balance: 0,
+        label: r.invoice?.invoice_code ?? r.order?.order_code ?? `#${r.id.slice(0, 8)}`,
+        refHref: ref?.href,
+        refCode: ref?.code,
+      })
     })
 
     payments.forEach((p) => {
@@ -179,14 +193,14 @@ export default function CustomerDebtDetailPage() {
         amount: p.amount,
         balance: 0,
         label: `Thanh toán ${PAYMENT_METHOD_LABEL[p.method] || p.method}`,
-        orderId: rec?.order?.id,
-        orderCode: rec?.order?.order_code,
+        refHref: chungTuCuaPhieu(rec)?.href,
+        refCode: chungTuCuaPhieu(rec)?.code,
       })
     })
 
     entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Đầu kỳ và đơn hàng đều LÀM TĂNG nợ; chỉ thanh toán mới giảm.
+    // Đầu kỳ và hóa đơn đều LÀM TĂNG nợ (hóa đơn âm thì cộng số âm); chỉ thanh toán mới giảm.
     // Viết "if order thì cộng, còn lại thì trừ" là đúng khi chỉ có hai
     // loại — thêm loại thứ ba vào là đầu kỳ bị TRỪ khỏi nợ.
     const increasesDebt = (t: TimelineEntry["type"]) => t === "order" || t === "opening"
@@ -310,7 +324,7 @@ export default function CustomerDebtDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Mã đơn</TableHead>
+                        <TableHead>Mã hóa đơn</TableHead>
                         <TableHead>Ngày</TableHead>
                         <TableHead className="text-right">Số tiền</TableHead>
                         <TableHead className="text-right">Đã trả</TableHead>
@@ -328,13 +342,16 @@ export default function CustomerDebtDetailPage() {
                         return (
                           <TableRow key={r.id}>
                             <TableCell>
-                              {r.order ? (
-                                <Link href={`/orders/${r.order.id}`} className="font-mono text-primary font-bold hover:underline">
-                                  {r.order.order_code}
-                                </Link>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              {(() => {
+                                const ref = chungTuCuaPhieu(r)
+                                return ref ? (
+                                  <Link href={ref.href} className="font-mono text-primary font-bold hover:underline">
+                                    {ref.code}
+                                  </Link>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )
+                              })()}
                             </TableCell>
                             <TableCell className="text-sm">{formatDate(r.created_at)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(r.amount)}</TableCell>
@@ -382,7 +399,7 @@ export default function CustomerDebtDetailPage() {
                         <TableHead>Phương thức</TableHead>
                         <TableHead>Người thu</TableHead>
                         <TableHead>Xác minh</TableHead>
-                        <TableHead>Mã đơn liên quan</TableHead>
+                        <TableHead>Hóa đơn liên quan</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -404,13 +421,16 @@ export default function CustomerDebtDetailPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {rec?.order ? (
-                                <Link href={`/orders/${rec.order.id}`} className="font-mono text-primary font-bold hover:underline">
-                                  {rec.order.order_code}
-                                </Link>
-                              ) : (
-                                "-"
-                              )}
+                              {(() => {
+                                const ref = chungTuCuaPhieu(rec)
+                                return ref ? (
+                                  <Link href={ref.href} className="font-mono text-primary font-bold hover:underline">
+                                    {ref.code}
+                                  </Link>
+                                ) : (
+                                  "-"
+                                )
+                              })()}
                             </TableCell>
                           </TableRow>
                         )
@@ -446,18 +466,25 @@ export default function CustomerDebtDetailPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="font-semibold text-sm">{entry.label}</p>
+                          <p className="font-semibold text-sm">
+                            {entry.type === "order" && entry.refHref ? (
+                              <Link href={entry.refHref} className="font-mono text-primary hover:underline">{entry.label}</Link>
+                            ) : (
+                              entry.label
+                            )}
+                          </p>
                           <p className={`font-bold text-sm ${
                             entry.type === "payment" ? "text-tertiary" : "text-destructive"
                           }`}>
-                            {entry.type === "payment" ? "-" : "+"}{formatCurrency(entry.amount)}
+                            {/* Hóa đơn âm (trả hàng vượt hàng) → hiện "-" theo dấu thật. */}
+                            {entry.type === "payment" ? "-" : entry.amount < 0 ? "-" : "+"}{formatCurrency(Math.abs(entry.amount))}
                           </p>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <p className="text-xs text-muted-foreground">
                             {formatDate(entry.date)}
-                            {entry.orderCode && entry.type === "payment" && (
-                              <> &middot; <Link href={`/orders/${entry.orderId}`} className="text-primary hover:underline">{entry.orderCode}</Link></>
+                            {entry.refCode && entry.refHref && entry.type === "payment" && (
+                              <> &middot; <Link href={entry.refHref} className="text-primary hover:underline">{entry.refCode}</Link></>
                             )}
                           </p>
                           <p className="text-xs font-semibold text-muted-foreground">

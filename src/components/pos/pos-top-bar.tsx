@@ -21,8 +21,8 @@ import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
 import { ROLE_LABELS } from "@/lib/constants"
 import { usePosTabs } from "@/store/pos/tabs"
-import { posPrintHref } from "@/lib/pos/tabs"
-import { inTaiCho } from "@/lib/pos/print-window"
+import { PendingOrdersModal } from "@/components/pos/pending-orders-modal"
+import { posNewInvoiceHref } from "@/lib/nav/pos-preview"
 import { DocTabs } from "@/components/pos/doc-tabs"
 import { DisplaySettingsDrawer } from "@/components/pos/display-settings-drawer"
 
@@ -38,10 +38,9 @@ export function PosTopBar() {
   const { user } = useAuth()
   const { org } = useOrg()
   const router = useRouter()
-  const { notice, clearNotice, tabs, activeKey } = usePosTabs()
+  const { notice, clearNotice } = usePosTabs()
   const [moThietLap, setMoThietLap] = useState(false)
-  const dang = tabs.find((t) => t.key === activeKey)
-  const inHref = dang?.docId ? posPrintHref(dang.docType, dang.docId) : null
+  const [moXuLy, setMoXuLy] = useState(false)
 
   /**
    * ⚠ CÂU NHẮC TỰ TẮT SAU 6 GIÂY. Nó nói một việc đã xảy ra rồi ("đã
@@ -97,24 +96,19 @@ export function PosTopBar() {
 
         <div className="flex shrink-0 items-center gap-1.5">
           {/*
-            ⚠ IN ĐI QUA MẪU IN ĐANG CHẠY, KHÔNG `window.print()` MÀN POS.
-              Màn POS không có mẫu in; in thẳng nó là ra một trang toàn
-              nút và ô nhập. Chứng từ đã lưu thì có trang in riêng ở
-              phần đang chạy — dẫn tới đó. Chưa lưu thì nút mờ và nói
-              vì sao.
+            ⚠ "XỬ LÝ ĐẶT HÀNG" THAY NÚT IN (chủ nhà 24/09/2026). In vẫn có ở
+              từng màn chứng từ (nút In trên màn đơn / hóa đơn / phiếu trả).
           */}
           <button
             type="button"
-            aria-label="In chứng từ đang mở"
-            disabled={!inHref}
-            title={inHref ? "In chứng từ này" : "Chỉ in được chứng từ đã lưu (đơn hàng, hóa đơn, phiếu trả)"}
-            onClick={() => { if (inHref) inTaiCho(inHref) }}
-            className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => setMoXuLy(true)}
+            className="flex h-[34px] items-center gap-1.5 rounded-[9px] border border-[var(--pos-edge)] bg-white px-3 text-[12.5px] font-semibold text-[var(--pos-primary)] hover:bg-[var(--pos-primary-faint)]"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 9V3h12v6M6 18H4v-7h16v7h-2" />
-              <path d="M6 14h12v7H6z" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
             </svg>
+            Xử lý đặt hàng
           </button>
           <button
             type="button"
@@ -175,6 +169,7 @@ export function PosTopBar() {
       )}
 
       <DisplaySettingsDrawer open={moThietLap} onClose={() => setMoThietLap(false)} />
+      <PendingOrdersModal open={moXuLy} onClose={() => setMoXuLy(false)} onPick={(id) => router.push(posNewInvoiceHref(id))} />
     </>
   )
 }

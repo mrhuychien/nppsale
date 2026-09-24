@@ -66,7 +66,7 @@ describe("in tại chỗ bằng khung ẩn", () => {
   it("nạp trang in ?auto=1 vào khung 0×0 trên chính màn này — không mở tab", () => {
     const d = dom()
     inTaiCho(trangInHoaDon("inv1"), d.doc)
-    expect(d.f.src).toBe("/sales-invoices/inv1/print?auto=1")
+    expect(d.f.src).toBe("/in/hoa-don/inv1?auto=1") // trang in riêng của POS (24/09/2026)
     expect(d.body).toEqual([d.f])
     expect(d.f.style.cssText).toContain("width:0")
     /* ⚠ display:none là Chrome in ra trang trắng. */

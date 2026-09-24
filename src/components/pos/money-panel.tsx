@@ -13,6 +13,7 @@
 import type { ReactNode } from "react"
 import { formatCurrency } from "@/lib/utils"
 import { MoneyInput } from "@/components/ui/money-input"
+import { PercentInput } from "@/components/ui/percent-input"
 import { unitLabel, type DiscountInput } from "@/lib/pos/discount"
 import { POS_PAY_LABEL, type PosPayMethod } from "@/lib/pos/types"
 
@@ -86,15 +87,11 @@ export function DocDiscountRow({
           onChange={(v) => onChange({ value: v, unit: discount.unit })}
         />
       ) : (
-        <input
+        <PercentInput
           id={id}
           className="n h-[34px] w-[78px] rounded-[10px] border-[1.5px] border-[var(--pos-edge)] px-2 text-right text-[14px] font-bold text-[var(--pos-ink)]"
-          type="text"
-          inputMode="decimal"
-          value={discount.value === 0 ? "0" : String(discount.value)}
-          onChange={(e) =>
-            onChange({ value: Number(e.target.value.replace(/[^\d.]/g, "")) || 0, unit: discount.unit })
-          }
+          value={discount.value}
+          onChange={(v) => onChange({ value: v, unit: discount.unit })}
         />
       )}
       <div className="flex shrink-0 gap-0.5 rounded-[7px] bg-[var(--pos-line-soft)] p-0.5">

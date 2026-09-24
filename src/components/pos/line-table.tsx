@@ -19,6 +19,7 @@ import { discountAmount, lineGross, switchUnit, unitAriaLabel, unitLabel } from 
 import type { PosLine } from "@/lib/pos/types"
 import { formatCurrency } from "@/lib/utils"
 import { MoneyInput } from "@/components/ui/money-input"
+import { PercentInput } from "@/components/ui/percent-input"
 import { vatLabel } from "@/lib/constants"
 
 /**
@@ -148,6 +149,8 @@ export function QtyStepper({
           type="number"
           min={min}
           value={value}
+          /* Bấm vào là CHỌN SẴN số cũ — gõ là thay, không phải xoá 0 trước. */
+          onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => onChange(Math.max(min, Number(e.target.value) || 0))}
           onBlur={() => setDangGo(false)}
           onKeyDown={(e) => { if (e.key === "Enter") setDangGo(false) }}
@@ -202,15 +205,11 @@ export function DiscountCell({
           nghìn (220.000) bằng MoneyInput; giảm theo % thì cần dấu thập phân
           (2.5%) mà MoneyInput lọc mất, nên giữ ô chữ thường. */}
       {dangPhanTram ? (
-        <input
+        <PercentInput
           className={`n h-[34px] w-0 flex-grow rounded-[10px] border-[1.5px] px-2 text-right text-[13px] ${oVien}`}
-          type="text"
-          inputMode="decimal"
           aria-label={`Giảm giá dòng ${index}`}
-          value={line.discount.value === 0 ? "0" : String(line.discount.value)}
-          onChange={(e) =>
-            onChange({ value: Number(e.target.value.replace(/[^\d.]/g, "")) || 0, unit: line.discount.unit })
-          }
+          value={line.discount.value}
+          onChange={(v) => onChange({ value: v, unit: line.discount.unit })}
         />
       ) : (
         <MoneyInput

@@ -15,7 +15,19 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { FileText, Printer, Users } from "lucide-react"
-import type { Customer, Payment, SalesOrder } from "@/types"
+import type { Customer, Payment } from "@/types"
+
+/**
+ * Một phiếu công nợ — MỖI HÓA ĐƠN MỘT PHIẾU (mig 125), số đã trừ hàng trả, có
+ * thể âm (mig 186). Nợ đầu kỳ không có hóa đơn.
+ */
+type PhieuNo = {
+  id: string
+  amount: number
+  created_at: string
+  opening_balance: boolean | null
+  invoice: { invoice_code: string | null; invoice_date: string | null } | null
+}
 
 type LedgerRow = {
   id: string
@@ -44,7 +56,7 @@ export default function AccountantLedgerPage() {
       })),
     [customers]
   )
-  const [orders, setOrders] = useState<SalesOrder[]>([])
+  const [phieuNo, setPhieuNo] = useState<PhieuNo[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(true)
   const [loadingLedger, setLoadingLedger] = useState(false)
@@ -85,7 +97,7 @@ export default function AccountantLedgerPage() {
 
   useEffect(() => {
     if (!selectedId) {
-      setOrders([])
+      setPhieuNo([])
       setPayments([])
       return
     }
@@ -103,41 +115,38 @@ export default function AccountantLedgerPage() {
        * ⚠ Mọi phép đọc phân trang có khoá phụ `id` (xem `docDuHoacNem`).
        */
       try {
-        const [orderRes, recRes] = await Promise.all([
-          docDuHoacNem<SalesOrder>(
-            (from, to) =>
-              supabase
-                .from("sales_orders")
-                .select("id, order_code, order_date, total", { count: "exact" })
-                .eq("customer_id", selectedId)
-                .eq("status", "completed")
-                .order("order_date")
-                .order("id")
-                .range(from, to),
-            "Đơn hàng"
-          ),
-          docDuHoacNem<{ id: string }>(
-            (from, to) =>
-              supabase
-                .from("receivables")
-                .select("id", { count: "exact" })
-                .eq("customer_id", selectedId)
-                .order("id")
-                .range(from, to),
-            "Phiếu công nợ"
-          ),
-        ])
+        /**
+         * ⚠ BÊN "NỢ" LẤY TỪ PHIẾU CÔNG NỢ THEO HÓA ĐƠN, KHÔNG TỪ ĐƠN HÀNG (chủ
+         *   nhà 24/09/2026: "công nợ đang tính theo đơn hàng, phải tính theo Hoá
+         *   đơn mới đúng"). Bản cũ cộng `sales_orders.total` của đơn Hoàn thành:
+         *   đơn xuất nhiều hóa đơn, sửa lúc xuất, trừ hàng trả, nợ đầu kỳ, hóa
+         *   đơn huỷ / lập lại — không cái nào khớp sổ. Phiếu công nợ đã là số
+         *   thật của từng hóa đơn (đã trừ hàng trả), và bên "Có" cũng đọc từ nó.
+         */
+        const recRes = await docDuHoacNem<PhieuNo>(
+          (from, to) =>
+            supabase
+              .from("receivables")
+              .select(
+                "id, amount, created_at, opening_balance, invoice:sales_invoices(invoice_code, invoice_date)",
+                { count: "exact" }
+              )
+              .eq("customer_id", selectedId)
+              .order("id")
+              .range(from, to),
+          "Phiếu công nợ"
+        )
         const paymentData = await docThanhToanCuaPhieu<Payment>(
           supabase,
           recRes.rows.map((r) => r.id),
           "id, amount, collected_at"
         )
-        setTruncated(orderRes.truncated || recRes.truncated)
-        setOrders(orderRes.rows)
+        setTruncated(recRes.truncated)
+        setPhieuNo(recRes.rows)
         setPayments(paymentData)
       } catch (err) {
         // ⚠ Không vẽ nửa sổ: thiếu một phần là số dư sai.
-        setOrders([])
+        setPhieuNo([])
         setPayments([])
         setLoadError(errorMessage(err))
       }
@@ -153,26 +162,30 @@ export default function AccountantLedgerPage() {
 
   const ledger: LedgerRow[] = useMemo(() => {
     const rows: Omit<LedgerRow, "balance">[] = []
-    orders.forEach((o) => {
+    phieuNo.forEach((r) => {
+      const so = Number(r.amount) || 0
       rows.push({
-        id: `so-${o.id}`,
-        date: o.order_date,
-        code: o.order_code,
+        id: `rc-${r.id}`,
+        date: r.invoice?.invoice_date ?? r.created_at,
+        code: r.invoice?.invoice_code ?? (r.opening_balance ? "Nợ đầu kỳ" : "—"),
         type: "invoice",
-        typeLabel: "Bán hàng",
-        debit: o.total,
-        credit: 0,
+        // Phiếu ÂM: hàng trả vượt tiền hóa đơn — ghi CÓ cho khách (mig 186).
+        typeLabel: r.opening_balance ? "Nợ đầu kỳ" : so < 0 ? "Hóa đơn (trả > xuất)" : "Hóa đơn",
+        debit: Math.max(0, so),
+        credit: Math.max(0, -so),
       })
     })
     payments.forEach((p) => {
+      const tien = Number(p.amount) || 0
       rows.push({
         id: `pay-${p.id}`,
         date: p.collected_at,
         code: `PAY-${p.id.slice(0, 8).toUpperCase()}`,
         type: "payment",
-        typeLabel: "Thu tiền",
-        debit: 0,
-        credit: p.amount,
+        // Dòng thu ÂM là rút dư có sang khoản khác (mig 120 Q11) — bên Nợ.
+        typeLabel: tien < 0 ? "Cấn trừ dư có" : "Thu tiền",
+        debit: Math.max(0, -tien),
+        credit: Math.max(0, tien),
       })
     })
     rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -181,7 +194,7 @@ export default function AccountantLedgerPage() {
       running += r.debit - r.credit
       return { ...r, balance: running }
     })
-  }, [orders, payments])
+  }, [phieuNo, payments])
 
   const totalDebit = ledger.reduce((s, r) => s + r.debit, 0)
   const totalCredit = ledger.reduce((s, r) => s + r.credit, 0)

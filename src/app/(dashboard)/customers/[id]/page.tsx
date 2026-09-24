@@ -453,7 +453,8 @@ export default function CustomerDetailPage() {
 
   const currentDebt = useMemo(
     () =>
-      receivables.reduce((s, r) => s + Math.max(0, Number(r.amount || 0) - Number(r.paid || 0)), 0),
+      /* Dòng âm (hàng trả > hàng xuất, mig 186) trừ vào nợ — không kẹp về 0. */
+      receivables.reduce((s, r) => s + (Number(r.amount || 0) - Number(r.paid || 0)), 0),
     [receivables]
   )
   const buckets = useMemo(() => debtBuckets(receivables), [receivables])
@@ -556,7 +557,7 @@ export default function CustomerDetailPage() {
   const canCollect = !!user && hasPermission(user.role, "receivables", "create")
   const canOrder = !!user && hasPermission(user.role, "orders", "create")
   const limit = Number(customer.credit_limit || 0)
-  const usedPct = limit > 0 ? Math.min(100, Math.round((currentDebt / limit) * 100)) : 0
+  const usedPct = limit > 0 ? Math.min(100, Math.max(0, Math.round((currentDebt / limit) * 100))) : 0
   const mapsUrl =
     customer.gps_lat != null && customer.gps_lng != null
       ? `https://www.google.com/maps?q=${customer.gps_lat},${customer.gps_lng}`

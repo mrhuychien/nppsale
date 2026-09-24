@@ -92,7 +92,9 @@ export default function CollectPaymentPage() {
 
       const { data , error: qErr } = await query
       if (qErr) console.error("[receivables/collect] truy vấn lỗi:", qErr.message)
-      const list = (data as unknown as Receivable[]) || []
+      /* ⚠ Công nợ ÂM (hàng trả > hàng xuất, mig 186) là DƯ CÓ của khách, không
+         phải khoản để thu — máy chủ cũng chặn thu vào nó (BAD_RECEIVABLE_LINE). */
+      const list = ((data as unknown as Receivable[]) || []).filter((r) => r.amount - (r.paid || 0) > 0)
       setReceivables(list)
 
       if (customerIdParam) {

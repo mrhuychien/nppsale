@@ -67,8 +67,14 @@ export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
       if (!Number.isFinite(n)) return ""
       return n
     })()
+    /**
+     * ⚠ ĐANG GÕ MÀ SỐ LÀ 0 THÌ Ô TRỐNG (chủ nhà 24/09/2026: "ô giảm giá đơn khi
+     *   ấn vào thì mất số 0 chỉ việc gõ số"). Để "0" đứng đó là bắt người dùng
+     *   xoá trước khi gõ; rời ô thì "0" hiện lại.
+     */
+    const [dangGo, setDangGo] = React.useState(false)
     const display =
-      numericValue === ""
+      numericValue === "" || (dangGo && numericValue === 0)
         ? ""
         : new Intl.NumberFormat("vi-VN").format(numericValue as number)
 
@@ -120,6 +126,8 @@ export const MoneyInput = React.forwardRef<HTMLInputElement, MoneyInputProps>(
           {...props}
           value={display}
           onChange={handleChange}
+          onFocus={(e) => { setDangGo(true); props.onFocus?.(e) }}
+          onBlur={(e) => { setDangGo(false); props.onBlur?.(e) }}
           className={cn(
             "flex h-11 lg:h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
             showSuffix ? "pr-7 text-right" : "",

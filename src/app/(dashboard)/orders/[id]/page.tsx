@@ -1,5 +1,7 @@
 "use client"
 
+import { loadCustomerDebt } from "@/lib/pos/load"
+import { gopCongNoCuaDon } from "@/lib/orders/receivable-sum"
 import { useEffect, useState, useCallback } from "react"
 import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { useParams, useRouter } from "next/navigation"
@@ -210,6 +212,8 @@ export default function OrderDetailPage() {
   const [receivables, setReceivables] = useState<
     Array<{ id: string; invoice_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>
   >([])
+  /** Tổng nợ của KHÁCH (mọi hóa đơn) — cho ô "Công nợ / hạn mức". `null` = chưa đọc được. */
+  const [noKhach, setNoKhach] = useState<number | null>(null)
   const [receivable, setReceivable] = useState<
     { amount: number; paid: number; status: string; due_date: string | null } | null
   >(null)
@@ -445,17 +449,7 @@ export default function OrderDetailPage() {
      * đợt 1 đã thu, đợt 2 chưa thu sẽ hiện "đã thanh toán".
      */
     setReceivableId(recRows[0]?.id || null)
-    setReceivable(
-      recRows.length > 0
-        ? {
-            amount: recRows.reduce((a, r) => a + Number(r.amount || 0), 0),
-            paid: recRows.reduce((a, r) => a + Number(r.paid || 0), 0),
-            status: recRows.some((r) => r.status !== "paid") ? "open" : "paid",
-            due_date:
-              recRows.map((r) => r.due_date).filter(Boolean).sort()[0] ?? null,
-          }
-        : null
-    )
+    setReceivable(gopCongNoCuaDon(recRows))
     setStatusHistory((historyRes.data as unknown as OrderStatusHistory[]) || [])
     setDeliveryLines(((deliveryLinesRes.data as unknown) as DeliveryLineWithDetails[]) || [])
     setStockEntries(((stockEntriesRes.data as unknown) as OrderStockEntry[]) || [])
@@ -464,6 +458,14 @@ export default function OrderDetailPage() {
     setSalesInvoices(((salesInvoicesRes.data as unknown) as typeof salesInvoices) || [])
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const khachId = order?.customer_id ?? null
+  useEffect(() => {
+    if (!khachId) { setNoKhach(null); return }
+    let huy = false
+    loadCustomerDebt(supabase, khachId).then((n) => { if (!huy) setNoKhach(n) })
+    return () => { huy = true }
+  }, [khachId, receivable]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * NVBH gửi đơn nháp của mình đi: `draft` → `submitted`.
@@ -1335,15 +1337,11 @@ export default function OrderDetailPage() {
 
   const creditLimit = Number(order.customer?.credit_limit || 0)
   /**
-   * ⚠ CÔNG NỢ CỦA ĐƠN NÀY, không phải tổng nợ của khách. Mẫu vẽ "công nợ
-   *   / hạn mức" của khách, nhưng màn này chỉ nạp dòng nợ của đơn đang
-   *   mở — lấy nó rồi gắn nhãn "công nợ khách" là nói sai. Nhãn dưới đây
-   *   vì thế nói đúng thứ đang đo.
+   * ⚠ TỔNG NỢ CỦA KHÁCH — cộng phiếu công nợ của MỌI HÓA ĐƠN (`loadCustomerDebt`),
+   *   so với hạn mức của khách. Bản trước lấy nợ riêng của đơn này rồi vẽ cạnh
+   *   hạn mức cả khách: khách nợ 50 triệu ở đơn khác vẫn hiện "0 / hạn mức".
    */
-  const customerDebt = Math.max(
-    0,
-    Number(receivable?.amount || 0) - Number(receivable?.paid || 0)
-  )
+  const customerDebt = noKhach ?? 0
   const paymentTermLabel =
     PAYMENT_TERMS.find((t) => t.value === order.payment_terms)?.label ??
     order.payment_terms ??
@@ -1522,7 +1520,8 @@ export default function OrderDetailPage() {
           name={order.customer?.store_name || "Khách lẻ"}
           contact={[order.customer?.phone, order.customer?.address].filter(Boolean).join(" · ")}
           stats={[
-            ...(creditLimit > 0
+            /* Chưa đọc được nợ của khách thì KHÔNG vẽ — "0 / hạn mức" là nói sạch nợ. */
+            ...(creditLimit > 0 && noKhach !== null
               ? [
                   {
                     label: "Công nợ / hạn mức",

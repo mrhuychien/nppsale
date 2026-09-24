@@ -56,7 +56,7 @@ export default function ReceivableDetailPage() {
     const [recRes, payRes] = await Promise.all([
       supabase
         .from("receivables")
-        .select("id, org_id, order_id, customer_id, sales_user_id, amount, paid, due_date, status, opening_balance, created_at, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total)")
+        .select("id, org_id, order_id, customer_id, sales_user_id, amount, paid, due_date, status, opening_balance, created_at, invoice_id, customer:customers(*), sales_user:users!receivables_sales_user_id_fkey(*), order:sales_orders(order_code, total), invoice:sales_invoices(id, invoice_code, invoice_date)")
         .eq("id", id)
         .single(),
       supabase
@@ -238,7 +238,7 @@ export default function ReceivableDetailPage() {
     <div className="space-y-4">
       <PageHeader
         title={`Công nợ #${receivable.id.slice(0, 8)}`}
-        description={`Tạo: ${formatDate(receivable.created_at)}${receivable.due_date ? ` • Hạn: ${formatDate(receivable.due_date)}` : ""}${receivable.order?.order_code ? ` • Đơn: ${receivable.order.order_code}` : ""}`}
+        description={`Tạo: ${formatDate(receivable.created_at)}${receivable.due_date ? ` • Hạn: ${formatDate(receivable.due_date)}` : ""}${receivable.invoice?.invoice_code ? ` • Hóa đơn: ${receivable.invoice.invoice_code}` : receivable.order?.order_code ? ` • Đơn: ${receivable.order.order_code}` : ""}`}
         backHref="/receivables"
       >
         <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
@@ -282,7 +282,21 @@ export default function ReceivableDetailPage() {
                   <p className="font-bold text-lg text-error">{formatCurrency(balance)}</p>
                 </div>
               </div>
-              {receivable.order?.order_code && (
+              {/* ⚠ Công nợ tính theo HÓA ĐƠN (chủ nhà 24/09/2026) — chứng từ gốc là hóa đơn. */}
+              {receivable.invoice?.invoice_code && (
+                <div className="border-t border-border/40 pt-3 text-sm">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Hóa đơn</Label>
+                  <p>
+                    <Link href={`/sales-invoices/${receivable.invoice_id}`} className="font-mono text-primary font-bold hover:underline">
+                      {receivable.invoice.invoice_code}
+                    </Link>
+                    {receivable.order?.order_code && (
+                      <span className="ml-2 text-muted-foreground">· từ đơn {receivable.order.order_code}</span>
+                    )}
+                  </p>
+                </div>
+              )}
+              {!receivable.invoice?.invoice_code && receivable.order?.order_code && (
                 <div className="border-t border-border/40 pt-3 text-sm">
                   <Label className="text-xs uppercase tracking-wider text-muted-foreground">Đơn hàng</Label>
                   <p>

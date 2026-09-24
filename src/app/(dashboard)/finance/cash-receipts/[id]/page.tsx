@@ -44,6 +44,8 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 type ReceiptLineWithOrder = CashReceiptLine & {
+  invoice_id?: string | null
+  invoice?: { id: string; invoice_code: string | null } | null
   order?: {
     id?: string
     order_code?: string
@@ -84,7 +86,7 @@ export default function CashReceiptDetailPage() {
     const { data: ls, error: lsErr } = await supabase
       .from("cash_receipt_lines")
       .select(
-        "id, payment_id, amount, order:sales_orders(id, order_code, customer:customers(store_name, phone))"
+        "id, payment_id, amount, invoice_id, invoice:sales_invoices(id, invoice_code), order:sales_orders(id, order_code, customer:customers(store_name, phone))"
       )
       .eq("receipt_id", id)
     if (lsErr) console.error("[cash-receipts/id] truy vấn lỗi:", lsErr.message)
@@ -270,7 +272,7 @@ export default function CashReceiptDetailPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Receipt className="h-4 w-4" />
-              Chi tiết theo đơn ({lines.length})
+              Chi tiết theo hóa đơn ({lines.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -283,7 +285,7 @@ export default function CashReceiptDetailPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40">
                     <tr>
-                      <th className="text-left px-3 py-2 font-semibold">Đơn hàng</th>
+                      <th className="text-left px-3 py-2 font-semibold">Hóa đơn</th>
                       <th className="text-left px-3 py-2 font-semibold">Khách hàng</th>
                       <th className="text-right px-3 py-2 font-semibold w-32">Đã thu</th>
                     </tr>
@@ -292,7 +294,16 @@ export default function CashReceiptDetailPage() {
                     {lines.map((l) => (
                       <tr key={l.id} className="border-t">
                         <td className="px-3 py-2">
-                          {l.order?.order_code ? (
+                          {/* ⚠ Công nợ tính theo hóa đơn (chủ nhà 24/09/2026): có
+                              hóa đơn thì hiện/link hóa đơn; dòng cũ mới lùi về đơn. */}
+                          {l.invoice?.id ? (
+                            <Link
+                              href={`/sales-invoices/${l.invoice.id}`}
+                              className="font-mono text-xs font-bold text-primary hover:underline"
+                            >
+                              {l.invoice.invoice_code || `#${l.invoice.id.slice(0, 8)}`}
+                            </Link>
+                          ) : l.order?.order_code ? (
                             <Link
                               href={`/orders/${l.order.id}`}
                               className="font-mono text-xs font-bold text-primary hover:underline"

@@ -66,6 +66,21 @@ export interface PosTotals {
   vat: number
   /** Số khách (hoặc NCC) cần trả. Kẹp về 0. */
   due: number
+  /** Phần hàng trả VƯỢT tiền đơn — ghi công nợ ÂM cho khách (mig 186). */
+  credit: number
+}
+
+/**
+ * Tách số ròng thành "khách cần trả" và "ghi có cho khách".
+ *
+ * ⚠ CHỦ NHÀ 24/09/2026: "phải ghi cả công nợ âm (trường hợp tiền hàng trả nhiều
+ *   hơn tiền hàng xuất)". Ô "Khách cần trả" vẫn KẸP VỀ 0 — số âm ở đó là mời thu
+ *   ngân trả tiền mặt cho khách tại quầy — nhưng phần vượt không mất: nó hiện ở
+ *   dòng "Ghi có cho khách" và sổ ghi thành công nợ âm.
+ */
+export function tachPhaiTra(net: number): { due: number; credit: number } {
+  const n = Math.round(Number(net) || 0)
+  return { due: Math.max(0, n), credit: Math.max(0, -n) }
 }
 
 export function lineAmount(l: PosTotalLine): number {
@@ -105,8 +120,8 @@ export function posTotals(i: {
    *   một số khác — chỉ chưa lộ vì cột VAT đang tắt và mọi dòng là 0%.
    *   Bật cột lên là hai con số lệch nhau ngay, và lệch âm thầm.
    */
-  const due = Math.max(0, gross - lineDiscount - docDiscount + vat + other - returnCredit)
-  return { gross, lineDiscount, docDiscount, other, returnCredit, vat, due }
+  const { due, credit } = tachPhaiTra(gross - lineDiscount - docDiscount + vat + other - returnCredit)
+  return { gross, lineDiscount, docDiscount, other, returnCredit, vat, due, credit }
 }
 
 /**

@@ -61,7 +61,7 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   /* 24/09/2026: in TẠI CHỖ — khung ẩn trên chính màn POS, không mở tab. */
   const inAn = await theoDoiIn(page)
   await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
-  await expect.poll(inAn.khung).toContainEqual(expect.stringMatching(/\/sales-invoices\/00000000-0000-4000-8000-00000000f004\/print\?auto=1/))
+  await expect.poll(inAn.khung).toContainEqual(expect.stringMatching(/\/in\/hoa-don\/00000000-0000-4000-8000-00000000f004\?auto=1/))
   expect(inAn.tabMoi(), "in mà vẫn mở tab mới").toBe(0)
   await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
   const p = ((await goiCuoi("post_invoice"))!.body as { p: Record<string, unknown> }).p as {
@@ -122,7 +122,7 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
 
     const inAn = await theoDoiIn(page)
     await page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }).click()
-    await expect.poll(inAn.khung, "lập lại xong không in tờ MỚI").toContainEqual(expect.stringMatching(/\/sales-invoices\/00000000-0000-4000-8000-00000000f003\/print\?auto=1/))
+    await expect.poll(inAn.khung, "lập lại xong không in tờ MỚI").toContainEqual(expect.stringMatching(/\/in\/hoa-don\/00000000-0000-4000-8000-00000000f003\?auto=1/))
     expect(inAn.tabMoi()).toBe(0)
     await expect.poll(async () => !!(await goiCuoi("reissue_invoice"))).toBe(true)
     const p = ((await goiCuoi("reissue_invoice"))!.body as { p_invoice_id: string; p: Record<string, unknown> })
@@ -267,4 +267,24 @@ test("tạo phiếu trả trên web (máy tính) chuyển sang màn POS", async 
   await dangNhap(page)
   await page.goto(`/returns/new?invoiceId=${HOA_DON}&customerId=00000000-0000-4000-8000-0000000000c1`)
   await expect(page).toHaveURL(new RegExp(`/pos/tra-hang/moi\\?invoice=${HOA_DON}`))
+})
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "thêm nút Xử lý đặt hàng (thay nút in …) → danh sách Đơn
+ *   hàng ở trạng thái phiếu tạm để tạo hoá đơn".
+ */
+test("POS: Xử lý đặt hàng liệt kê đơn phiếu tạm, chọn một đơn là mở màn lập hóa đơn", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/pos/don-hang/moi")
+  await expect(page.getByRole("button", { name: "In chứng từ đang mở" }), "nút In trên thanh trên chưa được thay").toHaveCount(0)
+  await page.getByRole("button", { name: "Xử lý đặt hàng" }).click()
+  const hop = page.getByRole("dialog", { name: "Xử lý đặt hàng" })
+  await expect(hop).toBeVisible()
+  const dong = hop.getByTestId("don-cho-xu-ly")
+  await expect(dong.filter({ hasText: "DH-0001" })).toHaveCount(1)
+  // Đơn đã hoàn thành / đã huỷ không nằm trong danh sách chờ.
+  await expect(dong.filter({ hasText: "DH-0002" })).toHaveCount(0)
+  await expect(dong.filter({ hasText: "DH-0004" })).toHaveCount(0)
+  await hop.getByRole("button", { name: "Tạo hóa đơn cho DH-0001" }).click()
+  await expect(page).toHaveURL(/\/pos\/hoa-don\/moi\?order=o-e2e-1/)
 })

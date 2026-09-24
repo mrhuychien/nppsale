@@ -27,6 +27,19 @@ type PaymentWithJoin = Payment & {
   }
 }
 
+/**
+ * ⚠ Công nợ tính theo HÓA ĐƠN (chủ nhà 24/09/2026): phiếu nợ có
+ *   `invoice_id` → hiện/link mã hóa đơn; phiếu cũ chưa có hóa đơn mới lùi
+ *   về mã đơn hàng.
+ */
+function chungTuCuaPhieu(
+  r: { invoice?: { id: string; invoice_code: string | null } | null; order?: { id: string; order_code: string } | null } | undefined | null
+): { href: string; code: string } | null {
+  if (r?.invoice?.id) return { href: `/sales-invoices/${r.invoice.id}`, code: r.invoice.invoice_code || `#${r.invoice.id.slice(0, 8)}` }
+  if (r?.order?.id) return { href: `/orders/${r.order.id}`, code: r.order.order_code || `#${r.order.id.slice(0, 8)}` }
+  return null
+}
+
 const ROLE_LABELS: Record<string, string> = {
   owner: "Chủ NPP",
   manager: "Quản lý bán hàng",
@@ -67,7 +80,7 @@ export default function RepDebtDetailPage() {
           supabase
             .from("receivables")
             .select(
-              "id, customer_id, amount, paid, due_date, status, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date)",
+              "id, customer_id, amount, paid, due_date, status, customer:customers(id, store_name, credit_limit), order:sales_orders(id, order_code, order_date), invoice_id, invoice:sales_invoices(id, invoice_code, invoice_date)",
               { count: "exact" }
             )
             .eq("sales_user_id", userId)
@@ -96,7 +109,7 @@ export default function RepDebtDetailPage() {
         const pays = await docThanhToanCuaPhieu<PaymentWithJoin>(
           supabase,
           recIds,
-          "id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), customer:customers(store_name))"
+          "id, amount, method, collected_at, collector:users!payments_collected_by_fkey(full_name), receivable:receivables(id, order_id, customer_id, order:sales_orders(id, order_code), invoice_id, invoice:sales_invoices(id, invoice_code), customer:customers(store_name))"
         )
         setPayments(pays.sort((a, b) => (b.collected_at ?? "").localeCompare(a.collected_at ?? "")))
       } catch (err) {
@@ -319,7 +332,7 @@ export default function RepDebtDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Mã đơn</TableHead>
+                        <TableHead>Mã hóa đơn</TableHead>
                         <TableHead>Khách hàng</TableHead>
                         <TableHead className="text-right">Số tiền</TableHead>
                         <TableHead className="text-right">Đã trả</TableHead>
@@ -334,9 +347,9 @@ export default function RepDebtDetailPage() {
                         return (
                           <TableRow key={r.id}>
                             <TableCell>
-                              {r.order ? (
-                                <Link href={`/orders/${r.order.id}`} className="font-mono text-primary font-bold hover:underline">
-                                  {r.order.order_code}
+                              {chungTuCuaPhieu(r) ? (
+                                <Link href={chungTuCuaPhieu(r)!.href} className="font-mono text-primary font-bold hover:underline">
+                                  {chungTuCuaPhieu(r)!.code}
                                 </Link>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
@@ -384,7 +397,7 @@ export default function RepDebtDetailPage() {
                         <TableHead>Phương thức</TableHead>
                         <TableHead>Người thu</TableHead>
                         <TableHead className="hidden sm:table-cell">Khách hàng</TableHead>
-                        <TableHead className="hidden md:table-cell">Mã đơn</TableHead>
+                        <TableHead className="hidden md:table-cell">Hóa đơn</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -400,9 +413,9 @@ export default function RepDebtDetailPage() {
                             <TableCell>{p.collector?.full_name || "-"}</TableCell>
                             <TableCell className="hidden sm:table-cell">{rec?.customer?.store_name || "-"}</TableCell>
                             <TableCell className="hidden md:table-cell">
-                              {rec?.order ? (
-                                <Link href={`/orders/${rec.order.id}`} className="font-mono text-primary font-bold hover:underline">
-                                  {rec.order.order_code}
+                              {chungTuCuaPhieu(rec) ? (
+                                <Link href={chungTuCuaPhieu(rec)!.href} className="font-mono text-primary font-bold hover:underline">
+                                  {chungTuCuaPhieu(rec)!.code}
                                 </Link>
                               ) : (
                                 "-"

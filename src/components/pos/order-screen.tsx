@@ -881,7 +881,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     /* ⚠ ĐƠN CHƯA THU ĐỒNG NÀO. Màn này là màn ĐẶT HÀNG — tiền thu
        lúc lập hóa đơn, không phải ở đây (chủ nhà chốt 22/09/2026, gỡ
        hẳn khối thanh toán). Nên nợ sau đơn = nợ hiện tại + cả tờ đơn. */
-    const sauDon = khach.debt + totals.due
+    const sauDon = khach.debt + totals.due - totals.credit
     return sauDon > hanMuc ? sauDon - hanMuc : null
   })()
 
@@ -1799,6 +1799,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               <MoneyRow label="Trừ hàng trả" value={`− ${formatCurrency(totals.returnCredit)}`} tone="warn" />
             )}
 
+            {/* ⚠ Hàng trả VƯỢT tiền đơn: phần vượt ghi công nợ ÂM (mig 186), không mất.
+                Đứng TRÊN tổng — sau tổng là tới hàng nút, không chen gì. */}
+            {totals.credit > 0 && (
+              <MoneyRow label="Ghi có cho khách (công nợ âm)" value={`− ${formatCurrency(totals.credit)}`} tone="warn" />
+            )}
             <TotalsHero label="Khách cần trả" value={totals.due} />
 
             <div className="mt-3.5 flex items-center justify-between gap-2.5 border-t border-[var(--pos-line-soft)] pt-3">
@@ -1858,7 +1863,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               <PanelButton
                 width={70}
                 disabled={!orderId}
-                onClick={() => { if (orderId) inTaiCho(`/orders/${orderId}/print`) }}
+                onClick={() => { if (orderId) inTaiCho(`/in/don-hang/${orderId}`) }}
                 title="In đơn đặt hàng"
               >
                 In

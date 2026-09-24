@@ -19,6 +19,7 @@ import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ensureReceivableForOrder } from "@/lib/receivables"
+import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200"
 import {
@@ -228,6 +229,16 @@ export default function DeliverySettlePage() {
   const finalize = async ({ withPrint }: { withPrint: boolean }) => {
     if (!delivery || !user) return
     if (alreadySettled) return
+    /**
+     * ⚠ LUỒNG CŨ GHI CÔNG NỢ THEO ĐƠN (`ensureReceivableForOrder`): đè số của
+     *   phiếu công nợ theo hóa đơn bằng tổng đơn, hoặc sinh thêm phiếu không
+     *   gắn hóa đơn. Công nợ tính theo HÓA ĐƠN (chủ nhà 24/09/2026) — khoá như
+     *   các màn luồng cũ khác; thu tiền ở Kế toán → Phiếu thu.
+     */
+    if (LEGACY_FLOW_WRITES_LOCKED) {
+      toast({ title: "Bước này đã bỏ ở quy trình mới", description: LEGACY_LOCK_HINT["collect"], variant: "destructive" })
+      return
+    }
     setSubmitting(true)
     try {
       // Case 1: tất cả đơn thất bại / chuyến rỗng → phiếu thu = 0,

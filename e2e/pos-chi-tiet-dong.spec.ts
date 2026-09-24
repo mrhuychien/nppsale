@@ -63,3 +63,35 @@ test("đơn hàng: giảm giá trong chi tiết dòng, đơn vị bấm-nhảy, 
   // Giảm 10% quy vào đơn giá thùng: 450.000 × 0,9.
   expect(p.lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 405_000 })
 })
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "ô giảm giá đơn khi ấn vào thì mất số 0 chỉ việc gõ số". */
+test("đơn hàng: ô số đang 0 bấm vào là trống, gõ thẳng số; % gõ được phần lẻ", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/pos/don-hang/moi")
+  await chonKhach(page, "Tạp hoá Cô Ba")
+  await oTim(page).fill("Sữa")
+  await oTim(page).press("Enter")
+  await expect(page.getByTestId("dong-don")).toHaveCount(1)
+  await page.getByRole("button", { name: "Xong" }).click()
+
+  const giamDon = page.getByLabel("Giảm giá đơn", { exact: true })
+  await expect(giamDon).toHaveValue("0")
+  await giamDon.click()
+  await expect(giamDon, "bấm vào mà số 0 vẫn nằm đó").toHaveValue("")
+  await page.keyboard.type("5000")
+  await expect(giamDon).toHaveValue("5.000")
+  // Xoá hết rồi rời ô: về lại "0".
+  await giamDon.fill("")
+  await giamDon.blur()
+  await expect(giamDon).toHaveValue("0")
+
+  // Giảm dòng theo %: gõ 2,5 không mất dấu phẩy.
+  await page.getByRole("button", { name: "Chi tiết dòng 1" }).click()
+  await page.getByRole("button", { name: /^Đơn vị giảm dòng 1 — đang là đồng/ }).click()
+  const giamDong = page.getByLabel("Giảm giá dòng 1", { exact: true })
+  await giamDong.click()
+  await expect(giamDong).toHaveValue("")
+  await page.keyboard.type("2,5")
+  await expect(giamDong).toHaveValue("2,5")
+  await expect(page.getByTestId("dong-don").first()).toContainText("19.500")
+})

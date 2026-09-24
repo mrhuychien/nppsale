@@ -65,10 +65,13 @@ test("trả hàng POS: nút In in tại chỗ bằng mẫu phiếu trả, không
   const nut = page.getByRole("button", { name: "In", exact: true })
   await expect(nut).toBeEnabled()
   await nut.click()
-  await expect.poll(inAn.khung).toContainEqual("/returns/r-e2e-0/print?auto=1")
+  await expect.poll(inAn.khung).toContainEqual("/in/tra-hang/r-e2e-0?auto=1")
   expect(inAn.tabMoi()).toBe(0)
-  // Mẫu in phiếu trả có thật.
-  await page.goto("/returns/r-e2e-0/print")
+  // Trang in RIÊNG của POS: đúng mẫu phiếu trả, không kèm khung dashboard,
+  // và máy chủ CHO nạp vào khung cùng miền (DENY là bấm In không ra gì).
+  const res = await page.goto("/in/tra-hang/r-e2e-0")
+  expect(res?.headers()["x-frame-options"]).toBe("SAMEORIGIN")
   await expect(page.getByRole("heading", { name: "PHIẾU TRẢ HÀNG", exact: true })).toBeVisible()
   await expect(page.getByText("Tạp hoá Cô Ba").first()).toBeVisible()
+  await expect(page.getByRole("link", { name: "Trang chủ" }), "trang in POS còn kèm menu dashboard").toHaveCount(0)
 })

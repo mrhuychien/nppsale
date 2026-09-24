@@ -76,10 +76,12 @@ export function posHref(t: Pick<PosTab, "docType" | "docId">): string {
  */
 export function posPrintHref(docType: PosDocType, docId: string): string | null {
   switch (docType) {
-    case "SO": return `/orders/${docId}/print`
-    case "INV": return `/sales-invoices/${docId}/print`
+    /* Trang in RIÊNG của POS (`app/in/*`, 24/09/2026) — cùng mẫu phiếu với
+       phần quản lý, không kèm khung dashboard. */
+    case "SO": return `/in/don-hang/${docId}`
+    case "INV": return `/in/hoa-don/${docId}`
     /* Mẫu in phiếu trả có từ 24/09/2026 (`ReturnSlip`). */
-    case "RET": return `/returns/${docId}/print`
+    case "RET": return `/in/tra-hang/${docId}`
     default: return null
   }
 }

@@ -421,10 +421,11 @@ describe("ngày là ô ngày, in đi qua mẫu in thật", () => {
   })
 
   it("posPrintHref chỉ trả trang in đã có thật", () => {
-    expect(posPrintHref("SO", "a")).toBe("/orders/a/print")
-    expect(posPrintHref("INV", "a")).toBe("/sales-invoices/a/print")
+    // Trang in RIÊNG của POS (24/09/2026) — `app/in/*`.
+    expect(posPrintHref("SO", "a")).toBe("/in/don-hang/a")
+    expect(posPrintHref("INV", "a")).toBe("/in/hoa-don/a")
     /* Mẫu in phiếu trả có từ 24/09/2026 (chủ nhà: "Trả hàng, in đơn tại chỗ"). */
-    expect(posPrintHref("RET", "a")).toBe("/returns/a/print")
+    expect(posPrintHref("RET", "a")).toBe("/in/tra-hang/a")
     expect(posPrintHref("PUR", "a")).toBeNull()
     expect(posPrintHref("PRET", "a")).toBeNull()
   })

@@ -904,8 +904,10 @@ describe("khối khách hàng theo mẫu", () => {
     const i = ORD.indexOf("const customerDebt =")
     expect(i).toBeGreaterThan(0)
     const block = ORD.slice(i, i + 200)
-    expect(block).toContain("receivable?.amount")
-    expect(block).toContain("receivable?.paid")
+    // 24/09/2026: tổng nợ của KHÁCH qua mọi phiếu công nợ theo hóa đơn —
+    // xem tests/cong-no-theo-hoa-don.test.ts.
+    expect(block).toContain("noKhach")
+    expect(ORD).toContain("loadCustomerDebt(supabase, khachId)")
     expect(block).not.toContain("order.total")
   })
 

@@ -303,8 +303,10 @@ export default function SellCartPage() {
   const projectedOver = useMemo(() => {
     if (!customer || !customer.credit_limit) return 0
     // Chỉ cảnh báo phần VƯỢT, không hiện "vượt 0đ" cho đơn bình thường.
-    return Math.max(0, cart.totals.grandTotal - Number(customer.credit_limit))
-  }, [customer, cart.totals.grandTotal])
+    // ⚠ Nợ SẴN CÓ (phiếu công nợ theo hóa đơn) + đơn này — như POS; bỏ nợ cũ
+    //   là khách đang nợ sát hạn mức vẫn không bị cảnh báo.
+    return Math.max(0, (debt ?? 0) + cart.totals.grandTotal - Number(customer.credit_limit))
+  }, [customer, cart.totals.grandTotal, debt])
 
   const termsSummary = useMemo(() => {
     const t =

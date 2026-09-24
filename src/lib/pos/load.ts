@@ -91,10 +91,9 @@ export async function loadCustomerDebt(
       .range(from, to)
   )
   if (res.error || res.truncated) return null
-  return res.rows.reduce(
-    (s, r) => s + Math.max(0, (Number(r.amount) || 0) - (Number(r.paid) || 0)),
-    0
-  )
+  /* ⚠ KHÔNG kẹp từng dòng về 0: dòng ÂM (hàng trả > hàng xuất, mig 186) là
+     khoản khách được trừ — tổng có thể âm = khách đang dư có. */
+  return res.rows.reduce((s, r) => s + ((Number(r.amount) || 0) - (Number(r.paid) || 0)), 0)
 }
 
 /** Công nợ phải trả một NCC. Cùng luật `null` với `loadCustomerDebt`. */

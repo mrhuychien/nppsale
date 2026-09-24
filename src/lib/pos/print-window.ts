@@ -6,7 +6,7 @@
  *   "in đơn tại chỗ ko cần mở tab. Chỉ bật cửa sổ in" — thay bằng `inTaiCho`.
  */
 /** Trang in hóa đơn bật thẳng hộp thoại in. */
-export const trangInHoaDon = (invoiceId: string) => `/sales-invoices/${invoiceId}/print?auto=1`
+export const trangInHoaDon = (invoiceId: string) => `/in/hoa-don/${invoiceId}?auto=1`
 
 /**
  * IN TẠI CHỖ — chủ nhà 24/09/2026: "Màn Hóa đơn, Đơn hàng, Trả hàng, in đơn

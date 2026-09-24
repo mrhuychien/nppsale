@@ -35,6 +35,7 @@ import {
   creditOnInvoice, netDueOnInvoice, type InvoiceReturnRow,
 } from "@/lib/orders/invoice-credit"
 import { posPrintHref } from "@/lib/pos/tabs"
+import { inTaiCho } from "@/lib/pos/print-window"
 import { usePosDocLabel } from "@/store/pos/tabs"
 import { DocSubHeader } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, LineTableHeader, POS_GRID } from "@/components/pos/line-table"
@@ -316,7 +317,7 @@ function XemHoaDon({ id }: { id: string }) {
               width={54}
               disabled={!head}
               title="Mở trang in hóa đơn"
-              onClick={() => { const h = posPrintHref("INV", id); if (h) window.open(h, "_blank") }}
+              onClick={() => { const h = posPrintHref("INV", id); if (h) inTaiCho(h) }}
             >
               In
             </PanelButton>

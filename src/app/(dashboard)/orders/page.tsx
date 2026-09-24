@@ -2,6 +2,7 @@
 
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
+import { gopCongNoTheoDon } from "@/lib/orders/receivable-sum"
 import { LOC_DON_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useMemo, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
@@ -690,11 +691,10 @@ export default function OrdersPage() {
           .find((r) => r?.error)?.error
         if (qErr) console.error("[app/orders] truy vấn lỗi:", qErr.message)
         if (cancelled) return
-        const recvMap: Record<string, { amount: number; paid: number; status: string; due_date: string | null }> = {}
-        for (const r of (recvRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || []) {
-          if (r.order_id) recvMap[r.order_id] = { amount: r.amount, paid: r.paid, status: r.status, due_date: r.due_date }
-        }
-        setReceivablesByOrder(recvMap)
+        /* ⚠ Đơn nhiều hóa đơn = nhiều phiếu công nợ — GỘP, không lấy dòng cuối. */
+        setReceivablesByOrder(
+          gopCongNoTheoDon((recvRes.data as Array<{ order_id: string | null; amount: number; paid: number; status: string; due_date: string | null }>) || [])
+        )
         const invMap: Record<string, Invoice> = {}
         for (const inv of (invRes.data as Invoice[]) || []) {
           if (inv.order_id) invMap[inv.order_id] = inv

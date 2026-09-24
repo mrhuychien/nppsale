@@ -227,4 +227,10 @@ SELECT 25, 'Mig 185 (quyền giảm giá theo nhân viên)',
              WHERE table_schema = 'public' AND table_name = 'users'
                AND column_name IN ('allow_discount', 'discount_max_type', 'discount_max_value')) = 3
        THEN 'OK — đã có' ELSE 'CHƯA — NVBH không thấy ô giảm giá, màn cài đặt không lưu được quyền giảm giá' END, ''
+UNION ALL
+-- 26. Mig 186 — công nợ âm khi hàng trả nhiều hơn hàng xuất
+SELECT 26, 'Mig 186 (công nợ âm khi hàng trả > hàng xuất)',
+  CASE WHEN position('GREATEST(0' IN pg_get_functiondef('public._wf2b_recompute_receivable(uuid)'::regprocedure)) = 0
+            AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_cong_no_am_trang_thai')
+       THEN 'OK — đã vá' ELSE 'CHƯA — hóa đơn có hàng trả lớn hơn hàng xuất ghi công nợ 0, mất phần khách được trừ' END, ''
 ) t ORDER BY stt;

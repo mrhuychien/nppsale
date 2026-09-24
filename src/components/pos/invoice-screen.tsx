@@ -68,6 +68,7 @@ import {
 } from "@/store/pos/product-search"
 import { DocPeople } from "@/components/pos/doc-people"
 import { inTaiCho, trangInHoaDon } from "@/lib/pos/print-window"
+import { tachPhaiTra } from "@/lib/pos/totals"
 import { assignDocSeller } from "@/lib/pos/save"
 import { useAuth } from "@/hooks/use-auth"
 
@@ -495,7 +496,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const truHangTra =
     traCu.reduce((s, l) => s + tienTru(soTraCu(l), giaTraCu(l), l.vatRate, l.isExchange), 0) +
     traMoi.reduce((s, a) => s + tienTru(a.qty, a.price, a.vatRate, a.isExchange), 0)
-  const khachTra = Math.max(0, tong.total - truHangTra)
+  /* Kẹp "Khách cần trả" về 0; phần hàng trả vượt ghi công nợ ÂM (mig 186). */
+  const { due: khachTra, credit: ghiCo } = tachPhaiTra(tong.total - truHangTra)
   const daThu = receipts.reduce((s, r) => s + r.amount, 0)
   const vuotConLai = rowsOverOrdered(rows)
   const thieuHang = rows.filter((r) => r.qty > 0 && r.stockKnown && shortageOf(r, r.qty) > 0)
@@ -1247,6 +1249,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           )}
           <div className="mt-1 border-t border-[var(--pos-line-soft)] pt-2">
             <MoneyRow label="Khách cần trả" value={khachTra} strong />
+            {ghiCo > 0 && (
+              <MoneyRow label="Ghi có cho khách (công nợ âm)" value={`− ${formatCurrency(ghiCo)}`} tone="warn" />
+            )}
           </div>
           {/* ⚠ Tiền đã thu KHÔNG còn chặn lập lại — nó đi sang tờ mới (mig 184). */}
           {sua && (receiptErr || reissuePaymentNote({ paidAmount: daThu, receiptRefs: receipts.map((r) => r.ref) })) && (

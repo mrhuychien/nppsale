@@ -88,12 +88,13 @@ export function PartnerCard({
               <span
                 className={`text-[10.5px] font-semibold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
               >
-                Nợ
+                {/* Nợ âm (hàng trả > hàng xuất, mig 186) là khách đang DƯ CÓ. */}
+                {partner.debt < 0 ? "Dư có" : "Nợ"}
               </span>
               <span
                 className={`n text-[11.5px] font-bold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
               >
-                {formatCurrency(partner.debt)}
+                {formatCurrency(Math.abs(partner.debt))}
               </span>
             </div>
           )}

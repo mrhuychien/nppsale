@@ -553,6 +553,9 @@ export interface Receivable {
   // Joined
   customer?: Customer
   sales_user?: User
+  /** Mỗi hóa đơn một phiếu công nợ (mig 125); nợ đầu kỳ không có. */
+  invoice_id?: string | null
+  invoice?: { id: string; invoice_code: string | null; invoice_date: string | null } | null
   order?: SalesOrder
   payments?: Payment[]
 }

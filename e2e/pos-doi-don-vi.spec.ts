@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import { dangNhap, chonKhach, nhatKy } from "./helpers"
+import { dangNhap, chonKhach, nhatKy, chonDonVi } from "./helpers"
 
 /**
  * ⚠ LỖI THẬT 23/09/2026 — chủ nhà: "tạo đơn hàng trên pos, chuyển đổi đơn
@@ -24,7 +24,7 @@ test("đơn hàng: đổi đơn vị ở dòng bán và dòng hàng trả đều
   await themHang(page, "Sữa")
   const giaBan = page.getByLabel("Đơn giá dòng 1")
   await expect(giaBan).toHaveValue("20.000")
-  await page.getByRole("button", { name: "thùng", exact: true }).first().click()
+  await chonDonVi(page, "dòng 1", "thùng")
   await expect(giaBan, "đổi sang thùng mà giá không tra bảng giá thùng").toHaveValue("450.000")
 
   // Dòng hàng trả kèm đơn — đúng chỗ chủ nhà báo lỗi
@@ -32,8 +32,7 @@ test("đơn hàng: đổi đơn vị ở dòng bán và dòng hàng trả đều
   await themHang(page, "Sữa")
   const giaTra = page.getByLabel("Đơn giá trả dòng 1")
   await expect(giaTra).toHaveValue("20.000")
-  const khoiTra = page.locator("div", { has: giaTra }).filter({ has: page.getByLabel("Lý do trả dòng 1") }).last()
-  await khoiTra.getByRole("button", { name: "thùng", exact: true }).click()
+  await chonDonVi(page, "dòng trả 1", "thùng")
   await expect(giaTra, "hàng trả đổi sang thùng mà đơn giá vẫn là giá hộp").toHaveValue("450.000")
   await expect(page.getByText("− 450.000").first()).toBeVisible()
 
@@ -85,7 +84,7 @@ test("trả hàng: giá theo bảng giá nhóm khách, chọn được thùng", 
   await tim.press("Enter")
   const gia = page.getByLabel("Đơn giá dòng 1")
   await expect(gia, "thêm hàng trả bỏ qua bảng giá nhóm khách").toHaveValue("19.000")
-  await page.getByRole("button", { name: "Đơn vị thùng dòng trả 1" }).click()
+  await chonDonVi(page, "dòng trả 1", "thùng")
   await expect(gia, "đổi sang thùng mà giá trả vẫn là giá hộp").toHaveValue("450.000")
 })
 

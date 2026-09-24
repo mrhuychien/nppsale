@@ -119,8 +119,12 @@ describe("màn hóa đơn đủ ô như màn đơn (chủ nhà 24/09/2026)", () 
 
   it("cột dòng hóa đơn theo cùng bộ cột / thiết lập với màn đơn", () => {
     const HD = readFileSync("src/components/pos/invoice-screen.tsx", "utf8")
-    for (const nhan of ['label: "Giảm giá"', 'label: "VAT"', 'label: "Đơn giá"', 'label: "Thành tiền"', "settings.colLineDiscount", "settings.colVat", "<DiscountCell", "<VatChip", "<LineMenu", "<DocDiscountRow"]) {
+    /* Chủ nhà 24/09/2026: giảm giá dòng vào "chi tiết dòng", thùng rác đầu dòng,
+       đơn vị cạnh số lượng; "Bỏ VAT từng dòng cả ở POS" — thuế chỉ còn cả hóa đơn. */
+    for (const nhan of ['label: "Đơn vị"', 'label: "Đơn giá"', 'label: "Thành tiền"', "<TrashButton", "<UnitCycleButton", "<LineDetailToggle", "<LineDetailPanel", "<DiscountCell", "<DocDiscountRow", "vatChungKeTiep"]) {
       expect(HD, `màn hóa đơn thiếu ${nhan}`).toContain(nhan)
     }
+    expect(HD).not.toContain("Thuế GTGT dòng")
+    expect(HD).not.toContain("<LineMenu")
   })
 })

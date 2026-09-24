@@ -48,7 +48,7 @@ describe("hàng đổi trả kèm đơn: đổi đơn vị là đổi đơn giá
     const i = S.indexOf("Hàng đổi trả kèm đơn")
     const khoi = S.slice(i, S.indexOf("Đơn giá trả dòng", i))
     expect(khoi, "chip đơn vị hàng trả chỉ đổi nhãn").not.toMatch(/sua\(\{ unit: u\.unit_name \}\)/)
-    expect(khoi).toMatch(/sua\(doiDonViDongTra\(l, u\.unit_name, productById\(l\.productId\), groupId\)\)/)
+    expect(khoi).toMatch(/sua\(doiDonViDongTra\(l, u, productById\(l\.productId\), groupId\)\)/)
   })
 })
 
@@ -194,9 +194,9 @@ describe("trả hàng: dòng thêm tay vs dòng theo hóa đơn gốc", () => {
 
   it("màn trả hàng có ô đơn vị nối vào phép đổi, và thêm hàng tra bảng giá", () => {
     const S = read("src/components/pos/return-screen.tsx")
-    /* Chip đơn vị như màn đơn hàng (chủ nhà 23/09/2026: "làm cho giống"). */
-    expect(S).toMatch(/donViHienThi\(l, productById\(l\.productId\)\)\.map/)
-    expect(S).toMatch(/patch\(l\.key, doiDonViDongTra\(l, u\.unit_name, productById\(l\.productId\), groupId\)\)/)
+    /* Nút đơn vị bấm nhảy lần lượt như màn đơn hàng (chủ nhà 24/09/2026). */
+    expect(S).toMatch(/donViHienThi\(l, productById\(l\.productId\)\)\.map\(\(u\) => u\.unit_name\)/)
+    expect(S).toMatch(/patch\(l\.key, doiDonViDongTra\(l, u, productById\(l\.productId\), groupId\)\)/)
     expect(S).not.toMatch(/price: Number\(p\.sell_price\)/)
     expect(S).not.toMatch(/units: \[\{ unit_name: (p\.base_unit|x\.unit_name|x\.unitName), conversion: 1 \}\]/)
   })

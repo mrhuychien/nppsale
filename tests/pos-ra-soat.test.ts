@@ -343,10 +343,11 @@ describe("ô không có cột thì không vẽ", () => {
   /** ⚠ Nhưng THUẾ thì lưu được — qua `vat_rate` của từng dòng. */
   it("thuế của màn sửa hóa đơn đi xuống dòng", () => {
     const s = code(read("src/components/pos/invoice-screen.tsx"))
-    /* Từ 24/09/2026: nút VAT như màn đơn — đặt hàng loạt cho từng dòng, và mỗi dòng có chip riêng. */
+    /* Từ 24/09/2026: nút VAT như màn đơn — đặt hàng loạt cho từng dòng.
+       Chủ nhà cùng ngày: "Bỏ VAT từng dòng cả ở POS" — không còn chip thuế trên dòng. */
     expect(s).toMatch(/const moi = vatChungKeTiep\(vatChung\)/)
     expect(s).toMatch(/setRows\(\(c\) => c\.map\(\(r\) => \(\{ \.\.\.r, vatRate: moi \}\)\)\)/)
-    expect(s).toMatch(/onNext=\{\(\) => suaDong\(r\.key, \{ vatRate: vatKeTiep\(r\.vatRate \?\? 0\) \}\)\}/)
+    expect(s).not.toMatch(/vatRate: vatKeTiep\(/)
   })
 
   /** ⚠ `returns` không có cột phí. */
@@ -505,7 +506,7 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
     expect(doiDonViDong(dong, "thùng", null, "g1").price).toBe(10_000)
     /* ⚠ Và dải chip phải nối vào chính phép ấy — bộ luật đúng mà không
        ai gọi thì vô nghĩa. */
-    expect(S, "chip đơn vị không gọi phép đổi").toMatch(/doiDonVi\(l, u\.unit_name\)/)
+    expect(S, "nút đơn vị không gọi phép đổi").toMatch(/<UnitCycleButton[\s\S]*?onChange=\{\(u\) => doiDonVi\(l, u\)\}/)
     expect(S, "phép đổi của dòng hàng không đi qua doiDonViDong").toMatch(/patchLine\(l\.key, doiDonViDong\(/)
   })
 
@@ -551,7 +552,7 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
    * ⚠ THUẾ THEO DÒNG. Người dùng đã báo một lần ở màn cũ: "bấm vào chi
    * tiết hàng trong đơn chưa có chỗ để tuỳ chọn VAT".
    */
-  it("có ô thuế theo dòng, và thuế ấy đi xuống hóa đơn", () => {
+  it("thuế đặt cả đơn, xuống từng dòng, và thuế ấy đi xuống hóa đơn", () => {
     /**
      * ⚠ NEO VÀO VIỆC, KHÔNG NEO VÀO HÌNH DẠNG Ô. Bản trước đòi
      *   `vatChoices(` — tên một hàm chỉ tồn tại vì ô thuế từng là
@@ -559,8 +560,11 @@ describe("§đợt7 — dòng đơn hàng giữ chức năng của màn đơn c�
      *   ấy không còn ai gọi, và chốt đỏ dù luật ("dòng nào cũng đặt
      *   được thuế, và thuế ấy đi xuống hóa đơn") còn nguyên.
      */
-    expect(S, "dòng hàng không còn chỗ đặt thuế").toMatch(/Thuế GTGT dòng/)
-    expect(S, "đặt thuế dòng không đổi được giá trị nào").toMatch(/vatRate: vatKeTiep\(/)
+    /* ⚠ 24/09/2026 chủ nhà: "Bỏ VAT từng dòng cả ở POS". Thuế còn MỘT nút cả
+       đơn, bấm là đặt cho mọi dòng; dòng mới thêm theo thuế chung của đơn. */
+    expect(S, "dòng hàng lại có chỗ đặt thuế riêng").not.toMatch(/Thuế GTGT dòng/)
+    expect(S, "nút thuế cả đơn không đặt xuống dòng").toMatch(/setLines\(\(c\) => c\.map\(\(l\) => \(\{ \.\.\.l, vatRate: moi \}\)\)\)/)
+    expect(S, "dòng mới không theo thuế chung của đơn").toMatch(/vatChungCuaDong\(cu\)/)
     const save = code(read("src/lib/pos/save.ts"))
     expect(save).toMatch(/vatRate: Number\(l\.vatRate\) \|\| 0/)
     /* Đơn → hóa đơn: thuế đi theo dòng đơn (`get_invoiceable_lines`), màn

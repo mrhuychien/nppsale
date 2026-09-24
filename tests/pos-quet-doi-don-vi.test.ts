@@ -50,6 +50,8 @@ export function quetDoiDonVi(tep: string, s: string): ViPham[] {
   // Luật 2 — ô chọn / chip đơn vị phải gọi phép đổi dùng chung.
   const oChon: number[] = []
   for (const m of Array.from(s.matchAll(/<PosUnitSelect\b/g))) oChon.push(m.index!)
+  /* Nút đơn vị bấm-nhảy (24/09/2026) — cùng luật: onChange phải gọi phép đổi dùng chung. */
+  for (const m of Array.from(s.matchAll(/<UnitCycleButton\b/g))) oChon.push(m.index!)
   for (const m of Array.from(s.matchAll(/<select\b/g))) {
     const the = s.slice(m.index!, s.indexOf(">", m.index!) + 1)
     if (/value=\{l\.unit\}/.test(the)) oChon.push(m.index!)
@@ -57,7 +59,9 @@ export function quetDoiDonVi(tep: string, s: string): ViPham[] {
   for (const i of oChon) {
     const j = s.indexOf("onChange={", i)
     const than = j < 0 ? "" : thanNgoac(s, j + "onChange=".length)
-    if (!/\bdoiDonVi\w*\(/.test(than)) {
+    /* Ngoại lệ có chủ ý: dòng trả CÓ SẴN ở màn hóa đơn chỉ gửi đơn vị mới (`setTraDv`) —
+       máy chủ tự quy giá theo hệ số (mig 181), trình duyệt không được tự tính. */
+    if (!/\bdoiDonVi\w*\(/.test(than) && !/\bsetTraDv\(/.test(than) && !/unitPriceFor\(/.test(than)) {
       out.push({ tep, dong: soDong(s, i), luat: 2, trich: than.slice(0, 80) || "(không có onChange)" })
     }
   }
@@ -87,7 +91,12 @@ describe("máy quét tự kiểm — bắt được đúng mấy lỗi đã gặ
     expect(quetDoiDonVi("mau.tsx", mau).length).toBeGreaterThan(0)
   })
 
+  it("nút bấm-nhảy không gọi phép đổi → báo vi phạm", () => {
+    expect(quetDoiDonVi("mau.tsx", `<UnitCycleButton units={ds} value={l.unit} label="x" onChange={(u) => patch(l.key, { price: 1 })} />`).length).toBeGreaterThan(0)
+  })
+
   it.each([
+    ["nút bấm-nhảy gọi doiDonVi", `<UnitCycleButton units={ds} value={l.unit} label="x" onChange={(u) => doiDonVi(l, u)} />`],
     ["chip gọi doiDonVi", `onClick={() => doiDonVi(l, u.unit_name)}`],
     ["select gọi doiDonViTheoHeSo", `<select value={l.unit} onChange={(e) => patchLine(l.key, doiDonViTheoHeSo(l, e.target.value))}>`],
     ["giảm giá cũng có khoá `unit` nhưng không phải đơn vị tính", `patchLine(l.key, { discount: { value: 0, unit: "vnd" } })`],
@@ -101,11 +110,10 @@ describe("mọi màn POS đổi đơn vị qua hàm dùng chung", () => {
   const tep = tepTsx("src/components/pos")
 
   it("quét được các màn có ô đơn vị (không quét hụt thư mục)", () => {
-    const coODonVi = tep.filter((f) => /value=\{l\.unit\}|<PosUnitSelect|u\.unit_name[,)]/.test(readFileSync(resolve(GOC, f), "utf-8")))
+    const coODonVi = tep.filter((f) => /value=\{l\.unit\}|<PosUnitSelect|u\.unit_name[,)]|<UnitCycleButton\b/.test(readFileSync(resolve(GOC, f), "utf-8")))
     expect(coODonVi.map((f) => f.split("/").pop()).sort()).toEqual(
-      /* `invoice-screen.tsx` đổi đơn vị bằng chip riêng (chỉ dòng thêm tay) — chốt ở
-         tests/pos-doi-don-vi-va-o-gia.test.ts. */
-      ["order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx"]
+      /* Từ 24/09/2026 màn hóa đơn cũng dùng `UnitCycleButton` — vào diện quét. */
+      ["invoice-screen.tsx", "order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx"]
     )
   })
 

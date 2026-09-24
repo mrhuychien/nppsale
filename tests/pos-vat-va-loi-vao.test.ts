@@ -73,12 +73,13 @@ describe("bậc thuế bấm vòng 0 → 5 → 8 → 10 → 0", () => {
     expect(vatChungKeTiep(0)).toBe(0.05)
   })
 
-  it("nút dòng và nút cả đơn dùng CHUNG một component", () => {
-    /* Hai nút trông khác nhau cho cùng một việc là học hai lần. */
+  /* ⚠ 24/09/2026 chủ nhà: "Bỏ VAT từng dòng cả ở POS" — chỉ còn nút cả đơn. */
+  it("thuế chỉ còn MỘT nút cả đơn, không còn nút trên dòng", () => {
     expect(BANG, "không còn component nút thuế dùng chung")
       .toContain("export function VatChip")
-    const soLan = (DON.match(/<VatChip/g) || []).length
-    expect(soLan, "màn đơn phải vẽ nút thuế ở CẢ dòng lẫn cả đơn").toBeGreaterThanOrEqual(2)
+    for (const [ten, f] of [["đơn", DON], ["hóa đơn", readFileSync("src/components/pos/invoice-screen.tsx", "utf8")]] as const) {
+      expect((f.match(/<VatChip/g) || []).length, `màn ${ten} lại có nút thuế trên dòng`).toBe(1)
+    }
     /* Và không còn ô <select> thuế nào sót lại. */
     expect(DON, "ô thuế cũ dạng select vẫn còn").not.toMatch(/aria-label=\{`Thuế GTGT dòng[\s\S]{0,80}<select/)
   })

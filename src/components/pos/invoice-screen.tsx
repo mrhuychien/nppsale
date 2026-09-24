@@ -27,7 +27,7 @@
  *   BÁN, tính tiền khách — và không có khối hàng trả nào để xem hay sửa.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
@@ -54,9 +54,9 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
 import { DocBanner, SubHeaderDate, homNay } from "@/components/pos/doc-sub-header"
-import { LineTableFrame, LineTableHeader, QtyStepper, DiscountCell, VatChip, LineMenu } from "@/components/pos/line-table"
+import { LineTableFrame, LineTableHeader, QtyStepper, DiscountCell, VatChip, TrashButton, UnitCycleButton, LineDetailToggle, LineDetailPanel, LineDetailField, tomTatChiTiet } from "@/components/pos/line-table"
 import { usePosSettings } from "@/store/pos/settings"
-import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
+import { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { discountAmount, lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import type { PosLine } from "@/lib/pos/types"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton, DocDiscountRow } from "@/components/pos/money-panel"
@@ -79,7 +79,8 @@ export interface InvoiceScreenProps {
 
 /** Cột bảng hàng BÁN — cùng nhịp với màn đơn: # · Sản phẩm · SL · Đơn giá · Thành tiền · (xoá). */
 /** Cột khối HÀNG ĐỔI TRẢ — Sản phẩm · Xử lý · SL · Đơn giá · Trừ đơn · (xoá). */
-const COT_TRA = "minmax(170px,1fr) 70px 100px 108px 110px 34px"
+/* 24/09/2026: (xoá) · Sản phẩm · Xử lý · Đơn vị · Số lượng · Đơn giá · Trừ đơn */
+const COT_TRA = "34px minmax(170px,1fr) 70px 76px 100px 108px 110px"
 
 /** Dòng hàng trả ĐÃ có trong sổ (phiếu trả kèm đơn / kèm hóa đơn). */
 interface DongTraCu {
@@ -124,30 +125,6 @@ const tienTru = (qty: number, gia: number, vat: number, doi: boolean) =>
 let dem = 0
 const keyMoi = () => `iv${++dem}`
 
-/** Dải chip quy cách — cùng dáng chip của bảng bán. */
-function ChipDonVi({
-  ds, dang, nhan, onChon,
-}: { ds: string[]; dang: string; nhan: string; onChon: (u: string) => void }) {
-  if (ds.length <= 1) return <span className="n text-[11.5px] font-semibold text-[var(--pos-muted)]">{dang}</span>
-  return (
-    <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
-      {ds.map((u) => (
-        <button
-          key={u}
-          type="button"
-          aria-pressed={u === dang}
-          aria-label={`Đơn vị ${u} ${nhan}`}
-          onClick={() => onChon(u)}
-          className={`h-6 min-w-[42px] rounded-[6px] px-1.5 text-[11.5px] font-extrabold ${
-            u === dang ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
-          }`}
-        >
-          {u}
-        </button>
-      ))}
-    </span>
-  )
-}
 
 export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }: InvoiceScreenProps) {
   const sua = !!invoiceId
@@ -193,6 +170,15 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
    * màn đơn (chủ nhà 24/09/2026). Lưu thì quy về đơn giá (`toDraftCoGiam`).
    */
   const [giamDong, setGiamDong] = useState<Record<string, DiscountInput>>({})
+  /** Dòng nào đang mở "chi tiết dòng" — theo `key`. */
+  const [moChiTiet, setMoChiTiet] = useState<Set<string>>(new Set())
+  const batChiTiet = (key: string) =>
+    setMoChiTiet((m) => {
+      const n = new Set(m)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
   const giamCuaDong = (key: string): DiscountInput => giamDong[key] ?? { value: 0, unit: settings.defaultDiscountUnit }
   const [moThemTra, setMoThemTra] = useState(false)
 
@@ -475,17 +461,18 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
    *   Thành tiền · (⋮ ×). Xem `cot` ở order-screen.
    */
   const cot = useMemo(() => {
+    /* ⚠ Cùng khuôn màn đơn (24/09/2026): (xoá) · # · Sản phẩm · Đơn vị · Số lượng · Đơn giá · Thành tiền · (chi tiết). */
     const c: Array<{ w: string; label: string; align?: "left" | "center" | "right" }> = []
-    if (settings.colIndex) c.push({ w: "34px", label: "#", align: "center" })
-    c.push({ w: "minmax(170px,1fr)", label: "Sản phẩm / đơn vị" })
+    c.push({ w: "34px", label: "" })
+    if (settings.colIndex) c.push({ w: "28px", label: "#", align: "center" })
+    c.push({ w: "minmax(170px,1fr)", label: "Sản phẩm" })
+    c.push({ w: "76px", label: "Đơn vị", align: "center" })
     c.push({ w: "100px", label: "Số lượng", align: "center" })
     c.push({ w: "108px", label: "Đơn giá", align: "right" })
-    if (settings.colLineDiscount) c.push({ w: "128px", label: "Giảm giá", align: "center" })
-    if (settings.colVat) c.push({ w: "74px", label: "VAT", align: "center" })
     c.push({ w: "120px", label: "Thành tiền", align: "right" })
-    c.push({ w: "60px", label: "" })
+    c.push({ w: "34px", label: "" })
     return { cols: c.map((x) => x.w).join(" "), cells: c.map((x) => ({ label: x.label, align: x.align })) }
-  }, [settings.colIndex, settings.colLineDiscount, settings.colVat])
+  }, [settings.colIndex])
   /* Tiền hàng SAU giảm dòng, TRƯỚC giảm đơn — mốc để quy "Giảm giá đơn" % ra đồng. */
   const tienSauGiamDong = useMemo(() => invoiceTotals(draft).goods, [draft])
   const giamDon = discountAmount(giamDonNhap, tienSauGiamDong)
@@ -567,7 +554,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       const row = makeAddedRow(p, sellableUnits(p)[0], groupId, seq.current)
       /* Tồn lấy từ danh mục POS (đơn vị cơ sở) — đủ để cảnh báo thiếu hàng. */
       const ton = stockByProduct[p.id]
-      setRows((c) => [...c, ton == null ? row : { ...row, availableBase: ton, stockKnown: true }])
+      setRows((c) => {
+        /* ⚠ THUẾ LÀ CỦA CẢ TỜ (bỏ VAT từng dòng, 24/09/2026) — dòng thêm tay theo thuế các dòng đang có. */
+        const chung = c.length > 0 ? vatChungCuaDong(c) : null
+        const r2 = chung === null ? row : { ...row, vatRate: chung }
+        return [...c, ton == null ? r2 : { ...r2, availableBase: ton, stockKnown: true }]
+      })
     },
     [productById, groupId, stockByProduct]
   )
@@ -809,69 +801,38 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             const gDong = lineGross(r.qty, r.price)
             const giam = giamCuaDong(r.key)
             const thanhTien = gDong - discountAmount(giam, gDong)
+            const moCT = moChiTiet.has(r.key)
+            const tomTat = tomTatChiTiet({ discount: giam })
             return (
+              <Fragment key={r.key}>
               <div
-                key={r.key}
                 data-testid="dong-hoa-don"
                 className={`grid min-h-[64px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2 ${
                   r.qty <= 0 ? "opacity-55" : ""
                 }`}
                 style={{ gridTemplateColumns: cot.cols, gap: 8 }}
               >
+                {/* ⚠ THÙNG RÁC ĐẦU DÒNG (chủ nhà 24/09/2026) — bỏ dòng khỏi tờ này, phần chưa xuất vẫn nằm trên đơn. */}
+                <TrashButton
+                  label={`Xoá dòng ${i + 1}`}
+                  disabled={r.isExchange}
+                  title={r.isExchange ? "Hàng đổi của khách — sửa ở khối Hàng đổi trả" : "Bỏ dòng khỏi hóa đơn này (phần chưa xuất vẫn nằm trên đơn)"}
+                  onClick={() => boDong(r)}
+                />
                 {settings.colIndex && <div className="n text-center text-[13px] font-bold text-[var(--pos-dim)]">{i + 1}</div>}
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">
-                    {r.productName}
-                    {r.isExchange && (
-                      <span className="ml-2 rounded-md bg-[var(--pos-warn-soft)] px-1.5 py-px text-[11px] font-extrabold text-[var(--pos-warn)]">
-                        Hàng đổi
-                      </span>
-                    )}
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">{r.productName}</span>
+                    {r.sku && <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{r.sku}</span>}
                     {r.addedByHand && (
-                      <span className="ml-2 rounded-md border border-[var(--pos-edge)] px-1.5 py-px text-[11px] font-bold text-[var(--pos-muted)]">
+                      <span className="shrink-0 rounded-md border border-[var(--pos-edge)] px-1.5 py-px text-[11px] font-bold text-[var(--pos-muted)]">
                         Thêm tay
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                    <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
-                      {donVi.map((u) => {
-                        const dang = u === r.unitName
-                        return (
-                          <button
-                            key={u}
-                            type="button"
-                            aria-pressed={dang}
-                            aria-label={`Đơn vị ${u} dòng ${i + 1}`}
-                            onClick={() => doiDonVi(r, u)}
-                            className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
-                              dang ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
-                            }`}
-                          >
-                            {u}
-                          </button>
-                        )
-                      })}
-                    </span>
-                    {r.sku && <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{r.sku}</span>}
-                  </div>
-                  <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
-                    {r.orderLineId && (
-                      <>
-                        đặt {r.orderedQty} {r.orderUnit ?? r.unitName} · đã xuất {r.invoicedQty.toLocaleString("vi-VN", { maximumFractionDigits: 2 })}{" "}
-                        {r.orderUnit ?? r.unitName} ·{" "}
-                      </>
-                    )}
-                    <span className={thieu > 0 ? "font-semibold text-[var(--pos-warn)]" : undefined}>
-                      {r.stockKnown ? `tồn ${r.availableBase.toLocaleString("vi-VN")}` : "tồn chưa xác định"}
-                    </span>
-                    {vuot && <span className="font-semibold text-[var(--pos-warn)]"> · vượt phần còn lại</span>}
-                    {thieu > 0 && <span className="font-semibold text-[var(--pos-warn)]"> · thiếu {thieu}</span>}
-                  </div>
                   {/*
                     ⚠ GHI CHÚ TỪNG DÒNG SỬA ĐƯỢC, như màn đơn (chủ nhà 24/09/2026:
-                      "Mất ghi chú cho từng dòng"). Ghi chú của dòng đơn nạp sẵn và
-                      đi xuống `sales_invoice_lines.note`.
+                      "Mất ghi chú cho từng dòng"). Đi xuống `sales_invoice_lines.note`.
                   */}
                   <input
                     id={`hd-ghichu-${r.key}`}
@@ -883,7 +844,31 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                       r.note ? "border-[var(--pos-primary-border)]" : "border-[var(--pos-edge)]"
                     }`}
                   />
+                  <div className="mt-[3px] flex min-w-0 flex-wrap items-center gap-x-1 text-[11px] text-[var(--pos-muted)]">
+                    {r.orderLineId && (
+                      <span>
+                        đặt {r.orderedQty} {r.orderUnit ?? r.unitName} · đã xuất {r.invoicedQty.toLocaleString("vi-VN", { maximumFractionDigits: 2 })}{" "}
+                        {r.orderUnit ?? r.unitName} ·
+                      </span>
+                    )}
+                    <span className={thieu > 0 ? "font-semibold text-[var(--pos-warn)]" : undefined}>
+                      {r.stockKnown ? `tồn ${r.availableBase.toLocaleString("vi-VN")}` : "tồn chưa xác định"}
+                    </span>
+                    {vuot && <span className="font-semibold text-[var(--pos-warn)]"> · vượt phần còn lại</span>}
+                    {thieu > 0 && <span className="font-semibold text-[var(--pos-warn)]"> · thiếu {thieu}</span>}
+                    {tomTat && !moCT && (
+                      <button
+                        type="button"
+                        onClick={() => batChiTiet(r.key)}
+                        className="ml-1 rounded-md bg-[var(--pos-primary-faint)] px-1.5 py-px font-bold text-[var(--pos-primary-deep)]"
+                      >
+                        {tomTat}
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {/* ⚠ ĐƠN VỊ CẠNH SỐ LƯỢNG, BẤM LÀ NHẢY — mọi dòng, kể cả dòng lấy từ đơn (23/09/2026). */}
+                <UnitCycleButton units={donVi} value={r.unitName} label={`dòng ${i + 1}`} onChange={(u) => doiDonVi(r, u)} />
                 <QtyStepper label={`số lượng dòng ${i + 1}`} value={r.qty} min={0} onChange={(v) => suaDong(r.key, { qty: Math.max(0, v) })} />
                 <MoneyInput
                   showSuffix={false}
@@ -892,28 +877,22 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   value={r.price}
                   onChange={(v) => suaDong(r.key, { price: Math.max(0, v) })}
                 />
-                {settings.colLineDiscount && (
-                  <DiscountCell
-                    line={{ qty: r.qty, price: r.price, discount: giam } as PosLine}
-                    index={i + 1}
-                    onChange={(d) => setGiamDong((m) => ({ ...m, [r.key]: d }))}
-                  />
-                )}
-                {settings.colVat && (
-                  <VatChip
-                    rate={r.vatRate ?? 0}
-                    ariaLabel={`Thuế GTGT dòng ${i + 1}`}
-                    onNext={() => suaDong(r.key, { vatRate: vatKeTiep(r.vatRate ?? 0) })}
-                  />
-                )}
                 <div className="n text-right text-[14px] font-extrabold text-[var(--pos-ink)]">{formatCurrency(thanhTien)}</div>
-                {/* ⚠ Cùng ô cuối với màn đơn: menu ⋮ + nút × — bỏ dòng khỏi tờ này (phần chưa xuất vẫn nằm trên đơn). */}
-                <LineMenu
-                  index={i + 1}
-                  onNote={() => document.getElementById(`hd-ghichu-${r.key}`)?.focus()}
-                  onRemove={() => boDong(r)}
-                />
+                <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(r.key)} />
               </div>
+              {/* ⚠ CHI TIẾT DÒNG — giảm giá (đ / %). Không còn VAT từng dòng (24/09/2026). */}
+              {moCT && (
+                <LineDetailPanel testId="chi-tiet-dong">
+                  <LineDetailField label="Giảm giá" width={190}>
+                    <DiscountCell
+                      line={{ qty: r.qty, price: r.price, discount: giam } as PosLine}
+                      index={i + 1}
+                      onChange={(d) => setGiamDong((m) => ({ ...m, [r.key]: d }))}
+                    />
+                  </LineDetailField>
+                </LineDetailPanel>
+              )}
+              </Fragment>
             )
           })}
           {/*
@@ -930,6 +909,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 className="grid min-h-[48px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-warn-soft)]/30 px-4 py-1.5"
                 style={{ gridTemplateColumns: cot.cols, gap: 8 }}
               >
+                <span />
                 {settings.colIndex && <div className="n text-center text-[12px] font-bold text-[var(--pos-dim)]">↺</div>}
                 <div className="min-w-0">
                   <div className="truncate text-[13px] font-bold text-[var(--pos-ink)]">
@@ -940,12 +920,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   </div>
                   <div className="text-[11px] text-[var(--pos-muted)]">xuất kho cho khách · sửa ở khối Hàng đổi trả</div>
                 </div>
-                <div className="n text-center text-[14px] font-bold text-[var(--pos-ink)]">
-                  {d.quantity} {d.unitName}
-                </div>
+                <div data-testid="hang-doi-dv" className="n text-center text-[12.5px] font-bold text-[var(--pos-muted)]">{d.unitName}</div>
+                <div data-testid="hang-doi-sl" className="n text-center text-[14px] font-bold text-[var(--pos-ink)]">{d.quantity}</div>
                 <div className="n text-right text-[13px] text-[var(--pos-dim)]">0</div>
-                {settings.colLineDiscount && <span />}
-                {settings.colVat && <span />}
                 <div className="n text-right text-[13px] text-[var(--pos-dim)]">—</div>
                 <span />
               </div>
@@ -993,9 +970,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 className="grid h-[34px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
                 style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
               >
-                <span>Sản phẩm / đơn vị</span><span className="text-center">Xử lý</span>
+                <span /><span>Sản phẩm</span><span className="text-center">Xử lý</span>
+                <span className="text-center">Đơn vị</span>
                 <span className="text-center">Số lượng</span><span className="text-right">Đơn giá</span>
-                <span className="text-right">Trừ đơn</span><span />
+                <span className="text-right">Trừ đơn</span>
               </div>
               {traCu.map((l, i) => {
                 const sl = soTraCu(l)
@@ -1006,19 +984,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     className={`grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] px-3.5 py-2 ${sl <= 0 ? "opacity-55" : ""}`}
                     style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
                   >
+                    {l.suaDuoc ? (
+                      <TrashButton label={`Bỏ dòng trả ${i + 1}`} onClick={() => setTraSua((s) => ({ ...s, [l.id]: 0 }))} />
+                    ) : <span />}
                     <span className="min-w-0">
                       <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{l.name}</span>
                       <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                        {l.suaDuoc ? (
-                          <ChipDonVi
-                            ds={(() => { const p = productById(l.productId); return p ? sellableUnits(p) : [l.unit] })()}
-                            dang={dvTraCu(l)}
-                            nhan={`trả dòng ${i + 1}`}
-                            onChon={(u) => setTraDv((d) => ({ ...d, [l.id]: u }))}
-                          />
-                        ) : (
-                          <span className="n text-[11.5px] font-semibold text-[var(--pos-muted)]">{l.unit}</span>
-                        )}
                         <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
                           {l.sku}
                           {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
@@ -1054,6 +1025,19 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     <span className="justify-self-center text-[12px] font-extrabold text-[var(--pos-muted)]">
                       {l.isExchange ? "Đổi" : "Trả"}
                     </span>
+                    {/* ⚠ Quy cách dòng trả CÓ SẴN: máy chủ tự quy giá theo hệ số (mig 181) — ở đây chỉ gửi đơn vị. */}
+                    <div className="justify-self-center">
+                      {l.suaDuoc ? (
+                        <UnitCycleButton
+                          units={(() => { const p = productById(l.productId); return p ? sellableUnits(p) : [l.unit] })()}
+                          value={dvTraCu(l)}
+                          label={`trả dòng ${i + 1}`}
+                          onChange={(u) => setTraDv((d) => ({ ...d, [l.id]: u }))}
+                        />
+                      ) : (
+                        <span className="n text-[12.5px] font-bold text-[var(--pos-muted)]">{l.unit}</span>
+                      )}
+                    </div>
                     <div className="justify-self-center">
                       {l.suaDuoc ? (
                         <QtyStepper
@@ -1070,16 +1054,6 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
                       {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, giaTraCu(l), l.vatRate, false))}`}
                     </span>
-                    {l.suaDuoc ? (
-                      <button
-                        type="button"
-                        aria-label={`Bỏ dòng trả ${i + 1}`}
-                        onClick={() => setTraSua((s) => ({ ...s, [l.id]: 0 }))}
-                        className="h-7 w-7 rounded-md text-[16px] leading-none text-[var(--pos-dim)] hover:bg-[var(--pos-danger-soft)] hover:text-[var(--pos-danger)]"
-                      >
-                        ×
-                      </button>
-                    ) : <span />}
                   </div>
                 )
               })}
@@ -1093,19 +1067,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     className="grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] bg-[var(--pos-warn-soft)]/40 px-3.5 py-2"
                     style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
                   >
+                    <TrashButton label={`Xoá dòng trả mới ${i + 1}`} onClick={() => setTraMoi((c) => c.filter((x) => x.key !== a.key))} />
                     <span className="min-w-0">
                       <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{a.name}</span>
                       <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                        <ChipDonVi
-                          ds={(() => { const p = productById(a.productId); return p ? sellableUnits(p) : [a.unit] })()}
-                          dang={a.unit}
-                          nhan={`trả mới ${i + 1}`}
-                          onChon={(u) => {
-                            /* Dòng MỚI: giá tra bảng giá theo nhóm khách, như lúc thêm. */
-                            const p = productById(a.productId)
-                            doiA({ unit: u, price: p ? unitPriceFor(p, u, groupId) : a.price })
-                          }}
-                        />
                         <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
                           {a.sku} · mới thêm
                         </span>
@@ -1145,6 +1110,18 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                       ))}
                     </span>
                     <div className="justify-self-center">
+                      <UnitCycleButton
+                        units={(() => { const p = productById(a.productId); return p ? sellableUnits(p) : [a.unit] })()}
+                        value={a.unit}
+                        label={`trả mới ${i + 1}`}
+                        onChange={(u) => {
+                          /* Dòng MỚI: giá tra bảng giá theo nhóm khách, như lúc thêm. */
+                          const p = productById(a.productId)
+                          doiA({ unit: u, price: p ? unitPriceFor(p, u, groupId) : a.price })
+                        }}
+                      />
+                    </div>
+                    <div className="justify-self-center">
                       <QtyStepper label={`số lượng trả mới ${i + 1}`} value={a.qty} min={1} onChange={(v) => doiA({ qty: Math.max(1, v) })} />
                     </div>
                     <MoneyInput
@@ -1157,14 +1134,6 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                     <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
                       {a.isExchange ? "—" : `− ${formatCurrency(tienTru(a.qty, a.price, a.vatRate, false))}`}
                     </span>
-                    <button
-                      type="button"
-                      aria-label={`Xoá dòng trả mới ${i + 1}`}
-                      onClick={() => setTraMoi((c) => c.filter((x) => x.key !== a.key))}
-                      className="h-7 w-7 rounded-md text-[16px] leading-none text-[var(--pos-dim)] hover:bg-[var(--pos-danger-soft)] hover:text-[var(--pos-danger)]"
-                    >
-                      ×
-                    </button>
                   </div>
                 )
               })}

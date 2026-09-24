@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import { dangNhap, chonKhach, nhatKy, FAKE } from "./helpers"
+import { dangNhap, chonKhach, nhatKy, FAKE, chonDonVi } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ BÁO 23/09/2026 (POS Trả hàng):
@@ -18,9 +18,10 @@ test("trả hàng POS: dòng giống đơn hàng, lưu có line_total, gán ngư
 
   const dong = page.getByTestId("dong-tra")
   await expect(dong).toHaveCount(1)
-  // Khuôn dòng như màn đơn hàng: chip đơn vị, ghi chú dòng, bước số lượng.
-  await expect(dong.getByRole("button", { name: "Đơn vị hộp dòng trả 1" })).toHaveAttribute("aria-pressed", "true")
-  await dong.getByRole("button", { name: "Đơn vị thùng dòng trả 1" }).click()
+  // Khuôn dòng như màn đơn hàng: thùng rác đầu dòng, nút đơn vị bấm-nhảy, ghi chú dòng, bước số lượng.
+  await expect(dong.getByRole("button", { name: "Xoá dòng trả 1" })).toBeVisible()
+  await expect(dong.getByRole("button", { name: /^Đơn vị dòng trả 1 — đang là hộp,/ })).toBeVisible()
+  await chonDonVi(dong, "dòng trả 1", "thùng")
   await expect(page.getByLabel("Đơn giá dòng 1")).toHaveValue("450.000")
   await page.getByLabel("Ghi chú dòng trả 1").fill("móp thùng")
   await page.getByRole("button", { name: "Tăng số lượng trả dòng 1", exact: true }).click()

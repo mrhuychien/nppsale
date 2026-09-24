@@ -422,3 +422,155 @@ export function NegativeStockStrip({ count }: { count: number }) {
     </div>
   )
 }
+
+/* ==================================================================
+ * KHUÔN DÒNG MỚI — chủ nhà chốt 24/09/2026 cho Đơn hàng · Hóa đơn · Trả hàng:
+ *   "Bỏ VAT từng dòng, phần giảm giá, cho vào chi tiết dòng, bấm vào mới hiện
+ *   lên trên dòng. Nút xoá dòng thành thùng rác ra đầu dòng. Nút chọn đơn vị
+ *   tính cho cạnh ô số lượng (bấm vào nhảy lần lượt, không dàn hàng)."
+ *
+ * ⚠ BA MẢNH DÙNG CHUNG CHO CẢ BA MÀN — ba bản tự vẽ là ba bản lệch nhau.
+ * ================================================================== */
+
+/** Đơn vị kế tiếp trong vòng — đơn vị cuối thì quay về đầu. Lạ thì về đầu. */
+export function donViKeTiep(ds: readonly string[], dang: string): string {
+  if (ds.length === 0) return dang
+  const i = ds.indexOf(dang)
+  return ds[(i + 1) % ds.length] ?? ds[0]
+}
+
+/**
+ * NÚT ĐƠN VỊ BẤM-NHẢY — đứng cạnh ô số lượng. Một mặt hàng một đơn vị thì chỉ
+ * là nhãn (bấm không có gì để nhảy).
+ *
+ * ⚠ ĐỔI ĐƠN VỊ LÀ ĐỔI GIÁ — nơi gọi phải đi qua `doiDonVi…` (xem chốt quét
+ *   tests/pos-quet-doi-don-vi.test.ts), nút này chỉ báo đơn vị MỚI.
+ */
+export function UnitCycleButton({
+  units,
+  value,
+  label,
+  onChange,
+  disabled = false,
+}: {
+  units: readonly string[]
+  value: string
+  /** Ví dụ `dòng 3` → aria-label "Đơn vị dòng 3 — đang là hộp, bấm để đổi". */
+  label: string
+  onChange: (next: string) => void
+  disabled?: boolean
+}) {
+  const nhieu = units.length > 1
+  if (!nhieu) {
+    return (
+      <span aria-label={`Đơn vị ${label}: ${value}`} className="n inline-flex h-[34px] min-w-[64px] items-center justify-center rounded-[10px] bg-[var(--pos-line-soft)] px-2 text-[12.5px] font-extrabold text-[var(--pos-muted)]">
+        {value}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={`Đơn vị ${label} — đang là ${value}, bấm để đổi`}
+      title={`Bấm để đổi: ${units.join(" → ")}`}
+      onClick={() => onChange(donViKeTiep(units, value))}
+      className="n inline-flex h-[34px] min-w-[64px] items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-[var(--pos-primary-border)] bg-[var(--pos-primary-faint)] px-2 text-[12.5px] font-extrabold text-[var(--pos-primary-deep)] disabled:opacity-50"
+    >
+      {value}
+      <span aria-hidden className="text-[10px] opacity-70">⇄</span>
+    </button>
+  )
+}
+
+/** THÙNG RÁC ĐẦU DÒNG — xoá một cú bấm, vùng bấm 30px. */
+export function TrashButton({
+  label,
+  onClick,
+  disabled = false,
+  title,
+}: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  title?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={title ?? label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-[30px] w-[30px] shrink-0 place-items-center justify-self-center rounded-[8px] text-[var(--pos-dim)] hover:bg-[var(--pos-danger-soft)] hover:text-[var(--pos-danger)] disabled:opacity-30"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * NÚT MỞ / ĐÓNG "CHI TIẾT DÒNG" — cuối dòng. Chấm xanh khi trong chi tiết có
+ * giá trị khác mặc định (có giảm giá), để thứ bị giấu không vô hình.
+ */
+export function LineDetailToggle({
+  open,
+  onToggle,
+  index,
+  dot = false,
+}: {
+  open: boolean
+  onToggle: () => void
+  index: number
+  dot?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Chi tiết dòng ${index}`}
+      aria-expanded={open}
+      title={open ? "Thu gọn chi tiết dòng" : "Mở chi tiết dòng: giảm giá"}
+      onClick={onToggle}
+      className={`relative grid h-[30px] w-[30px] place-items-center justify-self-center rounded-[8px] text-[14px] font-bold ${
+        open ? "bg-[var(--pos-primary-faint)] text-[var(--pos-primary-deep)]" : "text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)]"
+      }`}
+    >
+      <span aria-hidden>{open ? "▴" : "▾"}</span>
+      {dot && !open && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[var(--pos-primary)]" />}
+    </button>
+  )
+}
+
+/** Nhãn tóm tắt chi tiết dòng hiện trên dòng khi đang gập — "Giảm 10% · VAT 8%". */
+export function tomTatChiTiet(o: { discount?: { value: number; unit: "vnd" | "pct" } | null; vatRate?: number | null }): string | null {
+  const phan: string[] = []
+  if (o.discount && o.discount.value > 0) {
+    phan.push(o.discount.unit === "pct" ? `Giảm ${o.discount.value}%` : `Giảm ${formatCurrency(o.discount.value)}`)
+  }
+  if ((Number(o.vatRate) || 0) > 0) phan.push(`VAT ${vatLabel(Number(o.vatRate))}`)
+  return phan.length ? phan.join(" · ") : null
+}
+
+/** Khung chi tiết dòng — một hàng dưới dòng, thụt vào thẳng cột tên hàng. */
+export function LineDetailPanel({ children, testId }: { children: ReactNode; testId?: string }) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-4 py-2.5 pl-[76px]"
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Một ô trong khung chi tiết: nhãn + điều khiển. */
+export function LineDetailField({ label, children, width = 200 }: { label: string; children: ReactNode; width?: number }) {
+  return (
+    <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--pos-muted)]">
+      <span className="shrink-0">{label}</span>
+      <span style={{ width }}>{children}</span>
+    </label>
+  )
+}

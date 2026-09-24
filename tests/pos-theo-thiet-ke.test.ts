@@ -128,15 +128,18 @@ describe("cột trái — bảng dòng hàng", () => {
     expect(i, "màn đơn không còn khối dựng cột").toBeGreaterThan(-1)
     const khoi = DON.slice(i, DON.indexOf("return {", i))
     const rong = Array.from(khoi.matchAll(/w: "([^"]+)"/g)).map((m) => m[1])
+    /* ⚠ 24/09/2026 chủ nhà: thùng rác ra đầu dòng, đơn vị thành nút riêng
+       cạnh số lượng, giảm giá vào "chi tiết dòng", bỏ VAT từng dòng. Cột
+       cuối về 34px: chỉ còn nút mở chi tiết. */
     expect(rong, "dãy cột lệch bản vẽ").toEqual([
       "34px",
+      "28px",
       "minmax(170px,1fr)",
+      "76px",
       "100px",
       "108px",
-      "128px",
-      "74px",
       "120px",
-      "60px",
+      "34px",
     ])
   })
 
@@ -181,22 +184,36 @@ describe("cột trái — bảng dòng hàng", () => {
     }
   })
 
-  /** ⚠ Và cột tên mang đúng nhãn ghép của bản vẽ. */
-  it("cột tên mang nhãn 'Sản phẩm / đơn vị'", () => {
-    expect(DON, "nhãn cột tên lệch bản vẽ").toContain('label: "Sản phẩm / đơn vị"')
+  /** ⚠ Đơn vị có cột riêng cạnh số lượng (24/09/2026) — cột tên chỉ còn "Sản phẩm". */
+  it("cột tên mang nhãn 'Sản phẩm', đơn vị cột riêng cạnh số lượng", () => {
+    expect(DON, "nhãn cột tên lệch").toContain('label: "Sản phẩm" })')
+    expect(DON).toMatch(/label: "Đơn vị"[^\n]*\n[^\n]*label: "Số lượng"/)
     expect(/label: "Mã hàng"/.test(DON), "cột mã hàng riêng quay lại").toBe(false)
     expect(/label: "ĐVT"/.test(DON), "cột đơn vị riêng quay lại").toBe(false)
   })
 
   /**
-   * ⚠ ĐƠN VỊ LÀ DẢI CHIP, KHÔNG PHẢI `<select>`. Bản vẽ vẽ các nút nhỏ
-   * nằm trong một nền lõm, nút đang chọn có nền trắng + bóng.
+   * ⚠ ĐƠN VỊ LÀ MỘT NÚT BẤM-NHẢY, KHÔNG DÀN HÀNG. Chủ nhà 24/09/2026:
+   * "Nút chọn đơn vị tính cho cạnh ô số lượng. (bấm vào nhảy lần lượt,
+   * không dàn hàng)". Dải chip cũ chiếm cả bề ngang cột tên.
    */
-  it("đơn vị là dải chip bấm được, không phải select", () => {
-    expect(DON, "mất dải chip đơn vị").toMatch(/aria-pressed=\{dang\}/)
-    expect(DON, "chip đang chọn không có nền trắng + bóng").toMatch(
-      /bg-white text-\[var\(--pos-ink\)\] shadow-/
-    )
+  it("đơn vị là một nút bấm nhảy lần lượt, đặt ngay trước ô số lượng", () => {
+    const i = DON.indexOf("<UnitCycleButton")
+    expect(i, "mất nút đơn vị").toBeGreaterThan(-1)
+    expect(DON.indexOf("<QtyStepper", i) - i, "nút đơn vị không nằm cạnh ô số lượng").toBeLessThan(400)
+    const j = BANG.indexOf("export function UnitCycleButton")
+    const than = BANG.slice(j, BANG.indexOf("\n}\n", j))
+    expect(than, "bấm không nhảy sang đơn vị kế tiếp").toMatch(/onChange\(donViKeTiep\(units, value\)\)/)
+    expect(than, "vẫn dàn hàng các đơn vị").not.toMatch(/units\.map\(/)
+  })
+
+  it("thùng rác ở ĐẦU dòng, bấm một cái là xoá", () => {
+    const i = DON.indexOf('data-testid="dong-don"')
+    const dong = DON.slice(i, DON.indexOf("<UnitCycleButton", i))
+    const t = dong.indexOf("<TrashButton")
+    expect(t, "dòng hàng không mở đầu bằng thùng rác").toBeGreaterThan(-1)
+    expect(t, "thùng rác không đứng trước tên hàng").toBeLessThan(dong.indexOf("{l.name}"))
+    expect(dong.slice(t, t + 200)).toMatch(/onClick=\{\(\) => setLines\(\(c\) => c\.filter\(\(x\) => x\.key !== l\.key\)\)\}/)
   })
 
   /** ⚠ Dòng cao tối thiểu 70px — bản vẽ ghi `min-height:70px`. */
@@ -279,10 +296,10 @@ describe("khối Hàng đổi trả kèm đơn", () => {
     expect(DON, "khối không thu gọn được").toMatch(/moKhoiTra/)
   })
 
-  /** ⚠ Bản vẽ: bảy cột với đúng bề rộng này. */
-  it("bảng hàng trả đúng bảy cột của bản vẽ", () => {
-    expect(DON, "bề rộng cột bảng hàng trả lệch bản vẽ").toContain(
-      '"minmax(170px,1fr) 140px 100px 108px 112px 120px 34px"'
+  /** ⚠ Bảy cột của bản vẽ + cột đơn vị; thùng rác từ cuối ra đầu (24/09/2026). */
+  it("bảng hàng trả đúng bộ cột", () => {
+    expect(DON, "bề rộng cột bảng hàng trả lệch").toContain(
+      '"34px minmax(170px,1fr) 140px 76px 100px 108px 112px 120px"'
     )
     for (const nhan of ["Lý do", "Xử lý", "Trừ đơn"]) {
       expect(DON, `mất cột "${nhan}" của bản vẽ`).toContain(nhan)

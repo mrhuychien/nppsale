@@ -41,7 +41,7 @@ import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocSubHeader, SubHeaderDate, DocBanner, homNay } from "@/components/pos/doc-sub-header"
-import { LineTableFrame, QtyStepper } from "@/components/pos/line-table"
+import { LineTableFrame, QtyStepper, TrashButton, UnitCycleButton } from "@/components/pos/line-table"
 import {
   MoneyRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
@@ -92,8 +92,9 @@ export interface ReturnScreenProps {
 /* ⚠ CÙNG KHUÔN DÒNG VỚI MÀN ĐƠN HÀNG (chủ nhà 23/09/2026: "Trả hàng phần dòng
    hàng các chi tiết ko giống làm đơn hàng, làm cho giống"): # · sản phẩm +
    chip đơn vị + mã + ghi chú dòng · số lượng · đơn giá · thành tiền · xoá. */
-const GRID_TRA = "34px minmax(170px,1fr) 128px 100px 108px 120px 34px"
-const GRID_DOI = "34px minmax(170px,1fr) 100px 108px 120px 34px"
+/* 24/09/2026: thùng rác ĐẦU dòng, đơn vị là nút bấm-nhảy CẠNH số lượng. */
+const GRID_TRA = "34px 28px minmax(170px,1fr) 128px 76px 100px 108px 120px"
+const GRID_DOI = "34px 28px minmax(170px,1fr) 76px 100px 108px 120px"
 
 let dem = 0
 const newKey = () => `r${++dem}`
@@ -600,12 +601,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           className="grid h-[34px] shrink-0 items-center border-b border-[var(--pos-line)] bg-[var(--pos-head)] px-4 text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--pos-muted)]"
           style={{ gridTemplateColumns: g, gap: 8 }}
         >
-          <div className="text-center">#</div><div>Sản phẩm / đơn vị</div>
+          <div /><div className="text-center">#</div><div>Sản phẩm</div>
           {!doi && <div>Lô / HSD</div>}
+          <div style={{ textAlign: "center" }}>Đơn vị</div>
           <div style={{ textAlign: "center" }}>Số lượng</div>
           <div style={{ textAlign: "right" }}>Đơn giá</div>
           <div style={{ textAlign: "right" }}>Thành tiền</div>
-          <div />
         </div>
         {lines.length === 0 && (
           <p className="px-4 py-6 text-center text-[12.5px] text-[var(--pos-muted)]">
@@ -625,37 +626,15 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               className="grid min-h-[70px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2"
               style={{ gridTemplateColumns: g, gap: 8 }}
             >
+              <TrashButton
+                label={`Xoá dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
+                onClick={() => setLines(lines.filter((x) => x.key !== l.key))}
+              />
               <div className="n text-center text-[13px] font-bold text-[var(--pos-dim)]">{i + 1}</div>
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">
-                  {l.name}
-                </div>
-                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                  {/* ⚠ Chip đơn vị như màn đơn hàng. Đổi đơn vị là đổi giá — xem `doiDonViDongTra`. */}
-                  <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
-                    {donViHienThi(l, productById(l.productId)).map((u) => {
-                      const dang = u.unit_name === l.unit
-                      return (
-                        <button
-                          key={u.unit_name}
-                          type="button"
-                          aria-pressed={dang}
-                          aria-label={`Đơn vị ${u.unit_name} dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
-                          onClick={() => { if (!dang) patch(l.key, doiDonViDongTra(l, u.unit_name, productById(l.productId), groupId)) }}
-                          className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
-                            dang
-                              ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
-                              : "text-[var(--pos-muted)]"
-                          }`}
-                        >
-                          {u.unit_name}
-                        </button>
-                      )
-                    })}
-                  </span>
-                  {l.sku && (
-                    <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{l.sku}</span>
-                  )}
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">{l.name}</span>
+                  {l.sku && <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{l.sku}</span>}
                 </div>
                 {/* ⚠ LÝ DO TỪNG DÒNG như màn đơn (`return_lines.reason`, mig 159) — trống thì theo lý do cả phiếu. */}
                 {!doi && (
@@ -699,6 +678,13 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   className="w-full border-[var(--pos-edge)] bg-white text-[11px] text-[var(--pos-ink)]"
                 />
               )}
+              {/* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDongTra`. */}
+              <UnitCycleButton
+                units={donViHienThi(l, productById(l.productId)).map((u) => u.unit_name)}
+                value={l.unit}
+                label={`dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
+                onChange={(u) => patch(l.key, doiDonViDongTra(l, u, productById(l.productId), groupId))}
+              />
               <QtyStepper
                 label={`số lượng ${doi ? "đổi" : "trả"} dòng ${i + 1}`}
                 value={l.qty}
@@ -728,16 +714,6 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   <div className="n text-[14px] font-extrabold text-[var(--pos-warn)]">{formatCurrency(tien)}</div>
                 )}
               </div>
-              <button
-                type="button"
-                aria-label={`Xoá dòng ${doi ? "đổi" : "trả"} ${i + 1}`}
-                onClick={() => setLines(lines.filter((x) => x.key !== l.key))}
-                className="flex h-[30px] w-[30px] items-center justify-center justify-self-center rounded-[8px] hover:bg-[var(--pos-line-soft)]"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--pos-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-                </svg>
-              </button>
             </div>
           )
         })}

@@ -49,7 +49,7 @@
  */
 
 import { posNewInvoiceHref } from "@/lib/nav/pos-preview"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -74,7 +74,7 @@ import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
 import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
-import { vatKeTiep, vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
+import { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
 import { lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import { doiDonViDong, doiDonViDongTra, donViHienThi } from "@/lib/pos/units"
@@ -87,7 +87,8 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocBanner } from "@/components/pos/doc-sub-header"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
-  LineAmountCell, LineMenu, NegativeStockStrip, VatChip,
+  TrashButton, UnitCycleButton, LineDetailToggle, LineDetailPanel, LineDetailField, tomTatChiTiet,
+  LineAmountCell, NegativeStockStrip, VatChip,
 } from "@/components/pos/line-table"
 import {
   MoneyRow, DocDiscountRow, TotalsHero,
@@ -119,7 +120,8 @@ const newKey = () => `d${++demDong}`
  * ⚠ KHÁC BẢNG BÁN. Bảng bán không có cột "Lý do" và "Xử lý"; dùng chung
  *   một bộ cột cho cả hai là một trong hai bảng lệch hẳn.
  */
-const POS_RET_COLS = "minmax(170px,1fr) 140px 100px 108px 112px 120px 34px"
+/* 24/09/2026: thùng rác ra đầu dòng, đơn vị thành nút bấm-nhảy cạnh số lượng. */
+const POS_RET_COLS = "34px minmax(170px,1fr) 140px 76px 100px 108px 112px 120px"
 
 export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const thamSo = useSearchParams()
@@ -136,6 +138,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const [retReason, setRetReason] = useState("damaged")
   /** Khối "Hàng đổi trả kèm đơn" đang mở hay đang thu gọn — bản vẽ có nút gập. */
   const [moKhoiTra, setMoKhoiTra] = useState(false)
+  /** Dòng nào đang mở "chi tiết dòng" (giảm giá) — theo `key` dòng. */
+  const [moChiTiet, setMoChiTiet] = useState<Set<string>>(new Set())
+  const batChiTiet = (key: string) =>
+    setMoChiTiet((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
   /** Đang ở *chế độ thêm hàng trả*: mã chọn từ ô tìm rơi vào giỏ TRẢ. */
   const [moThemTra, setMoThemTra] = useState(false)
   /**
@@ -354,23 +365,26 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
      *   cột. Bỏ chúng đi là lấy mất một thứ chủ nhà đã chốt ở drawer
      *   thiết lập hiển thị.
      */
+    /**
+     * ⚠ CHỦ NHÀ CHỐT LẠI 24/09/2026: thùng rác ra ĐẦU dòng; đơn vị là nút
+     *   bấm-nhảy CẠNH số lượng; Giảm giá và VAT rời khỏi dòng, vào "chi tiết
+     *   dòng" mở bằng nút cuối dòng. Cột:
+     *     (xoá) · # · Sản phẩm · Đơn vị · Số lượng · Đơn giá · Thành tiền · (chi tiết)
+     */
     const c: Array<{ w: string; label: string; align?: "left" | "center" | "right" }> = []
-    if (settings.colIndex) c.push({ w: "34px", label: "#", align: "center" })
-    c.push({ w: "minmax(170px,1fr)", label: "Sản phẩm / đơn vị" })
+    c.push({ w: "34px", label: "" })
+    if (settings.colIndex) c.push({ w: "28px", label: "#", align: "center" })
+    c.push({ w: "minmax(170px,1fr)", label: "Sản phẩm" })
+    c.push({ w: "76px", label: "Đơn vị", align: "center" })
     c.push({ w: "100px", label: "Số lượng", align: "center" })
     c.push({ w: "108px", label: "Đơn giá", align: "right" })
-    if (settings.colLineDiscount) c.push({ w: "128px", label: "Giảm giá", align: "center" })
-    if (settings.colVat) c.push({ w: "74px", label: "VAT", align: "center" })
     c.push({ w: "120px", label: "Thành tiền", align: "right" })
-    /* ⚠ 60px vì ô cuối chứa HAI nút (`⋮` và `×`) — xem `LineMenu`. Bản
-       vẽ ghi cột cuối là "(xoá)"; trước 22/09/2026 chỗ ấy chỉ có `⋮`
-       nên muốn xoá một dòng phải bấm hai lần. */
-    c.push({ w: "60px", label: "" })
+    c.push({ w: "34px", label: "" })
     return {
       cols: c.map((x) => x.w).join(" "),
       cells: c.map((x) => ({ label: x.label, align: x.align })),
     }
-  }, [settings.colIndex, settings.colLineDiscount, settings.colVat])
+  }, [settings.colIndex])
 
   /**
    * ĐỔI ĐƠN VỊ CỦA MỘT DÒNG.
@@ -428,8 +442,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           qty: 1,
           price: gia,
           listPrice: gia,
-          /* ⚠ Thuế suất của mặt hàng là TỈ LỆ (0,1), không phải phần trăm. */
-          vatRate: Number(p.vat_rate) || 0,
+          /* ⚠ THUẾ LÀ CỦA CẢ ĐƠN (chủ nhà 24/09/2026: bỏ VAT từng dòng) — dòng mới
+             theo thuế các dòng đang có; đơn còn trống thì lấy thuế mặt hàng (tỉ lệ 0,1). */
+          vatRate: cu.length > 0 && vatChungCuaDong(cu) !== null ? (vatChungCuaDong(cu) as number) : Number(p.vat_rate) || 0,
           // ⚠ Đơn vị giảm lấy từ THIẾT LẬP, và chỉ ở lúc TẠO dòng.
           discount: { value: 0, unit: settings.defaultDiscountUnit },
           stock: stockByProduct[p.id] ?? null,
@@ -1220,123 +1235,91 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               /* ⚠ SÀN = SỐ ĐÃ XUẤT. Ràng buộc duy nhất của màn sửa. */
               const san = mode === "sua" ? Math.max(0, Number(l.issued) || 0) : 0
               const r = rows[i]
+              const moCT = moChiTiet.has(l.key)
+              /* ⚠ KHÔNG CÒN VAT TỪNG DÒNG (chủ nhà 24/09/2026: "Bỏ VAT từng dòng cả ở
+                 POS") — thuế đặt một lần ở khối tiền cho cả đơn. */
+              const tomTat = tomTatChiTiet({ discount: l.discount })
               return (
+                <Fragment key={l.key}>
                 <div
-                  key={l.key}
-                  className={`grid min-h-[70px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2 ${
+                  data-testid="dong-don"
+                  className={`grid min-h-[64px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2 ${
                     r?.over ? "bg-[var(--pos-danger-soft)]" : ""
                   }`}
                   style={{ gridTemplateColumns: cot.cols, gap: POS_GRID.order.gap }}
                 >
+                  {/* ⚠ THÙNG RÁC ĐẦU DÒNG (chủ nhà 24/09/2026) — một cú bấm là xoá. */}
+                  <TrashButton
+                    label={`Xoá dòng ${i + 1}`}
+                    onClick={() => setLines((c) => c.filter((x) => x.key !== l.key))}
+                  />
                   {settings.colIndex && (
                     <div className="n text-center text-[13px] font-bold text-[var(--pos-dim)]">{i + 1}</div>
                   )}
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">
-                      {l.name}
-                    </div>
-                    {/*
-                      ⚠ DẢI CHIP ĐƠN VỊ — bản thiết kế dùng chip bấm được,
-                        không dùng `<select>`. Lý do không phải thẩm mỹ:
-                        mặt hàng FMCG thường chỉ có hai đơn vị (thùng /
-                        hộp), và một `<select>` bắt người bán bấm hai lần
-                        (mở rồi chọn) cho việc đổi giữa hai thứ.
-
-                      ⚠ ĐỔI ĐƠN VỊ PHẢI TRA LẠI BẢNG GIÁ, không nhân chia
-                        hệ số — xem chú thích ở hàm dưới.
-                    */}
-                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                      <span className="flex shrink-0 gap-0.5 rounded-[8px] bg-[var(--pos-line-soft)] p-0.5">
-                        {donViHienThi(l, productById(l.productId)).map((u) => {
-                          const dang = u.unit_name === l.unit
-                          return (
-                            <button
-                              key={u.unit_name}
-                              type="button"
-                              aria-pressed={dang}
-                              onClick={() => doiDonVi(l, u.unit_name)}
-                              className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
-                                dang
-                                  ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
-                                  : "text-[var(--pos-muted)]"
-                              }`}
-                            >
-                              {u.unit_name}
-                            </button>
-                          )
-                        })}
-                      </span>
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <span className="truncate text-[13px] font-bold leading-tight text-[var(--pos-ink)]">{l.name}</span>
                       {settings.colSku && l.sku && (
-                        <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">
-                          {l.sku}
-                        </span>
+                        <span className="n shrink-0 text-[11px] font-semibold text-[var(--pos-dim)]">{l.sku}</span>
                       )}
                     </div>
                     {/*
-                      ⚠ GHI CHÚ TỪNG DÒNG HÀNG — bản thiết kế có ô này
-                        trên MỌI dòng bán, không chỉ dòng trả. Nó là chỗ
-                        duy nhất người bán ghi được "giao chiều", "lấy
-                        lô mới", "khách dặn đổi vỏ" — những câu đi theo
-                        ĐÚNG một mặt hàng, không phải cả tờ đơn.
-
-                      ⚠ GẠCH CHÂN NÉT ĐỨT, KHÔNG PHẢI Ô CÓ VIỀN. Bản vẽ
-                        để nó chìm xuống: ô viền đầy đủ ở đây làm mỗi
-                        dòng hàng trông như một biểu mẫu con, và mắt
-                        người đang dò cột tiền bị nó kéo đi.
+                      ⚠ GHI CHÚ TỪNG DÒNG HÀNG — chỗ duy nhất người bán ghi được
+                        "giao chiều", "lấy lô mới"… đi theo ĐÚNG một mặt hàng.
+                        Gạch chân nét đứt để nó chìm xuống.
                     */}
                     <input
                       aria-label={`Ghi chú dòng ${i + 1}`}
                       value={l.note ?? ""}
                       onChange={(e) => patchLine(l.key, { note: e.target.value })}
                       placeholder="Ghi chú dòng…"
-                      className={`mt-1 h-[30px] w-full min-w-0 border-0 border-b border-dashed bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none placeholder:text-[var(--pos-dim)] ${
+                      className={`mt-1 h-[28px] w-full min-w-0 border-0 border-b border-dashed bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none placeholder:text-[var(--pos-dim)] ${
                         l.note ? "border-[var(--pos-primary-border)]" : "border-[var(--pos-edge)]"
                       }`}
                     />
-                    {settings.colStock && (
-                      <div className="mt-[3px] truncate text-[11px] text-[var(--pos-muted)]">
-                        {/*
-                          ⚠ TỒN THEO ĐƠN VỊ CỦA DÒNG (`stockInUnit`), không
-                            theo đơn vị cơ sở. "Tồn 240" cạnh "2 thùng" là
-                            hai đơn vị khác nhau đứng cạnh nhau không nhãn.
-                          ⚠ CHƯA ĐỌC ĐƯỢC THÌ NÓI THẾ, đừng ghi "Tồn 0" —
-                            số 0 cho một lỗi đọc đọc như hàng đã hết.
-                        */}
-                        {r?.tonTheoDonVi == null ? (
+                    <div className="mt-[3px] flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-[var(--pos-muted)]">
+                      {settings.colStock && (
+                        /* ⚠ TỒN THEO ĐƠN VỊ CỦA DÒNG; chưa đọc được thì nói thế, đừng ghi "Tồn 0". */
+                        r?.tonTheoDonVi == null ? (
                           <span className="text-[var(--pos-dim)]">tồn chưa xác định</span>
                         ) : (
                           <span className={r.over ? "font-semibold text-[var(--pos-danger)]" : r.tonTheoDonVi <= 0 ? "text-[var(--pos-warn)]" : undefined}>
                             Tồn {r.tonTheoDonVi.toLocaleString("vi-VN")} {l.unit}
                             {r.over ? " · vượt tồn" : ""}
                           </span>
-                        )}
-                        {san > 0 && (
-                          <>
-                            {" · "}
-                            <span className="font-semibold text-[var(--pos-primary-deep)]">đã xuất {san}</span>
-                            {` — không giảm dưới ${san}`}
-                          </>
-                        )}
-                        {settings.showLastPrice && l.lastPrice != null && (
-                          <>
-                            {" · "}
-                            <span className="text-[var(--pos-primary)]">
-                              giá gần nhất {formatCurrency(l.lastPrice)}
-                              {l.lastBuyCount ? ` · ${l.lastBuyCount} lần mua` : ""}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {l.note != null && l.note !== "" && (
-                      <input
-                        className="mt-1 h-[21px] w-full rounded border border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] px-1.5 text-[10px] text-[var(--pos-warn)]"
-                        aria-label={`Ghi chú dòng ${i + 1}`}
-                        value={l.note}
-                        onChange={(e) => patchLine(l.key, { note: e.target.value })}
-                      />
-                    )}
+                        )
+                      )}
+                      {san > 0 && (
+                        <span>
+                          <span className="font-semibold text-[var(--pos-primary-deep)]">đã xuất {san}</span>
+                          {` — không giảm dưới ${san}`}
+                        </span>
+                      )}
+                      {settings.showLastPrice && l.lastPrice != null && (
+                        <span className="text-[var(--pos-primary)]">
+                          giá gần nhất {formatCurrency(l.lastPrice)}
+                          {l.lastBuyCount ? ` · ${l.lastBuyCount} lần mua` : ""}
+                        </span>
+                      )}
+                      {/* Chi tiết đang gập mà có giá trị → hiện tóm tắt, bấm để mở. */}
+                      {tomTat && !moCT && (
+                        <button
+                          type="button"
+                          onClick={() => batChiTiet(l.key)}
+                          className="rounded-md bg-[var(--pos-primary-faint)] px-1.5 py-px font-bold text-[var(--pos-primary-deep)]"
+                        >
+                          {tomTat}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {/* ⚠ ĐƠN VỊ CẠNH SỐ LƯỢNG, BẤM LÀ NHẢY — đổi đơn vị là tra lại bảng giá (`doiDonVi`). */}
+                  <UnitCycleButton
+                    units={donViHienThi(l, productById(l.productId)).map((u) => u.unit_name)}
+                    value={l.unit}
+                    label={`dòng ${i + 1}`}
+                    onChange={(u) => doiDonVi(l, u)}
+                  />
                   <QtyStepper
                     label={`số lượng dòng ${i + 1}`}
                     value={l.qty}
@@ -1344,10 +1327,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     onChange={(v) => patchLine(l.key, { qty: v })}
                   />
                   {/*
-                    ⚠ Ô GIÁ MANG CẢ CHỐT CHẶN. Viền đỏ khi ngoài hạn mức,
-                      và dòng chữ dưới nói ĐÚNG con số vừa chặn — "sai
-                      giá" mà không nói giá bảng là bao nhiêu thì người
-                      bán sửa mò.
+                    ⚠ Ô GIÁ MANG CẢ CHỐT CHẶN. Viền đỏ khi ngoài hạn mức, và dòng
+                      chữ dưới nói ĐÚNG con số vừa chặn.
                   */}
                   <div>
                     <MoneyInput
@@ -1385,40 +1366,21 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       </button>
                     )}
                   </div>
-                  {settings.colLineDiscount && (
-                    <DiscountCell
-                      line={l}
-                      index={i + 1}
-                      onChange={(d) => patchLine(l.key, { discount: d })}
-                    />
-                  )}
-                  {/*
-                    ⚠ THUẾ THEO DÒNG — người dùng đã báo một lần ở màn cũ:
-                      "bấm vào chi tiết hàng trong đơn chưa có chỗ để tuỳ
-                      chọn VAT". Cùng một mặt hàng có lúc xuất có hóa đơn,
-                      có lúc không. Bật/tắt cột ở drawer thiết lập.
-                  */}
-                  {settings.colVat && (
-                    /*
-                      ⚠ NÚT BẤM VÒNG, KHÔNG CÒN `<select>`. Chủ nhà chốt
-                        22/09/2026: "tạo 1 nút bấm như nút giảm giá, mặc
-                        định là 0 bấm vào -> 5 -> 8 -> 10 -> 0". Một
-                        `<select>` bốn mục là mở, rê, bấm — ba nhịp cho
-                        một việc mà đa số dòng chỉ cần một bậc.
-                    */
-                    <VatChip
-                      rate={l.vatRate ?? 0}
-                      ariaLabel={`Thuế GTGT dòng ${i + 1}`}
-                      onNext={() => patchLine(l.key, { vatRate: vatKeTiep(l.vatRate ?? 0) })}
-                    />
-                  )}
                   <LineAmountCell line={l} />
-                  <LineMenu
-                    index={i + 1}
-                    onNote={() => patchLine(l.key, { note: l.note ?? " " })}
-                    onRemove={() => setLines((c) => c.filter((x) => x.key !== l.key))}
-                  />
+                  <LineDetailToggle index={i + 1} open={moCT} dot={!!tomTat} onToggle={() => batChiTiet(l.key)} />
                 </div>
+                {/*
+                  ⚠ CHI TIẾT DÒNG — GIẢM GIÁ (chủ nhà 24/09/2026: "cho vào chi tiết
+                    dòng, bấm vào mới hiện lên trên dòng"). VAT không còn ở mức dòng.
+                */}
+                {moCT && (
+                  <LineDetailPanel testId="chi-tiet-dong">
+                    <LineDetailField label="Giảm giá" width={190}>
+                      <DiscountCell line={l} index={i + 1} onChange={(d) => patchLine(l.key, { discount: d })} />
+                    </LineDetailField>
+                  </LineDetailPanel>
+                )}
+                </Fragment>
               )
             })}
           </LineTableFrame>
@@ -1490,8 +1452,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                       className="grid h-[38px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
                       style={{ gridTemplateColumns: POS_RET_COLS, gap: "0 10px" }}
                     >
-                      <span>Sản phẩm / đơn vị</span>
+                      <span />
+                      <span>Sản phẩm</span>
                       <span>Lý do</span>
+                      <span className="text-center">Đơn vị</span>
                       <span className="text-center">Số lượng</span>
                       <span className="text-right">Đơn giá</span>
                       <span className="text-center">Xử lý</span>
@@ -1509,39 +1473,17 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                           className="grid min-h-[70px] items-center border-b border-[var(--pos-line-faint)] px-3.5 py-2.5"
                           style={{ gridTemplateColumns: POS_RET_COLS, gap: "0 10px" }}
                         >
-                          <span className="grid min-w-0 gap-1.5">
-                            <span className="truncate text-[14px] font-bold text-[var(--pos-ink)]">
-                              {l.name || "— chưa chọn mã —"}
-                            </span>
-                            <span className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="flex shrink-0 gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
-                                {donViHienThi(l, productById(l.productId)).map((u) => {
-                                  const dang = u.unit_name === l.unit
-                                  return (
-                                    <button
-                                      key={u.unit_name}
-                                      type="button"
-                                      aria-pressed={dang}
-                                      onClick={() => {
-                                        if (u.unit_name === l.unit) return
-                                        /* ⚠ Đổi đơn vị là đổi giá — xem `doiDonViDong`. */
-                                        sua(doiDonViDongTra(l, u.unit_name, productById(l.productId), groupId))
-                                      }}
-                                      className={`h-7 min-w-[50px] rounded-[7px] px-2 text-[12px] font-extrabold ${
-                                        dang
-                                          ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]"
-                                          : "text-[var(--pos-muted)]"
-                                      }`}
-                                    >
-                                      {u.unit_name}
-                                    </button>
-                                  )
-                                })}
+                          <TrashButton
+                            label={`Bỏ dòng trả ${i + 1}`}
+                            onClick={() => setRetLines((c) => c.filter((x) => x.key !== l.key))}
+                          />
+                          <span className="grid min-w-0 gap-1">
+                            <span className="flex min-w-0 items-baseline gap-2">
+                              <span className="truncate text-[14px] font-bold text-[var(--pos-ink)]">
+                                {l.name || "— chưa chọn mã —"}
                               </span>
                               {l.sku && (
-                                <span className="n shrink-0 text-[12px] font-semibold text-[var(--pos-muted)]">
-                                  {l.sku}
-                                </span>
+                                <span className="n shrink-0 text-[12px] font-semibold text-[var(--pos-muted)]">{l.sku}</span>
                               )}
                             </span>
                             <input
@@ -1564,6 +1506,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                             className="h-[38px] min-w-0 rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-[12px] font-bold text-[var(--pos-ink)]"
                           />
 
+                          {/* ⚠ Đổi đơn vị là đổi giá — `doiDonViDongTra` (giá theo hệ số). */}
+                          <div className="justify-self-center">
+                            <UnitCycleButton
+                              units={donViHienThi(l, productById(l.productId)).map((u) => u.unit_name)}
+                              value={l.unit}
+                              label={`dòng trả ${i + 1}`}
+                              onChange={(u) => sua(doiDonViDongTra(l, u, productById(l.productId), groupId))}
+                            />
+                          </div>
                           <div className="justify-self-center">
                             <QtyStepper
                               label={`số lượng trả dòng ${i + 1}`}
@@ -1616,14 +1567,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                             {l.isExchange ? "—" : `− ${formatCurrency(tien)}`}
                           </span>
 
-                          <button
-                            type="button"
-                            aria-label={`Bỏ dòng trả ${i + 1}`}
-                            onClick={() => setRetLines((c) => c.filter((x) => x.key !== l.key))}
-                            className="h-[30px] w-[30px] justify-self-center rounded-[8px] text-[19px] leading-none text-[var(--pos-danger)] hover:bg-[var(--pos-danger-border)]"
-                          >
-                            ×
-                          </button>
+
                         </div>
                       )
                     })}

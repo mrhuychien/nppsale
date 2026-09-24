@@ -1,5 +1,9 @@
-import { test, expect, type Page } from "@playwright/test"
-import { dangNhap, nhatKy, FAKE } from "./helpers"
+import { test, expect, type Locator, type Page } from "@playwright/test"
+import { dangNhap, nhatKy, FAKE, chonDonVi } from "./helpers"
+
+/** Dòng hàng đổi trên hóa đơn: "SL đơn vị" đọc từ hai ô riêng (đơn vị là cột riêng từ 24/09/2026). */
+const slHangDoi = async (dong: Locator) =>
+  `${(await dong.getByTestId("hang-doi-sl").first().textContent())?.trim()} ${(await dong.getByTestId("hang-doi-dv").first().textContent())?.trim()}`
 
 /**
  * ⚠ YÊU CẦU 23/09/2026: "Màn xuất hàng → POS tại hoá đơn", "Màn sửa hoá đơn
@@ -40,7 +44,7 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   /* Đổi đơn vị NGAY TRÊN DÒNG CỦA ĐƠN (chủ nhà chốt 23/09/2026: "toàn
      quyền… ko giới hạn cái nào cả"): giá tra bảng giá thùng, và phép so
      "vượt phần còn lại" quy về hộp — 30 thùng = 720 hộp > 50 hộp đặt. */
-  await page.getByRole("button", { name: "Đơn vị thùng dòng 1" }).click()
+  await chonDonVi(page, "dòng 1", "thùng")
   await expect(page.getByLabel("Đơn giá dòng 1")).toHaveValue("450.000")
   await expect(dong.first()).toContainText("vượt phần còn lại")
   await datSo(page, "số lượng dòng 1", 2)
@@ -105,7 +109,7 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     await expect(dong).toHaveCount(1)
     /* Hàng đổi cũ (không có dòng phiếu trả tương ứng) vẫn đi theo tờ mới. */
     await expect(page.getByTestId("dong-hang-doi"), "dòng hàng đổi mất").toHaveCount(1)
-    await expect(page.getByTestId("dong-hang-doi")).toContainText("1 gói")
+    await expect.poll(() => slHangDoi(page.getByTestId("dong-hang-doi"))).toBe("1 gói")
 
     // Khối hàng đổi trả hiện phiếu đang bám hóa đơn, sửa được số lượng.
     await expect(page.getByTestId("dong-tra-cu")).toHaveCount(1)
@@ -200,12 +204,12 @@ test("xuất hàng: hàng đổi trên hóa đơn đi theo khối hàng đổi t
     await page.goto("/pos/hoa-don/moi?order=o-e2e-1")
     const doi = page.getByTestId("dong-hang-doi")
     await expect(doi).toHaveCount(1)
-    await expect(doi).toContainText("2 gói")
+    await expect.poll(() => slHangDoi(doi)).toBe("2 gói")
 
     await datSo(page, "số lượng trả dòng 1", 3)
-    await expect(doi, "sửa số lượng hàng đổi mà dòng hóa đơn đứng yên").toContainText("3 gói")
-    await page.getByRole("button", { name: "Đơn vị thùng trả dòng 1" }).click()
-    await expect(doi, "sửa quy cách hàng đổi mà dòng hóa đơn đứng yên").toContainText("3 thùng")
+    await expect.poll(() => slHangDoi(doi), "sửa số lượng hàng đổi mà dòng hóa đơn đứng yên").toBe("3 gói")
+    await chonDonVi(page, "trả dòng 1", "thùng")
+    await expect.poll(() => slHangDoi(doi), "sửa quy cách hàng đổi mà dòng hóa đơn đứng yên").toBe("3 thùng")
 
     // Hàng đổi THÊM MỚI cũng phải có dòng xuất kho.
     await page.getByRole("button", { name: /Thêm hàng trả/ }).click()

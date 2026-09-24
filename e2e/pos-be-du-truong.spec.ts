@@ -47,9 +47,14 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
     await expect(ghiChuDong, "mất ghi chú dòng").toHaveValue("lấy lô mới")
     await ghiChuDong.fill("lấy lô mới · giao chiều")
     // Thuế của DÒNG ĐƠN (8%), không phải thuế danh mục.
-    await expect(page.getByRole("button", { name: "Thuế GTGT dòng 1" })).toHaveText("8%")
-    /* Ô đủ như màn đơn (chủ nhà 24/09/2026): Giảm giá dòng (đ/%), VAT dòng, menu ⋮. */
-    await expect(page.getByRole("button", { name: "Thao tác dòng 1" })).toBeVisible()
+    /* Chủ nhà 24/09/2026: "Bỏ VAT từng dòng cả ở POS" — nút thuế cả hóa đơn
+       hiện thuế chung của các dòng, ở đây là 8% của dòng đơn. */
+    await expect(page.getByRole("button", { name: /Thuế GTGT cả hóa đơn/ })).toHaveText("8%")
+    await expect(page.getByRole("button", { name: /Thuế GTGT dòng/ })).toHaveCount(0)
+    // Giảm giá dòng nằm trong "chi tiết dòng" — gập mặc định, bấm mới hiện.
+    await expect(page.getByLabel("Giảm giá dòng 1", { exact: true })).toHaveCount(0)
+    await page.getByRole("button", { name: "Chi tiết dòng 1" }).click()
+    await expect(page.getByTestId("chi-tiet-dong")).toBeVisible()
     await page.getByLabel("Giảm giá dòng 1", { exact: true }).fill("10.000")
     await expect(page.getByTestId("dong-hoa-don").first()).toContainText("190.000")
     // Giảm giá cả đơn của đơn đi sang (30.000), ghi chú đơn vào ô ghi chú hóa đơn.

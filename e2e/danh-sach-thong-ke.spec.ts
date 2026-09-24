@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, chonKy } from "./helpers"
+import { dangNhap, chonKy, FAKE } from "./helpers"
 
 /**
  * ⚠ YÊU CẦU 23/09/2026: "Thêm phần thống kê này vào các danh sách Đơn hàng
@@ -69,4 +69,38 @@ test("trả hàng — máy tính: cột 'Tính cho NV' là người được tí
   await expect(o.filter({ hasText: "NV Bán Một" }).first()).toBeVisible()
   await expect(o.filter({ hasText: "NV Bán Hai" }).first()).toBeVisible()
   await expect(o.filter({ hasText: "Chủ NPP" })).toHaveCount(0)
+})
+
+/* ⚠ CHỦ NHÀ 24/09/2026: lọc danh sách trả hàng theo NV được tính. Tổng của CẢ bộ lọc đi theo. */
+test("trả hàng — lọc theo NV được tính (và 'Chưa gán NV'); tổng đi theo bộ lọc", async ({ page }) => {
+  const NV = [
+    { id: "00000000-0000-4000-8000-0000000000b7", full_name: "NV Bán Một" },
+    { id: "00000000-0000-4000-8000-0000000000b8", full_name: "NV Bán Hai" },
+  ].map((u) => ({ ...u, org_id: "00000000-0000-4000-8000-0000000000a1", role: "sales", is_active: true }))
+  await fetch(`${FAKE}/rest/v1/users`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(NV) })
+  try {
+    await dangNhap(page)
+    await page.goto("/returns")
+    const k = khoi(page, "Tổng tiền trả hàng")
+    await expect(k).toContainText("60 phiếu trả")
+    const chon = async (nhan: string) => {
+      await page.getByRole("combobox", { name: "Lọc theo NV" }).click()
+      await page.getByRole("option", { name: nhan, exact: true }).click()
+    }
+    await chon("NV Bán Hai")
+    await expect(k).toContainText("20 phiếu trả")
+    await expect(k).toContainText("200.000")
+    const o = page.getByTestId("tinh-cho-nv")
+    await expect(o.first()).toHaveText("NV Bán Hai")
+    await expect(o.filter({ hasNotText: "NV Bán Hai" })).toHaveCount(0)
+
+    await chon("Chưa gán NV")
+    await expect(k).toContainText("20 phiếu trả")
+    await expect(o.filter({ hasNotText: "—" })).toHaveCount(0)
+
+    await chon("Tất cả NV")
+    await expect(k).toContainText("60 phiếu trả")
+  } finally {
+    for (const u of NV) await fetch(`${FAKE}/rest/v1/users?id=eq.${u.id}`, { method: "DELETE" })
+  }
 })

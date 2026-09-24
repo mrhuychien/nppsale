@@ -7,6 +7,11 @@
  */
 export const ORG = "00000000-0000-4000-8000-0000000000a1"
 export const OWNER = "00000000-0000-4000-8000-0000000000b1"
+/* Hai NV chỉ để đứng tên phiếu trả mẫu — KHÔNG có trong bảng `users` mẫu
+   (thêm vào là mọi ô chọn NV của các chốt khác đổi số dòng); chốt nào cần
+   thì tự chèn rồi gỡ. */
+export const NV_MOT = "00000000-0000-4000-8000-0000000000b7"
+export const NV_HAI = "00000000-0000-4000-8000-0000000000b8"
 export const KHACH = "00000000-0000-4000-8000-0000000000c1"
 /** Khách thuộc nhóm giá G1: hộp 19.000 (khác `sell_price` 20.000). */
 export const KHACH_NHOM = "00000000-0000-4000-8000-0000000000c2"
@@ -97,7 +102,10 @@ export function tables() {
       credit_note_amount: 10000, created_at: `2026-09-${String(1 + (i % 20)).padStart(2, "0")}T08:00:00Z`,
       customer: { store_name: "Tạp hoá Cô Ba" }, requester: { full_name: "Chủ NPP" }, order: null, invoice: null,
       /* Người được tính khoản trừ ≠ người lập — cột "Tính cho NV". */
-      seller: { full_name: i % 2 ? "NV Bán Hai" : "NV Bán Một" },
+      /* Người được tính khoản trừ ≠ người lập — cột + bộ lọc "Tính cho NV".
+         Cứ ba phiếu có một phiếu chưa gán. */
+      sales_user_id: i % 3 === 0 ? null : i % 2 ? NV_HAI : NV_MOT,
+      seller: i % 3 === 0 ? null : { full_name: i % 2 ? "NV Bán Hai" : "NV Bán Một" },
     })),
     // Chỉ hai phiếu trả đầu có dòng Mì.
     return_lines: [

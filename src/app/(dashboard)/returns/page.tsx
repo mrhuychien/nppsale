@@ -81,6 +81,9 @@ export default function ReturnsPage() {
   const [returns, setReturns] = useState<Return[]>([])
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
+  /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
+  const [sellerFilter, setSellerFilter] = useState("all")
+  const [nhanVien, setNhanVien] = useState<Array<{ id: string; full_name: string | null }>>([])
   /**
    * ⚠ MỞ RA Ở "CHỜ XỬ LÝ", không phải "Tất cả". Màn này là HÀNG ĐỢI VIỆC
    * chứ không phải sổ tra cứu: thứ duy nhất cần hành động là phiếu chưa
@@ -151,7 +154,7 @@ export default function ReturnsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
@@ -175,14 +178,28 @@ export default function ReturnsPage() {
    * hai con số cạnh nhau không khớp nhau.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any }>(q: Q): Q => {
+  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any; is: (c: string, v: null) => any }>(q: Q): Q => {
     let x = q
     if (listSearch.filter) x = x.or(listSearch.filter)
     for (const f of fieldSearch.filters) x = x.or(f)
     if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
     if (statusFilter !== "all") x = x.eq("status", statusFilter)
+    if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
+    else if (filterActive("seller") && sellerFilter !== "all") x = x.eq("sales_user_id", sellerFilter)
     return x
   }
+
+  /* Danh sách NV để lọc — cùng tập người `assign_doc_seller` nhận (mig 178). */
+  useEffect(() => {
+    let huy = false
+    supabase.from("users").select("id, full_name").in("role", ["sales", "manager", "owner"]).order("full_name")
+      .then(({ data, error }) => {
+        if (huy) return
+        if (error) console.error("[returns] không đọc được danh sách NV:", error.message)
+        setNhanVien((data as Array<{ id: string; full_name: string | null }>) ?? [])
+      })
+    return () => { huy = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false
@@ -218,7 +235,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -254,7 +271,7 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -372,12 +389,29 @@ export default function ReturnsPage() {
                 </SelectContent>
               </Select>
             )}
-            {(reasonFilter !== "all" || search.trim() !== "" || statusFilter !== "submitted") && (
+            {filterActive("seller") && authUser?.role !== "sales" && (
+              <Select value={sellerFilter} onValueChange={setSellerFilter}>
+                <SelectTrigger className="h-9 sm:w-56" aria-label="Lọc theo NV">
+                  <SelectValue placeholder="Lọc theo NV" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả NV</SelectItem>
+                  <SelectItem value="none">Chưa gán NV</SelectItem>
+                  {nhanVien.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.full_name || "—"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {(reasonFilter !== "all" || sellerFilter !== "all" || search.trim() !== "" || statusFilter !== "submitted") && (
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => {
                   setReasonFilter("all")
+                  setSellerFilter("all")
                   setSearch("")
                   setStatusFilter("submitted")
                 }}

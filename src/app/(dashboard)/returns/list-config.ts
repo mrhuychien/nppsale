@@ -38,8 +38,10 @@ export const DEFAULT_RETURN_COLUMNS: ReturnColumnKey[] = [
 export const RETURN_FILTERS = [
   { key: "search", label: "Tìm kiếm", required: true },
   { key: "reason", label: "Lọc theo lý do" },
+  /* Theo người được tính khoản trừ (`sales_user_id`) — chủ nhà 24/09/2026. */
+  { key: "seller", label: "Lọc theo NV" },
 ] as const satisfies readonly ListViewOption<string>[]
 
 export type ReturnFilterKey = (typeof RETURN_FILTERS)[number]["key"]
 
-export const DEFAULT_RETURN_FILTERS: ReturnFilterKey[] = ["search", "reason"]
+export const DEFAULT_RETURN_FILTERS: ReturnFilterKey[] = ["search", "reason", "seller"]

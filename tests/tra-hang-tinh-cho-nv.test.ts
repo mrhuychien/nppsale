@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync } from "node:fs"
-import { RETURN_COLUMNS, DEFAULT_RETURN_COLUMNS } from "../src/app/(dashboard)/returns/list-config"
+import { RETURN_COLUMNS, DEFAULT_RETURN_COLUMNS, RETURN_FILTERS, DEFAULT_RETURN_FILTERS } from "../src/app/(dashboard)/returns/list-config"
 
 /**
  * ⚠ CHỦ NHÀ 24/09/2026: "Danh sách trả hàng thêm cột hiển thị Tính cho nhân viên".
@@ -12,6 +12,11 @@ describe("danh sách trả hàng: cột Tính cho NV", () => {
   it("có trong danh mục cột và bật mặc định", () => {
     expect(RETURN_COLUMNS.find((c) => c.key === "seller")?.label).toBe("Tính cho NV")
     expect(DEFAULT_RETURN_COLUMNS).toContain("seller")
+  })
+
+  it("bộ lọc theo NV có trong danh mục và bật mặc định (chủ nhà 24/09/2026)", () => {
+    expect(RETURN_FILTERS.find((f) => f.key === "seller")?.label).toBe("Lọc theo NV")
+    expect(DEFAULT_RETURN_FILTERS).toContain("seller")
   })
 
   it("trang đọc người được tính qua khoá returns_sales_user_id_fkey", () => {

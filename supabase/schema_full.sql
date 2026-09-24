@@ -32363,21 +32363,32 @@ END;
 $patch$;
 
 -- 2. reissue_invoice: tờ mới giữ người đứng tên của tờ cũ.
+--
+-- ⚠ NEO VÀO CÂU `RETURN QUERY SELECT v_new.invoice_id` CUỐI HÀM, KHỚP BẰNG
+--   BIỂU THỨC CHÍNH QUY (dung sai khoảng trắng / xuống dòng). Bản đầu neo
+--   vào đúng nguyên văn câu gắn lại phiếu trả, và bản đang chạy ở máy thật
+--   không khớp nguyên văn — chạy hỏng "không thấy đúng MỘT chỗ gắn lại phiếu
+--   trả" (chủ nhà báo 23/09/2026). Câu RETURN QUERY có đúng MỘT lần trong
+--   mọi bản của hàm (mig 125 → 158), và đứng SAU mọi bước gắn / gỡ phiếu trả
+--   — đúng chỗ chép người đứng tên.
 DO $patch2$
 DECLARE
   v_src text;
-  v_neo text := E'  UPDATE returns SET invoice_id = v_new.invoice_id WHERE id = ANY(v_rets);\n';
+  v_n   int;
+  v_mau text := '(\r?\n[ \t]*RETURN[ \t]+QUERY[ \t]+SELECT[ \t\r\n]+v_new\.invoice_id)';
 BEGIN
   v_src := pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure);
   IF position('(mig 182)' IN v_src) > 0 THEN
     RAISE NOTICE '--- 182: reissue_invoice đã giữ người đứng tên, bỏ qua ---';
     RETURN;
   END IF;
-  IF (length(v_src) - length(replace(v_src, v_neo, ''))) / length(v_neo) <> 1 THEN
-    RAISE EXCEPTION '182: không thấy đúng MỘT chỗ gắn lại phiếu trả trong reissue_invoice' USING ERRCODE = 'P0001';
+  SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_mau, 'g');
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION '182: thấy % câu RETURN QUERY SELECT v_new.invoice_id trong reissue_invoice, cần đúng 1', v_n
+      USING ERRCODE = 'P0001';
   END IF;
-  v_src := replace(v_src, v_neo, v_neo
-    || E'\n  -- (mig 182) Tờ mới GIỮ người đứng tên của tờ cũ — `post_invoice` chép\n'
+  v_src := regexp_replace(v_src, v_mau,
+       E'\n  -- (mig 182) Tờ mới GIỮ người đứng tên của tờ cũ — `post_invoice` chép\n'
     || E'  --   người của ĐƠN, nên người vừa được gán ở tờ cũ sẽ mất nếu không chép lại.\n'
     || E'  PERFORM set_config(''npp.via_rpc'', ''on'', true);\n'
     || E'  UPDATE sales_invoices si182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
@@ -32385,7 +32396,8 @@ BEGIN
     || E'  UPDATE receivables rc182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
     || E'   WHERE rc182.invoice_id = v_new.invoice_id;\n'
     || E'  UPDATE returns rt182 SET sales_user_id = (SELECT si.sales_user_id FROM sales_invoices si WHERE si.id = p_invoice_id)\n'
-    || E'   WHERE rt182.invoice_id = v_new.invoice_id AND rt182.status <> ''cancelled'';\n');
+    || E'   WHERE rt182.invoice_id = v_new.invoice_id AND rt182.status <> ''cancelled'';\n'
+    || '\1');
   EXECUTE v_src;
 END;
 $patch2$;

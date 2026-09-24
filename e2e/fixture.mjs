@@ -31,6 +31,8 @@ function donMau(id, code, status, total, ngay) {
     payment_terms: "COD", current_workflow_stage: null,
     customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi", route_code: null },
     sales_user: { full_name: "Chủ NPP" },
+    /* Người tạo ≠ người được tính — cột tuỳ chọn "Người tạo" (24/09/2026). */
+    created_by: "00000000-0000-4000-8000-0000000000b9", creator: { full_name: "Kế toán Lan" },
   }
 }
 
@@ -122,7 +124,7 @@ export function tables() {
       stock_entry_id: "se1", created_at: "2026-09-23T08:00:00Z",
       customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" },
       order: { order_code: "DH-0002" }, sales_user: { full_name: "Chủ NPP" },
-      posted_by: OWNER, sales_user_id: OWNER,
+      posted_by: OWNER, sales_user_id: OWNER, creator: { full_name: "Kế toán Lan" },
     }, {
       id: "00000000-0000-4000-8000-0000000000f2", org_id: ORG, invoice_code: "HD-E2E-2", order_id: "o-e2e-1",
       customer_id: KHACH, status: "posted", subtotal: 300000, vat: 0, total: 300000,

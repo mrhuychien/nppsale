@@ -104,3 +104,24 @@ test("trả hàng — lọc theo NV được tính (và 'Chưa gán NV'); tổng
     for (const u of NV) await fetch(`${FAKE}/rest/v1/users?id=eq.${u.id}`, { method: "DELETE" })
   }
 })
+
+/**
+ * ⚠ CHỦ NHÀ 24/09/2026: "Danh sách đơn hàng và Danh sách hóa đơn -> thêm cột
+ *   Tính cho NV (đặt mặc định) còn cột người tạo (option)".
+ */
+for (const [duong, ten] of [["/orders", "đơn hàng"], ["/sales-invoices", "hóa đơn"]] as const) {
+  test(`${ten} — máy tính: 'Tính cho NV' mặc định, 'Người tạo' bật được trong Cột hiển thị`, async ({ page }) => {
+    await dangNhap(page)
+    await page.goto(duong)
+    await chonKy(page, "Tất cả")
+    await expect(page.getByText("Tính cho NV", { exact: true }).first()).toBeVisible()
+    await expect(page.getByTestId("nguoi-tao-dong"), "cột Người tạo phải tắt mặc định").toHaveCount(0)
+
+    await page.getByRole("button", { name: /Cột hiển thị/ }).first().click()
+    await page.getByText("Người tạo", { exact: true }).last().click()
+    await page.keyboard.press("Escape")
+    const o = page.getByTestId("nguoi-tao-dong")
+    await expect(o.filter({ hasText: "Kế toán Lan" }).first()).toBeVisible()
+    await expect(o.filter({ hasText: "Chủ NPP" }), "Người tạo lấy nhầm người được tính").toHaveCount(0)
+  })
+}

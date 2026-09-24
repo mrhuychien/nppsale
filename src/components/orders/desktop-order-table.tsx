@@ -27,7 +27,7 @@ export interface OrderSort {
 }
 
 export type OrderColumn =
-  | "customer" | "route" | "ward" | "address" | "salesUser" | "date" | "total" | "status"
+  | "customer" | "route" | "ward" | "address" | "salesUser" | "createdBy" | "date" | "total" | "status"
 
 const REP_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be185d", "#0369a1"]
 
@@ -120,6 +120,7 @@ export function DesktopOrderTable({
     show("ward") ? "150px" : null,
     show("address") ? "minmax(200px,1.5fr)" : null,
     show("salesUser") ? "170px" : null,
+    show("createdBy") ? "150px" : null,
     show("date") ? "110px" : null,
     "70px",
     show("total") ? "140px" : null,
@@ -156,7 +157,8 @@ export function DesktopOrderTable({
           {show("route") && <span className={head}>Tuyến bán</span>}
           {show("ward") && <span className={head}>Phường</span>}
           {show("address") && <span className={head}>Địa chỉ</span>}
-          {show("salesUser") && <span className={head}>NV bán hàng</span>}
+          {show("salesUser") && <span className={head}>Tính cho NV</span>}
+          {show("createdBy") && <span className={head}>Người tạo</span>}
           {show("date") && (
             <button type="button" onClick={() => onSort("date")} className={sortBtn}>
               Ngày đặt <SortIcon k="date" />
@@ -261,6 +263,11 @@ export function DesktopOrderTable({
                     {rep.initials}
                   </span>
                   <span className="truncate">{o.sales_user?.full_name || "—"}</span>
+                </span>
+              )}
+              {show("createdBy") && (
+                <span data-testid="nguoi-tao-dong" className="truncate px-2 text-[13px] text-on-surface-variant">
+                  {(o as { creator?: { full_name?: string | null } | null }).creator?.full_name || "—"}
                 </span>
               )}
               {show("date") && (

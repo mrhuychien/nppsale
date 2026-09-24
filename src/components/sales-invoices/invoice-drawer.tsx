@@ -219,7 +219,7 @@ export function InvoiceDrawer({
                   sub={routeName ?? invoice.customer?.phone ?? ""}
                 />
                 <Cell
-                  label="NV bán hàng"
+                  label="Tính cho NV"
                   main={invoice.sales_user?.full_name || "—"}
                   sub={invoice.order?.order_code ?? ""}
                 />

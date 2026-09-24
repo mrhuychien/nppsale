@@ -21,7 +21,14 @@ export const INVOICE_COLUMNS = [
   { key: "route", label: "Tuyến bán" },
   { key: "ward", label: "Phường" },
   { key: "address", label: "Địa chỉ" },
-  { key: "salesUser", label: "NV bán hàng" },
+  /**
+   * ⚠ CHỦ NHÀ CHỐT 24/09/2026: "thêm cột Tính cho NV (đặt mặc định) còn cột
+   *   người tạo (option)". `salesUser` = `sales_user_id` — người được tính
+   *   doanh số; đổi NHÃN, giữ KHOÁ để tuỳ chọn cột đã lưu của người dùng
+   *   không mất. `createdBy` = người xuất hóa đơn (`posted_by`), tắt mặc định.
+   */
+  { key: "salesUser", label: "Tính cho NV" },
+  { key: "createdBy", label: "Người tạo" },
   { key: "date", label: "Ngày xuất" },
   { key: "order", label: "Đơn gốc" },
   { key: "total", label: "Tổng tiền" },
@@ -43,7 +50,7 @@ export const INVOICE_FILTERS = [
   { key: "search", label: "Tìm số hóa đơn", required: true },
   { key: "date", label: "Ngày xuất" },
   { key: "customer", label: "Khách hàng" },
-  { key: "sales", label: "NV bán hàng" },
+  { key: "sales", label: "Tính cho NV" },
   { key: "amount", label: "Giá trị hóa đơn" },
 ] as const satisfies readonly ListViewOption<string>[]
 

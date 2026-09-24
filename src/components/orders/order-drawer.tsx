@@ -320,7 +320,7 @@ export function OrderDrawer({
             <div className="grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
               <div className="grid grid-cols-2 gap-2.5">
                 <Cell label="Khách hàng" main={order.customer?.store_name || "Khách lẻ"} sub={routeName ?? order.customer?.phone ?? ""} />
-                <Cell label="NV bán hàng" main={order.sales_user?.full_name || "—"} sub={terms} />
+                <Cell label="Tính cho NV" main={order.sales_user?.full_name || "—"} sub={terms} />
               </div>
 
               <div className="overflow-hidden rounded-xl border border-outline-variant/40">

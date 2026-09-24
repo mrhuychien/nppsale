@@ -92,7 +92,8 @@ const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channe
  */
 const BASE_COLS =
   "id, invoice_code, invoice_date, created_at, payment_terms, status, total, order_id, customer_id, sales_user_id, replaced_from, replaced_by"
-const SALES_EMBED = "sales_user:users!sales_invoices_sales_user_id_fkey(full_name)"
+/* Người xuất (`posted_by`) cho cột "Người tạo" — tắt mặc định. */
+const SALES_EMBED = "sales_user:users!sales_invoices_sales_user_id_fkey(full_name), creator:users!sales_invoices_posted_by_fkey(full_name)"
 
 const TABS = [
   { key: "posted", label: "Đã xuất", accent: "#12b76a" },
@@ -517,7 +518,7 @@ export default function SalesInvoicesPage() {
       )}
       {filterActive("sales") && !isSales && (
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-muted-foreground">NV bán hàng</label>
+          <label className="text-xs font-semibold text-muted-foreground">Tính cho NV</label>
           <Select value={salesFilter} onValueChange={setSalesFilter}>
             <SelectTrigger><SelectValue placeholder="Tất cả" /></SelectTrigger>
             <SelectContent>

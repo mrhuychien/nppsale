@@ -50,6 +50,8 @@ export interface InvoiceRow {
     address?: string | null
   } | null
   sales_user?: { full_name?: string | null } | null
+  /** Người xuất hóa đơn (`posted_by`). */
+  creator?: { full_name?: string | null } | null
   order?: { order_code?: string | null } | null
 }
 
@@ -100,6 +102,7 @@ export function DesktopInvoiceTable({
     show("ward") ? "150px" : null,
     show("address") ? "minmax(200px,1.5fr)" : null,
     show("salesUser") ? "170px" : null,
+    show("createdBy") ? "150px" : null,
     show("date") ? "110px" : null,
     show("order") ? "140px" : null,
     show("total") ? "140px" : null,
@@ -129,7 +132,8 @@ export function DesktopInvoiceTable({
           {show("route") && <span className={head}>Tuyến bán</span>}
           {show("ward") && <span className={head}>Phường</span>}
           {show("address") && <span className={head}>Địa chỉ</span>}
-          {show("salesUser") && <span className={head}>NV bán hàng</span>}
+          {show("salesUser") && <span className={head}>Tính cho NV</span>}
+          {show("createdBy") && <span className={head}>Người tạo</span>}
           {show("date") && (
             <button type="button" onClick={() => onSort("date")} className={sortBtn}>
               Ngày xuất <SortIcon k="date" />
@@ -216,6 +220,11 @@ export function DesktopInvoiceTable({
                     {rep.initials}
                   </span>
                   <span className="truncate">{r.sales_user?.full_name || "—"}</span>
+                </span>
+              )}
+              {show("createdBy") && (
+                <span data-testid="nguoi-tao-dong" className="truncate px-2 text-[13px] text-on-surface-variant">
+                  {r.creator?.full_name || "—"}
                 </span>
               )}
               {show("date") && (

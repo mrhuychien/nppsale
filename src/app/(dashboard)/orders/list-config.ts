@@ -10,7 +10,14 @@ export const ORDER_COLUMNS = [
   { key: "route", label: "Tuyến bán" },
   { key: "ward", label: "Phường" },
   { key: "address", label: "Địa chỉ" },
-  { key: "salesUser", label: "NV bán hàng" },
+  /**
+   * ⚠ CHỦ NHÀ CHỐT 24/09/2026: "thêm cột Tính cho NV (đặt mặc định) còn cột
+   *   người tạo (option)". `salesUser` = `sales_user_id` — người được tính
+   *   doanh số; đổi NHÃN, giữ KHOÁ để tuỳ chọn cột đã lưu của người dùng
+   *   không mất. `createdBy` = người lập chứng từ, tắt mặc định.
+   */
+  { key: "salesUser", label: "Tính cho NV" },
+  { key: "createdBy", label: "Người tạo" },
   { key: "date", label: "Ngày đặt" },
   { key: "total", label: "Tổng tiền" },
   { key: "status", label: "Trạng thái" },
@@ -31,7 +38,7 @@ export const ORDER_FILTERS = [
   { key: "specialStatus", label: "Lọc trạng thái đặc biệt" },
   { key: "date", label: "Ngày đặt" },
   { key: "customer", label: "Khách hàng" },
-  { key: "sales", label: "NV bán hàng" },
+  { key: "sales", label: "Tính cho NV" },
   { key: "amount", label: "Giá trị đơn" },
 ] as const satisfies readonly ListViewOption<string>[]
 

@@ -656,7 +656,7 @@ export default function OrdersPage() {
       const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
       const res = await selectResilient<SalesOrder>(
         build,
-        `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`,
+        `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name), creator:users!sales_orders_created_by_fkey(full_name)`,
         // eslint-disable-next-line no-restricted-syntax
         `*, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`
       )
@@ -1031,7 +1031,7 @@ export default function OrdersPage() {
 
   const handleExportCsv = () => {
     const selected = orders.filter((o) => selectedIds.has(o.id))
-    const headers = ["Mã đơn", "Khách hàng", "NV bán hàng", "Ngày đặt", "Tổng tiền", "Trạng thái"]
+    const headers = ["Mã đơn", "Khách hàng", "Tính cho NV", "Ngày đặt", "Tổng tiền", "Trạng thái"]
     const rows = selected.map((o) => [
       o.order_code,
       o.customer?.store_name || "",
@@ -1205,7 +1205,7 @@ export default function OrdersPage() {
             )}
             {filterActive("sales") && (
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">NV bán hàng</label>
+                <label className="text-xs font-semibold text-muted-foreground">Tính cho NV</label>
                 <Select value={salesFilter} onValueChange={setSalesFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="Tất cả" />

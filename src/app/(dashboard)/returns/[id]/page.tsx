@@ -94,7 +94,7 @@ export default function ReturnDetailPage() {
         )
         .eq("id", id)
         .single(),
-      supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(*)").eq("return_id", id),
+      supabase.from("return_lines").select("id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, note, reason, product:products(*)").eq("return_id", id),
       supabase
         .from("returns")
         .select("sales_user_id, seller:users!returns_sales_user_id_fkey(id, full_name)")
@@ -107,6 +107,10 @@ export default function ReturnDetailPage() {
     if (retRes.data) {
       const r = retRes.data as unknown as Return
       setRet(r)
+      /* ⚠ KHO NHẬN ĐÃ LƯU (POS lưu `destination_zone` từ lúc nháp) thì mở ra
+         đúng kho ấy — đừng về "sale" để người duyệt vô tình đổi lại. */
+      const kho = (r as unknown as { destination_zone?: string | null }).destination_zone
+      if (kho === "sale" || kho === "date") setZone(kho)
       setEditForm({
         notes: r.notes || "",
         credit_note_amount: r.credit_note_amount != null ? String(r.credit_note_amount) : "",
@@ -477,7 +481,23 @@ export default function ReturnDetailPage() {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="font-medium">{line.product?.name || "—"}</TableCell>
+                          <TableCell className="font-medium">
+                            {line.product?.name || "—"}
+                            {line.product?.sku && (
+                              <span className="ml-1.5 font-mono text-[11px] font-normal text-muted-foreground">{line.product.sku}</span>
+                            )}
+                            {/* Như POS: lý do và ghi chú TỪNG DÒNG. Lý do trùng lý do phiếu thì khỏi lặp. */}
+                            {!isExchange && line.reason && line.reason !== ret.reason && (
+                              <div className="text-[11px] font-normal text-muted-foreground">
+                                Lý do: {RETURN_REASONS.find((x) => x.value === line.reason)?.label || line.reason}
+                              </div>
+                            )}
+                            {line.note && (
+                              <div className="text-[11px] font-normal italic text-muted-foreground [overflow-wrap:anywhere]">
+                                Ghi chú: {line.note}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell>{line.unit_name}</TableCell>
                           <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
                           <TableCell className="text-right tabular-nums">{formatCurrency(line.unit_price)}</TableCell>

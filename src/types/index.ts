@@ -493,6 +493,8 @@ export interface SalesOrderLine {
   line_total: number
   batch_id: string | null
   note: string | null
+  /** Hệ số quy về đơn vị cơ sở, chốt lúc lập đơn. */
+  conversion_factor?: number | null
   // Joined
   product?: Product
 }
@@ -755,6 +757,8 @@ export interface ReturnLine {
   is_exchange?: boolean
   /** Thuế VAT (phân số 0-1, vd 0.1 = 10%). line_total đã gồm VAT. */
   vat_rate?: number
+  /** Lý do trả TỪNG DÒNG (mig 159) — rỗng thì theo lý do phiếu. */
+  reason?: string | null
   // Joined
   product?: Product
 }

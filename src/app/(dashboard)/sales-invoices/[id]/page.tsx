@@ -39,7 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cancelInvoice } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 
@@ -63,6 +63,8 @@ interface InvoiceRow {
   order_id: string
   customer_id: string
   sales_user?: { full_name?: string | null } | null
+  /** Người lập tờ (`posted_by`) — như POS (`DocPeople`). */
+  creator?: { full_name?: string | null } | null
   customer?: {
     store_name?: string | null
     billing_name?: string | null
@@ -93,7 +95,7 @@ interface LineRow {
   vat_rate: number
   is_exchange: boolean
   note: string | null
-  product?: { name?: string | null; sku?: string | null } | null
+  product?: { name?: string | null; sku?: string | null; base_unit?: string | null } | null
 }
 
 export default function SalesInvoiceDetailPage() {
@@ -122,14 +124,14 @@ export default function SalesInvoiceDetailPage() {
       supabase
         .from("sales_invoices")
         .select(
-          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name), order:sales_orders(order_code, notes)"
+          "id, org_id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, notes, cancel_reason, cancelled_at, stock_entry_id, replaced_from, replaced_by, order_id, customer_id, customer:customers(store_name, billing_name, billing_address, address, tax_code, phone), sales_user:users!sales_invoices_sales_user_id_fkey(full_name), creator:users!sales_invoices_posted_by_fkey(full_name), order:sales_orders(order_code, notes)"
         )
         .eq("id", id)
         .maybeSingle(),
       supabase
         .from("sales_invoice_lines")
         .select(
-          "id, order_line_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_discount, line_total, vat_rate, is_exchange, note, product:products(name, sku)"
+          "id, order_line_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_discount, line_total, vat_rate, is_exchange, note, product:products(name, sku, base_unit)"
         )
         .eq("invoice_id", id)
         .order("sort_order", { ascending: true }),
@@ -460,6 +462,13 @@ export default function SalesInvoiceDetailPage() {
                         <div className="text-xs text-on-surface-variant">
                           {l.product?.sku ? `${l.product.sku} · ` : ""}
                           {l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}
+                          {/* Như POS: quy về đơn vị cơ sở, và giảm giá dòng (đã quy vào đơn giá). */}
+                          {Number(l.conversion_factor) > 1 && l.product?.base_unit && l.product.base_unit !== l.unit_name && (
+                            <> · {formatInt(Number(l.quantity) * Number(l.conversion_factor))} {l.product.base_unit}</>
+                          )}
+                          {Number(l.line_discount) > 0 && (
+                            <span className="text-primary"> · giảm {formatCurrency(Number(l.line_discount))}</span>
+                          )}
                           {l.is_exchange && (
                             <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>
                           )}
@@ -533,6 +542,12 @@ export default function SalesInvoiceDetailPage() {
               invoice={{ total: inv.total, subtotal: inv.subtotal, vat: inv.vat, discount: giamCuaHoaDon(lines, inv.subtotal) }}
               returns={invReturns}
             />
+          </DetailCard>
+
+          {/* ⚠ HAI NGƯỜI KHÁC NHAU, như POS: người lập tờ và người được tính doanh số. */}
+          <DetailCard title="Người phụ trách">
+            <DetailRow label="Tính cho NV" value={inv.sales_user?.full_name || "—"} />
+            <DetailRow label="Người tạo" value={inv.creator?.full_name || "—"} />
           </DetailCard>
 
           <DetailCard title="Thanh toán">

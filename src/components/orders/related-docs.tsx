@@ -26,12 +26,15 @@ import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { INVOICE_STATUS_MAP, ORDER_STATUS_MAP, RETURN_STATUS_MAP } from "@/lib/constants"
+import { returnReasonLabel } from "@/lib/sell/returns"
 
 interface Don { id: string; order_code: string; status: string }
 interface HoaDon { id: string; invoice_code: string; status: string; total: number; invoice_date: string | null }
 interface DongTra {
   id: string; unit_name: string; quantity: number; unit_price: number | null; vat_rate: number | null
   line_total: number | null; is_exchange: boolean | null
+  /** Lý do / ghi chú từng dòng (mig 159 / 029) — như POS. */
+  note?: string | null; reason?: string | null
   product?: { name?: string | null; sku?: string | null } | null
 }
 interface PhieuTra {
@@ -78,7 +81,7 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
           : Promise.resolve({ data: [], error: null }),
         dk
           ? sb.from("returns")
-              .select("id, status, created_at, credit_note_amount, invoice_id, order_id, lines:return_lines(id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(name, sku))")
+              .select("id, status, created_at, credit_note_amount, invoice_id, order_id, lines:return_lines(id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, note, reason, product:products(name, sku))")
               .or(dk)
               .order("created_at", { ascending: true })
           : Promise.resolve({ data: [], error: null }),
@@ -169,6 +172,8 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
                   <span className="min-w-0 truncate">
                     {l.product?.name || "Sản phẩm đã xoá"}{" "}
                     <span className="text-muted-foreground">· {Number(l.quantity).toLocaleString("vi-VN")} {l.unit_name}</span>
+                    {!l.is_exchange && l.reason && <span className="text-muted-foreground"> · {returnReasonLabel(l.reason)}</span>}
+                    {l.note && <span className="italic text-muted-foreground"> · “{l.note}”</span>}
                   </span>
                   <span className="shrink-0 text-[12px]">
                     <span className={`mr-2 rounded px-1.5 py-px font-bold ${l.is_exchange ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"}`}>

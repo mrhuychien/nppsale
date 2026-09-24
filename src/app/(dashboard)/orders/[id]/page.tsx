@@ -61,6 +61,7 @@ import { evaluateApproval } from "@/lib/approval"
 import { isSellEditable } from "@/lib/sell/order-edit"
 import { lineDiscountOf, lineTotalOf } from "@/lib/sell/create-order"
 import { returnReasonLabel } from "@/lib/sell/returns"
+import { giamCuaChungTu } from "@/lib/pos/invoice-discount"
 import { useEntityLock } from "@/hooks/use-entity-lock"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -245,9 +246,13 @@ export default function OrderDetailPage() {
       unit_price: number
       line_total: number
       is_exchange?: boolean | null
+      note?: string | null
+      reason?: string | null
       product?: { name?: string; sku?: string } | null
     }>
   }>>([])
+  /** Người tạo đơn (mig 178) — đọc riêng, lỗi thì bỏ qua: xem `fetchData`. */
+  const [nguoiTao, setNguoiTao] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState<{ status: OrderStatus; label: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -360,7 +365,7 @@ export default function OrderDetailPage() {
       supabase
         .from("returns")
         .select(
-          "id, status, reason, credit_note_amount, notes, created_at, requester:users!returns_requested_by_fkey(full_name), lines:return_lines(id, product_id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name, sku))"
+          "id, status, reason, credit_note_amount, notes, created_at, requester:users!returns_requested_by_fkey(full_name), lines:return_lines(id, product_id, unit_name, quantity, unit_price, line_total, is_exchange, note, reason, product:products(name, sku))"
         )
         .eq("order_id", id)
         .order("created_at", { ascending: false }),
@@ -395,6 +400,19 @@ export default function OrderDetailPage() {
     }
     const fetchedLines = (linesRes.data as unknown as SalesOrderLine[]) || []
     setLines(fetchedLines)
+
+    /* ⚠ NGƯỜI TẠO ĐỌC RIÊNG, NHƯ POS (`order-screen`). Cột `created_by` có từ
+       mig 178; ghép vào truy vấn đầu đơn thì DB chưa chạy mig ấy là trắng cả
+       trang. Ở đây lỗi chỉ là không hiện một dòng. */
+    void supabase
+      .from("sales_orders")
+      .select("created_by, creator:users!sales_orders_created_by_fkey(full_name)")
+      .eq("id", id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        const ten = (data as { creator?: { full_name?: string | null } | null } | null)?.creator?.full_name
+        setNguoiTao(error ? null : ten || null)
+      })
 
     /**
      * ⚠ KHÔNG CÒN TRUY VẤN `v_sales_order_line_picked` — migration 119 đã
@@ -806,6 +824,11 @@ export default function OrderDetailPage() {
   const priceGroupName =
     (order?.customer as unknown as { group?: { name?: string | null } | null } | undefined)
       ?.group?.name ?? null
+
+  /** Giảm giá cả đơn (mig 183) — xem `giamCuaChungTu`. Dòng đổi giá 0 không ảnh hưởng. */
+  const giamDon = order
+    ? giamCuaChungTu(lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unit_price) })), order.subtotal)
+    : 0
 
   const orderReturnCredit = order
     ? Math.max(
@@ -1524,6 +1547,8 @@ export default function OrderDetailPage() {
             ...(priceGroupName ? [{ label: "Bảng giá", value: priceGroupName }] : []),
             { label: "Hình thức", value: paymentTermLabel },
             { label: "NV bán hàng", value: order.sales_user?.full_name || "—" },
+            /* Như POS (`DocPeople`): người lập đơn, khác người được tính. */
+            ...(nguoiTao ? [{ label: "Người tạo", value: nguoiTao }] : []),
           ]}
         />
       </div>
@@ -1705,6 +1730,7 @@ export default function OrderDetailPage() {
                                 <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                                   {line.product?.sku ? `${line.product.sku} · ` : ""}
                                   {line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}
+                                  <LineExtra line={line} />
                                 </div>
                               )}
                               {edited?.swap_product_id && (
@@ -1968,7 +1994,9 @@ export default function OrderDetailPage() {
                         <div className="mt-2 space-y-1 text-[13px]">
                           <p className="text-on-surface-variant">
                             {line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}
+                            <LineExtra line={line} />
                           </p>
+                          {line.note && <p className="text-[11px] italic text-muted-foreground">✏ {line.note}</p>}
                           <p className="text-right text-[15px] font-bold tabular-data">
                             {formatCurrency(liveTotal)}
                           </p>
@@ -2014,6 +2042,14 @@ export default function OrderDetailPage() {
               kiểm xem hai chỗ có khớp nhau không.
           */}
           <DetailCard title="Cộng tiền">
+            {/* ⚠ GIẢM GIÁ CẢ ĐƠN, như khối tiền POS (mig 183): suy từ
+                Σ(SL × giá) − subtotal (`giamCuaChungTu`), không từ `discount`. */}
+            {!linesEditMode && giamDon > 0 && (
+              <>
+                <DetailRow label="Tiền hàng" value={formatCurrency(order.subtotal + giamDon)} />
+                <DetailRow label="Giảm giá đơn" value={`−${formatCurrency(giamDon)}`} />
+              </>
+            )}
             <DetailRow
               label="Tạm tính"
               value={
@@ -2606,6 +2642,11 @@ export default function OrderDetailPage() {
                                 {l.product?.sku}
                               </span>
                               <span className="truncate">{l.product?.name}</span>
+                              {/* Lý do / ghi chú từng dòng như POS; lý do trùng lý do phiếu thì khỏi lặp. */}
+                              {!l.is_exchange && l.reason && l.reason !== r.reason && (
+                                <span className="shrink-0 text-muted-foreground">· {returnReasonLabel(l.reason)}</span>
+                              )}
+                              {l.note && <span className="truncate italic text-muted-foreground">“{l.note}”</span>}
                             </span>
                             <span className="font-semibold whitespace-nowrap">
                               {l.quantity} {l.unit_name} •{" "}
@@ -3040,5 +3081,24 @@ export default function OrderDetailPage() {
         onClose={() => setQuickCustomer(null)}
       />
     </div>
+  )
+}
+
+/**
+ * Phần phụ dưới "SL × giá" của một dòng đơn — những thứ POS hiện mà màn này
+ * từng bỏ: quy đổi về đơn vị cơ sở và chiết khấu dòng (`line_discount`, so
+ * với giá bảng — gồm cả giảm giá dòng của POS đã quy vào đơn giá).
+ */
+function LineExtra({ line }: { line: SalesOrderLine }) {
+  const heSo = Number(line.conversion_factor) || 1
+  const giam = Number(line.line_discount) || 0
+  const co = line.product?.base_unit
+  return (
+    <>
+      {heSo > 1 && co && co !== line.unit_name && (
+        <span> · {formatInt(Number(line.quantity) * heSo)} {co}</span>
+      )}
+      {giam > 0 && <span className="text-primary"> · giảm {formatCurrency(giam)}</span>}
+    </>
   )
 }

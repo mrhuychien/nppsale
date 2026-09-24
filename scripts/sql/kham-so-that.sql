@@ -238,4 +238,11 @@ UNION ALL
 SELECT 27, 'Mig 187 (giá vốn lãi/lỗ theo đơn vị cơ sở)',
   CASE WHEN position('qty_in_base_uom' IN pg_get_functiondef('public.finance_pnl(date, date)'::regprocedure)) > 0
        THEN 'OK — đã vá' ELSE 'CHƯA — xuất theo thùng thì giá vốn lãi/lỗ chỉ còn 1/hệ số' END, ''
+UNION ALL
+-- 28. Mig 188 — ngày chứng từ phiếu trả hàng (POS chọn ngày)
+SELECT 28, 'Mig 188 (phiếu trả hàng chọn ngày)',
+  CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'returns' AND column_name = 'return_date')
+            AND position('return_date' IN pg_get_functiondef('public.sync_return_credited_at()'::regprocedure)) > 0
+       THEN 'OK — đã có' ELSE 'CHƯA — POS chọn ngày trả nhưng sổ không lưu; báo cáo gom theo ngày bấm Hoàn thành' END, ''
 ) t ORDER BY stt;

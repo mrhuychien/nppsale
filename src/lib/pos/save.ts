@@ -222,6 +222,13 @@ export function dongTraGhiSo(returnId: string, l: PosLine) {
   }
 }
 
+/** Sổ chưa có cột `returns.return_date` (chưa chạy mig 188). */
+export function thieuCotNgayTra(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false
+  const msg = (err.message || "").toLowerCase()
+  return (err.code === "PGRST204" || err.code === "42703") && msg.includes("return_date")
+}
+
 export async function savePosReturn(
   sb: SupabaseClient,
   o: {
@@ -234,6 +241,8 @@ export async function savePosReturn(
     invoiceId?: string | null
     reason: string
     notes: string
+    /** Ngày chứng từ (YYYY-MM-DD, mig 188). Rỗng = để máy chủ lấy hôm nay. */
+    returnDate?: string | null
     lines: PosLine[]
     /** `true` = ghi nhận và nhập kho ngay; `false` = để nháp. */
     complete: boolean
@@ -249,35 +258,51 @@ export async function savePosReturn(
   }
 ): Promise<{ returnId: string }> {
   let id = o.returnId
+  /**
+   * ⚠ NGÀY CHỨNG TỪ (mig 188) — chủ nhà 24/09/2026: "POS phiếu trả hàng cho phép
+   *   chọn ngày". Sổ chưa chạy mig 188 thì chưa có cột: ghi lại KHÔNG kèm ngày
+   *   (phiếu vẫn lưu, ngày = hôm nay) thay vì hỏng cả phiếu.
+   */
+  const ngay = o.returnDate ? { return_date: o.returnDate } : {}
+  const thuLaiKhongNgay = (r: { error: { message?: string; code?: string } | null }) =>
+    !!o.returnDate && thieuCotNgayTra(r.error)
   if (!id) {
-    const { data, error } = await sb
-      .from("returns")
-      .insert({
-        org_id: o.orgId,
-        customer_id: o.customerId,
-        invoice_id: o.invoiceId ?? null,
-        requested_by: o.userId,
-        reason: o.reason || null,
-        notes: o.notes || null,
-        status: "draft",
-      })
-      .select("id")
-    if (error) throw error
-    assertWrote(data as unknown[], "phiếu trả")
-    id = ((data as unknown) as Array<{ id: string }>)[0].id
+    const chen = (kemNgay: boolean) =>
+      sb
+        .from("returns")
+        .insert({
+          org_id: o.orgId,
+          customer_id: o.customerId,
+          invoice_id: o.invoiceId ?? null,
+          requested_by: o.userId,
+          reason: o.reason || null,
+          notes: o.notes || null,
+          status: "draft",
+          ...(kemNgay ? ngay : {}),
+        })
+        .select("id")
+    let r = await chen(true)
+    if (thuLaiKhongNgay(r)) r = await chen(false)
+    if (r.error) throw r.error
+    assertWrote(r.data as unknown[], "phiếu trả")
+    id = ((r.data as unknown) as Array<{ id: string }>)[0].id
   } else {
-    const { data, error } = await sb
-      .from("returns")
-      .update({
-        customer_id: o.customerId,
-        invoice_id: o.invoiceId ?? null,
-        reason: o.reason || null,
-        notes: o.notes || null,
-      })
-      .eq("id", id)
-      .select("id")
-    if (error) throw error
-    assertWrote(data as unknown[], "phiếu trả")
+    const sua = (kemNgay: boolean) =>
+      sb
+        .from("returns")
+        .update({
+          customer_id: o.customerId,
+          invoice_id: o.invoiceId ?? null,
+          reason: o.reason || null,
+          notes: o.notes || null,
+          ...(kemNgay ? ngay : {}),
+        })
+        .eq("id", id!)
+        .select("id")
+    let r = await sua(true)
+    if (thuLaiKhongNgay(r)) r = await sua(false)
+    if (r.error) throw r.error
+    assertWrote(r.data as unknown[], "phiếu trả")
   }
 
   /**

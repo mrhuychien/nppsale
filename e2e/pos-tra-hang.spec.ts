@@ -75,3 +75,33 @@ test("trả hàng POS: nút In in tại chỗ bằng mẫu phiếu trả, không
   await expect(page.getByText("Tạp hoá Cô Ba").first()).toBeVisible()
   await expect(page.getByRole("link", { name: "Trang chủ" }), "trang in POS còn kèm menu dashboard").toHaveCount(0)
 })
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "POS phiếu trả hàng cho phép chọn ngày" (mig 188). */
+test("trả hàng POS: chọn được ngày trả, ngày đi xuống sổ", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/pos/tra-hang/moi")
+  await chonKhach(page, "Đại lý Minh")
+  await oTim(page).fill("Sữa")
+  await oTim(page).press("Enter")
+  await expect(page.getByTestId("dong-tra")).toHaveCount(1)
+  await page.getByLabel("Ghi chú dòng trả 1").fill("e2e-ngay-tra")
+
+  const ngay = page.getByLabel("Ngày trả", { exact: true })
+  await expect(ngay).toBeEditable()
+  await ngay.fill("2026-09-15")
+  await page.getByRole("button", { name: "Lưu nháp" }).click()
+
+  await expect.poll(async () =>
+    (await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/rest/v1/returns") &&
+      (Array.isArray(r.body) ? r.body : [r.body]).some((b) => (b as { return_date?: string }).return_date === "2026-09-15"))
+  , "phiếu lưu không kèm ngày đã chọn").toBe(true)
+
+  const log = await nhatKy()
+  const dong = log.filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines") &&
+    (Array.isArray(r.body) ? r.body : [r.body]).some((b) => (b as { note?: string }).note === "e2e-ngay-tra")).at(-1)
+  const id = ((Array.isArray(dong?.body) ? dong!.body : [dong?.body]) as Array<{ return_id?: string }>)[0]?.return_id
+  if (id) {
+    await fetch(`${FAKE}/rest/v1/return_lines?return_id=eq.${id}`, { method: "DELETE" })
+    await fetch(`${FAKE}/rest/v1/returns?id=eq.${id}`, { method: "DELETE" })
+  }
+})

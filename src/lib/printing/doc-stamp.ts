@@ -97,3 +97,22 @@ export function docStampAt(
   }
   return { at: null, hasTime: false }
 }
+
+/**
+ * Mốc in của PHIẾU TRẢ HÀNG — ngày chứng từ người dùng chọn (mig 188).
+ *
+ * Cùng ngày với lúc lập → giữ giờ lập (có giờ). Ngày khác (nhập bù) → chỉ in
+ * NGÀY đã chọn, không bịa giờ.
+ */
+export function mocInPhieuTra(
+  createdAt: string | null | undefined,
+  returnDate: string | null | undefined
+): { at: Date | null; hasTime: boolean } {
+  const lap = docStampAt(createdAt, null)
+  if (!returnDate || !/^\d{4}-\d{2}-\d{2}$/.test(returnDate)) return lap
+  if (lap.at) {
+    const p = partsVN(lap.at)
+    if (`${p.y}-${pad(p.m)}-${pad(p.day)}` === returnDate) return lap
+  }
+  return { at: new Date(`${returnDate}T12:00:00+07:00`), hasTime: false }
+}

@@ -14,7 +14,7 @@
  *   nhận lại món ấy, người ký phiếu phải đọc được.
  */
 import { formatCurrency } from "@/lib/utils"
-import { stampVN, longDateVN } from "@/lib/printing/doc-stamp"
+import { stampVN, longDateVN, dateVN } from "@/lib/printing/doc-stamp"
 import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
 
 export interface ReturnSlipLine {
@@ -33,6 +33,8 @@ export interface ReturnSlipLine {
 export interface ReturnSlipProps {
   org: { name?: string | null; address?: string | null; phone?: string | null }
   issuedAt: Date | null
+  /** `false` = chỉ có ngày (phiếu nhập bù ngày khác, mig 188) — in không kèm giờ. */
+  issuedHasTime?: boolean
   /** Chứng từ gốc — "HĐ HD-0318-1" / "Đơn DH-0154". */
   refLabel?: string | null
   customerName: string
@@ -89,7 +91,7 @@ export function ReturnSlip(p: ReturnSlipProps) {
 
       <div className="mb-1.5 text-center">
         <h1 className="text-xl font-bold leading-tight">PHIẾU TRẢ HÀNG</h1>
-        <p className="font-bold leading-tight">Ngày {stampVN(p.issuedAt)}</p>
+        <p className="font-bold leading-tight">Ngày {p.issuedHasTime === false ? dateVN(p.issuedAt) : stampVN(p.issuedAt)}</p>
         {p.refLabel && <p className="leading-tight">Theo {p.refLabel}</p>}
       </div>
 

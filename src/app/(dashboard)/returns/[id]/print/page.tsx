@@ -16,7 +16,7 @@ import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/heade
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReturnSlip, type ReturnSlipLine } from "@/components/printing/return-slip"
 import { invoiceAddressOf } from "@/lib/customers/address"
-import { docStampAt } from "@/lib/printing/doc-stamp"
+import { mocInPhieuTra } from "@/lib/printing/doc-stamp"
 import { RETURN_REASONS } from "@/lib/constants"
 
 interface ReturnRow {
@@ -63,12 +63,13 @@ export default function ReturnPrintPage() {
   const [ret, setRet] = useState<ReturnRow | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
   const [nvBan, setNvBan] = useState<string | null>(null)
+  const [ngayTra, setNgayTra] = useState<string | null>(null)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [retRes, lineRes, nvRes] = await Promise.all([
+    const [retRes, lineRes, nvRes, ngayRes] = await Promise.all([
       supabase
         .from("returns")
         .select(
@@ -82,12 +83,15 @@ export default function ReturnPrintPage() {
         .eq("return_id", id),
       /* ⚠ Hỏi riêng (mig 160) — cột chưa có thì chỉ thiếu một dòng, không trắng tờ in. */
       supabase.from("returns").select("seller:users!returns_sales_user_id_fkey(full_name)").eq("id", id).maybeSingle(),
+      /* Ngày chứng từ (mig 188) — hỏi riêng cùng lý do; chưa có cột thì in ngày lập. */
+      supabase.from("returns").select("return_date").eq("id", id).maybeSingle(),
     ])
     if (retRes.error) console.error("[returns/print] truy vấn lỗi:", retRes.error.message)
     if (lineRes.error) console.error("[returns/print] truy vấn lỗi:", lineRes.error.message)
     const row = (retRes.data as unknown as ReturnRow) || null
     setRet(row)
     setLines((lineRes.data as unknown as LineRow[]) || [])
+    setNgayTra(ngayRes.error ? null : ((ngayRes.data as { return_date?: string | null } | null)?.return_date ?? null))
     setNvBan(nvRes.error ? null : (nvRes.data as { seller?: { full_name?: string | null } | null } | null)?.seller?.full_name ?? null)
     if (row?.org_id) setOrg(await loadOrgHeader(supabase, row.org_id))
     setLoading(false)
@@ -150,7 +154,8 @@ export default function ReturnPrintPage() {
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <ReturnSlip
           org={{ name: org.name, address: org.address, phone: org.phone }}
-          issuedAt={docStampAt(ret.created_at, null).at}
+          issuedAt={mocInPhieuTra(ret.created_at, ngayTra).at}
+          issuedHasTime={mocInPhieuTra(ret.created_at, ngayTra).hasTime}
           refLabel={refLabel}
           customerName={ret.customer?.billing_name || ret.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(ret.customer ?? {})}

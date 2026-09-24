@@ -31,7 +31,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { DocPeople } from "@/components/pos/doc-people"
 import { useToast } from "@/hooks/use-toast"
 import { loadCustomerDebt, loadInvoiceLinesForReturn, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
-import { savePosReturn, assignDocSeller } from "@/lib/pos/save"
+import { savePosReturn, assignDocSeller, thieuCotNgayTra } from "@/lib/pos/save"
 import { formatCurrency } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
 import { lineGross } from "@/lib/pos/discount"
@@ -117,7 +117,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const [hoan, setHoan] = useState<HoanTien>("cong-no")
   const [lyDo, setLyDo] = useState("damaged")
   const [ghiChu, setGhiChu] = useState("")
-  const [thoiDiem] = useState(homNay)
+  /* Ngày chứng từ — chủ nhà 24/09/2026: "POS phiếu trả hàng cho phép chọn ngày" (mig 188). */
+  const [thoiDiem, setThoiDiem] = useState(homNay)
   /** Giá khách đã mua theo mặt hàng — từ hóa đơn gốc, chỉ để đối chiếu. */
   const [giaGoc, setGiaGoc] = useState<Record<string, number>>({})
   const [daNap, setDaNap] = useState(!returnId)
@@ -183,9 +184,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
       JSON.stringify([
         traLines.map((l) => [l.productId, l.unit, l.qty, l.price, l.lotId ?? null, l.note ?? "", l.reason ?? ""]),
         doiLines.map((l) => [l.productId, l.unit, l.qty, l.price, l.note ?? ""]),
-        khach?.id ?? null, lyDo, ghiChu, zone, invoiceId,
+        khach?.id ?? null, lyDo, ghiChu, zone, invoiceId, thoiDiem,
       ]),
-    [traLines, doiLines, khach?.id, lyDo, ghiChu, zone, invoiceId]
+    [traLines, doiLines, khach?.id, lyDo, ghiChu, zone, invoiceId, thoiDiem]
   )
   useEffect(() => {
     if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
@@ -226,11 +227,16 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     ;(async () => {
       try {
         const sb = createClient()
-        const { data, error } = await sb
-          .from("returns")
-          .select("id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, destination_zone, customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))")
-          .eq("id", returnId)
-          .maybeSingle()
+        const doc = (kemNgay: boolean) =>
+          sb
+            .from("returns")
+            .select(`id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, destination_zone, ${kemNgay ? "return_date, " : ""}customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))`)
+            .eq("id", returnId)
+            .maybeSingle()
+        let res = await doc(true)
+        /* Sổ chưa chạy mig 188 → đọc lại không kèm ngày, đừng hỏng cả màn. */
+        if (thieuCotNgayTra(res.error)) res = await doc(false)
+        const { data, error } = res
         if (huy) return
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
@@ -238,6 +244,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           reason: string | null; notes: string | null
           requested_by?: string | null; sales_user_id?: string | null
           destination_zone?: string | null
+          return_date?: string | null
           customer?: { store_name?: string | null; phone?: string | null } | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
@@ -255,6 +262,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setInvoiceId(r.invoice_id)
         setLyDo(r.reason || "damaged")
         setGhiChu(r.notes || "")
+        setThoiDiem(r.return_date || homNay())
         setKhach({ id: r.customer_id, name: r.customer?.store_name || "Khách lẻ", meta: r.customer?.phone ?? "" })
         setNguoi({ taoId: r.requested_by ?? null, ganId: r.sales_user_id ?? null })
         /* ⚠ KHO NHẬN ĐÃ CHỌN phải nạp lại — không thì ghi nhận lại là về kho mặc định. */
@@ -420,6 +428,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           invoiceId,
           reason: lyDo,
           notes: ghiChu,
+          returnDate: thoiDiem || homNay(),
           lines: dong,
           complete,
           zone,
@@ -448,7 +457,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setDangLuu(false)
       }
     },
-    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId]
+    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, thoiDiem, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId]
   )
 
   /**
@@ -737,7 +746,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             {invoiceId ? `Hóa đơn gốc ${invoiceCode ?? "đã gắn"} — đổi` : "Chọn hóa đơn gốc"}
           </button>
         }
-        right={<SubHeaderDate value={thoiDiem} label="Ngày lập" readOnly />}
+        right={<SubHeaderDate value={thoiDiem} onChange={setThoiDiem} label="Ngày trả" />}
       />
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">

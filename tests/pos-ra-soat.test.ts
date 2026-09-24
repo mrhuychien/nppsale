@@ -343,8 +343,10 @@ describe("ô không có cột thì không vẽ", () => {
   /** ⚠ Nhưng THUẾ thì lưu được — qua `vat_rate` của từng dòng. */
   it("thuế của màn sửa hóa đơn đi xuống dòng", () => {
     const s = code(read("src/components/pos/invoice-screen.tsx"))
-    expect(s).toMatch(/const v = Number\(e\.target\.value\) \/ 100/)
-    expect(s).toMatch(/setRows\(\(c\) => c\.map\(\(r\) => \(\{ \.\.\.r, vatRate: v \}\)\)\)/)
+    /* Từ 24/09/2026: nút VAT như màn đơn — đặt hàng loạt cho từng dòng, và mỗi dòng có chip riêng. */
+    expect(s).toMatch(/const moi = vatChungKeTiep\(vatChung\)/)
+    expect(s).toMatch(/setRows\(\(c\) => c\.map\(\(r\) => \(\{ \.\.\.r, vatRate: moi \}\)\)\)/)
+    expect(s).toMatch(/onNext=\{\(\) => suaDong\(r\.key, \{ vatRate: vatKeTiep\(r\.vatRate \?\? 0\) \}\)\}/)
   })
 
   /** ⚠ `returns` không có cột phí. */

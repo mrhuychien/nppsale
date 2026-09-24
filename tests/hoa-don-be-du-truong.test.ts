@@ -99,3 +99,28 @@ describe("phiếu trả: lý do / ghi chú từng dòng không rơi", () => {
     expect(suaTraGuiLen({ lineId: "l", quantity: 1, note: "", reason: "damaged" })).toEqual({ line_id: "l", quantity: 1, note: "", reason: "damaged" })
   })
 })
+
+describe("màn hóa đơn đủ ô như màn đơn (chủ nhà 24/09/2026)", () => {
+  it("giảm giá dòng quy về đơn giá, cộng vào line_discount; dòng không giảm giữ nguyên", async () => {
+    const { toDraftCoGiam, seedForNew } = await import("../src/lib/orders/invoice-editor")
+    const rows = seedForNew([
+      { orderLineId: "a", returnLineId: null, productId: "p1", productName: "A", sku: null, unitName: "hộp", conversionFactor: 1,
+        orderedQty: 2, invoicedQty: 0, remainingQty: 2, unitPrice: 100_000, listPrice: 100_000, lineDiscount: 0, vatRate: 0,
+        availableBase: 10, isExchange: false, note: null },
+      { orderLineId: "b", returnLineId: null, productId: "p2", productName: "B", sku: null, unitName: "hộp", conversionFactor: 1,
+        orderedQty: 1, invoicedQty: 0, remainingQty: 1, unitPrice: 50_000, listPrice: 50_000, lineDiscount: 0, vatRate: 0,
+        availableBase: 10, isExchange: false, note: null },
+    ])
+    const d = toDraftCoGiam(rows, { a: { value: 10_000, unit: "vnd" }, b: { value: 10, unit: "pct" } })
+    expect(d[0]).toMatchObject({ unitPrice: 95_000, lineDiscount: 10_000 })
+    expect(d[1]).toMatchObject({ unitPrice: 45_000, lineDiscount: 5_000 })
+    expect(toDraftCoGiam(rows, {})[0]).toMatchObject({ unitPrice: 100_000, lineDiscount: 0 })
+  })
+
+  it("cột dòng hóa đơn theo cùng bộ cột / thiết lập với màn đơn", () => {
+    const HD = readFileSync("src/components/pos/invoice-screen.tsx", "utf8")
+    for (const nhan of ['label: "Giảm giá"', 'label: "VAT"', 'label: "Đơn giá"', 'label: "Thành tiền"', "settings.colLineDiscount", "settings.colVat", "<DiscountCell", "<VatChip", "<LineMenu", "<DocDiscountRow"]) {
+      expect(HD, `màn hóa đơn thiếu ${nhan}`).toContain(nhan)
+    }
+  })
+})

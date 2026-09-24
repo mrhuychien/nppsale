@@ -47,7 +47,11 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
     await expect(ghiChuDong, "mất ghi chú dòng").toHaveValue("lấy lô mới")
     await ghiChuDong.fill("lấy lô mới · giao chiều")
     // Thuế của DÒNG ĐƠN (8%), không phải thuế danh mục.
-    await expect(page.locator("#hd-vat")).toHaveValue("8")
+    await expect(page.getByRole("button", { name: "Thuế GTGT dòng 1" })).toHaveText("8%")
+    /* Ô đủ như màn đơn (chủ nhà 24/09/2026): Giảm giá dòng (đ/%), VAT dòng, menu ⋮. */
+    await expect(page.getByRole("button", { name: "Thao tác dòng 1" })).toBeVisible()
+    await page.getByLabel("Giảm giá dòng 1", { exact: true }).fill("10.000")
+    await expect(page.getByTestId("dong-hoa-don").first()).toContainText("190.000")
     // Giảm giá cả đơn của đơn đi sang (30.000), ghi chú đơn vào ô ghi chú hóa đơn.
     await expect(page.getByLabel("Giảm giá đơn", { exact: true })).toHaveValue("30.000")
     await expect(page.getByLabel("Ghi chú hóa đơn")).toHaveValue("Giao trước 8h")
@@ -60,7 +64,9 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
       lines: Array<Record<string, unknown>>; discount?: number; notes?: string
     }
     expect(p.lines[0], "dòng hóa đơn thiếu trường của dòng đơn").toMatchObject({
-      order_line_id: "sol7", quantity: 2, unit_price: 100000, vat_rate: 0.08, note: "lấy lô mới · giao chiều",
+      order_line_id: "sol7", quantity: 2, vat_rate: 0.08, note: "lấy lô mới · giao chiều",
+      /* Giảm dòng 10.000 quy về đơn giá như màn đơn: (200.000 − 10.000) / 2. */
+      unit_price: 95000, line_discount: 10000,
     })
     expect(p.discount, "giảm giá đơn không sang hóa đơn").toBe(30000)
     expect(p.notes).toBe("Giao trước 8h")
@@ -125,7 +131,9 @@ test("POS trả hàng: mở lại phiếu giữ lý do dòng, thuế dòng và k
     await expect.poll(async () =>
       (await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines"))
     ).toBe(true)
-    const chenDong = (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines")).at(-1)!
+    /* Lượt chèn của CHÍNH phiếu này — chốt khác chạy song song cũng chèn return_lines. */
+    const chenDong = (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines")
+      && JSON.stringify(r.body).includes('"return_id":"r-mo"')).at(-1)!
     const rows = (Array.isArray(chenDong.body) ? chenDong.body : [chenDong.body]) as Array<Record<string, unknown>>
     expect(rows[0], "lưu lại xoá mất trường của dòng trả").toMatchObject({ reason: "expired", note: "móp", vat_rate: 0.1, quantity: 3 })
   } finally {

@@ -16,6 +16,7 @@ import type { InvoiceableLine, InvoiceDraftLine } from "@/lib/orders/post-invoic
 import { conversionFor, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { viMatchAllWords } from "@/lib/search"
 import type { CartLine } from "@/lib/sell/cart"
+import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discount"
 
 /** Dòng của hóa đơn ĐANG SỬA, do trang gọi truyền vào. */
 export interface ReissueSeedLine {
@@ -228,6 +229,33 @@ export function toDraft(rows: EditorRow[]): InvoiceDraftLine[] {
     isExchange: r.isExchange,
     note: r.note,
   }))
+}
+
+/**
+ * `toDraft` KÈM GIẢM GIÁ THEO DÒNG gõ ngay trên màn hóa đơn (theo `key`).
+ *
+ * ⚠ CHỦ NHÀ 24/09/2026: màn tạo / sửa hóa đơn phải đủ các ô như màn đơn —
+ *   có ô "Giảm giá" từng dòng (đồng / %). Cùng cách màn đơn lưu
+ *   (`posLinesToCart`): QUY KHOẢN GIẢM VỀ ĐƠN GIÁ, vì `line_total` máy chủ
+ *   tính là SL × giá; khoản giảm cộng thêm vào `lineDiscount` để còn dấu vết.
+ */
+export function toDraftCoGiam(
+  rows: EditorRow[],
+  giam: Readonly<Record<string, DiscountInput>>
+): InvoiceDraftLine[] {
+  const nen = toDraft(rows)
+  return rows.map((r, i) => {
+    const d0 = giam[r.key]
+    if (!d0 || !(d0.value > 0) || !(r.qty > 0)) return nen[i]
+    const g = lineGross(r.qty, r.price)
+    const d = discountAmount(d0, g)
+    if (d <= 0) return nen[i]
+    return {
+      ...nen[i],
+      unitPrice: Math.round((g - d) / r.qty),
+      lineDiscount: nen[i].lineDiscount + d,
+    }
+  })
 }
 
 /**

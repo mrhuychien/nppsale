@@ -35,7 +35,8 @@ describe("màn hóa đơn POS dùng MỘT nguồn cho hàng đổi", () => {
   const S = readFileSync(resolve(__dirname, "../src/components/pos/invoice-screen.tsx"), "utf-8")
   it("bảng bán bỏ dòng hàng đổi; tải trọng gộp dòng dựng từ khối hàng đổi trả", () => {
     expect(S).toMatch(/setRows\(tatCa\.filter\(\(r\) => !r\.isExchange\)\)/)
-    expect(S).toMatch(/const draft = useMemo\(\(\) => \[\.\.\.toDraft\(rows\), \.\.\.hangDoiXuat\]/)
+    /* Từ 24/09/2026 dòng bán đi qua `toDraftCoGiam` (thêm giảm giá dòng) — vẫn gộp đúng một khối hàng đổi. */
+    expect(S).toMatch(/const draft = useMemo\(\(\) => \[\.\.\.toDraftCoGiam\(rows, giamDong\), \.\.\.hangDoiXuat\]/)
   })
   it("sửa quy cách dòng trả đi xuống máy chủ", () => {
     expect(S).toMatch(/unitName: traDv\[l\.id\]/)

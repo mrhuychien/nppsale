@@ -33,8 +33,15 @@ test("trả hàng POS: dòng giống đơn hàng, lưu có line_total, gán ngư
   await expect.poll(async () =>
     (await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines"))
   ).toBe(true)
+  /* ⚠ Lấy ĐÚNG lượt chèn của chốt này (ghi chú "móp thùng") — các chốt khác chạy
+     song song cũng chèn return_lines, lấy lượt cuối là đọc nhầm của người khác. */
+  const cuaToi = (b: unknown) =>
+    (Array.isArray(b) ? b : [b]).some((r) => (r as { note?: string }).note === "móp thùng")
+  await expect.poll(async () =>
+    (await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines") && cuaToi(r.body))
+  ).toBe(true)
   const log = await nhatKy()
-  const chen = log.filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines")).at(-1)!
+  const chen = log.filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines") && cuaToi(r.body)).at(-1)!
   const rows = (Array.isArray(chen.body) ? chen.body : [chen.body]) as Array<Record<string, unknown>>
   expect(rows[0], "thiếu line_total — lỗi 23502").toMatchObject({ unit_name: "thùng", unit_price: 450000, note: "móp thùng" })
   expect(rows[0].quantity).toBe(2)

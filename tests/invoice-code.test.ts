@@ -914,7 +914,8 @@ describe("khối khách hàng theo mẫu", () => {
    * Người đối chiếu không phải nhìn sang ba cột khác để cộng nhẩm.
    */
   it("bảng dòng hàng của hóa đơn có dòng phụ SL × đơn giá", () => {
-    expect(INV).toContain("{l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}")
+    /* Đơn giá TRƯỚC giảm dòng — cột Giảm giá đứng cạnh (24/09/2026). */
+    expect(INV).toContain("{l.quantity} {l.unit_name} × {formatCurrency(donGiaTruocGiam(l))}")
     expect(INV).toContain('aside={`${lines.length} dòng`}')
   })
 })

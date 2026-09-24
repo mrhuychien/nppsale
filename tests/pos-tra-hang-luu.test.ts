@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { dongTraGhiSo } from "../src/lib/pos/save"
-import { moCuaInCho, trangInHoaDon } from "../src/lib/pos/print-window"
+import { inTaiCho, trangInHoaDon, voiAuto, KHUNG_IN_ID } from "../src/lib/pos/print-window"
+import { IN_XONG, leavePrintView } from "../src/hooks/use-leave-after-print"
 import type { PosLine } from "../src/lib/pos/types"
 
 const dong = (p: Partial<PosLine>): PosLine => ({
@@ -37,38 +38,71 @@ describe("POS trả hàng: dòng ghi sổ có line_total", () => {
 })
 
 /**
- * ⚠ CHỦ NHÀ 23/09/2026: "Khi bấm nút Xuất hàng và lập HĐ / Huỷ HĐ và lập lại
- *   -> bật luôn cửa sổ in hoá đơn".
+ * ⚠ CHỦ NHÀ 24/09/2026: "Màn Hóa đơn, Đơn hàng, Trả hàng, in đơn tại chỗ ko
+ *   cần mở tab. Chỉ bật cửa sổ in".
  */
-describe("cửa sổ in mở sẵn lúc bấm", () => {
-  const tab = () => ({
-    closed: false,
-    close: vi.fn(function (this: { closed: boolean }) { this.closed = true }),
-    location: { href: "" },
-    document: { title: "", body: { textContent: "" } },
+describe("in tại chỗ bằng khung ẩn", () => {
+  /* Không có jsdom — dựng đủ phần DOM mà `inTaiCho` chạm tới. */
+  const dom = () => {
+    const nghe: Array<(e: MessageEvent) => void> = []
+    const body: unknown[] = []
+    const cu = { remove: vi.fn() }
+    const f = {
+      id: "", title: "", src: "", style: { cssText: "" }, contentWindow: {} as Window,
+      setAttribute: vi.fn(), remove: vi.fn(),
+    }
+    const doc = {
+      getElementById: vi.fn((id: string) => (id === KHUNG_IN_ID ? cu : null)),
+      createElement: vi.fn(() => f),
+      body: { appendChild: (x: unknown) => body.push(x) },
+      defaultView: {
+        addEventListener: (_: string, h: (e: MessageEvent) => void) => nghe.push(h),
+        removeEventListener: vi.fn(),
+      },
+    }
+    return { doc: doc as unknown as Document, f, cu, body, nghe }
+  }
+
+  it("nạp trang in ?auto=1 vào khung 0×0 trên chính màn này — không mở tab", () => {
+    const d = dom()
+    inTaiCho(trangInHoaDon("inv1"), d.doc)
+    expect(d.f.src).toBe("/sales-invoices/inv1/print?auto=1")
+    expect(d.body).toEqual([d.f])
+    expect(d.f.style.cssText).toContain("width:0")
+    /* ⚠ display:none là Chrome in ra trang trắng. */
+    expect(d.f.style.cssText).not.toContain("display:none")
   })
 
-  it("mở tab NGAY (trước ghi sổ), xong thì trỏ tới trang in ?auto=1", () => {
-    const t = tab()
-    const open = vi.fn(() => t as unknown as Window)
-    const c = moCuaInCho({ open })
-    expect(open).toHaveBeenCalledTimes(1)
-    c.toi(trangInHoaDon("inv1"))
-    expect(t.location.href).toBe("/sales-invoices/inv1/print?auto=1")
-    expect(open).toHaveBeenCalledTimes(1)
+  it("bấm In lần nữa gỡ khung cũ trước", () => {
+    const d = dom()
+    inTaiCho("/orders/o1/print", d.doc)
+    expect(d.cu.remove).toHaveBeenCalled()
   })
 
-  it("ghi sổ hỏng thì đóng tab trống", () => {
-    const t = tab()
-    const c = moCuaInCho({ open: () => t as unknown as Window })
-    c.dong()
-    expect(t.close).toHaveBeenCalled()
+  it("thêm ?auto=1 đúng một lần", () => {
+    expect(voiAuto("/orders/o1/print")).toBe("/orders/o1/print?auto=1")
+    expect(voiAuto("/x/print?auto=1")).toBe("/x/print?auto=1")
+    expect(voiAuto("/x/print?a=b")).toBe("/x/print?a=b&auto=1")
   })
 
-  it("tab bị chặn (open trả null) thì lúc xong mở thẳng trang in", () => {
-    const open = vi.fn(() => null)
-    const c = moCuaInCho({ open })
-    c.toi("/x")
-    expect(open).toHaveBeenLastCalledWith("/x", "_blank")
+  it("in xong khung báo về thì gỡ khung — tin của khung khác thì bỏ qua", async () => {
+    const d = dom()
+    inTaiCho("/orders/o1/print", d.doc)
+    d.nghe[0]({ source: {}, data: { type: IN_XONG } } as unknown as MessageEvent)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(d.f.remove).not.toHaveBeenCalled()
+    d.nghe[0]({ source: d.f.contentWindow, data: { type: IN_XONG } } as unknown as MessageEvent)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(d.f.remove).toHaveBeenCalled()
+  })
+
+  /** ⚠ Khung dùng CHUNG lịch sử với tab mẹ — lùi ở đây là kéo cả màn POS lùi. */
+  it("trang in trong khung chỉ báo trang mẹ, không lùi, không đóng", () => {
+    const hit: string[] = []
+    leavePrintView({
+      historyLength: 5, close: () => hit.push("close"), back: () => hit.push("back"),
+      embedded: true, notifyParent: () => hit.push("bao"),
+    })
+    expect(hit).toEqual(["bao"])
   })
 })

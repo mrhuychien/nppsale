@@ -440,7 +440,7 @@ export default function SalesInvoiceDetailPage() {
                   <th className="px-4 py-2.5 text-left font-semibold">Mặt hàng</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Số lượng</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Đơn giá</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">Thuế</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Giảm giá</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Thành tiền</th>
                 </tr>
               </thead>
@@ -461,13 +461,10 @@ export default function SalesInvoiceDetailPage() {
                             nhìn sang ba cột khác để cộng nhẩm. */}
                         <div className="text-xs text-on-surface-variant">
                           {l.product?.sku ? `${l.product.sku} · ` : ""}
-                          {l.quantity} {l.unit_name} × {formatCurrency(l.unit_price)}
+                          {l.quantity} {l.unit_name} × {formatCurrency(donGiaTruocGiam(l))}
                           {/* Như POS: quy về đơn vị cơ sở, và giảm giá dòng (đã quy vào đơn giá). */}
                           {Number(l.conversion_factor) > 1 && l.product?.base_unit && l.product.base_unit !== l.unit_name && (
                             <> · {formatInt(Number(l.quantity) * Number(l.conversion_factor))} {l.product.base_unit}</>
-                          )}
-                          {Number(l.line_discount) > 0 && (
-                            <span className="text-primary"> · giảm {formatCurrency(Number(l.line_discount))}</span>
                           )}
                           {l.is_exchange && (
                             <Badge variant="secondary" className="ml-1.5">Hàng đổi</Badge>
@@ -489,17 +486,16 @@ export default function SalesInvoiceDetailPage() {
                       <td className="px-3 py-2.5 text-right tabular-nums">
                         {l.quantity} {l.unit_name}
                       </td>
+                      {/* ⚠ ĐƠN GIÁ TRƯỚC GIẢM + CỘT GIẢM GIÁ, như dòng POS (chủ nhà 24/09/2026).
+                          Sổ lưu giá SAU giảm (`unit_price`) và khoản giảm (`line_discount`);
+                          cộng ngược để `Đơn giá × SL − Giảm = Thành tiền` đúng trên màn. */}
                       <td className="px-3 py-2.5 text-right tabular-nums">
-                        {formatCurrency(l.unit_price)}
+                        {formatCurrency(donGiaTruocGiam(l))}
                       </td>
-                      {/*
-                        ⚠ THUẾ SUẤT LÀ SNAPSHOT LÚC XUẤT, không tra lại
-                          bảng sản phẩm. Hai hóa đơn của cùng một đơn có
-                          thể mang thuế suất khác nhau — đúng về kế toán,
-                          nhưng phải hiện ra thì mới không bị tưởng là lỗi.
-                      */}
-                      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-on-surface-variant">
-                        {Math.round(Number(l.vat_rate || 0) * 100)}%
+                      {/* Chủ nhà 24/09/2026: "chi tiết hóa đơn có VAT từng dòng, cái này bỏ" —
+                          thuế nói một lần ở khối Cộng tiền. */}
+                      <td className="px-3 py-2.5 text-right tabular-nums text-on-surface-variant">
+                        {Number(l.line_discount) > 0 ? `−${formatCurrency(Number(l.line_discount))}` : "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums">
                         {formatCurrency(l.line_total)}
@@ -541,6 +537,7 @@ export default function SalesInvoiceDetailPage() {
             <InvoiceMoneySummary
               invoice={{ total: inv.total, subtotal: inv.subtotal, vat: inv.vat, discount: giamCuaHoaDon(lines, inv.subtotal) }}
               returns={invReturns}
+              lineDiscount={lines.filter((l) => !l.is_exchange).reduce((t, l) => t + (Number(l.line_discount) || 0), 0)}
             />
           </DetailCard>
 
@@ -660,4 +657,11 @@ export default function SalesInvoiceDetailPage() {
       />
     </div>
   )
+}
+
+/** Đơn giá trước giảm dòng: giá sổ + khoản giảm chia đều theo SL. */
+function donGiaTruocGiam(l: { quantity: number; unit_price: number; line_discount: number }): number {
+  const sl = Number(l.quantity) || 0
+  const giam = Number(l.line_discount) || 0
+  return sl > 0 && giam > 0 ? Math.round(Number(l.unit_price) + giam / sl) : Number(l.unit_price) || 0
 }

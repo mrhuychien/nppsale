@@ -1644,19 +1644,22 @@ export default function OrderDetailPage() {
                       nhập hàng KHÁC với màn bán hàng đã dùng lúc tạo đơn —
                       hai cách cho cùng một việc. Nút này đưa về đúng màn đó:
                       thêm hàng, đổi đơn vị, sửa giá, rồi Lưu. */}
-                  {isSellEditable(order.status) && (
+                  {/* ⚠ CHỦ NHÀ 24/09/2026: sửa đơn ở màn làm đơn (POS trên máy tính, /sell
+                      trên điện thoại) — đủ ô như lúc tạo (giảm giá dòng, ghi chú, đơn vị…).
+                      Ô sửa SL & giá tại chỗ chỉ còn cho đơn mà màn làm đơn không mở được. */}
+                  {isSellEditable(order.status) ? (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="md:hidden"
                       onClick={() => diHoacMoPos(router.push, `/sell/edit/${order.id}`)}
                     >
-                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa bằng màn bán hàng
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa đơn
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={startLinesEdit}>
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa SL &amp; đơn giá
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={startLinesEdit}>
-                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Sửa SL &amp; đơn giá
-                  </Button>
                 </div>
               )
             ) : null}
@@ -1671,6 +1674,8 @@ export default function OrderDetailPage() {
                     <TableHead>ĐVT</TableHead>
                     <TableHead className="text-right">SL</TableHead>
                     <TableHead className="text-right">Đơn giá</TableHead>
+                    {/* Như dòng POS (chủ nhà 24/09/2026). */}
+                    <TableHead className="text-right">Giảm giá</TableHead>
                     <TableHead className="text-right">Thành tiền</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1730,7 +1735,7 @@ export default function OrderDetailPage() {
                                 <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                                   {line.product?.sku ? `${line.product.sku} · ` : ""}
                                   {line.quantity} {line.unit_name} × {formatCurrency(line.unit_price)}
-                                  <LineExtra line={line} />
+                                  <LineExtra line={line} coCotGiam />
                                 </div>
                               )}
                               {edited?.swap_product_id && (
@@ -1824,8 +1829,12 @@ export default function OrderDetailPage() {
                               aria-label="Đơn giá"
                             />
                           ) : (
-                            formatCurrency(line.unit_price)
+                            /* Giá TRƯỚC giảm — `Đơn giá × SL − Giảm = Thành tiền`. */
+                            formatCurrency(donGiaTruocGiam(line))
                           )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {!inEdit && Number(line.line_discount) > 0 ? `−${formatCurrency(Number(line.line_discount))}` : "—"}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
                           {formatCurrency(liveTotal)}
@@ -1835,7 +1844,7 @@ export default function OrderDetailPage() {
                   })}
                   {lines.length === 0 && addedLines.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                         Chưa có sản phẩm
                       </TableCell>
                     </TableRow>
@@ -1880,6 +1889,7 @@ export default function OrderDetailPage() {
                             aria-label="Đơn giá"
                           />
                         </TableCell>
+                        <TableCell className="text-right text-muted-foreground">—</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <span className="font-medium tabular-nums">
@@ -2125,8 +2135,17 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Thanh toán &amp; giao hàng</CardTitle>
+              {/* Cùng luật với nút sửa dòng: sửa được ở màn làm đơn thì sang đó. */}
               {canEdit && !editMode && (
-                <Button size="sm" variant="ghost" onClick={() => setEditMode(true)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    isSellEditable(order.status)
+                      ? diHoacMoPos(router.push, `/sell/edit/${order.id}`)
+                      : setEditMode(true)
+                  }
+                >
                   <Pencil className="h-4 w-4 mr-1" /> Sửa
                 </Button>
               )}
@@ -3089,7 +3108,7 @@ export default function OrderDetailPage() {
  * từng bỏ: quy đổi về đơn vị cơ sở và chiết khấu dòng (`line_discount`, so
  * với giá bảng — gồm cả giảm giá dòng của POS đã quy vào đơn giá).
  */
-function LineExtra({ line }: { line: SalesOrderLine }) {
+function LineExtra({ line, coCotGiam = false }: { line: SalesOrderLine; coCotGiam?: boolean }) {
   const heSo = Number(line.conversion_factor) || 1
   const giam = Number(line.line_discount) || 0
   const co = line.product?.base_unit
@@ -3098,7 +3117,15 @@ function LineExtra({ line }: { line: SalesOrderLine }) {
       {heSo > 1 && co && co !== line.unit_name && (
         <span> · {formatInt(Number(line.quantity) * heSo)} {co}</span>
       )}
-      {giam > 0 && <span className="text-primary"> · giảm {formatCurrency(giam)}</span>}
+      {/* Bảng máy tính đã có cột Giảm giá — chỉ thẻ điện thoại cần dòng này. */}
+      {giam > 0 && !coCotGiam && <span className="text-primary"> · giảm {formatCurrency(giam)}</span>}
     </>
   )
+}
+
+/** Đơn giá trước giảm dòng: giá sổ + khoản giảm chia đều theo SL. */
+function donGiaTruocGiam(l: { quantity: number; unit_price: number; line_discount: number }): number {
+  const sl = Number(l.quantity) || 0
+  const giam = Number(l.line_discount) || 0
+  return sl > 0 && giam > 0 ? Math.round(Number(l.unit_price) + giam / sl) : Number(l.unit_price) || 0
 }

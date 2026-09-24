@@ -61,9 +61,7 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
     await expect(page.getByLabel("Giảm giá đơn", { exact: true })).toHaveValue("30.000")
     await expect(page.getByLabel("Ghi chú hóa đơn")).toHaveValue("Giao trước 8h")
 
-    const moIn = page.context().waitForEvent("page")
     await ban(page).click()
-    await (await moIn).close()
     await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
     const p = ((await goiCuoi("post_invoice"))!.body as { p: Record<string, unknown> }).p as {
       lines: Array<Record<string, unknown>>; discount?: number; notes?: string
@@ -105,9 +103,7 @@ test("sửa hóa đơn: lý do + ghi chú dòng trả sửa được và đi lê
     await page.getByRole("combobox", { name: "Lý do trả dòng 1" }).click()
     await page.getByRole("option", { name: "Hết hạn sử dụng" }).click()
     await page.getByLabel("Ghi chú dòng trả 1", { exact: true }).fill("móp, hết hạn")
-    const moIn = page.context().waitForEvent("page")
     await page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }).click()
-    await (await moIn).close()
     await expect.poll(async () => !!(await goiCuoi("reissue_invoice"))).toBe(true)
     const p = ((await goiCuoi("reissue_invoice"))!.body as { p: { return_edits?: unknown[] } }).p
     expect(p.return_edits).toEqual([{ line_id: "rl-bd1", quantity: 2, note: "móp, hết hạn", reason: "expired" }])
@@ -133,12 +129,12 @@ test("POS trả hàng: mở lại phiếu giữ lý do dòng, thuế dòng và k
     await expect(page.getByRole("combobox", { name: "Lý do trả dòng 1" }), "mất lý do dòng").toContainText("Hết hạn sử dụng")
     await expect(page.locator("#pos-kho"), "mất kho nhận đã chọn").toHaveValue("sale")
     await page.getByRole("button", { name: "Lưu nháp" }).click()
-    await expect.poll(async () =>
-      (await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines"))
-    ).toBe(true)
-    /* Lượt chèn của CHÍNH phiếu này — chốt khác chạy song song cũng chèn return_lines. */
-    const chenDong = (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines")
-      && JSON.stringify(r.body).includes('"return_id":"r-mo"')).at(-1)!
+    /* Lượt chèn của CHÍNH phiếu này — chốt khác cũng chèn return_lines, nên
+       chờ đúng lượt của mình chứ không chờ "có một lượt nào đó". */
+    const cuaToi = async () => (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith("/rest/v1/return_lines")
+      && JSON.stringify(r.body).includes('"return_id":"r-mo"')).at(-1)
+    await expect.poll(async () => !!(await cuaToi())).toBe(true)
+    const chenDong = (await cuaToi())!
     const rows = (Array.isArray(chenDong.body) ? chenDong.body : [chenDong.body]) as Array<Record<string, unknown>>
     expect(rows[0], "lưu lại xoá mất trường của dòng trả").toMatchObject({ reason: "expired", note: "móp", vat_rate: 0.1, quantity: 3 })
   } finally {

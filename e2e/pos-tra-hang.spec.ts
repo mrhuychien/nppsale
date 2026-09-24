@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import { dangNhap, chonKhach, nhatKy, FAKE, chonDonVi } from "./helpers"
+import { dangNhap, chonKhach, nhatKy, FAKE, chonDonVi, theoDoiIn } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ BÁO 23/09/2026 (POS Trả hàng):
@@ -55,4 +55,20 @@ test("trả hàng POS: dòng giống đơn hàng, lưu có line_total, gán ngư
   const id = rows[0].return_id as string
   await fetch(`${FAKE}/rest/v1/return_lines?return_id=eq.${id}`, { method: "DELETE" })
   await fetch(`${FAKE}/rest/v1/returns?id=eq.${id}`, { method: "DELETE" })
+})
+
+/** ⚠ CHỦ NHÀ 24/09/2026: "Trả hàng, in đơn tại chỗ ko cần mở tab. Chỉ bật cửa sổ in". */
+test("trả hàng POS: nút In in tại chỗ bằng mẫu phiếu trả, không mở tab", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/pos/tra-hang/r-e2e-0")
+  const inAn = await theoDoiIn(page)
+  const nut = page.getByRole("button", { name: "In", exact: true })
+  await expect(nut).toBeEnabled()
+  await nut.click()
+  await expect.poll(inAn.khung).toContainEqual("/returns/r-e2e-0/print?auto=1")
+  expect(inAn.tabMoi()).toBe(0)
+  // Mẫu in phiếu trả có thật.
+  await page.goto("/returns/r-e2e-0/print")
+  await expect(page.getByRole("heading", { name: "PHIẾU TRẢ HÀNG", exact: true })).toBeVisible()
+  await expect(page.getByText("Tạp hoá Cô Ba").first()).toBeVisible()
 })

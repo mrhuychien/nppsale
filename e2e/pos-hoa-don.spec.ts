@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test"
-import { dangNhap, nhatKy, FAKE, chonDonVi } from "./helpers"
+import { dangNhap, nhatKy, FAKE, chonDonVi, theoDoiIn } from "./helpers"
 
 /** Dòng hàng đổi trên hóa đơn: "SL đơn vị" đọc từ hai ô riêng (đơn vị là cột riêng từ 24/09/2026). */
 const slHangDoi = async (dong: Locator) =>
@@ -58,11 +58,11 @@ test("xuất hàng trên POS: dòng bám dòng đơn, thêm hàng trả đi cùn
   await expect(page.getByTestId("khoi-hang-tra")).toContainText("trừ 5.000")
 
   /* ⚠ CHỦ NHÀ 23/09/2026: bấm "Xuất hàng & lập HĐ" là bật luôn cửa sổ in hoá đơn. */
-  const moIn = page.context().waitForEvent("page")
+  /* 24/09/2026: in TẠI CHỖ — khung ẩn trên chính màn POS, không mở tab. */
+  const inAn = await theoDoiIn(page)
   await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
-  const cuaIn = await moIn
-  await expect(cuaIn).toHaveURL(/\/sales-invoices\/00000000-0000-4000-8000-00000000f004\/print\?auto=1/)
-  await cuaIn.close()
+  await expect.poll(inAn.khung).toContainEqual(expect.stringMatching(/\/sales-invoices\/00000000-0000-4000-8000-00000000f004\/print\?auto=1/))
+  expect(inAn.tabMoi(), "in mà vẫn mở tab mới").toBe(0)
   await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
   const p = ((await goiCuoi("post_invoice"))!.body as { p: Record<string, unknown> }).p as {
     order_id: string; lines: Array<Record<string, unknown>>; return_adds: Array<Record<string, unknown>>
@@ -120,11 +120,10 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     // Người tạo · người được gán.
     await expect(page.getByTestId("nguoi-tao")).toHaveText("Chủ NPP")
 
-    const moIn = page.context().waitForEvent("page")
+    const inAn = await theoDoiIn(page)
     await page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }).click()
-    const cuaIn = await moIn
-    await expect(cuaIn, "lập lại xong không bật cửa sổ in tờ MỚI").toHaveURL(/\/sales-invoices\/00000000-0000-4000-8000-00000000f003\/print\?auto=1/)
-    await cuaIn.close()
+    await expect.poll(inAn.khung, "lập lại xong không in tờ MỚI").toContainEqual(expect.stringMatching(/\/sales-invoices\/00000000-0000-4000-8000-00000000f003\/print\?auto=1/))
+    expect(inAn.tabMoi()).toBe(0)
     await expect.poll(async () => !!(await goiCuoi("reissue_invoice"))).toBe(true)
     const p = ((await goiCuoi("reissue_invoice"))!.body as { p_invoice_id: string; p: Record<string, unknown> })
     expect(p.p_invoice_id).toBe(HOA_DON)

@@ -22,6 +22,7 @@ import { useOrg } from "@/hooks/use-org"
 import { ROLE_LABELS } from "@/lib/constants"
 import { usePosTabs } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
+import { inTaiCho } from "@/lib/pos/print-window"
 import { DocTabs } from "@/components/pos/doc-tabs"
 import { DisplaySettingsDrawer } from "@/components/pos/display-settings-drawer"
 
@@ -106,8 +107,8 @@ export function PosTopBar() {
             type="button"
             aria-label="In chứng từ đang mở"
             disabled={!inHref}
-            title={inHref ? "Mở trang in" : "Chỉ in được chứng từ đã lưu (đơn hàng, hóa đơn)"}
-            onClick={() => { if (inHref) window.open(inHref, "_blank") }}
+            title={inHref ? "In chứng từ này" : "Chỉ in được chứng từ đã lưu (đơn hàng, hóa đơn, phiếu trả)"}
+            onClick={() => { if (inHref) inTaiCho(inHref) }}
             className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] text-[var(--pos-muted)] hover:bg-[var(--pos-line-soft)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

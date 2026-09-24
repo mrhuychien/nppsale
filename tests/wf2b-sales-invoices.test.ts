@@ -385,12 +385,14 @@ describe("Trang chi tiết hóa đơn bán", () => {
   })
 
   /**
-   * ⚠ THUẾ SUẤT HIỆN RA TRÊN TỪNG DÒNG. Hai hóa đơn của cùng một đơn có
-   * thể mang thuế suất khác nhau (snapshot theo ngày xuất) — không hiện
-   * thì đó trông như một con số nhảy lung tung.
+   * ⚠ LUẬT ĐÃ ĐỔI CÓ CHỦ Ý. Trước đây bảng dòng hiện thuế suất từng dòng;
+   * chủ nhà 24/09/2026: "chi tiết hóa đơn có VAT từng dòng, cái này bỏ" —
+   * như POS, thuế nói một lần ở khối Cộng tiền. Thay bằng cột Giảm giá.
    */
-  it("bảng dòng hiện thuế suất đã chốt", () => {
-    expect(CODE).toContain("Math.round(Number(l.vat_rate || 0) * 100)")
+  it("bảng dòng không còn cột thuế từng dòng; có cột Giảm giá", () => {
+    expect(CODE).not.toContain("Math.round(Number(l.vat_rate || 0) * 100)")
+    expect(CODE).toContain('>Giảm giá</th>')
+    expect(CODE).toContain("formatCurrency(donGiaTruocGiam(l))")
   })
 })
 

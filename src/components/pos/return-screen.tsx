@@ -18,6 +18,7 @@
  * đúng con số bản thiết kế — đừng tính lại ở đây.
  */
 
+import { inTaiCho } from "@/lib/pos/print-window"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
@@ -1000,8 +1001,16 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           </div>
 
           <PanelActions>
-            {/* ⚠ Chưa có mẫu in phiếu trả — nút mờ kèm lý do, không `window.print()` cả màn. */}
-            <PanelButton width={54} disabled title="Chưa có mẫu in phiếu trả hàng">In</PanelButton>
+            {/* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — mẫu `ReturnSlip`, khung ẩn. Chưa lưu thì
+                chưa có gì để in: nút mờ kèm lý do, không `window.print()` cả màn. */}
+            <PanelButton
+              width={54}
+              disabled={!returnId}
+              title={returnId ? "In phiếu trả hàng" : "Lưu phiếu trước rồi mới in được"}
+              onClick={() => { if (returnId) inTaiCho(`/returns/${returnId}/print`) }}
+            >
+              In
+            </PanelButton>
             <PanelButton
               width={96}
               disabled={dangLuu}

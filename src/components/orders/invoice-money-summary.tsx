@@ -55,11 +55,18 @@ export interface InvoiceMoneyInput {
 export function InvoiceMoneySummary({
   invoice,
   returns,
+  lineDiscount = 0,
 }: {
   invoice: InvoiceMoneyInput
+  /**
+   * Σ giảm giá dòng (`line_discount`) — như khối tiền POS: Tổng tiền hàng /
+   * Giảm giá dòng / Giảm giá đơn. Đã nằm sẵn trong `subtotal`, chỉ tách ra để đọc.
+   */
+  lineDiscount?: number
   /** Phiếu trả CỦA CHÍNH TỜ HÓA ĐƠN NÀY — lọc theo `invoice_id`. */
   returns: readonly CreditInput[]
 }) {
+  const giamDong = Math.max(0, Math.round(Number(lineDiscount) || 0))
   const credit = creditOnInvoice(returns)
   const netDue = netDueOnInvoice(Number(invoice.total || 0), credit)
   /**
@@ -76,7 +83,10 @@ export function InvoiceMoneySummary({
     <>
       {/* ⚠ KHÔNG ĐỌC ĐƯỢC THÌ KHÔNG VẼ, đừng điền 0 — xem `subtotal`. */}
       {invoice.subtotal != null && (
-        <DetailRow label="Tiền hàng" value={formatCurrency(invoice.subtotal + (Number(invoice.discount) || 0))} />
+        <DetailRow label="Tiền hàng" value={formatCurrency(invoice.subtotal + (Number(invoice.discount) || 0) + giamDong)} />
+      )}
+      {invoice.subtotal != null && giamDong > 0 && (
+        <DetailRow label="Giảm giá dòng" value={`−${formatCurrency(giamDong)}`} />
       )}
       {invoice.subtotal != null && Number(invoice.discount) > 0 && (
         <DetailRow label="Giảm giá đơn" value={`−${formatCurrency(Number(invoice.discount))}`} />

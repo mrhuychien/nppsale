@@ -42,3 +42,26 @@ export async function chonDonVi(noi: Page | Locator, nhan: string, dich: string)
   }
   await expect(nut).toHaveAttribute("aria-label", new RegExp(`đang là ${dich},`))
 }
+
+/**
+ * In tại chỗ (chủ nhà 24/09/2026): POS nạp trang in vào khung ẩn `#npp-khung-in`
+ * thay vì mở tab. Khung có thể bị gỡ ngay sau hộp thoại in, nên ghi lại `src`
+ * của mọi khung in từng gắn vào trang, và đếm tab mới mở ra (phải là 0).
+ */
+export async function theoDoiIn(page: Page) {
+  let tabMoi = 0
+  page.context().on("page", () => { tabMoi++ })
+  await page.evaluate(() => {
+    const w = window as unknown as { __khungIn: string[] }
+    w.__khungIn = []
+    new MutationObserver((ms) => {
+      for (const m of ms) m.addedNodes.forEach((n) => {
+        if (n instanceof HTMLIFrameElement && n.id === "npp-khung-in") w.__khungIn.push(n.getAttribute("src") || "")
+      })
+    }).observe(document.body, { childList: true })
+  })
+  return {
+    khung: () => page.evaluate(() => (window as unknown as { __khungIn: string[] }).__khungIn),
+    tabMoi: () => tabMoi,
+  }
+}

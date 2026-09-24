@@ -47,7 +47,10 @@ test("chi tiết hóa đơn: người tạo, tính cho NV, giảm giá dòng, qu
     await expect(page.getByText("NV Bán Một", { exact: true })).toBeVisible()
     await expect(page.getByText("Người tạo", { exact: true })).toBeVisible()
     await expect(page.getByText("Kế toán Lan", { exact: true })).toBeVisible()
-    await expect(page.getByText(/giảm 20\.000/).first(), "mất giảm giá dòng").toBeVisible()
+    await expect(page.getByText(/^−20\.000/).first(), "mất cột giảm giá dòng").toBeVisible()
+    await expect(page.getByText("Thuế", { exact: true }), "cột thuế từng dòng vẫn còn").toHaveCount(0)
+    // Đơn giá trước giảm: 440.000 + 20.000 / 2.
+    await expect(page.getByText(/^450\.000/).first()).toBeVisible()
     await expect(page.getByText(/· 48 hộp/).first(), "mất quy đổi về đơn vị cơ sở").toBeVisible()
     const khoi = page.getByTestId("hang-doi-tra")
     await expect(khoi).toContainText("Hết hạn sử dụng")

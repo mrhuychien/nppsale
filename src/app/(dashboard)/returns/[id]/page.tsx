@@ -461,7 +461,6 @@ export default function ReturnDetailPage() {
                       <TableHead>ĐVT</TableHead>
                       <TableHead className="text-right tabular-nums">SL</TableHead>
                       <TableHead className="text-right tabular-nums">Đơn giá</TableHead>
-                      <TableHead className="text-right tabular-nums">VAT</TableHead>
                       <TableHead className="text-right tabular-nums">Thành tiền</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -501,9 +500,7 @@ export default function ReturnDetailPage() {
                           <TableCell>{line.unit_name}</TableCell>
                           <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
                           <TableCell className="text-right tabular-nums">{formatCurrency(line.unit_price)}</TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">
-                            {Math.round((line.vat_rate ?? 0) * 100)}%
-                          </TableCell>
+                          {/* Bỏ cột VAT từng dòng như POS (chủ nhà 24/09/2026). */}
                           <TableCell className="text-right tabular-nums font-medium">
                             {isExchange ? (
                               <span className="text-[#175cd3] italic">không trừ tiền</span>
@@ -516,7 +513,7 @@ export default function ReturnDetailPage() {
                     })}
                     {lines.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                           Chưa có sản phẩm trả
                         </TableCell>
                       </TableRow>

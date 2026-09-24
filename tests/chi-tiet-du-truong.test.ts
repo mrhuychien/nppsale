@@ -19,7 +19,11 @@ describe("chi tiết đơn hàng", () => {
     expect(DON).toMatch(/label: "Người tạo", value: nguoiTao/)
   })
   it("dòng hiện giảm giá dòng và quy đổi; tổng có Giảm giá đơn", () => {
-    expect(DON).toMatch(/<LineExtra line=\{line\} \/>[\s\S]*<LineExtra line=\{line\} \/>/)
+    expect(DON).toContain("<LineExtra line={line} coCotGiam />")
+    expect(DON).toContain("<LineExtra line={line} />")
+    /* Bảng máy tính: cột Giảm giá như POS (24/09/2026). */
+    expect(DON).toContain('<TableHead className="text-right">Giảm giá</TableHead>')
+    expect(DON).toContain("formatCurrency(donGiaTruocGiam(line))")
     expect(DON).toMatch(/function LineExtra[\s\S]*line\.line_discount[\s\S]*giảm \{formatCurrency\(giam\)\}/)
     expect(DON).toMatch(/giamCuaChungTu\(lines\.map/)
     expect(DON).toContain('label="Giảm giá đơn"')
@@ -55,5 +59,17 @@ describe("chi tiết phiếu trả", () => {
   })
   it("kho nhận đã lưu thì mở ra đúng kho ấy", () => {
     expect(TRA).toMatch(/if \(kho === "sale" \|\| kho === "date"\) setZone\(kho\)/)
+  })
+})
+
+describe("sửa đơn từ trang chi tiết (chủ nhà 24/09/2026)", () => {
+  it("đơn sửa được ở màn làm đơn thì nút sửa dòng và nút sửa thanh toán sang đó", () => {
+    expect(DON).toMatch(/isSellEditable\(order\.status\) \? \(\s*<Button[\s\S]{0,200}diHoacMoPos\(router\.push, `\/sell\/edit\/\$\{order\.id\}`\)[\s\S]{0,120}Sửa đơn/)
+    expect(DON).toMatch(/isSellEditable\(order\.status\)\s*\?\s*diHoacMoPos\(router\.push, `\/sell\/edit\/\$\{order\.id\}`\)\s*:\s*setEditMode\(true\)/)
+  })
+  it("tiền hàng HĐ tách Giảm giá dòng như khối tiền POS", async () => {
+    const T = readFileSync("src/components/orders/invoice-money-summary.tsx", "utf8")
+    expect(T).toContain('label="Giảm giá dòng"')
+    expect(HD).toMatch(/lineDiscount=\{lines\.filter\(\(l\) => !l\.is_exchange\)/)
   })
 })

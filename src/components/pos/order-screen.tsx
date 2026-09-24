@@ -48,6 +48,7 @@
  *     màn cũ đang dùng — không chép lại phép tính nào.
  */
 
+import { inTaiCho } from "@/lib/pos/print-window"
 import { posNewInvoiceHref } from "@/lib/nav/pos-preview"
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -1818,7 +1819,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               <PanelButton
                 width={70}
                 disabled={!orderId}
-                onClick={() => { if (orderId) window.open(`/orders/${orderId}/print?auto=1`, "_blank") }}
+                onClick={() => { if (orderId) inTaiCho(`/orders/${orderId}/print`) }}
                 title="In đơn đặt hàng"
               >
                 In

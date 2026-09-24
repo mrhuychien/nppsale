@@ -45,10 +45,23 @@ export function leavePrintView(nav: {
   historyLength: number
   close: () => void
   back: () => void
+  /**
+   * Đang chạy trong KHUNG ẨN của POS (`inTaiCho`) — chủ nhà 24/09/2026: "in
+   * đơn tại chỗ ko cần mở tab". Khi đó chỉ báo cho trang mẹ gỡ khung.
+   *
+   * ⚠ KHÔNG ĐƯỢC LÙI. Khung con dùng CHUNG lịch sử với tab mẹ: `back()` ở
+   *   đây là kéo cả màn POS lùi một trang, mất tờ đang soạn.
+   */
+  embedded?: boolean
+  notifyParent?: () => void
 }) {
-  if (nav.historyLength <= 1) nav.close()
+  if (nav.embedded) nav.notifyParent?.()
+  else if (nav.historyLength <= 1) nav.close()
   else nav.back()
 }
+
+/** Tin khung in ẩn gửi trang mẹ khi hộp thoại in đóng — xem `inTaiCho`. */
+export const IN_XONG = "npp:in-xong"
 
 export function useLeaveAfterPrint(enabled: boolean) {
   const router = useRouter()
@@ -67,6 +80,8 @@ export function useLeaveAfterPrint(enabled: boolean) {
         historyLength: window.history.length,
         close: () => window.close(),
         back: () => router.back(),
+        embedded: window.parent !== window,
+        notifyParent: () => window.parent.postMessage({ type: IN_XONG }, window.location.origin),
       })
     }
 

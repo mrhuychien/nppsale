@@ -78,6 +78,8 @@ export function posPrintHref(docType: PosDocType, docId: string): string | null 
   switch (docType) {
     case "SO": return `/orders/${docId}/print`
     case "INV": return `/sales-invoices/${docId}/print`
+    /* Mẫu in phiếu trả có từ 24/09/2026 (`ReturnSlip`). */
+    case "RET": return `/returns/${docId}/print`
     default: return null
   }
 }

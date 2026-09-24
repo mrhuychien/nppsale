@@ -66,7 +66,7 @@ import {
   focusPosPicker, useRegisterPosProductSearch, usePosSearchTerm,
 } from "@/store/pos/product-search"
 import { DocPeople } from "@/components/pos/doc-people"
-import { moCuaInCho, trangInHoaDon } from "@/lib/pos/print-window"
+import { inTaiCho, trangInHoaDon } from "@/lib/pos/print-window"
 import { assignDocSeller } from "@/lib/pos/save"
 import { useAuth } from "@/hooks/use-auth"
 
@@ -631,8 +631,6 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const luu = useCallback(async () => {
     if (dangLuu || khoa || soDong === 0 || !orderId) return
     setDangLuu(true)
-    /* ⚠ MỞ CỬA SỔ IN NGAY TRONG CÚ BẤM, trước `await` — xem `moCuaInCho`. */
-    const cuaIn = moCuaInCho()
     try {
       const returnAdds = traMoi
         .filter((a) => a.qty > 0)
@@ -690,11 +688,11 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       const w = invoiceWarnings(r)
       if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
       if (r.invoiceId) {
-        cuaIn.toi(trangInHoaDon(r.invoiceId))
+        /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in. */
+        inTaiCho(trangInHoaDon(r.invoiceId))
         router.replace(`/pos/hoa-don/${r.invoiceId}`)
-      } else cuaIn.dong()
+      }
     } catch (e) {
-      cuaIn.dong()
       toast({
         title: invoiceId ? "Chưa lập lại được" : "Chưa xuất được",
         description: errorMessage(e),
@@ -1270,8 +1268,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           {sua && invoiceId && (
             <PanelButton
               width={84}
-              title="Mở trang in hóa đơn hiện tại"
-              onClick={() => { const h = posPrintHref("INV", invoiceId); if (h) window.open(h, "_blank") }}
+              title="In hóa đơn hiện tại"
+              onClick={() => { const h = posPrintHref("INV", invoiceId); if (h) inTaiCho(h) }}
             >
               In
             </PanelButton>

@@ -96,6 +96,8 @@ export function tables() {
       id: `r-e2e-${i}`, org_id: ORG, customer_id: KHACH, status: "submitted", reason: "damaged",
       credit_note_amount: 10000, created_at: `2026-09-${String(1 + (i % 20)).padStart(2, "0")}T08:00:00Z`,
       customer: { store_name: "Tạp hoá Cô Ba" }, requester: { full_name: "Chủ NPP" }, order: null, invoice: null,
+      /* Người được tính khoản trừ ≠ người lập — cột "Tính cho NV". */
+      seller: { full_name: i % 2 ? "NV Bán Hai" : "NV Bán Một" },
     })),
     // Chỉ hai phiếu trả đầu có dòng Mì.
     return_lines: [

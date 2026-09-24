@@ -58,3 +58,15 @@ test("phiếu nhập: phiếu huỷ không vào tổng", async ({ page }) => {
   await expect(k).toContainText("3 phiếu nhập")
   await expect(k).toContainText("1.000.000")
 })
+
+/* ⚠ CHỦ NHÀ 24/09/2026: "Danh sách trả hàng thêm cột hiển thị Tính cho nhân viên". */
+test("trả hàng — máy tính: cột 'Tính cho NV' là người được tính, không phải người lập", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/returns")
+  await expect(page.locator("thead").getByText("Tính cho NV", { exact: true })).toBeVisible()
+  const o = page.getByTestId("tinh-cho-nv")
+  await expect(o.first()).toBeVisible()
+  await expect(o.filter({ hasText: "NV Bán Một" }).first()).toBeVisible()
+  await expect(o.filter({ hasText: "NV Bán Hai" }).first()).toBeVisible()
+  await expect(o.filter({ hasText: "Chủ NPP" })).toHaveCount(0)
+})

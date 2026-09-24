@@ -12,6 +12,12 @@ export const RETURN_COLUMNS = [
   { key: "invoiceCode", label: "Hóa đơn gốc" },
   { key: "reason", label: "Lý do" },
   { key: "requester", label: "Người tạo" },
+  /**
+   * ⚠ "TÍNH CHO NHÂN VIÊN" LÀ `returns.sales_user_id` (mig 160) — người mà
+   *   khoản trừ hàng trả tính vào doanh số / hoa hồng, KHÔNG phải người lập
+   *   phiếu. Chủ nhà yêu cầu 24/09/2026.
+   */
+  { key: "seller", label: "Tính cho NV" },
   { key: "creditNote", label: "Credit Note" },
   { key: "status", label: "Trạng thái" },
 ] as const satisfies readonly ListViewOption<string>[]
@@ -24,6 +30,7 @@ export const DEFAULT_RETURN_COLUMNS: ReturnColumnKey[] = [
   "invoiceCode",
   "reason",
   "requester",
+  "seller",
   "creditNote",
   "status",
 ]

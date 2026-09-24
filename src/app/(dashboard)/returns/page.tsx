@@ -51,6 +51,9 @@ import { RotateCcw, PieChart, Info, Plus } from "lucide-react"
 import Link from "next/link"
 import type { Return } from "@/types"
 
+/** Nhân viên được tính khoản trừ của phiếu (`sales_user_id`). */
+const tenNV = (r: Return) => (r as Return & { seller?: { full_name?: string | null } | null }).seller?.full_name ?? null
+
 const REASON_COLORS: Record<string, string> = {
   damaged: "bg-error",
   wrong_item: "bg-[#fdb022]",
@@ -190,7 +193,7 @@ export default function ReturnsPage() {
       let q = supabase
         .from("returns")
         .select(
-          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -425,6 +428,7 @@ export default function ReturnsPage() {
                       {show("invoiceCode") && <TableHead>Hóa đơn gốc</TableHead>}
                       {show("reason") && <TableHead>Lý do</TableHead>}
                       {show("requester") && <TableHead>Người tạo</TableHead>}
+                      {show("seller") && <TableHead>Tính cho NV</TableHead>}
                       {show("creditNote") && <TableHead className="text-right">Credit Note</TableHead>}
                       {show("status") && <TableHead>Trạng thái</TableHead>}
                     </TableRow>
@@ -462,6 +466,11 @@ export default function ReturnsPage() {
                           {show("requester") && (
                             <TableCell className="text-sm">
                               {r.requester?.full_name || "—"}
+                            </TableCell>
+                          )}
+                          {show("seller") && (
+                            <TableCell className="text-sm" data-testid="tinh-cho-nv">
+                              {tenNV(r) || "—"}
                             </TableCell>
                           )}
                           {show("creditNote") && (
@@ -518,6 +527,11 @@ export default function ReturnsPage() {
                             {r.requester?.full_name && (
                               <p className="text-xs text-muted-foreground mt-0.5 truncate">
                                 Người tạo: {r.requester.full_name}
+                              </p>
+                            )}
+                            {tenNV(r) && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                Tính cho NV: {tenNV(r)}
                               </p>
                             )}
                             <p className="text-xs text-muted-foreground mt-0.5">

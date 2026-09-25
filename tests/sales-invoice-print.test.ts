@@ -126,7 +126,7 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
    */
   it("có dòng Bằng chữ, đọc từ số còn phải thu", () => {
     expect(TPL).toContain("Bằng chữ:")
-    expect(TPL).toContain("numberToVietnameseWords(netDue)")
+    expect(TPL).toContain("{bangChu(netDue)}")
     expect(TPL).toContain("const netDue = netDueOnInvoice(total, returnCredit)")
   })
 

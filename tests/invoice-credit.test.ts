@@ -107,12 +107,11 @@ describe("còn phải thu", () => {
   })
 
   /**
-   * ⚠ KẸP GIỐNG HỆT RPC. `_wf2b_recompute_receivable` ghi `GREATEST(0,…)`;
-   * màn hiện số âm là nói khác sổ, và người đọc tưởng nhà phân phối đang
-   * nợ ngược khách trên chính tờ hóa đơn này.
+   * ⚠ KHÔNG KẸP (chủ nhà 25/09/2026, và khớp mig 186): sổ ghi công nợ ÂM khi
+   *   hàng trả nhiều hơn hàng xuất — màn / tờ in phải nói đúng con số đó.
    */
-  it("trả nhiều hơn hóa đơn thì về 0, không âm", () => {
-    expect(netDueOnInvoice(1_000_000, 1_500_000)).toBe(0)
+  it("trả nhiều hơn hóa đơn thì ra số ÂM (dư có của khách)", () => {
+    expect(netDueOnInvoice(1_000_000, 1_500_000)).toBe(-500_000)
   })
 })
 
@@ -155,7 +154,7 @@ describe("mẫu in và màn chi tiết", () => {
    * giấy đi thu tiền đọc đúng dòng đó.
    */
   it("dòng bằng chữ đọc số còn phải thu", () => {
-    expect(PRINT).toContain("numberToVietnameseWords(netDue)")
+    expect(PRINT).toContain("{bangChu(netDue)}")
     expect(PRINT).not.toContain("numberToVietnameseWords(total)")
   })
 

@@ -126,16 +126,15 @@ describe("khối Cộng tiền của hóa đơn", () => {
    * `GREATEST(0, …)` của `_wf2b_recompute_receivable`. Hiện số âm là nói
    * khác sổ, và người đọc tưởng nhà phân phối đang nợ ngược khách.
    */
-  it("trả quá tổng hóa đơn thì còn phải thu là 0, không âm", () => {
+  /** ⚠ CHỦ NHÀ 25/09/2026: "phải in cả số âm" — khớp công nợ âm của sổ (mig 186). */
+  it("trả quá tổng hóa đơn thì còn phải thu ÂM, không kẹp 0", () => {
     const rows = docDong(
       ve({ total: 100_000 }, [
         { status: "completed", credit_note_amount: 500_000, credit_with_invoice: false },
       ])
     )
     const conPhaiThu = rows.find((r) => r.label === "Còn phải thu")?.value ?? ""
-    expect(conPhaiThu).not.toContain("−")
-    expect(conPhaiThu).not.toContain("-")
-    expect(conPhaiThu).toContain("0")
+    expect(conPhaiThu).toMatch(/[-−]400\.000/)
   })
 
   /**

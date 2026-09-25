@@ -86,15 +86,15 @@ export function creditOnInvoice(returns: readonly CreditInput[]): number {
 }
 
 /**
- * Còn phải thu = tổng hóa đơn − khoản trừ, KẸP VỀ 0.
+ * Còn phải thu = tổng hóa đơn − khoản trừ. CÓ THỂ ÂM.
  *
- * ⚠ KẸP LÀ BẮT BUỘC, và phải kẹp GIỐNG HỆT RPC. Khách trả nhiều hơn giá
- * trị hóa đơn thì `_wf2b_recompute_receivable` ghi `GREATEST(0, …)` —
- * màn hình hiện số âm là nói khác sổ, và người đọc tưởng nhà phân phối
- * đang nợ ngược khách trên chính tờ hóa đơn này.
+ * ⚠ KHÔNG KẸP VỀ 0 (chủ nhà 25/09/2026: "phần còn phải thu phải in cả số âm nếu
+ *   hóa đơn âm. (hiện tại khi âm thì in 0)"). Từ mig 186 `_wf2b_recompute_receivable`
+ *   ghi công nợ ÂM khi hàng trả nhiều hơn hàng xuất — số âm là DƯ CÓ của khách,
+ *   trừ vào lần mua sau. Kẹp ở đây là màn hình / tờ in nói 0 trong khi sổ ghi âm.
  */
 export function netDueOnInvoice(total: number, credit: number): number {
-  return Math.max(0, Number(total || 0) - Number(credit || 0))
+  return Number(total || 0) - Number(credit || 0)
 }
 
 /**

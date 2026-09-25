@@ -60,9 +60,17 @@ describe("màn in đơn đặt hàng", () => {
    * sổ lúc xuất hóa đơn; ghi con số đó ở đây là hứa trước khi nó tồn
    * tại. Dòng đổi/trả chỉ đứng liệt kê.
    */
-  it("liệt kê hàng đổi/trả nhưng KHÔNG trừ vào tổng", () => {
+  /**
+   * ⚠ CHỦ NHÀ 25/09/2026: "Mẫu in đơn đặt hàng in ra sai bét" — `total` đã trừ
+   *   hàng trả và kẹp 0, khuôn giãn dòng bán về 0đ. Nay: tiền hàng từ
+   *   subtotal + vat, rồi Trừ hàng trả → Còn phải thu (có thể âm).
+   */
+  it("tiền hàng từ subtotal + vat; trừ hàng trả ra Còn phải thu", () => {
     expect(PAGE).toContain("returnLines={printReturnLines}")
-    expect(code(PAGE)).not.toContain("returnCredit=")
+    expect(PAGE).toContain("total={tienHang}")
+    expect(PAGE).toContain("returnCredit={traHang}")
+    expect(PAGE).toMatch(/order\.subtotal != null \? \(Number\(order\.subtotal\) \|\| 0\) \+ \(Number\(order\.vat\) \|\| 0\)/)
+    expect(code(PAGE)).not.toContain("total={Number(order.total) || 0}")
     // Phiếu đã huỷ không được in kèm.
     expect(PAGE).toContain('.neq("status", "cancelled")')
   })
@@ -121,5 +129,14 @@ describe("cột CK phải cộng ra đúng", () => {
       146_668
     ).rows
     expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(146_668)
+  })
+})
+
+describe("bằng chữ số âm", () => {
+  it("đọc 'Âm …' cho dư có của khách", async () => {
+    const { bangChu } = await import("../src/components/printing/sales-invoice")
+    expect(bangChu(-250_000)).toMatch(/^Âm hai trăm năm mươi nghìn/)
+    expect(bangChu(250_000)).toMatch(/^Hai trăm năm mươi nghìn/)
+    expect(bangChu(0)).toBe("Không đồng")
   })
 })

@@ -13,6 +13,18 @@ import { dangNhap } from "./helpers"
  */
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
+/**
+ * ⚠ Bộ này kiểm các thao tác TRÊN THẺ khi ở lại màn — tức chế độ CHỌN NHIỀU.
+ *   Từ 25/09/2026 mặc định là chọn TỪNG mã (thêm một mã là rời màn), nên bật
+ *   sẵn chọn nhiều cho cả bán lẫn trả. Mặc định mới: `sell-chon-nhieu.spec.ts`.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("npp.sell.chon-nhieu", "1")
+    localStorage.setItem("npp.sell.chon-nhieu.tra", "1")
+  })
+})
+
 type Gio = {
   cart: Array<{ productId: string; unit: string; qty: number; price: number; vatRate: number }>
   returnLines?: Array<{ unit: string; qty: number; price: number; isExchange: boolean }>
@@ -34,7 +46,8 @@ test("2a: + trên thẻ thêm vào đơn, ở lại màn; thẻ thành bộ đ�
   await expect(page, "chạm + mà màn nhảy đi").toHaveURL(/\/sell$/)
   await expect(sua).toHaveAttribute("data-chon", "")
   await expect(page.getByLabel("Số lượng Sữa hộp", { exact: true })).toHaveText("1")
-  await page.getByRole("button", { name: "Thêm Sữa hộp", exact: true }).click()
+  // Đã có hàng: bộ − số + còn nguyên; + trong bộ là +1, KHÔNG +2.
+  await page.getByRole("button", { name: "Tăng Sữa hộp", exact: true }).click()
   await expect(page.getByLabel("Số lượng Sữa hộp", { exact: true })).toHaveText("2")
 
   // Mì: đổi sang thùng rồi thêm — dòng theo đúng đơn vị đang chọn.
@@ -123,7 +136,7 @@ test("1a → 1b: chọn hàng trả trên thẻ, Tiếp tục về phiếu trả
   await page.goto("/sell?mode=return")
   await expect(page.getByRole("heading", { name: "Chọn hàng trả" })).toBeVisible()
   await page.getByRole("button", { name: "Trả Sữa hộp", exact: true }).click()
-  await page.getByRole("button", { name: "Thêm Sữa hộp", exact: true }).click()
+  await page.getByRole("button", { name: "Tăng Sữa hộp", exact: true }).click()
   await page.getByRole("button", { name: "Trả Mì tôm", exact: true }).click()
   await expect(page).toHaveURL(/mode=return/)
   await expect(page.getByText("2 mặt hàng · 3 đơn vị")).toBeVisible()

@@ -115,7 +115,9 @@ describe("60 thẻ sản phẩm KHÔNG vẽ lại theo mỗi phím gõ", () => {
     expect(c).toContain("onStep={onStep}")
     expect(c, "closure mới ở mỗi lần vẽ là memo vô dụng").not.toMatch(/on(Step|PickUnit)=\{\(/)
     expect(POS).toContain("const onStep = useCallback((p: PricedProduct, unit: string, delta: number) => stepRef.current(p, unit, delta), [])")
-    expect(CARD).toContain("onClick={() => onStep(product, unit, 1)}")
+    // 25/09/2026: bấm cả DÒNG là +1 (`them`), không còn nút + lúc đầu.
+    expect(CARD).toContain("const them = () => onStep(product, unit, 1)")
+    expect(CARD).toContain("onClick={them}")
     expect(CARD).toContain("onPickUnit(product.id, u)")
   })
 

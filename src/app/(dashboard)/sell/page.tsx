@@ -2,8 +2,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, MousePointerClick } from "lucide-react"
-import { docChonTungMa, ghiChonTungMa, roiManSauKhiThem } from "@/lib/sell/pick-mode"
+import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, ListChecks } from "lucide-react"
+import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
@@ -83,17 +83,16 @@ export default function SellPage() {
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
   const [frequentIds, setFrequentIds] = useState<string[]>([])
   /**
-   * CHỌN TỪNG MÃ (chủ nhà 25/09/2026) — bật thì thêm mã mới là sang màn Đơn hàng.
-   * ⚠ Đọc bộ nhớ SAU khi gắn màn (không đọc lúc khởi tạo): server không có
-   *   localStorage, đọc sớm là vẽ lệch giữa server và máy.
+   * CHỌN NHIỀU MÃ — TUỲ CHỌN; mặc định chọn TỪNG mã (chủ nhà 25/09/2026: "Đảo
+   * ngược"). Xem `pick-mode.ts`. Bán và trả là HAI công tắc riêng.
+   * ⚠ Đọc bộ nhớ SAU khi gắn màn: server không có localStorage.
    */
-  const [chonTungMa, setChonTungMa] = useState(false)
-  /* Bán và trả là HAI công tắc riêng (xem `pick-mode.ts`). */
+  const [chonNhieu, setChonNhieu] = useState(false)
   const loaiChon = returning ? "tra" : "ban"
-  useEffect(() => { setChonTungMa(docChonTungMa(loaiChon)) }, [loaiChon])
+  useEffect(() => { setChonNhieu(docChonNhieu(loaiChon)) }, [loaiChon])
   const doiCheDoChon = () => {
-    setChonTungMa((v) => {
-      ghiChonTungMa(!v, loaiChon)
+    setChonNhieu((v) => {
+      ghiChonNhieu(!v, loaiChon)
       return !v
     })
   }
@@ -222,7 +221,7 @@ export default function SellPage() {
           note: "",
         })
       /* Chọn từng mã (25/09/2026): vừa thêm một mã MỚI thì về phiếu trả. */
-      if (roiManSauKhiThem({ chonTungMa, delta, dongMoi: j < 0 })) {
+      if (roiManSauKhiThem({ chonNhieu, delta, dongMoi: j < 0 })) {
         clearSearchMemory()
         backToReturnSlip(router)
       }
@@ -261,8 +260,8 @@ export default function SellPage() {
         conversion: conversionFor(p, unit),
         vatRate: Number(p.vat_rate ?? 0),
       })
-    /* Chọn từng mã: vừa thêm một mã MỚI thì sang màn Đơn hàng (chỉnh SL ở đó). */
-    if (roiManSauKhiThem({ chonTungMa, delta, dongMoi: i < 0 })) {
+    /* Chọn từng mã (mặc định): vừa thêm một mã MỚI thì sang màn Đơn hàng. */
+    if (roiManSauKhiThem({ chonNhieu, delta, dongMoi: i < 0 })) {
       clearSearchMemory()
       router.push("/sell/cart")
     }
@@ -284,20 +283,20 @@ export default function SellPage() {
   const bangGia = customer?.group?.name ?? "Bảng giá chung"
   /* Một nút cho cả hai màn: bán (cạnh bảng giá trên đầu) và trả (hàng khách + bảng giá). */
   const noiDen = returning ? "về phiếu trả" : "sang đơn"
-  const nutChonTungMa = (
+  const nutChonNhieu = (
     <button
       type="button"
-      aria-pressed={chonTungMa}
-      aria-label={chonTungMa ? "Đang chọn từng mã — bấm để chọn nhiều mã" : "Chọn từng mã"}
-      title={chonTungMa ? `Đang chọn từng mã: thêm một mã là ${noiDen}. Bấm để tắt.` : `Chọn từng mã: thêm một mã là ${noiDen} ngay`}
+      aria-pressed={chonNhieu}
+      aria-label={chonNhieu ? "Đang chọn nhiều mã — bấm để chọn từng mã" : "Chọn nhiều mã"}
+      title={chonNhieu ? "Đang chọn nhiều mã: thêm xong vẫn ở lại màn. Bấm để tắt." : `Chọn nhiều mã (đang chọn từng mã: thêm một mã là ${noiDen})`}
       onClick={doiCheDoChon}
-      data-testid="chon-tung-ma"
+      data-testid="chon-nhieu"
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors",
-        chonTungMa ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
+        chonNhieu ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
       )}
     >
-      <MousePointerClick className="h-[18px] w-[18px]" />
+      <ListChecks className="h-[18px] w-[18px]" />
     </button>
   )
 
@@ -331,8 +330,8 @@ export default function SellPage() {
               {bangGia}
             </span>
           )}
-          {/* ⚠ CHỌN TỪNG MÃ — bật tới khi người dùng tự tắt (lưu trên máy). */}
-          {!returning && nutChonTungMa}
+          {/* ⚠ CHỌN NHIỀU MÃ (tuỳ chọn) — bật tới khi người dùng tự tắt (lưu trên máy). */}
+          {!returning && nutChonNhieu}
         </div>
 
         <SellCustomerDeepLink />
@@ -423,7 +422,7 @@ export default function SellPage() {
             <span className="flex h-9 items-center rounded-[10px] border border-border px-2.5 text-[13px] font-medium text-on-surface-variant">
               {bangGia}
             </span>
-            {nutChonTungMa}
+            {nutChonNhieu}
           </div>
         )}
 

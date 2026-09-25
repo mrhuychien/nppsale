@@ -1,5 +1,6 @@
 "use client"
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { gopCongNoTheoDon } from "@/lib/orders/receivable-sum"
@@ -248,7 +249,8 @@ export default function OrdersPage() {
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   /** "" = chưa chạm tab nào — xem `effectiveStatus`, KHÔNG đổi thành "all". */
-  const [statusFilter, setStatusFilter] = useState("")
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [statusFilter, setStatusFilter] = useLuuTrangThai("orders", "")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showAdvanced, setShowAdvanced] = useState(false)
   /**
@@ -350,7 +352,7 @@ export default function OrdersPage() {
     if (s) setStatusFilter(s)
     const q = searchParams.get("q")
     if (q !== null) setSearch(q)
-  }, [searchParams])
+  }, [searchParams, setStatusFilter])
 
   // Load metadata (customers, users) + counts theo status — 1 lần khi mount.
   useEffect(() => {

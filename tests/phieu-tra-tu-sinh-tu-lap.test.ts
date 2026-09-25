@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { hanhDongPhieuTra, laNhapTheoDon, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
+import { duongSuaPhieuTra, hanhDongPhieuTra, laNhapTheoDon, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
 import { debtAfterReturn } from "@/lib/pos/return-totals"
 
 /**
@@ -186,5 +186,31 @@ describe("script khám", () => {
     // Không gọi thẳng cột `return_id` (chưa có trước mig 191).
     expect(Q).not.toMatch(/rc\.return_id/)
     expect(Q).toContain("to_jsonb(rc)->>'return_id'")
+  })
+})
+
+describe("nút Sửa của phiếu trả — một chỗ cho xem nhanh và chi tiết", () => {
+  /** ⚠ CHỦ NHÀ 25/09/2026: tự sinh "nhảy ra sửa hoá đơn"; tự lập "nhảy ra pos sửa phiếu". */
+  it("tự sinh → sửa hóa đơn; tự lập → POS; theo đơn → đơn; đã huỷ → không có", () => {
+    expect(duongSuaPhieuTra({ id: "r", status: "submitted", credit_with_invoice: true, invoice_id: "i" }))
+      .toEqual({ href: "/sales-invoices/i/edit", nhan: "Sửa hóa đơn" })
+    expect(duongSuaPhieuTra({ id: "r", status: "completed", invoice_id: null, order_id: null }))
+      .toEqual({ href: "/pos/tra-hang/r", nhan: "Sửa" })
+    expect(duongSuaPhieuTra({ id: "r", status: "draft", order_id: "o", invoice_id: null }))
+      .toEqual({ href: "/pos/don-hang/o", nhan: "Sửa đơn" })
+    expect(duongSuaPhieuTra({ id: "r", status: "cancelled" })).toBeNull()
+  })
+  it("xem nhanh và trang chi tiết cùng gọi duongSuaPhieuTra", () => {
+    expect(read("src/components/returns/return-drawer.tsx")).toContain("const sua = r ? duongSuaPhieuTra(r) : null")
+    const P = read("src/app/(dashboard)/returns/[id]/page.tsx")
+    expect(P).toContain("const sua = duongSuaPhieuTra(ret)")
+    expect(P).toContain("href={`/returns/${ret.id}/print?auto=1`}")
+  })
+  /** ⚠ CHỦ NHÀ 25/09/2026: "Cập nhật ngày trong phiếu trả nhưng ngoài list hiển thị vẫn ngày cũ ?" */
+  it("danh sách hiện + xếp theo ngày chứng từ (return_date)", () => {
+    const L = read("src/app/(dashboard)/returns/page.tsx")
+    expect(L).toContain('.order("return_date", { ascending: false, nullsFirst: false })')
+    expect(L.match(/formatDate\(ngayPhieu\(r\)\)/g)?.length).toBe(2)
+    expect(L).not.toContain("{formatDate(r.created_at)}")
   })
 })

@@ -10,18 +10,24 @@ const read = (p: string) => readFileSync(p, "utf8")
  */
 describe("status-multi", () => {
   const THU_TU = ["all", "submitted", "partially_invoiced", "completed", "cancelled"]
-  it("bấm bật / tắt từng trạng thái; Tất cả bỏ hết; tắt cái cuối về Tất cả", () => {
+  /**
+   * ⚠ CHỦ NHÀ 25/09/2026: "Khi ấn vào tất cả thì chọn hết các trạng thái luôn" — "Tất cả"
+   *   là MỌI chip cùng sáng; đang Tất cả bấm một chip là TẮT chip đó.
+   */
+  it("Tất cả = mọi chip sáng; bấm một chip từ Tất cả là tắt chip đó", () => {
     let v = "all"
-    v = bamTrangThai(v, "completed", THU_TU)
-    expect(v).toBe("completed")
-    v = bamTrangThai(v, "submitted", THU_TU)
-    expect(v).toBe("submitted,completed") // theo thứ tự dải chip, không theo thứ tự bấm
-    v = bamTrangThai(v, "partially_invoiced", THU_TU)
-    expect(v).toBe("submitted,partially_invoiced,completed") // = tất cả trừ Huỷ
+    v = bamTrangThai(v, "cancelled", THU_TU)
+    expect(v).toBe("submitted,partially_invoiced,completed") // = tất cả trừ Huỷ, một cú bấm
     v = bamTrangThai(v, "completed", THU_TU)
     expect(v).toBe("submitted,partially_invoiced")
+    v = bamTrangThai(v, "completed", THU_TU)
+    expect(v).toBe("submitted,partially_invoiced,completed")
+    // Bật lại đủ mọi chip → về Tất cả.
+    expect(bamTrangThai(v, "cancelled", THU_TU)).toBe("all")
     expect(bamTrangThai(v, "all", THU_TU)).toBe("all")
+    // Tắt chip cuối cùng → Tất cả.
     expect(bamTrangThai("completed", "completed", THU_TU)).toBe("all")
+    expect(bamTrangThai("completed", "submitted", THU_TU)).toBe("submitted,completed")
   })
   it("đường dẫn sâu một trạng thái cũ vẫn chạy (?status=draft)", () => {
     expect(tachTrangThai("draft")).toEqual(["draft"])
@@ -36,6 +42,9 @@ describe("status-multi", () => {
   })
   it("chip nào sáng", () => {
     expect(dangChon("all", "all")).toBe(true)
+    // "Tất cả" → mọi chip cùng sáng.
+    expect(dangChon("all", "completed")).toBe(true)
+    expect(dangChon("", "cancelled")).toBe(true)
     expect(dangChon("a,b", "all")).toBe(false)
     expect(dangChon("a,b", "b")).toBe(true)
     expect(dangChon("a,b", "c")).toBe(false)
@@ -73,5 +82,24 @@ describe("các danh sách dùng chọn nhiều", () => {
     const C = read("src/components/ui/status-chips.tsx")
     expect(C).toContain("onClick={() => onPick(multi ? bamTrangThai(active, c.key, thuTu) : c.key)}")
     expect(C).toContain("aria-pressed={multi ? on : undefined}")
+  })
+})
+
+describe("lọc trạng thái được nhớ qua lần tải lại", () => {
+  /** ⚠ CHỦ NHÀ 25/09/2026: "Các danh sách khi chọn lọc trạng thái ko lưu ? Load lại là ra như ban đầu." */
+  it.each([
+    ["orders", "src/app/(dashboard)/orders/page.tsx", 'useLuuTrangThai("orders", "")'],
+    ["sales-invoices", "src/app/(dashboard)/sales-invoices/page.tsx", 'useLuuTrangThai("sales-invoices", "posted")'],
+    ["returns", "src/app/(dashboard)/returns/page.tsx", 'useLuuTrangThai("returns", MAC_DINH_TRANG_THAI)'],
+    ["purchase-returns", "src/app/(dashboard)/purchase-returns/page.tsx", 'useLuuTrangThai("purchase-returns", "all")'],
+    ["purchase-receipts", "src/app/(dashboard)/purchasing/receipts/page.tsx", 'useLuuTrangThai("purchase-receipts", "")'],
+  ])("%s dùng useLuuTrangThai", (_k, f, dong) => {
+    expect(read(f)).toContain(dong)
+  })
+  it("hook đọc sau khi gắn (không lỗi hydrate), đường dẫn ?status= thắng, bọc try/catch", () => {
+    const H = read("src/hooks/use-luu-trang-thai.ts")
+    expect(H).toContain('if (new URLSearchParams(window.location.search).has("status")) return')
+    expect(H).toContain("window.localStorage.setItem(TIEN_TO + khoa, x)")
+    expect(H.match(/try \{/g)?.length).toBe(2)
   })
 })

@@ -50,3 +50,17 @@ export function hanhDongPhieuTra(r: PhieuTraXet): HanhDongPhieuTra {
   // Nháp (hoặc "Chờ xử lý" cũ của phiếu tự lập — mig 191 chuyển về Nháp).
   return { hoanThanh: true, huy: "huy", sua: true, lyDo: null }
 }
+
+/**
+ * Nút "Sửa" của một phiếu trả mở đi đâu — MỘT chỗ cho cả xem nhanh lẫn trang chi tiết.
+ *
+ * ⚠ CHỦ NHÀ 25/09/2026: phiếu TỰ SINH "Sửa - khi bấm vào nhảy ra sửa hoá đơn"; phiếu TỰ
+ *   LẬP "Sửa khi bấm vào nhảy ra pos sửa phiếu". Hàng trả còn nằm trong ĐƠN chưa xuất →
+ *   sửa đơn. Đã huỷ → không sửa (`null`).
+ */
+export function duongSuaPhieuTra(r: PhieuTraXet & { id: string }): { href: string; nhan: string } | null {
+  if (r.status === "cancelled") return null
+  if (laPhieuTuSinh(r)) return r.invoice_id ? { href: `/sales-invoices/${r.invoice_id}/edit`, nhan: "Sửa hóa đơn" } : null
+  if (laNhapTheoDon(r)) return r.order_id ? { href: `/pos/don-hang/${r.order_id}`, nhan: "Sửa đơn" } : null
+  return { href: `/pos/tra-hang/${r.id}`, nhan: "Sửa" }
+}

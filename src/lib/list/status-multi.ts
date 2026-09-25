@@ -19,16 +19,22 @@ export function tachTrangThai(v: string | null | undefined): string[] {
 }
 
 /**
- * Bấm một chip. "Tất cả" → bỏ hết. Chip khác → bật / tắt nó; tắt chip cuối cùng
- * thì về "Tất cả". Giữ THỨ TỰ của dải chip (`thuTu`) để chuỗi ổn định — cùng
- * một lựa chọn luôn ra cùng một chuỗi, không nháy lại truy vấn.
+ * Bấm một chip. Chip khác → bật / tắt nó; tắt chip cuối cùng thì về "Tất cả".
+ * Giữ THỨ TỰ của dải chip (`thuTu`) để chuỗi ổn định — cùng một lựa chọn luôn ra
+ * cùng một chuỗi, không nháy lại truy vấn.
+ *
+ * ⚠ CHỦ NHÀ 25/09/2026: "Khi ấn vào tất cả thì chọn hết các trạng thái luôn". "Tất cả"
+ *   = MỌI chip cùng sáng; đang "Tất cả" mà bấm một chip là TẮT chip đó ("tất cả trừ
+ *   Huỷ" chỉ còn một cú bấm). Bật lại đủ mọi chip thì về "Tất cả".
  */
 export function bamTrangThai(hienTai: string, key: string, thuTu: readonly string[]): string {
   if (key === TAT_CA) return TAT_CA
-  const dang = new Set(tachTrangThai(hienTai))
+  const moiChip = thuTu.filter((k) => k !== TAT_CA)
+  const dang = new Set(hienTai === TAT_CA ? moiChip : tachTrangThai(hienTai))
   if (dang.has(key)) dang.delete(key)
   else dang.add(key)
   if (dang.size === 0) return TAT_CA
+  if (moiChip.length > 1 && dang.size === moiChip.length && moiChip.every((k) => dang.has(k))) return TAT_CA
   const xep = thuTu.filter((k) => dang.has(k))
   const le = Array.from(dang).filter((k) => !thuTu.includes(k))
   return [...xep, ...le].join(",")
@@ -49,8 +55,8 @@ export function trangThaiCuaChon(
   return out
 }
 
-/** Chip này có đang sáng không. */
+/** Chip này có đang sáng không. "Tất cả" → MỌI chip cùng sáng (chủ nhà 25/09/2026). */
 export function dangChon(v: string, key: string): boolean {
   const ds = tachTrangThai(v)
-  return key === TAT_CA ? ds.length === 0 : ds.includes(key)
+  return ds.length === 0 ? true : ds.includes(key)
 }

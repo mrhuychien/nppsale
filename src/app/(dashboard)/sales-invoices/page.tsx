@@ -21,6 +21,7 @@
  * nói thẳng điều đó.
  */
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
@@ -149,7 +150,8 @@ export default function SalesInvoicesPage() {
   const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState<string>("posted")
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [status, setStatus] = useLuuTrangThai("sales-invoices", "posted")
   const [search, setSearch] = useState("")
   /**
    * ⚠ Ô TÌM HỎI MÁY CHỦ, KHÔNG LỌC TRONG TRANG ĐANG XEM (chủ nhà báo

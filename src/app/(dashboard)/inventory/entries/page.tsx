@@ -1,5 +1,6 @@
 "use client"
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -60,7 +61,8 @@ export default function StockEntriesPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [typeFilter, setTypeFilter] = useLuuTrangThai("stock-entries-type", "all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [deleteTarget, setDeleteTarget] = useState<StockEntry | null>(null)
   const [deleting, setDeleting] = useState(false)

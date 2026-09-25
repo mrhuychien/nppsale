@@ -14,8 +14,12 @@ test("đơn hàng: chọn Phiếu tạm + Hoàn thành cùng lúc = mọi thứ 
   const dong = (ma: string) => page.getByRole("row").filter({ has: page.getByRole("link", { name: ma, exact: true }) })
   await expect(dong("DH-0004")).toHaveCount(1) // đơn huỷ đang hiện ở "Tất cả"
 
-  await chip("submitted").click()
-  await chip("completed").click()
+  /* ⚠ Chủ nhà 25/09/2026: "Khi ấn vào tất cả thì chọn hết các trạng thái luôn" — từ Tất
+     cả bấm một chip là TẮT nó; nên bấm "Đã huỷ" = Phiếu tạm + Hoàn thành (mọi thứ trừ huỷ). */
+  await chip("all").click()
+  await expect(chip("submitted")).toHaveAttribute("aria-pressed", "true")
+  await chip("cancelled").click()
+  await expect(chip("cancelled")).toHaveAttribute("aria-pressed", "false")
   await expect(chip("submitted")).toHaveAttribute("aria-pressed", "true")
   await expect(chip("completed")).toHaveAttribute("aria-pressed", "true")
   await expect(chip("all")).toHaveAttribute("aria-pressed", "false")
@@ -30,9 +34,10 @@ test("đơn hàng: chọn Phiếu tạm + Hoàn thành cùng lúc = mọi thứ 
   await expect(dong("DH-0002")).toHaveCount(0)
   await expect(dong("DH-0001")).toHaveCount(1)
 
-  // "Tất cả" bỏ hết lựa chọn.
+  // "Tất cả" chọn hết lại.
   await chip("all").click()
-  await expect(chip("submitted")).toHaveAttribute("aria-pressed", "false")
+  await expect(chip("submitted")).toHaveAttribute("aria-pressed", "true")
+  await expect(chip("cancelled")).toHaveAttribute("aria-pressed", "true")
   await expect(dong("DH-0004")).toHaveCount(1)
 })
 

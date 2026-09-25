@@ -96,7 +96,7 @@ describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
    */
   it("chưa chạm tab nào thì mở ra ở Tất cả", () => {
     expect(LIST, 'trị "chưa chọn" phải là ô trống').toContain(
-      'const [statusFilter, setStatusFilter] = useState("")'
+      'const [statusFilter, setStatusFilter] = useLuuTrangThai("orders", "")'
     )
     expect(LIST).toContain('const DEFAULT_ORDER_TAB = "all"')
     // Và huy hiệu "đang lọc" phải so với chính mặc định ấy, không so

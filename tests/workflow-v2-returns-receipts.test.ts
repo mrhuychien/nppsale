@@ -347,7 +347,7 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
   it("danh sách mở ra ở tab Chờ xử lý và lọc theo trạng thái ở máy chủ", () => {
     /* ⚠ Chờ xử lý (tự sinh) + Nháp (tự lập chờ Hoàn thành) — mig 191. */
     expect(RET_LIST).toContain('const MAC_DINH_TRANG_THAI = "submitted,draft"')
-    expect(RET_LIST).toContain("useState<string>(MAC_DINH_TRANG_THAI)")
+    expect(RET_LIST).toContain('useLuuTrangThai("returns", MAC_DINH_TRANG_THAI)')
     // Lọc trạng thái nằm trong `apDungLoc` — MỘT bộ lọc cho cả danh sách lẫn
     // phép cộng tổng khoản có (23/09/2026).
     // Chọn nhiều (25/09/2026) — vẫn lọc ở máy chủ, một hay nhiều trạng thái.

@@ -1,5 +1,6 @@
 "use client"
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG } from "@/lib/search/list-filter-fields"
@@ -81,6 +82,12 @@ const RETURN_TABS = [
 
 const MAC_DINH_TRANG_THAI = "submitted,draft"
 
+/**
+ * ⚠ NGÀY HIỆN LÀ NGÀY CHỨNG TỪ (`return_date`, mig 188), không phải lúc bấm lập (chủ nhà
+ *   25/09/2026: "Cập nhật ngày trong phiếu trả nhưng ngoài list hiển thị vẫn ngày cũ ?").
+ */
+const ngayPhieu = (r: Return) => (r as Return & { return_date?: string | null }).return_date || r.created_at
+
 export default function ReturnsPage() {
   const { loading: authLoading } = useRoleGuard("returns")
   const { user: authUser } = useAuth()
@@ -103,7 +110,8 @@ export default function ReturnsPage() {
    */
   /* ⚠ "Chờ xử lý" nay chỉ có ở phiếu TỰ SINH (chủ nhà 25/09/2026, mig 191); phiếu tự
      lập chờ bấm Hoàn thành nằm ở Nháp — hàng đợi việc phải gồm cả hai. */
-  const [statusFilter, setStatusFilter] = useState<string>(MAC_DINH_TRANG_THAI)
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [statusFilter, setStatusFilter] = useLuuTrangThai("returns", MAC_DINH_TRANG_THAI)
   const [search, setSearch] = useState("")
   const [totalCount, setTotalCount] = useState(0)
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
@@ -228,9 +236,11 @@ export default function ReturnsPage() {
       let q = supabase
         .from("returns")
         .select(
-          "id, created_at, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+          "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
           { count: "exact" }
         )
+        /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
+        .order("return_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .range(pg.from, pg.to)
       /**
@@ -521,7 +531,7 @@ export default function ReturnsPage() {
                           </TableCell>
                           {show("date") && (
                             <TableCell className="text-sm whitespace-nowrap">
-                              {formatDate(r.created_at)}
+                              {formatDate(ngayPhieu(r))}
                             </TableCell>
                           )}
                           <TableCell className="font-medium">
@@ -622,7 +632,7 @@ export default function ReturnsPage() {
                               </p>
                             )}
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {formatDate(r.created_at)}
+                              {formatDate(ngayPhieu(r))}
                             </p>
                           </div>
                           <div className="shrink-0">

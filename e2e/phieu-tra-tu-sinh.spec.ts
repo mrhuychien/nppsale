@@ -14,13 +14,13 @@ const HD1 = "00000000-0000-4000-8000-0000000000f1"
 
 test.beforeAll(async () => {
   await api("returns?id=eq.r-e2e-5", "PATCH", {
-    credit_with_invoice: true, invoice_id: HD1, order_id: "o-e2e-1", return_code: "TH-0005",
+    credit_with_invoice: true, invoice_id: HD1, order_id: "o-e2e-1", return_code: "TH-0005", return_date: "2026-09-03",
     invoice: { invoice_code: "HD-E2E-1", invoice_date: "2026-09-20" }, order: { order_code: "DH-E2E-1" },
   })
   await api("returns?id=eq.r-e2e-6", "PATCH", { status: "draft", return_code: "TH-0006" })
 })
 test.afterAll(async () => {
-  await api("returns?id=eq.r-e2e-5", "PATCH", { credit_with_invoice: false, invoice_id: null, order_id: null, invoice: null, order: null, return_code: null })
+  await api("returns?id=eq.r-e2e-5", "PATCH", { credit_with_invoice: false, invoice_id: null, order_id: null, invoice: null, order: null, return_code: null, return_date: null })
   await api("returns?id=eq.r-e2e-6", "PATCH", { status: "submitted", return_code: null })
 })
 
@@ -100,4 +100,38 @@ test("danh sách hóa đơn: tiền là số còn lại sau hàng trả", async 
   const dong = page.getByText("HD-E2E-1", { exact: true }).first().locator("xpath=ancestor::*[contains(., 'trả 10.000')][1]")
   await expect(dong).toContainText("890.000đ")
   await expect(dong).toContainText("HĐ 900.000đ · trả 10.000đ")
+})
+
+/**
+ * ⚠ CHỦ NHÀ 25/09/2026: "Cập nhật ngày trong phiếu trả nhưng ngoài list hiển thị vẫn ngày cũ ?" ·
+ *   "Trong chi tiết phiếu trả có các phím chức năng như ngoài xem nhanh" · "Các danh sách khi chọn
+ *   lọc trạng thái ko lưu ? Load lại là ra như ban đầu. Khi ấn vào tất cả thì chọn hết các trạng thái".
+ */
+test("danh sách hiện ngày chứng từ; chi tiết có In / Sửa hóa đơn", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/returns")
+  await expect(page.getByRole("row").filter({ has: page.getByRole("link", { name: "TH-0005" }) })).toContainText("03/09/2026")
+  await page.goto("/returns/r-e2e-5")
+  await expect(page.getByRole("link", { name: "In", exact: true })).toHaveAttribute("href", "/returns/r-e2e-5/print?auto=1")
+  await expect(page.getByRole("link", { name: "Sửa hóa đơn" })).toHaveAttribute("href", `/sales-invoices/${HD1}/edit`)
+  await page.goto("/returns/r-e2e-6")
+  await expect(page.getByRole("link", { name: "Sửa", exact: true })).toHaveAttribute("href", "/pos/tra-hang/r-e2e-6")
+})
+
+test("lọc trạng thái nhớ qua tải lại; Tất cả = sáng hết", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/returns")
+  const chip = (t: string) => page.getByRole("button", { name: t, exact: true })
+  await chip("Tất cả").click()
+  for (const t of ["Tất cả", "Chờ xử lý", "Nháp", "Đã nhập kho", "Đã huỷ"]) await expect(chip(t)).toHaveAttribute("aria-pressed", "true")
+  // Từ Tất cả bấm "Đã huỷ" → tất cả trừ Huỷ.
+  await chip("Đã huỷ").click()
+  await expect(chip("Đã huỷ")).toHaveAttribute("aria-pressed", "false")
+  await expect(chip("Tất cả")).toHaveAttribute("aria-pressed", "false")
+  await expect(chip("Nháp")).toHaveAttribute("aria-pressed", "true")
+  await page.reload()
+  await expect(chip("Đã huỷ")).toHaveAttribute("aria-pressed", "false")
+  await expect(chip("Đã nhập kho")).toHaveAttribute("aria-pressed", "true")
+  await chip("Đã huỷ").click()
+  await expect(chip("Tất cả")).toHaveAttribute("aria-pressed", "true")
 })

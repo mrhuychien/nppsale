@@ -413,7 +413,7 @@ describe("Danh sách hóa đơn bán", () => {
 
   /** Mặc định chỉ hiện hóa đơn còn hiệu lực, nhưng xem được cả đã huỷ. */
   it("lọc mặc định là hóa đơn đã xuất, và mở được cả đã huỷ", () => {
-    expect(CODE).toContain('useState<string>("posted")')
+    expect(CODE).toContain('useLuuTrangThai("sales-invoices", "posted")')
     expect(CODE).toContain('{ key: "cancelled"')
     expect(CODE).toContain('{ key: "all"')
   })

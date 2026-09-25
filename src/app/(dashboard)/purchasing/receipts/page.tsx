@@ -14,6 +14,7 @@
  * `partially_invoiced` biến mất khỏi mọi tab.
  */
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
@@ -29,7 +30,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChips } from "@/components/ui/status-chips"
-import { dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
+import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
@@ -71,7 +72,8 @@ export default function PurchaseReceiptsPage() {
   const [canhBao, setCanhBao] = useState<string | null>(null)
   const [q, setQ] = useState("")
   /** "" = chưa chạm tab nào → hiện tất cả. */
-  const [tab, setTab] = useState("")
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [tab, setTab] = useLuuTrangThai("purchase-receipts", "")
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết nên lọc ở trình duyệt bằng `khopLoc`. */
   const locNC = useAdvancedFilter("purchasing-receipts", LOC_HOA_DON_MUA)
 
@@ -127,7 +129,7 @@ export default function PurchaseReceiptsPage() {
     shown,
     (r) => r.total,
     // Đang xem tab "Đã huỷ" thì cộng chính các phiếu huỷ ấy.
-    (r) => !dangChon(tab, "cancelled") && r.status === "cancelled",
+    (r) => !tachTrangThai(tab).includes("cancelled") && r.status === "cancelled",
     !canhBao
   )
 
@@ -171,7 +173,7 @@ export default function PurchaseReceiptsPage() {
         <DocListTotals
           className="rounded-xl border"
           label="Tổng tiền phiếu nhập"
-          countText={`${tongPhieu.soPhieu} phiếu nhập${!dangChon(tab, "cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(",")) ? " · không tính phiếu huỷ" : ""}`}
+          countText={`${tongPhieu.soPhieu} phiếu nhập${!tachTrangThai(tab).includes("cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(",")) ? " · không tính phiếu huỷ" : ""}`}
           total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
         />
       )}

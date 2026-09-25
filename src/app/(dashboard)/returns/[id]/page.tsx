@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { duocSuaPhieuTra, duocXoaPhieuTra } from "@/lib/sell/return-roles"
-import { hanhDongPhieuTra, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
+import { duongSuaPhieuTra, hanhDongPhieuTra, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { RETURN_REASONS } from "@/lib/constants"
-import { Pencil, Trash2, X, ExternalLink, Info, PackageCheck, Ban } from "lucide-react"
+import { Pencil, Trash2, X, ExternalLink, Info, PackageCheck, Ban, Printer } from "lucide-react"
 import {
   completeReturn,
   cancelReturn,
@@ -67,6 +67,8 @@ export default function ReturnDetailPage() {
    */
   /** Số phiếu TH- (mig 193), đọc riêng — xem `docMaPhieuTra`. */
   const [maPhieu, setMaPhieu] = useState<string | null>(null)
+  /** Ngày chứng từ (mig 188) — đọc riêng như màn xem nhanh. */
+  const [ngayPhieu, setNgayPhieu] = useState<string | null>(null)
   const [salesUserId, setSalesUserId] = useState<string | null>(null)
   const [salesUserName, setSalesUserName] = useState<string | null>(null)
   const [coCotNguoiDungTen, setCoCotNguoiDungTen] = useState(false)
@@ -122,6 +124,8 @@ export default function ReturnDetailPage() {
     }
     setLines((linesRes.data as unknown as ReturnLine[]) || [])
     setMaPhieu((await docMaPhieuTra(supabase, [id])).get(id) ?? null)
+    const ngay = await supabase.from("returns").select("return_date").eq("id", id).maybeSingle()
+    setNgayPhieu(ngay.error ? null : ((ngay.data as { return_date?: string | null } | null)?.return_date ?? null))
     if (nguoiRes.error) {
       // Chưa chạy mig 160 — giấu hẳn khối "tính cho nhân viên" đi.
       setCoCotNguoiDungTen(false)
@@ -360,7 +364,7 @@ export default function ReturnDetailPage() {
     <div className="space-y-4">
       <PageHeader
         title={`${tenPhieuTra(maPhieu)} — ${ret.customer?.store_name || "N/A"}`}
-        description={`Tạo: ${formatDate(ret.created_at)} • Lý do: ${reasonLabel}`}
+        description={`Ngày: ${formatDate(ngayPhieu || ret.created_at)} • Lý do: ${reasonLabel}`}
         backHref="/returns"
       >
         <StatusBadge status={ret.status} type="return" />
@@ -369,6 +373,23 @@ export default function ReturnDetailPage() {
             Tự sinh theo HĐ {inv.invoice?.invoice_code ?? ""}
           </span>
         )}
+        {/* ⚠ CÙNG BỘ NÚT VỚI XEM NHANH (chủ nhà 25/09/2026: "Trong chi tiết phiếu trả có các
+            phím chức năng như ngoài xem nhanh") — In / Sửa theo loại phiếu. */}
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/returns/${ret.id}/print?auto=1`}>
+            <Printer className="mr-1.5 h-4 w-4" /> In
+          </Link>
+        </Button>
+        {(() => {
+          const sua = duongSuaPhieuTra(ret)
+          return sua ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={sua.href}>
+                <Pencil className="mr-1.5 h-4 w-4" /> {sua.nhan}
+              </Link>
+            </Button>
+          ) : null
+        })()}
       </PageHeader>
 
       {hd.lyDo && ret.status !== "cancelled" && (

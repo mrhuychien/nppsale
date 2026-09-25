@@ -1,5 +1,6 @@
 "use client"
 
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { useEffect, useState } from "react"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
@@ -23,7 +24,7 @@ import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG_NCC } from "@/lib/search/list-filter-fields"
-import { bamTrangThai, dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
+import { bamTrangThai, dangChon, trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import {
   PURCHASE_RETURN_COLUMNS,
   DEFAULT_PURCHASE_RETURN_COLUMNS,
@@ -58,7 +59,10 @@ export default function PurchaseReturnsPage() {
   const [loading, setLoading] = useState(true)
   /** Chạm trần / lỗi đọc — tổng không đủ thì nói ra, không in số hụt. */
   const [canhBao, setCanhBao] = useState<string | null>(null)
-  const [filter, setFilter] = useState<StatusFilter>("all")
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [filterLuu, setFilterLuu] = useLuuTrangThai("purchase-returns", "all")
+  const filter = filterLuu as StatusFilter
+  const setFilter = (v: StatusFilter) => setFilterLuu(v)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("purchase-returns", LOC_TRA_HANG_NCC)
   const {
@@ -101,7 +105,7 @@ export default function PurchaseReturnsPage() {
     fetch()
   }, [user?.org_id, filter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => !dangChon(filter, "cancelled") && r.status === "cancelled", !canhBao)
+  const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => !tachTrangThai(filter).includes("cancelled") && r.status === "cancelled", !canhBao)
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -148,7 +152,7 @@ export default function PurchaseReturnsPage() {
         <DocListTotals
           className="rounded-xl border"
           label="Tổng tiền trả NCC"
-          countText={`${tongPhieu.soPhieu} phiếu trả${!dangChon(filter, "cancelled") && filter !== "draft" && filter !== "completed" ? " · không tính phiếu huỷ" : ""}`}
+          countText={`${tongPhieu.soPhieu} phiếu trả${!tachTrangThai(filter).includes("cancelled") && filter !== "draft" && filter !== "completed" ? " · không tính phiếu huỷ" : ""}`}
           total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
         />
       )}

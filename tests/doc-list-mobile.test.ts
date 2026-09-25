@@ -275,7 +275,7 @@ describe("dải đếm trạng thái", () => {
   })
 
   it("hóa đơn: Tất cả vẫn đứng cuối, mặc định là Đã xuất", () => {
-    expect(INVOICES).toContain('useState<string>("posted")')
+    expect(INVOICES).toContain('useLuuTrangThai("sales-invoices", "posted")')
     const i = INVOICES.indexOf("const TABS = [")
     const decl = INVOICES.slice(i, INVOICES.indexOf("] as const", i))
     expect(decl).toContain('label: "Tất cả"')

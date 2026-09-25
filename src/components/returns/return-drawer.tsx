@@ -19,7 +19,7 @@ import { errorMessage } from "@/lib/errors"
 import { RETURN_REASONS, RETURN_STATUS_MAP } from "@/lib/constants"
 import { CustomerQuickInfo, type QuickCustomer } from "@/components/orders/customer-quick-info"
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
-import { laNhapTheoDon, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
+import { duongSuaPhieuTra } from "@/lib/returns/loai-phieu"
 
 interface DrawerReturn {
   id: string
@@ -91,18 +91,8 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
   const st = r ? RETURN_STATUS_MAP[r.status] : null
   const tra = (r?.lines ?? []).filter((l) => !l.is_exchange)
   const doi = (r?.lines ?? []).filter((l) => l.is_exchange)
-  /**
-   * ⚠ NÚT SỬA THEO LOẠI PHIẾU (chủ nhà 25/09/2026): phiếu TỰ SINH → sửa HÓA ĐƠN (phiếu
-   *   ăn theo hóa đơn, mig 191); phiếu TỰ LẬP → POS sửa phiếu. Hàng trả còn nằm trong
-   *   ĐƠN chưa xuất → sửa đơn. Phiếu đã huỷ thì không sửa.
-   */
-  const suaHref = !r || r.status === "cancelled"
-    ? null
-    : laPhieuTuSinh(r)
-      ? (r.invoice_id ? `/sales-invoices/${r.invoice_id}/edit` : null)
-      : laNhapTheoDon(r)
-        ? (r.order_id ? `/pos/don-hang/${r.order_id}` : null)
-        : `/pos/tra-hang/${r.id}`
+  /* Nút Sửa theo loại phiếu — `duongSuaPhieuTra` (chung với trang chi tiết). */
+  const sua = r ? duongSuaPhieuTra(r) : null
 
   return (
     <Sheet open={!!returnId} onOpenChange={(o) => !o && onClose()}>
@@ -192,12 +182,12 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
             >
               In
             </NewTabLink>
-            {suaHref && (
+            {sua && (
               <NewTabLink
-                href={suaHref}
+                href={sua.href}
                 className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
               >
-                {r && laPhieuTuSinh(r) ? "Sửa hóa đơn" : "Sửa"}
+                {sua.nhan}
               </NewTabLink>
             )}
             <NewTabLink

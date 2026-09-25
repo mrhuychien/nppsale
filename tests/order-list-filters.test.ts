@@ -226,7 +226,11 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
    */
   it("phép đếm ăn theo cùng bộ lọc với danh sách", () => {
     expect(ORDERS).toContain("applyCommonFilters(")
-    expect(ORDERS).toContain("COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st))")
+    /* ⚠ Đếm theo TỪNG trạng thái thật (`.eq`), rồi cộng theo nhóm tab. Đi qua
+       `applyStatusFilter` là "completed" đã bung ra cả nhóm — cộng lần nữa thì
+       `closed` / `partially_invoiced` bị đếm hai lần. */
+    expect(ORDERS).toContain('COUNTED_STATUSES.map((st) => (base() as any).eq("status", st))')
+    expect(ORDERS).not.toContain("COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st))")
     // Đếm phải chạy lại khi bất kỳ bộ lọc chung nào đổi.
     /**
      * ⚠ `focusTick` Ở CUỐI LÀ CÓ CHỦ Ý, không phải rác: quay về tab này

@@ -1396,16 +1396,15 @@ export default function OrderDetailPage() {
               ? done(order.completed_at)
               : "Đã xuất đủ"
             : st === "partially_invoiced"
-              ? "Mới xuất một phần — còn hàng nằm lại trên đơn"
+              ? "Hoàn thành — còn hàng chưa xuất, vẫn xuất tiếp được"
               : st === "closed"
                 ? "Đã đóng đơn, không giao nốt phần còn lại"
                 : "Chưa xuất",
         state:
-          st === "completed" || st === "closed"
+          /* ⚠ Chủ nhà 25/09/2026: "Xuất một phần" coi như Hoàn thành. */
+          st === "completed" || st === "closed" || st === "partially_invoiced"
             ? "done"
-            : st === "partially_invoiced"
-              ? "current"
-              : st === "submitted"
+            : st === "submitted"
                 ? "current"
                 : "todo",
       },

@@ -101,7 +101,8 @@ export function labelPaymentMethod(method: string | null | undefined): string {
 export const ORDER_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "danger" }> = {
   draft: { label: "Nháp", variant: "secondary" },
   submitted: { label: "Phiếu tạm", variant: "warning" },
-  partially_invoiced: { label: "Xuất một phần", variant: "default" },
+  /* ⚠ Chủ nhà 25/09/2026: gộp "Xuất một phần" vào "Hoàn thành" — cùng nhãn, cùng màu. */
+  partially_invoiced: { label: "Hoàn thành", variant: "success" },
   completed: { label: "Hoàn thành", variant: "success" },
   closed: { label: "Đã đóng", variant: "secondary" },
   cancelled: { label: "Đã hủy", variant: "danger" },

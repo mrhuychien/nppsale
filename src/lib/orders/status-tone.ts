@@ -33,9 +33,9 @@ export interface OrderTone {
  * `draft` — xám, nghĩa là "chưa gửi" — và một đơn đã giao một phần trông
  * y hệt một đơn chưa ai đụng tới.
  *
- * ⚠ `partially_invoiced` DÙNG HỔ PHÁCH, không dùng đỏ. Theo quy ước giao
- * diện của dự án: hổ phách = "còn việc phải làm", đỏ = lỗi. Đơn giao
- * thiếu là việc còn dở, không phải sự cố.
+ * ⚠ `partially_invoiced` CÙNG MÀU `completed`. Chủ nhà 25/09/2026: "gộp trạng
+ * thái Xuất một phần vào Hoàn thành (coi như Hoàn thành) bỏ trạng thái Xuất
+ * một phần" — cùng nhãn "Hoàn thành" (ORDER_STATUS_MAP), cùng màu xanh.
  *
  * ⚠ `closed` DÙNG XÁM ĐẬM, không dùng xanh của `completed`. Hai thứ khác
  * nhau: `completed` = đã giao đủ, `closed` = thôi không giao nốt. Cho
@@ -44,7 +44,7 @@ export interface OrderTone {
 const TONES: Record<string, Omit<OrderTone, "key" | "label">> = {
   draft: { bg: "#eef1f5", fg: "#565a67", accent: "#b9c4d6" },
   submitted: { bg: "#fff4e0", fg: "#8a5a00", accent: "#fdb022" },
-  partially_invoiced: { bg: "#fef3c7", fg: "#92400e", accent: "#f59e0b" },
+  partially_invoiced: { bg: "#e3f5ec", fg: "#004e33", accent: "#22c55e" },
   completed: { bg: "#e3f5ec", fg: "#004e33", accent: "#22c55e" },
   closed: { bg: "#e7e9ee", fg: "#3f4550", accent: "#6b7280" },
   cancelled: { bg: "#fdecec", fg: "#b00020", accent: "#ef5350" },

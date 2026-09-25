@@ -131,7 +131,7 @@ const COUNTED_STATUSES = [
 const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
   draft: "Nháp",
   submitted: "Phiếu tạm",
-  partially_invoiced: "Xuất một phần",
+  partially_invoiced: "Hoàn thành",
   completed: "Hoàn thành",
   closed: "Đã đóng",
   cancelled: "Đã huỷ",
@@ -163,10 +163,15 @@ const STATUS_CHIP_LABEL: Record<(typeof COUNTED_STATUSES)[number], string> = {
  * `closed` = thôi không giao nốt — `orderTone` giữ chúng hai màu khác
  * nhau (xanh / xám đậm) nên gộp tab không xoá mất khác biệt ấy.
  */
+/*
+ * ⚠ CHỦ NHÀ 25/09/2026: "gộp trạng thái Xuất một phần vào Hoàn thành (coi như Hoàn thành)
+ *   bỏ trạng thái Xuất một phần". Không còn chip "Xuất một phần": đơn `partially_invoiced`
+ *   nằm trong "Hoàn thành" (trạng thái trong sổ giữ nguyên — phần hàng còn lại vẫn xuất
+ *   được từ chi tiết đơn).
+ */
 const TAB_STATUSES: Record<string, readonly string[]> = {
   submitted: ["submitted"],
-  partially_invoiced: ["partially_invoiced"],
-  completed: ["completed", "closed"],
+  completed: ["partially_invoiced", "completed", "closed"],
   cancelled: ["cancelled"],
 }
 
@@ -198,7 +203,6 @@ const TAB_STATUSES: Record<string, readonly string[]> = {
 const ORDER_TABS = [
   "all",
   "submitted",
-  "partially_invoiced",
   "completed",
   "cancelled",
 ] as const
@@ -517,13 +521,16 @@ export default function OrdersPage() {
     if (pFrom) x = x.gte("order_date", pFrom)
     if (amountMin) x = x.gte("total", parseFloat(amountMin))
     if (amountMax) x = x.lte("total", parseFloat(amountMax))
+    /* ⚠ NVBH không thấy đơn đã huỷ — ở danh sách, tổng tiền lẫn các chip đếm (chủ nhà 25/09/2026). */
+    if (isSales) x = x.neq("status", "cancelled")
     return x as T
   }
 
   /** Lọc theo trạng thái. Tách riêng vì phép đếm phải chạy cho TỪNG trạng thái. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   /** Danh sách tab đang vẽ. */
-  const tabKeys: readonly string[] = ORDER_TABS
+  /* ⚠ CHỦ NHÀ 25/09/2026: "Trạng thái Đã huỷ -> Ẩn với nhân viên bán hàng". */
+  const tabKeys: readonly string[] = isSales ? ORDER_TABS.filter((k) => k !== "cancelled") : ORDER_TABS
   /**
    * Trạng thái THẬT SỰ được lọc.
    *
@@ -607,7 +614,10 @@ export default function OrdersPage() {
         )
       const [total, ...resps] = await Promise.all([
         base(),
-        ...COUNTED_STATUSES.map((st) => applyStatusFilter(base(), st)),
+        /* ⚠ ĐẾM THEO TỪNG TRẠNG THÁI THẬT (`.eq`), rồi mới cộng theo nhóm ở dưới. Đi qua
+           `applyStatusFilter` là "completed" đã tự bung ra cả nhóm — cộng nhóm lần nữa thì
+           đơn `closed` / `partially_invoiced` bị đếm hai lần. */
+        ...COUNTED_STATUSES.map((st) => (base() as any).eq("status", st)), // eslint-disable-line @typescript-eslint/no-explicit-any
       ])
       if (cancelled) return
       // ⚠ Đếm hỏng thì mọi chip hiện 0 — trông y hệt "chưa có đơn nào", và
@@ -634,7 +644,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter đổi.
   useEffect(() => {
@@ -711,7 +721,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -814,7 +824,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ⚠ Bộ lọc pipeline đã bỏ (chủ nhà chốt 23/09/2026) — mọi lọc chạy ở máy chủ. */
   const filtered = orders

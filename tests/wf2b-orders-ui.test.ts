@@ -557,11 +557,17 @@ describe("Sáu trạng thái đi tới mọi bảng tra cứu", () => {
    * xanh của `completed` vẫn xanh — và khi đó "đã giao đủ" với "thôi
    * không giao nốt" trông y hệt nhau trên màn hình.
    */
-  it("sáu trạng thái sáu màu, không cái nào trùng cái nào", () => {
-    const bgs = ALL.map((s) => orderTone(s).bg)
-    expect(new Set(bgs).size, `màu trùng nhau: ${bgs.join(" ")}`).toBe(ALL.length)
-    const accents = ALL.map((s) => orderTone(s).accent)
-    expect(new Set(accents).size).toBe(ALL.length)
+  /* ⚠ Trừ `partially_invoiced`: chủ nhà 25/09/2026 gộp "Xuất một phần" vào "Hoàn thành"
+     — cùng nhãn, cùng màu với `completed`. Năm trạng thái còn lại vẫn khác màu nhau. */
+  it("năm trạng thái năm màu; xuất một phần mang màu Hoàn thành", () => {
+    const KHAC = ALL.filter((s) => s !== "partially_invoiced")
+    const bgs = KHAC.map((s) => orderTone(s).bg)
+    expect(new Set(bgs).size, `màu trùng nhau: ${bgs.join(" ")}`).toBe(KHAC.length)
+    const accents = KHAC.map((s) => orderTone(s).accent)
+    expect(new Set(accents).size).toBe(KHAC.length)
+    const { key: _k1, ...motPhan } = orderTone("partially_invoiced")
+    const { key: _k2, ...xong } = orderTone("completed")
+    expect(motPhan).toEqual(xong)
   })
 
   it("nhãn của tone lấy từ bảng nhãn chung, không viết lại", () => {

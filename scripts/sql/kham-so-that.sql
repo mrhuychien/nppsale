@@ -292,4 +292,14 @@ SELECT 33, 'Mig 193 (phiếu trả có số TH-)',
        WHEN EXISTS (SELECT 1 FROM returns WHERE return_code IS NULL)
        THEN 'LỆCH — còn phiếu trả chưa có số, chạy lại mig 193'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 34. Mig 194 — công nợ theo nhân viên khớp doanh số
+SELECT 34, 'Mig 194 (người đứng tên công nợ khớp doanh số, bỏ kẹp 0 ở Công nợ theo NV)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi')
+            OR position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_rep()'::regprocedure)) > 0
+       THEN 'CHƯA — công nợ theo NV lệch doanh số NV (nợ kẹt người cũ, kẹp 0 dư có)'
+       WHEN EXISTS (SELECT 1 FROM receivables rc JOIN sales_invoices si ON si.id = rc.invoice_id
+                    WHERE rc.sales_user_id IS DISTINCT FROM si.sales_user_id)
+       THEN 'LỆCH — còn dòng nợ khác người HĐ, chạy lại mig 194'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

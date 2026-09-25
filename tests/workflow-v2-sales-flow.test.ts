@@ -58,9 +58,11 @@ describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
      * thì đơn xuất một phần không nằm trong viên nào và biến mất khỏi
      * màn hình — đúng chuyện chủ nhà báo. Xem `tests/order-tabs-cover-all`.
      */
-    for (const s of ["all", "submitted", "partially_invoiced", "completed", "cancelled"]) {
+    for (const s of ["all", "submitted", "completed", "cancelled"]) {
       expect(decl, `thiếu tab ${s}`).toContain(`"${s}"`)
     }
+    // ⚠ LẬT 25/09/2026 — chủ nhà: "bỏ trạng thái Xuất một phần" (gộp vào Hoàn thành).
+    expect(decl).not.toContain('"partially_invoiced"')
     // ⚠ "Nháp" KHÔNG có tab riêng: màn này không có nút nào làm được gì
     // với một bản nháp. Cho nó một tab là người dùng mở đúng chỗ không có
     // nút. (Nháp vẫn nằm trong "Tất cả" — đó là chuyện khác.)
@@ -74,8 +76,9 @@ describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
      * dải mở ra với viên thứ tư được tô đậm.
      */
     expect(decl.indexOf('"all"')).toBeLessThan(decl.indexOf('"submitted"'))
-    // ⚠ Và KHÔNG rẽ theo vai trò: nhà phân phối cũng bốn tab ấy.
-    expect(LIST).toContain("const tabKeys: readonly string[] = ORDER_TABS")
+    // ⚠ LẬT 25/09/2026 — chủ nhà: "Trạng thái Đã huỷ -> Ẩn với nhân viên bán hàng":
+    //   NVBH bỏ viên Đã huỷ, còn lại cùng bộ tab với nhà phân phối.
+    expect(LIST).toContain('const tabKeys: readonly string[] = isSales ? ORDER_TABS.filter((k) => k !== "cancelled") : ORDER_TABS')
   })
 
   /**

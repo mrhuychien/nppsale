@@ -1,6 +1,7 @@
 "use client"
 
 import { vnDateKey } from "@/lib/orders/status-tone"
+import { anDonHuy } from "@/lib/orders/an-don-huy"
 import { useEffect, useMemo, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
@@ -106,6 +107,7 @@ const VISIT_RESULT: Record<
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const laNvbh = user?.role === "sales"
   const { loading: authLoading } = useRoleGuard("customers")
   const { groups } = useCustomerGroups()
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -353,7 +355,8 @@ export default function CustomerDetailPage() {
     setAllInvoices(invoiceRows)
     setAllPayments(((paymentsRes.data as unknown) as typeof allPayments) || [])
 
-    const orders = allOrdersRes.rows
+    /* ⚠ CHỦ NHÀ 25/09/2026: "Trạng thái Đã huỷ -> Ẩn với nhân viên bán hàng". */
+    const orders = anDonHuy(allOrdersRes.rows, laNvbh)
     setAllOrders(orders)
     setTotalOrders(orders.length)
     setRecentOrders(orders.slice(0, 5))
@@ -473,7 +476,7 @@ export default function CustomerDetailPage() {
     setVisits(((visitData as unknown) as VisitRow[]) || [])
 
     setLoading(false)
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, laNvbh]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
 

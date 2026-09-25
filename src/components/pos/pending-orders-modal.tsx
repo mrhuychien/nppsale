@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
+import { ORDER_STATUS_MAP } from "@/lib/constants"
 
 interface Row {
   id: string
@@ -159,7 +160,7 @@ export function PendingOrdersModal({
                   <div className="truncate text-[12.5px] text-[var(--pos-ink)]">{r.customer?.store_name || "Khách lẻ"}</div>
                   <div className="truncate text-[12px] text-[var(--pos-muted)]">{r.sales_user?.full_name || "—"}</div>
                   <div className="text-[11.5px] text-[var(--pos-muted)]">
-                    {r.status === "partially_invoiced" ? "Xuất một phần" : "Phiếu tạm"}
+                    {ORDER_STATUS_MAP[r.status]?.label ?? "Phiếu tạm"}
                   </div>
                   <div className="n text-right text-[12.5px] text-[var(--pos-ink)]">{formatCurrency(r.total)}</div>
                   <div className="text-right">

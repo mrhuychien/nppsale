@@ -85,12 +85,16 @@ describe("không trạng thái nào rơi khỏi màn hình", () => {
    * để giao. Huy hiệu trên từng dòng vẫn phân biệt (xanh / xám đậm) nên
    * gộp tab không xoá mất khác biệt — xem chốt huy hiệu bên dưới.
    */
-  it("xuất một phần có viên riêng, đóng đơn đi cùng Hoàn thành", () => {
+  /*
+   * ⚠ LẬT 25/09/2026 — chủ nhà: "gộp trạng thái Xuất một phần vào Hoàn thành (coi như
+   *   Hoàn thành) bỏ trạng thái Xuất một phần". Đơn xuất một phần nằm trong "Hoàn thành".
+   */
+  it("xuất một phần và đóng đơn đi cùng Hoàn thành, không còn viên riêng", () => {
     const i = ORDERS.indexOf("const TAB_STATUSES")
     const decl = ORDERS.slice(i, ORDERS.indexOf("\n}", i))
     expect(decl).toContain('submitted: ["submitted"]')
-    expect(decl).toContain('partially_invoiced: ["partially_invoiced"]')
-    expect(decl).toContain('completed: ["completed", "closed"]')
+    expect(decl).not.toContain('partially_invoiced: ["partially_invoiced"]')
+    expect(decl).toContain('completed: ["partially_invoiced", "completed", "closed"]')
   })
 
   /**

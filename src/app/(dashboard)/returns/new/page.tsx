@@ -422,7 +422,10 @@ export default function NewReturnPage() {
           reason,
           notes: notes.trim() || null,
           /**
-           * ⚠ LẬP PHIẾU RA Ở "PHIẾU TẠM", KHÔNG PHẢI "HOÀN THÀNH".
+           * ⚠ LẬP PHIẾU RA Ở "NHÁP" (chủ nhà 25/09/2026: "trạng thái Chờ xử lý chỉ có
+           * ở phiếu trả tự sinh" — mig 191). Phiếu tự lập đi Nháp → Hoàn thành.
+           *
+           * ⚠ KHÔNG PHẢI "HOÀN THÀNH".
            *
            * Bản trước ghi thẳng 'completed' vì hồi đó có trigger tự nhập
            * kho khi phiếu trả chuyển trạng thái. Migration 120 đã GỠ
@@ -435,7 +438,7 @@ export default function NewReturnPage() {
            * `returns.approve` bấm Hoàn thành và CHỌN kho nhận — hàng còn
            * bán được hay phải để riêng là quyết định của họ, không đoán hộ.
            */
-          status: "submitted",
+          status: "draft",
           // Trigger `trg_return_lines_sync_credit` sẽ tính lại từ các dòng;
           // ghi sẵn ở đây để phiếu không có một khoảnh khắc nào mang số 0.
           credit_note_amount: credit,

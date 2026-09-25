@@ -262,4 +262,14 @@ SELECT 30, 'Mig 190 (phiếu trả POS + huỷ phiếu trả tính lại công n
        WHEN position('(mig 190)' IN pg_get_functiondef('public.cancel_return(uuid, text)'::regprocedure)) = 0
        THEN 'CHƯA — huỷ phiếu trả đi cùng hóa đơn đang chờ thì công nợ vẫn trừ'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 31. Mig 191 — luật phiếu trả tự sinh (theo HĐ) / tự lập
+SELECT 31, 'Mig 191 (phiếu trả tự sinh chỉ huỷ; tự lập hoàn thành là trừ nợ ngay)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'receivables' AND column_name = 'return_id')
+            OR position('RETURN_FOLLOWS_INVOICE' IN pg_get_functiondef('public.cancel_return(uuid, text)'::regprocedure)) = 0
+       THEN 'CHƯA — phiếu trả tự lập không gắn HĐ hoàn thành mà không trừ nợ; huỷ được phiếu tự sinh đang chờ'
+       WHEN EXISTS (SELECT 1 FROM returns WHERE status = 'submitted' AND NOT COALESCE(credit_with_invoice, false))
+       THEN 'LỆCH — còn phiếu tự lập ở Chờ xử lý, chạy lại mig 191'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

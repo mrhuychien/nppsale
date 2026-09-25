@@ -72,11 +72,13 @@ const REASON_COLORS: Record<string, string> = {
  */
 const RETURN_TABS = [
   { value: "submitted", label: "Chờ xử lý" },
-  { value: "completed", label: "Đã nhập kho" },
   { value: "draft", label: "Nháp" },
+  { value: "completed", label: "Đã nhập kho" },
   { value: "cancelled", label: "Đã huỷ" },
   { value: "all", label: "Tất cả" },
 ] as const
+
+const MAC_DINH_TRANG_THAI = "submitted,draft"
 
 export default function ReturnsPage() {
   const { loading: authLoading } = useRoleGuard("returns")
@@ -96,7 +98,9 @@ export default function ReturnsPage() {
    * hoàn thành. Trộn cả phiếu đã xong vào danh sách mặc định là việc cần
    * làm chìm trong hàng trăm dòng đã xong.
    */
-  const [statusFilter, setStatusFilter] = useState<string>("submitted")
+  /* ⚠ "Chờ xử lý" nay chỉ có ở phiếu TỰ SINH (chủ nhà 25/09/2026, mig 191); phiếu tự
+     lập chờ bấm Hoàn thành nằm ở Nháp — hàng đợi việc phải gồm cả hai. */
+  const [statusFilter, setStatusFilter] = useState<string>(MAC_DINH_TRANG_THAI)
   const [search, setSearch] = useState("")
   const [totalCount, setTotalCount] = useState(0)
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
@@ -220,7 +224,7 @@ export default function ReturnsPage() {
       let q = supabase
         .from("returns")
         .select(
-          "id, created_at, reason, status, credit_note_amount, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+          "id, created_at, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -423,7 +427,7 @@ export default function ReturnsPage() {
                 </SelectContent>
               </Select>
             )}
-            {(reasonFilter !== "all" || sellerFilter !== "all" || search.trim() !== "" || statusFilter !== "submitted") && (
+            {(reasonFilter !== "all" || sellerFilter !== "all" || search.trim() !== "" || statusFilter !== MAC_DINH_TRANG_THAI) && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -431,7 +435,7 @@ export default function ReturnsPage() {
                   setReasonFilter("all")
                   setSellerFilter("all")
                   setSearch("")
-                  setStatusFilter("submitted")
+                  setStatusFilter(MAC_DINH_TRANG_THAI)
                 }}
               >
                 Xoá lọc
@@ -534,6 +538,11 @@ export default function ReturnsPage() {
                           {show("status") && (
                             <TableCell>
                               <StatusBadge status={r.status} type="return" />
+                              {r.credit_with_invoice && (
+                                <span className="ml-1.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Phiếu tự sinh theo hóa đơn — sửa từ hóa đơn">
+                                  Theo HĐ
+                                </span>
+                              )}
                             </TableCell>
                           )}
                         </TableRow>
@@ -593,6 +602,11 @@ export default function ReturnsPage() {
                           </div>
                           <div className="shrink-0">
                             <StatusBadge status={r.status} type="return" />
+                            {r.credit_with_invoice && (
+                                <span className="ml-1.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Phiếu tự sinh theo hóa đơn — sửa từ hóa đơn">
+                                  Theo HĐ
+                                </span>
+                              )}
                           </div>
                         </div>
                         {r.credit_note_amount ? (

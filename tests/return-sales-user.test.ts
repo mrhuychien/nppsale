@@ -287,7 +287,7 @@ describe("màn chi tiết phiếu trả — đổi người đứng tên", () =>
      *   `sales_user_id` vào câu `select` lớn là cột chưa có thì CẢ màn
      *   chi tiết phiếu trả trắng bóc. Hỏi riêng thì hỏng riêng.
      */
-    const iLon = ma.indexOf('"id, order_id, invoice_id, reason, status')
+    const iLon = ma.indexOf('"id, order_id, invoice_id, credit_with_invoice, reason, status')
     expect(iLon).toBeGreaterThan(0)
     const cauLon = ma.slice(iLon, ma.indexOf('"', iLon + 10))
     expect(cauLon).not.toContain("sales_user_id")

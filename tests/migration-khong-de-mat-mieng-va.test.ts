@@ -143,6 +143,22 @@ const DAU_HIEU: Record<string, Array<{ chuoi: string; vi_sao: string }>> = {
         "một mặt hàng khỏi đơn, dù hóa đơn đã huỷ và `invoiced_qty` đã về 0",
     },
   ],
+  /**
+   * ⚠ `cancel_return` BỊ VÁ CHUỖI Ở MIG 190 (tính lại công nợ HĐ khi huỷ phiếu chờ),
+   *   rồi mig 191 viết lại cả hàm. Bản viết lại phải mang theo miếng vá ấy.
+   */
+  cancel_return: [
+    {
+      chuoi: "PERFORM public._wf2b_recompute_receivable(r.invoice_id);\n    END IF;\n    RETURN;",
+      vi_sao:
+        "mig 190 — huỷ phiếu trả đi cùng hóa đơn đang chờ thì tính lại công nợ HĐ. Mất nó là " +
+        "huỷ xong công nợ vẫn trừ (đo: HĐ 220.000, trả 50.000, huỷ → vẫn 170.000)",
+    },
+    {
+      chuoi: "RETURN_FOLLOWS_INVOICE",
+      vi_sao: "mig 191 — phiếu tự sinh đang Chờ xử lý không huỷ được, sửa từ hóa đơn (chủ nhà 25/09/2026)",
+    },
+  ],
   post_invoice: [
     {
       chuoi: "reissue_of",

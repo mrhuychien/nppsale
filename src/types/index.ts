@@ -744,6 +744,10 @@ export interface Return {
    * đem nó cấn trừ lần nữa.
    */
   applied_receipt_id?: string | null
+  /** Hóa đơn bán gắn phiếu (mig 124). */
+  invoice_id?: string | null
+  /** Phiếu TỰ SINH theo hóa đơn — công nợ trừ vào hóa đơn; chỉ huỷ nhập kho, sửa từ hóa đơn (mig 131, 191). */
+  credit_with_invoice?: boolean | null
   created_at: string
   // Joined
   customer?: Customer

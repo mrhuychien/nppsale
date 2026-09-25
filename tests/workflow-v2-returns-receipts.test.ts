@@ -45,11 +45,16 @@ describe("Phiếu trả ra đời ở Phiếu tạm, không phải Hoàn thành"
    *   suy suyển gì. `requested_by: user.id` là dòng chỉ có trong đúng
    *   thân phiếu trả, dựng ở đâu cũng đi cùng nó.
    */
-  it("màn lập phiếu tay ghi 'submitted', không ghi thẳng 'completed'", () => {
+  /**
+   * ⚠ CHỦ NHÀ 25/09/2026: "trạng thái Chờ xử lý chỉ có ở phiếu trả tự sinh" (mig 191)
+   *   — phiếu lập tay ra ở NHÁP, bấm Hoàn thành mới nhập kho + trừ nợ.
+   */
+  it("màn lập phiếu tay ghi 'draft', không ghi thẳng 'completed'", () => {
     const i = RET_NEW.indexOf("requested_by: user.id")
     expect(i).toBeGreaterThan(0)
-    const block = RET_NEW.slice(i, i + 900)
-    expect(block).toContain('status: "submitted"')
+    const block = RET_NEW.slice(i, i + 1100)
+    expect(block).toContain('status: "draft"')
+    expect(block).not.toContain('status: "submitted"')
     expect(block, "lại lập thẳng vào hoàn thành").not.toContain('status: "completed"')
     /* Và cả màn không được có đường nào ghi thẳng 'completed'. */
     expect(RET_NEW).not.toContain('status: "completed"')
@@ -115,8 +120,10 @@ describe("Hoàn thành / huỷ phiếu trả đi qua RPC", () => {
    */
   it("dịch đủ mã lỗi của hai RPC đơn trả", () => {
     expect(explainReturnError("… RETURN_NOT_SUBMITTED: phiếu trả không ở Phiếu tạm")).toContain(
-      "không còn ở Phiếu tạm"
+      "không còn chờ hoàn thành"
     )
+    expect(explainReturnError("… RETURN_FOLLOWS_INVOICE: phiếu trả tự sinh theo hóa đơn — muốn sửa thì sửa hóa đơn"))
+      .toBe("phiếu trả tự sinh theo hóa đơn — muốn sửa thì sửa hóa đơn")
     /**
      * ⚠ SO BẰNG `toBe`, KHÔNG PHẢI `toContain`. Bản đầu của hai chốt này
      * dùng `toContain` với một cụm chữ CÓ SẴN trong thông điệp gốc của
@@ -313,13 +320,16 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
   })
 
   /**
-   * ⚠ `cancel_return` chặn khi đơn gốc đã thu tiền — DÙ CHỈ MỘT ĐỒNG, và
-   * chặn cho mọi khoản thu chứ không riêng khoản liên quan phiếu trả.
-   * Nói trước, đừng để người dùng gõ xong lý do rồi mới nhận lỗi.
+   * ⚠ CHỦ NHÀ 25/09/2026 (mig 191): phiếu tự lập "sửa/huỷ được -> mọi thứ cập nhật
+   *   theo" — BỎ khoá "đơn gốc đã thu tiền"; nợ tự tăng lại, và màn phải NÓI RA điều
+   *   đó. Chỉ còn khoá phiếu đã cấn trừ theo cách cũ ở phiếu thu. Phiếu tự sinh thì
+   *   huỷ là "huỷ nhập kho", phiếu về Chờ xử lý.
    */
-  it("nói trước hai khoá của việc huỷ phiếu đã hoàn thành", () => {
-    expect(RET_DETAIL).toContain("đơn gốc đã thu")
-    expect(RET_DETAIL).toContain("dù chỉ một phần")
+  it("nói trước hậu quả của việc huỷ phiếu đã hoàn thành", () => {
+    expect(RET_DETAIL).not.toContain("đơn gốc đã thu")
+    expect(RET_DETAIL).toContain("cộng lại công nợ cho khách — kể cả khi tiền đã thu")
+    expect(RET_DETAIL).toContain("ret.applied_receipt_id && (")
+    expect(RET_DETAIL).toContain("đưa phiếu về Chờ xử lý. Công nợ giữ nguyên")
   })
 
   /**
@@ -335,7 +345,9 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
 
   /** Hàng đợi việc thì mở ra ở việc phải làm, không phải ở sổ tra cứu. */
   it("danh sách mở ra ở tab Chờ xử lý và lọc theo trạng thái ở máy chủ", () => {
-    expect(RET_LIST).toContain('useState<string>("submitted")')
+    /* ⚠ Chờ xử lý (tự sinh) + Nháp (tự lập chờ Hoàn thành) — mig 191. */
+    expect(RET_LIST).toContain('const MAC_DINH_TRANG_THAI = "submitted,draft"')
+    expect(RET_LIST).toContain("useState<string>(MAC_DINH_TRANG_THAI)")
     // Lọc trạng thái nằm trong `apDungLoc` — MỘT bộ lọc cho cả danh sách lẫn
     // phép cộng tổng khoản có (23/09/2026).
     // Chọn nhiều (25/09/2026) — vẫn lọc ở máy chủ, một hay nhiều trạng thái.

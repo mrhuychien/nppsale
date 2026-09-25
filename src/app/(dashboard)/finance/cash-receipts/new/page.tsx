@@ -320,6 +320,9 @@ export default function NewCashReceiptPage() {
           .eq("customer_id", cid)
           .eq("status", "completed")
           .is("order_id", null)
+          /* ⚠ (mig 191) Phiếu gắn hóa đơn đã trừ vào hóa đơn lúc hoàn thành — cấn
+             trừ nữa là trừ HAI LẦN. Phiếu độc lập thì nay đã là công nợ âm. */
+          .is("invoice_id", null)
           .is("applied_receipt_id", null)
           .order("created_at", { ascending: true }),
         /**

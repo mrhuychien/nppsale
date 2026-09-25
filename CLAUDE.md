@@ -51,6 +51,17 @@ không được kẹp về 0.
 - POS: "Khách cần trả" vẫn kẹp 0; phần vượt hiện dòng "Ghi có cho khách (công nợ âm)"
   (`tachPhaiTra` trong `src/lib/pos/totals.ts`).
 
+### Phiếu trả TỰ SINH (theo hóa đơn) và phiếu trả TỰ LẬP
+Chủ nhà chốt 25/09/2026 (mig 191).
+- **Tự sinh** (`returns.credit_with_invoice`, đơn có hàng đổi trả khi xuất hóa đơn): công nợ trừ vào
+  hóa đơn **ngay lúc xuất**; phiếu chỉ treo nhập kho ở **Chờ xử lý**. Không sửa ở phiếu — sửa từ hóa
+  đơn. Chờ xử lý thì **không huỷ**; đã nhập kho thì huỷ = đảo kho, phiếu **về Chờ xử lý**, nợ giữ nguyên.
+- **"Chờ xử lý" chỉ có ở phiếu tự sinh.** Phiếu tự lập đi Nháp → Hoàn thành → Đã huỷ.
+- **Tự lập**: hoàn thành = nhập kho **và** trừ nợ cùng lúc (gắn HĐ → trừ vào HĐ; không gắn → dòng công nợ
+  âm `receivables.return_id`, `_cong_no_phieu_tra`). Sửa / huỷ luôn được — kể cả khi tiền đã thu /
+  dư có đã dùng: nợ tự tăng lại. Không cấn trừ phiếu trả ở phiếu thu nữa (trừ hai lần).
+- Luật ở giao diện: `hanhDongPhieuTra` (`src/lib/returns/loai-phieu.ts`). Quét sổ: `scripts/sql/kiem-phieu-tra.sql`.
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

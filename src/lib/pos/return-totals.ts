@@ -113,7 +113,9 @@ export function debtAfterReturn(
   dueToCustomer: number
 ): number | null {
   if (currentDebt == null) return null
-  return Math.max(0, Number(currentDebt) - Math.max(0, dueToCustomer))
+  /* ⚠ KHÔNG KẸP VỀ 0 (luật công nợ âm, mig 186): trả nhiều hơn số đang nợ thì phần
+     vượt là DƯ CÓ của khách — số âm, trừ vào lần mua sau. */
+  return Number(currentDebt) - Math.max(0, dueToCustomer)
 }
 
 /**

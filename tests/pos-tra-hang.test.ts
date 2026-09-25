@@ -104,9 +104,13 @@ describe("công nợ sau phiếu trả", () => {
     expect(debtAfterReturn(undefined, 508_000)).toBeNull()
   })
 
-  /** ⚠ Trả nhiều hơn nợ thì về 0 — không hiện nợ âm. */
-  it("trả nhiều hơn nợ thì về 0", () => {
-    expect(debtAfterReturn(100_000, 500_000)).toBe(0)
+  /**
+   * ⚠ Trả nhiều hơn nợ thì ra SỐ ÂM — dư có của khách (luật công nợ âm mig 186,
+   * chủ nhà 25/09/2026 rà lại). Bản cũ kẹp về 0, nói với người lập phiếu rằng phần
+   * vượt biến mất.
+   */
+  it("trả nhiều hơn nợ thì ra dư có (số âm), không kẹp về 0", () => {
+    expect(debtAfterReturn(100_000, 500_000)).toBe(-400_000)
   })
 })
 

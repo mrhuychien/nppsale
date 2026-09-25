@@ -41,7 +41,7 @@ export function explainReturnError(message: string): string {
   if (m.includes("RETURN_NOT_FOUND")) return "Không tìm thấy phiếu trả."
   if (m.includes("ORG_MISMATCH")) return "Phiếu trả không thuộc đơn vị của bạn."
   if (m.includes("RETURN_NOT_SUBMITTED")) {
-    return "Phiếu trả không còn ở Phiếu tạm — có thể ai đó vừa xử lý. Tải lại trang."
+    return "Phiếu trả không còn chờ hoàn thành — có thể ai đó vừa xử lý. Tải lại trang."
   }
   if (m.includes("BAD_ZONE")) return "Phải chọn kho nhận: kho bán hoặc kho cận date."
   if (m.includes("ORDER_NOT_COMPLETED")) {
@@ -74,6 +74,10 @@ export function explainReturnError(message: string): string {
   if (m.includes("NO_IMPORT_TO_REVERSE")) {
     return m.replace(/^.*NO_IMPORT_TO_REVERSE:\s*/, "")
   }
+  /* Luật phiếu tự sinh / tự lập (mig 191). */
+  if (m.includes("RETURN_FOLLOWS_INVOICE")) return m.replace(/^.*RETURN_FOLLOWS_INVOICE:\s*/, "")
+  if (m.includes("RETURN_FOLLOWS_ORDER")) return m.replace(/^.*RETURN_FOLLOWS_ORDER:\s*/, "")
+  if (m.includes("RETURN_CREDIT_USED")) return m.replace(/^.*RETURN_CREDIT_USED:\s*/, "")
   /* Mã của `save_pos_return` (mig 190). */
   if (m.includes("RETURN_LOCKED")) return m.replace(/^.*RETURN_LOCKED:\s*/, "")
   if (m.includes("RETURN_COMPLETED")) return m.replace(/^.*RETURN_COMPLETED:\s*/, "")

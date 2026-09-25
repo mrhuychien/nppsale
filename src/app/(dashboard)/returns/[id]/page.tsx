@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { duocSuaPhieuTra, duocXoaPhieuTra } from "@/lib/sell/return-roles"
+import { hanhDongPhieuTra, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -90,7 +91,7 @@ export default function ReturnDetailPage() {
            *   giao nhiều đợt có nhiều hóa đơn; chỉ hiện mã đơn là người
            *   ta phải tự đoán đợt nào.
            */
-          "id, order_id, invoice_id, reason, status, credit_note_amount, photo_url, notes, created_at, destination_zone, completed_at, cancel_reason, applied_receipt_id, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code), invoice:sales_invoices(invoice_code, invoice_date)"
+          "id, order_id, invoice_id, credit_with_invoice, reason, status, credit_note_amount, photo_url, notes, created_at, destination_zone, completed_at, cancel_reason, applied_receipt_id, customer:customers(*), requester:users!returns_requested_by_fkey(*), approver:users!returns_approved_by_fkey(*), order:sales_orders(order_code), invoice:sales_invoices(invoice_code, invoice_date)"
         )
         .eq("id", id)
         .single(),
@@ -346,7 +347,10 @@ export default function ReturnDetailPage() {
    * hình bằng một quyền khác là nút hiện ra rồi RPC ném FORBIDDEN.
    */
   const canApprove = !!user && hasPermission(user.role, "returns", "approve")
-  const canDelete = !!user && duocXoaPhieuTra(user.role, user.id, ret)
+  const canDelete = !!user && duocXoaPhieuTra(user.role, user.id, ret) && hanhDongPhieuTra(ret).sua
+  /* ⚠ Luật phiếu tự sinh / tự lập (chủ nhà 25/09/2026, mig 191) — xem `hanhDongPhieuTra`. */
+  const hd = hanhDongPhieuTra(ret)
+  const tuSinh = laPhieuTuSinh(ret)
 
   return (
     <div className="space-y-4">
@@ -356,18 +360,44 @@ export default function ReturnDetailPage() {
         backHref="/returns"
       >
         <StatusBadge status={ret.status} type="return" />
+        {tuSinh && (
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+            Tự sinh theo HĐ {inv.invoice?.invoice_code ?? ""}
+          </span>
+        )}
       </PageHeader>
+
+      {hd.lyDo && ret.status !== "cancelled" && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="flex items-start gap-3 p-4 text-xs font-semibold text-amber-700">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {hd.lyDo}
+              {tuSinh && inv.invoice_id && (
+                <>
+                  {" "}
+                  <Link href={`/sales-invoices/${inv.invoice_id}`} className="underline">
+                    Mở hóa đơn
+                  </Link>
+                </>
+              )}
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ⚠ KHỐI NÀY TỪNG NÓI "nhập kho đã xử lý ở bước Bàn giao lại từ lái
           xe" — đúng với luồng cũ, sai hẳn với v2. Trong v2 không có bước
           bàn giao nào, và `complete_return` là đường DUY NHẤT nhập kho. */}
-      {ret.status === "submitted" && (
+      {hd.hoanThanh && (
         <Card className="border-[#fdb022]/40 bg-[#fff7e6]">
           <CardContent className="grid gap-3 p-4">
             <div className="flex items-start gap-3">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#b54708]" />
               <p className="text-xs font-semibold text-[#b54708]">
-                Hàng CHƯA vào kho và công nợ CHƯA giảm. Cả hai chỉ xảy ra khi bấm Hoàn thành.
+                {tuSinh
+                  ? "Công nợ đã trừ vào hóa đơn lúc xuất hàng. Hàng CHƯA vào kho — bấm Hoàn thành để nhập kho."
+                  : "Hàng CHƯA vào kho và công nợ CHƯA giảm. Cả hai xảy ra cùng lúc khi bấm Hoàn thành."}
               </p>
             </div>
             {canApprove && (
@@ -402,11 +432,13 @@ export default function ReturnDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={handleComplete} disabled={actionLoading}>
                     <PackageCheck className="mr-2 h-4 w-4" />
-                    {actionLoading ? "Đang xử lý…" : "Hoàn thành — nhập kho & trừ công nợ"}
+                    {actionLoading ? "Đang xử lý…" : tuSinh ? "Hoàn thành — nhập kho" : "Hoàn thành — nhập kho & trừ công nợ"}
                   </Button>
-                  <Button variant="outline" onClick={() => setCancelOpen(true)} disabled={actionLoading}>
-                    <Ban className="mr-2 h-4 w-4" /> Huỷ phiếu
-                  </Button>
+                  {hd.huy && (
+                    <Button variant="outline" onClick={() => setCancelOpen(true)} disabled={actionLoading}>
+                      <Ban className="mr-2 h-4 w-4" /> Huỷ phiếu
+                    </Button>
+                  )}
                 </div>
               </>
             )}
@@ -421,12 +453,12 @@ export default function ReturnDetailPage() {
             <p className="min-w-0 flex-1 text-xs font-semibold text-tertiary">
               Đã nhập kho{ret.destination_zone ? ` (${ret.destination_zone === "sale" ? "kho bán" : "kho cận date"})` : ""} và
               đã trừ công nợ.
-              {!ret.order_id &&
-                " Phiếu không gắn đơn nào — khoản có này đem cấn trừ ở màn Phiếu thu."}
+              {!ret.order_id && !inv.invoice_id &&
+                " Phiếu không gắn hóa đơn — khoản trả đã ghi thành dư có (công nợ âm) của khách, tự trừ vào lần thu sau."}
             </p>
-            {canApprove && (
+            {canApprove && hd.huy && (
               <Button variant="outline" size="sm" onClick={() => setCancelOpen(true)} disabled={actionLoading}>
-                <Ban className="mr-2 h-4 w-4" /> Huỷ phiếu
+                <Ban className="mr-2 h-4 w-4" /> {hd.huy === "ve_cho" ? "Huỷ nhập kho" : "Huỷ phiếu"}
               </Button>
             )}
           </CardContent>
@@ -563,7 +595,7 @@ export default function ReturnDetailPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Thông tin phiếu trả</CardTitle>
-              {canEdit && !editMode && (
+              {canEdit && hd.sua && !editMode && (
                 <Button size="sm" variant="ghost" onClick={() => setEditMode(true)}>
                   <Pencil className="h-4 w-4 mr-1" /> Sửa
                 </Button>
@@ -816,22 +848,23 @@ export default function ReturnDetailPage() {
       <Dialog open={cancelOpen} onOpenChange={(o) => !actionLoading && setCancelOpen(o)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Huỷ phiếu trả?</DialogTitle>
+            <DialogTitle>{hd.huy === "ve_cho" ? "Huỷ nhập kho phiếu trả?" : "Huỷ phiếu trả?"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <p className="text-sm text-muted-foreground">
-              {ret.status === "completed"
-                ? "Phiếu này đã nhập kho. Huỷ sẽ trừ lại số hàng đã nhập và tính lại công nợ của đơn gốc."
-                : "Phiếu chưa nhập kho, huỷ chỉ đổi trạng thái."}
+              {hd.huy === "ve_cho"
+                ? "Phiếu tự sinh theo hóa đơn: huỷ sẽ trừ lại số hàng đã nhập và đưa phiếu về Chờ xử lý. Công nợ giữ nguyên — hóa đơn vẫn trừ phần hàng trả."
+                : ret.status === "completed"
+                  ? "Phiếu này đã nhập kho. Huỷ sẽ trừ lại số hàng đã nhập và cộng lại công nợ cho khách — kể cả khi tiền đã thu."
+                  : "Phiếu chưa nhập kho, huỷ chỉ đổi trạng thái."}
             </p>
             {/* ⚠ NÓI TRƯỚC HAI KHOÁ CỦA `cancel_return`, đừng để người dùng
                 gõ xong lý do rồi mới nhận lỗi. Đơn gốc chỉ cần đã thu MỘT
                 ĐỒNG là phiếu trả gắn đơn đó không huỷ được nữa — một
                 chiều, không quay lại. */}
-            {ret.status === "completed" && (
+            {ret.status === "completed" && ret.applied_receipt_id && (
               <p className="rounded-lg bg-[#fff7e6] px-3 py-2 text-xs font-semibold leading-snug text-[#7a4b00]">
-                Không huỷ được nếu khoản có đã cấn trừ vào một phiếu thu, hoặc nếu đơn gốc đã thu
-                tiền — dù chỉ một phần. Khi đó phải huỷ phiếu thu trước.
+                Khoản có của phiếu này đã cấn trừ vào một phiếu thu (cách cũ) — phải huỷ phiếu thu đó trước.
               </p>
             )}
             <div className="grid gap-1.5">

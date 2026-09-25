@@ -124,6 +124,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const [daNap, setDaNap] = useState(!returnId)
   /** Phiếu đã huỷ thì chỉ xem — máy chủ cũng từ chối (RETURN_LOCKED, mig 190). */
   const [daHuy, setDaHuy] = useState(false)
+  /**
+   * ⚠ PHIẾU TỰ SINH THEO HÓA ĐƠN chỉ xem ở đây (chủ nhà 25/09/2026: "chỉ huỷ phiếu ko
+   *   sửa được (muốn sửa thì sửa từ hoá đơn)", mig 191). Máy chủ cũng từ chối
+   *   (RETURN_FOLLOWS_INVOICE).
+   */
+  const [tuSinh, setTuSinh] = useState(false)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   /* ⚠ MẶC ĐỊNH KHO CẬN DATE cho hàng trả về: hàng khách trả thường
      không bán lại ngay được. Người lập phiếu đổi được, nhưng mặc định
@@ -232,7 +238,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         const doc = (kemNgay: boolean) =>
           sb
             .from("returns")
-            .select(`id, customer_id, invoice_id, reason, notes, status, requested_by, sales_user_id, destination_zone, ${kemNgay ? "return_date, " : ""}customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))`)
+            .select(`id, customer_id, invoice_id, credit_with_invoice, reason, notes, status, requested_by, sales_user_id, destination_zone, ${kemNgay ? "return_date, " : ""}customer:customers(store_name, phone), lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))`)
             .eq("id", returnId)
             .maybeSingle()
         let res = await doc(true)
@@ -243,6 +249,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
           customer_id: string; invoice_id: string | null
+          credit_with_invoice?: boolean | null
           status?: string | null
           reason: string | null; notes: string | null
           requested_by?: string | null; sales_user_id?: string | null
@@ -263,6 +270,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
            được phiếu. Tìm ra 23/09/2026 khi dựng ô tìm theo mã phiếu. */
         setSlipCode(null)
         setDaHuy(r.status === "cancelled")
+        setTuSinh(!!r.credit_with_invoice)
         setInvoiceId(r.invoice_id)
         setLyDo(r.reason || "damaged")
         setGhiChu(r.notes || "")
@@ -761,6 +769,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           ))}
           {loiNap && <DocBanner tone="warn">Không nạp được phiếu — {loiNap}</DocBanner>}
           {daHuy && <DocBanner tone="warn">Phiếu trả đã huỷ — chỉ xem, không sửa được. Cần thì lập phiếu mới.</DocBanner>}
+          {tuSinh && !daHuy && (
+            <DocBanner tone="warn">
+              Phiếu trả tự sinh theo hóa đơn — chỉ xem. Công nợ đã trừ vào hóa đơn; muốn sửa hay bỏ hàng
+              trả thì sửa hóa đơn. Nhập kho / huỷ nhập kho ở màn Trả hàng.
+            </DocBanner>
+          )}
 
           {/*
             ⚠ BANNER MÔ TẢ CƠ CHẾ ĐANG CÓ (spec §7.2). Phiếu đã nhập kho
@@ -769,7 +783,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               Đây là điểm khác hẳn màn sửa hóa đơn, nơi tờ cũ bị huỷ và
               tờ mới mang số `-1`.
           */}
-          {mode === "sua" && !daHuy && (
+          {mode === "sua" && !daHuy && !tuSinh && (
             <DocBanner tone="warn">
               Phiếu đã nhập kho. Ghi nhận lại sẽ hoàn tác bút toán kho và công nợ cũ rồi ghi
               lại theo số mới, trong cùng một giao dịch — giữ nguyên số phiếu.
@@ -908,7 +922,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 hoan === "cong-no"
                   ? noConLai == null
                     ? "Trừ vào công nợ · còn lại chưa xác định"
-                    : `Trừ vào công nợ · còn lại ${formatCurrency(noConLai)}`
+                    : noConLai < 0
+                      ? `Trừ vào công nợ · khách dư có ${formatCurrency(-noConLai)} (công nợ âm)`
+                      : `Trừ vào công nợ · còn lại ${formatCurrency(noConLai)}`
                   : `Hoàn bằng ${HOAN_LABEL[hoan].toLowerCase()}`
               }
             />
@@ -1027,18 +1043,20 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             </PanelButton>
             <PanelButton
               width={96}
-              disabled={dangLuu || (daHuy && mode !== "sua")}
+              disabled={dangLuu || ((tuSinh || daHuy) && mode !== "sua")}
               onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
             >
               {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
             </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={dangLuu || daHuy || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
+              disabled={dangLuu || daHuy || tuSinh || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
               onClick={() => luuPhieu(true)}
               title={
                 daHuy
                   ? "Phiếu trả đã huỷ"
+                  : tuSinh
+                  ? "Phiếu tự sinh theo hóa đơn — sửa từ hóa đơn"
                   : t.returnLineCount === 0 && t.exchangeLineCount === 0
                   ? "Chưa có dòng hàng nào trong phiếu"
                   : !khach

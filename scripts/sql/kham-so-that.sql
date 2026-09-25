@@ -245,4 +245,13 @@ SELECT 28, 'Mig 188 (phiếu trả hàng chọn ngày)',
                     WHERE table_schema = 'public' AND table_name = 'returns' AND column_name = 'return_date')
             AND position('return_date' IN pg_get_functiondef('public.sync_return_credited_at()'::regprocedure)) > 0
        THEN 'OK — đã có' ELSE 'CHƯA — POS chọn ngày trả nhưng sổ không lưu; báo cáo gom theo ngày bấm Hoàn thành' END, ''
+UNION ALL
+-- 29. Mig 189 — hàng đổi / trả thêm lúc xuất hóa đơn không kẹt ở nháp
+SELECT 29, 'Mig 189 (hàng trả thêm lúc xuất hóa đơn)',
+  CASE WHEN position('(mig 189)' IN pg_get_functiondef('public._pending_return_for(uuid, uuid)'::regprocedure)) = 0
+       THEN 'CHƯA — xuất hóa đơn kèm hàng trả thì phiếu kẹt nháp: công nợ không trừ, bản in mất hàng đổi/trả'
+       WHEN EXISTS (SELECT 1 FROM returns ret JOIN sales_invoices si ON si.id = ret.invoice_id
+                    WHERE si.status = 'posted' AND ret.status = 'draft' AND ret.created_at = si.created_at)
+       THEN 'LỆCH — còn phiếu trả kẹt nháp, chạy lại mig 189'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

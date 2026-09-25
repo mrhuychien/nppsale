@@ -19,7 +19,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
-import { hasPermission } from "@/lib/permissions"
+import { hasPermission, duocXuatFile } from "@/lib/permissions"
 import { newOrderHref } from "@/lib/nav/new-order"
 
 import { useToast } from "@/hooks/use-toast"
@@ -1318,10 +1318,12 @@ export default function OrdersPage() {
                     Hủy {cancellableCount} đơn
                   </Button>
                 )}
+                {duocXuatFile(authUser?.role, "orders") && (
                 <Button size="sm" variant="outline" onClick={handleExportCsv}>
                   <Download className="mr-2 h-4 w-4" />
                   Xuất CSV
                 </Button>
+                )}
                 <Button size="sm" variant="ghost" onClick={clearSelection}>
                   <X className="mr-2 h-4 w-4" />
                   Hủy chọn

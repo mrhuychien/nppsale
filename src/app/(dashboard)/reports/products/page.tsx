@@ -5,6 +5,7 @@ import { viIncludes, viNormalize } from "@/lib/search"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { locBienThe } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   ReportShell,
@@ -97,7 +98,9 @@ interface CustomerRow {
 }
 
 export default function ProductsReportPage() {
-  const { loading: authLoading } = useRoleGuard("reports")
+  const { user: nguoiXem, loading: authLoading } = useRoleGuard("reports")
+  /* ⚠ Chủ nhà 25/09/2026: NVBH không xem giá vốn / lãi / giá trị kho của NPP. */
+  const bienThe = locBienThe(nguoiXem?.role, VARIANTS)
   const { user } = useAuth()
   const supabase = createClient()
   const [variant, setVariant] = useState<Variant>("sales")
@@ -545,7 +548,7 @@ export default function ProductsReportPage() {
   return (
     <ReportShell
       title="Báo cáo hàng hóa"
-      variants={VARIANTS}
+      variants={bienThe}
       variant={variant}
       onVariantChange={(v) => setVariant(v)}
       range={range}

@@ -82,6 +82,12 @@ interface RolePermRow {
 
 type CellMode = "inherit" | "grant" | "revoke"
 
+/*
+ * ⚠ RÀ 25/09/2026 — chủ nhà: "bổ sung các phần thiếu, bỏ các phần thừa". Nhóm này từng có
+ *   16 ô nhưng chỉ `customer.view_all` được RLS / mã nguồn đọc (mig 054/058) — 15 ô kia
+ *   bật tắt không đổi gì, người quản lý tưởng đã khoá mà không khoá. Giá vốn nay là tính năng
+ *   `inventory.cost` trong ma trận chính.
+ */
 const PACK3_SPEC_GROUPS: Array<{
   key: string
   label: string
@@ -92,45 +98,6 @@ const PACK3_SPEC_GROUPS: Array<{
     label: "Khách hàng",
     permissions: [
       { key: "customer.view_all", label: "Xem tất cả KH (override row-level)" },
-      { key: "customer.assign", label: "Phân công NV phụ trách" },
-    ],
-  },
-  {
-    key: "warehouse",
-    label: "Kho vận",
-    permissions: [
-      { key: "warehouse.view_balance", label: "Xem tồn kho" },
-      { key: "warehouse.view_cost", label: "Xem giá vốn" },
-      { key: "warehouse.adjust", label: "Điều chỉnh tồn" },
-      { key: "warehouse.picking", label: "Xuất kho" },
-      { key: "warehouse.handover", label: "Nhận bàn giao" },
-    ],
-  },
-  {
-    key: "finance",
-    label: "Tài chính",
-    permissions: [
-      { key: "finance.view_ar", label: "Xem công nợ" },
-      { key: "finance.collect", label: "Thu tiền" },
-      { key: "finance.print_receipt", label: "In phiếu thu" },
-    ],
-  },
-  {
-    key: "hr",
-    label: "Nhân sự",
-    permissions: [
-      { key: "hr.view_attendance", label: "Xem chấm công" },
-      { key: "hr.run_payroll", label: "Tính lương" },
-      { key: "hr.config_salary", label: "Cấu hình lương" },
-    ],
-  },
-  {
-    key: "admin",
-    label: "Quản trị",
-    permissions: [
-      { key: "admin.users", label: "Quản lý user" },
-      { key: "admin.permissions", label: "Phân quyền" },
-      { key: "admin.audit_log", label: "Xem audit log" },
     ],
   },
 ]

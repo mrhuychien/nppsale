@@ -1,4 +1,4 @@
-import type { Role } from "@/lib/permissions"
+import type { Action, Role } from "@/lib/permissions"
 
 // Update #2 v2 §1.3 — 4 named permission templates.
 //
@@ -88,3 +88,41 @@ export const PERMISSION_TEMPLATES: PermissionTemplate[] = [
 export function getTemplate(key: TemplateKey | string): PermissionTemplate | undefined {
   return PERMISSION_TEMPLATES.find((t) => t.key === key)
 }
+
+/**
+ * MẪU PHÂN QUYỀN NHÂN VIÊN BÁN HÀNG — áp vào ma trận /settings/permissions (vai `sales`).
+ *
+ * ⚠ CHỦ NHÀ 25/09/2026: "Xây dựng cho tao phân quyền mẫu cho nhân viên bán hàng: Đủ để
+ *   nhân viên bán hàng; Không xem được các thông tin quan trọng của nhà phân phối".
+ *   · ĐỦ ĐỂ BÁN: lên đơn, sửa đơn của mình, khách hàng + đi tuyến, khuyến mãi, xem tồn
+ *     (số lượng), trả hàng, thu tiền / phiếu thu, công nợ khách của mình, hoa hồng của mình,
+ *     báo cáo bán hàng / đặt hàng / khách / hàng hoá (chỉ số của mình — RLS; không có màn lãi).
+ *   · KHÔNG XEM: giá vốn / giá trị tồn / lãi (`inventory.cost`), tổng quan & cuối ngày toàn
+ *     NPP, phân tích, báo cáo tài chính / NCC / nhân viên / kênh / tồn kho, mua hàng, NCC,
+ *     công nợ NCC, chi phí, công nợ theo nhân viên, nhân sự, cài đặt, hóa đơn điện tử.
+ *   Tính năng KHÔNG có trong bảng = không quyền nào.
+ */
+export const MAU_QUYEN_NVBH: Readonly<Record<string, readonly Action[]>> = {
+  orders: ["read", "create", "update"],
+  customers: ["read", "create", "update"],
+  "customers.visits": ["read", "create", "update"],
+  promotions: ["read"],
+  commissions: ["read"],
+  returns: ["read", "create"],
+  inventory: ["read"],
+  products: ["read"],
+  receivables: ["read", "create"],
+  "receivables.by_customer": ["read"],
+  "finance.cash_receipts": ["read", "create"],
+  "reports.sales": ["read"],
+  "reports.orders": ["read"],
+  "reports.customers": ["read"],
+  "reports.products": ["read"],
+}
+
+/** Ô của một tính năng theo mẫu NVBH. */
+export function oTheoMauNvbh(featureKey: string, actions: readonly Action[]): Record<Action, boolean> {
+  const cho = new Set(MAU_QUYEN_NVBH[featureKey] ?? [])
+  return Object.fromEntries(actions.map((a) => [a, cho.has(a)])) as Record<Action, boolean>
+}
+

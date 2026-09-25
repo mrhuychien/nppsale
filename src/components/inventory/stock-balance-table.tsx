@@ -10,6 +10,7 @@
  * "chỉ hiện hàng còn tồn" filter at the top.
  */
 
+import { duocXuatFile } from "@/lib/permissions"
 import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -352,6 +353,7 @@ export function StockBalanceTable() {
           />
           Chỉ hiện hàng còn tồn
         </label>
+        {duocXuatFile(user?.role, "inventory") && (
         <Button
           type="button"
           variant="outline"
@@ -369,6 +371,7 @@ export function StockBalanceTable() {
           <Download className="mr-1.5 h-4 w-4" />
           {exporting ? "Đang xuất…" : "Xuất Excel"}
         </Button>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">
           {pivot.length} sản phẩm — tổng giá trị{" "}
           <strong className="text-foreground">{formatCurrency(totals.totalValue)}</strong>

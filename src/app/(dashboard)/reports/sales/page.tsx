@@ -5,6 +5,7 @@ import { viIncludes, viNormalize } from "@/lib/search"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { locBienThe } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
@@ -78,7 +79,9 @@ const ROLE_LABEL: Record<string, string> = {
 }
 
 export default function SalesReportPage() {
-  const { loading: authLoading } = useRoleGuard("reports")
+  const { user: nguoiXem, loading: authLoading } = useRoleGuard("reports")
+  /* ⚠ Chủ nhà 25/09/2026: NVBH không xem giá vốn / lãi / giá trị kho của NPP. */
+  const bienThe = locBienThe(nguoiXem?.role, VARIANTS)
   const { user } = useAuth()
   const supabase = createClient()
   const [variant, setVariant] = useState<Variant>("time")
@@ -458,7 +461,7 @@ export default function SalesReportPage() {
   return (
     <ReportShell
       title="Báo cáo bán hàng"
-      variants={VARIANTS}
+      variants={bienThe}
       variant={variant}
       onVariantChange={(v) => setVariant(v)}
       range={range}

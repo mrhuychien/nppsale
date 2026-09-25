@@ -6,6 +6,8 @@ import { DateRangePicker } from "./date-range-picker"
 import { cn } from "@/lib/utils"
 import { type DateRange, type PeriodPreset, formatRangeLabel } from "@/lib/analytics/period"
 import { useClientNow } from "@/hooks/use-client-now"
+import { useAuth } from "@/hooks/use-auth"
+import { duocXuatFile } from "@/lib/permissions"
 
 interface ReportFrameProps {
   title: string
@@ -33,6 +35,9 @@ export function ReportFrame({
   filters,
 }: ReportFrameProps) {
   const printedAt = useClientNow()
+  const { user } = useAuth()
+  /* Ô "Xuất file" của ma trận quyền (mô-đun Báo cáo) — xem `duocXuatFile`. */
+  const xuat = duocXuatFile(user?.role, "reports")
   const [filtersOpen, setFiltersOpen] = useState(false)
   return (
     <div className="space-y-4">
@@ -54,7 +59,7 @@ export function ReportFrame({
               <SlidersHorizontal className="h-4 w-4" /> Bộ lọc
             </button>
           ) : null}
-          {onExportCsv ? (
+          {onExportCsv && xuat ? (
             <button
               type="button"
               onClick={onExportCsv}

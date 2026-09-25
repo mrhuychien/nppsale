@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { DEFAULT_VAT_RATE, VAT_RATES } from "@/lib/constants"
 import { useAuth } from "@/hooks/use-auth"
+import { xemDuocGiaVon } from "@/lib/permissions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -577,6 +578,7 @@ function InfoTab({
   setSecondaryUnit,
   removeSecondaryUnit,
 }: InfoTabProps) {
+  const { user } = useAuth()
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm({ ...form, [key]: value })
   const skuVal = form.sku
@@ -734,11 +736,13 @@ function InfoTab({
 
       {/* Section: Giá vốn, giá bán */}
       <Section
-        title="Giá vốn, giá bán"
+        title={xemDuocGiaVon(user?.role) ? "Giá vốn, giá bán" : "Giá bán"}
         open={openSection.price}
         onToggle={() => toggleSection("price")}
       >
         <div className="grid gap-4 sm:grid-cols-3">
+          {/* ⚠ Chủ nhà 25/09/2026: NVBH không xem giá vốn của NPP (`xemDuocGiaVon`). */}
+          {xemDuocGiaVon(user?.role) && (
           <div className="space-y-1.5">
             <Label htmlFor="cost">Giá vốn</Label>
             {/* Làm tròn khi hiển thị: MoneyInput bỏ mọi ký tự không phải số, nên
@@ -751,6 +755,7 @@ function InfoTab({
               onChange={(v) => setField("cost_price", String(v))}
             />
           </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="sell">Giá bán</Label>
             {/* Làm tròn khi hiển thị: MoneyInput bỏ mọi ký tự không phải số, nên

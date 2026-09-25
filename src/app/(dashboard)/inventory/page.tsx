@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client"
 import { selectResilient } from "@/lib/supabase/resilient"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { xemDuocGiaVon } from "@/lib/permissions"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -424,6 +425,8 @@ export default function InventoryPage() {
           </CardContent>
         </Card>
 
+        {/* ⚠ Chủ nhà 25/09/2026: NVBH không xem giá trị tồn kho của NPP. */}
+        {xemDuocGiaVon(user?.role) && (
         <Card className="border-l-4 border-l-green-500">
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
@@ -446,6 +449,7 @@ export default function InventoryPage() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">

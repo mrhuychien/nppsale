@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { locBienThe } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
@@ -86,7 +87,9 @@ interface StockEntry {
 }
 
 export default function CustomersReportPage() {
-  const { loading: authLoading } = useRoleGuard("reports")
+  const { user: nguoiXem, loading: authLoading } = useRoleGuard("reports")
+  /* ⚠ Chủ nhà 25/09/2026: NVBH không xem giá vốn / lãi / giá trị kho của NPP. */
+  const bienThe = locBienThe(nguoiXem?.role, VARIANTS)
   const { user } = useAuth()
   const supabase = createClient()
   const [variant, setVariant] = useState<Variant>("sales")
@@ -514,7 +517,7 @@ export default function CustomersReportPage() {
   return (
     <ReportShell
       title="Báo cáo khách hàng"
-      variants={VARIANTS}
+      variants={bienThe}
       variant={variant}
       onVariantChange={(v) => setVariant(v)}
       range={range}

@@ -71,7 +71,8 @@ export const FEATURES: FeatureDef[] = [
   { key: "commissions", label: "Hoa hồng", module: "commissions", group: "Bán hàng" },
 
   // Vận hành
-  { key: "deliveries", label: "Giao hàng", module: "deliveries", group: "Vận hành" },
+  /* "Giao hàng" bỏ khỏi bảng phân quyền: chủ nhà 24/09/2026 "không dùng chuyến giao nữa"
+     (màn đã chặn hẳn — `LEGACY_V2_HREFS`). */
   { key: "returns", label: "Trả hàng", module: "returns", group: "Vận hành" },
 
   // Mua hàng
@@ -83,6 +84,12 @@ export const FEATURES: FeatureDef[] = [
   // Kho vận
   { key: "inventory", label: "Kho hàng", module: "inventory", group: "Kho vận" },
   { key: "products", label: "Sản phẩm", module: "products", group: "Kho vận" },
+  /*
+   * ⚠ CHỦ NHÀ 25/09/2026: NVBH "Không xem được các thông tin quan trọng của nhà phân phối".
+   *   Giá vốn (`products.cost_price`, `batches.unit_cost`), giá trị tồn kho, lãi gộp — một
+   *   khoá cho mọi màn (`xemDuocGiaVon`). NVBH vẫn xem TỒN (số lượng) để bán.
+   */
+  { key: "inventory.cost", label: "Giá vốn, giá trị tồn, lãi gộp", module: "inventory", group: "Kho vận", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
 
   // Kế toán
   { key: "receivables", label: "Công nợ KH", module: "receivables", group: "Kế toán" },
@@ -104,8 +111,9 @@ export const FEATURES: FeatureDef[] = [
   { key: "analytics.performance", label: "Phân tích hiệu quả", module: "reports", group: "Phân tích", inherits: true, defaultRoles: BACK_OFFICE },
 
   // Báo cáo
-  { key: "reports.dashboard", label: "Tổng quan", module: "reports", group: "Báo cáo", inherits: true },
-  { key: "reports.end_of_day", label: "Báo cáo cuối ngày", module: "reports", group: "Báo cáo", inherits: true },
+  /* ⚠ Chủ nhà 25/09/2026: số liệu TOÀN NPP — NVBH xem trang chủ của mình thay cho hai màn này. */
+  { key: "reports.dashboard", label: "Tổng quan", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
+  { key: "reports.end_of_day", label: "Báo cáo cuối ngày", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
   { key: "reports.sales", label: "Báo cáo bán hàng", module: "reports", group: "Báo cáo", inherits: true },
   { key: "reports.orders", label: "Báo cáo đặt hàng", module: "reports", group: "Báo cáo", inherits: true },
   { key: "reports.products", label: "Báo cáo hàng hóa", module: "reports", group: "Báo cáo", inherits: true },
@@ -114,6 +122,7 @@ export const FEATURES: FeatureDef[] = [
   { key: "reports.employees", label: "Báo cáo nhân viên", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "reports.channels", label: "Báo cáo kênh bán hàng", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "reports.finance", label: "Báo cáo tài chính", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "reports.inventory", label: "Báo cáo tồn kho", module: "reports", group: "Báo cáo", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
 
   // Cài đặt
   { key: "settings", label: "Cài đặt chung", module: "settings", group: "Cài đặt" },

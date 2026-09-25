@@ -186,6 +186,86 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/setup": { module: "settings", feature: "settings.org" },
   "/settings/org": { module: "settings", feature: "settings.org" },
   "/settings/approval-rules": { module: "settings", feature: "settings.approval_rules" },
+
+}
+
+/**
+ * CỬA VÀO TRANG KHÔNG PHẢI MỤC MENU — chỉ `useRoleGuard` (`duocVaoTrang`) đọc bảng này.
+ * `NAV_PERMISSION` giữ đúng các mục menu / nút (chốt "không khai quyền thừa").
+ *
+ * ⚠ RÀ 25/09/2026 — chủ nhà: "Rà soát lại bảng phân quyền, bổ sung các phần thiếu". Các
+   *   trang dưới đây trước đó KHÔNG khai → `useRoleGuard` rơi về phép kiểm mô-đun: NVBH có
+ *   `reports.read` là vào được Lãi lỗ, Giá vốn – lợi nhuận, Bảng cân đối…; có
+ *   `inventory.read` là vào được danh sách lô kèm giá vốn.
+ */
+export const CUA_VAO: Record<string, NavPermission> = {
+  "/notifications": { module: "orders", always: true },
+  "/sell/cart": { module: "orders", feature: "orders", action: "create" },
+  "/sell/customer": { module: "orders", feature: "orders", action: "create" },
+  "/sell/done": { module: "orders", feature: "orders", action: "create" },
+  "/sell/drafts": { module: "orders", feature: "orders", action: "create" },
+  "/sell/returns": { module: "orders", feature: "orders", action: "create" },
+  "/sell/scan": { module: "orders", feature: "orders", action: "create" },
+  "/sell/terms": { module: "orders", feature: "orders", action: "create" },
+  "/customers/new": { module: "customers", feature: "customers", action: "create" },
+  "/returns/new": { module: "returns", feature: "returns", action: "create" },
+  "/sales/pjp": { module: "customers", feature: "customers.visits" },
+  "/commissions/policies": { module: "commissions", feature: "commissions" },
+  "/finance/cash-receipts/new": { module: "receivables", feature: "finance.cash_receipts", action: "create" },
+  "/receivables/aging": { module: "receivables", feature: "receivables" },
+  "/payables/by-supplier": { module: "receivables", feature: "payables" },
+  "/purchasing": { module: "inventory", feature: "purchasing.invoices" },
+  "/invoices/reconcile": { module: "invoices", feature: "invoices", action: "update" },
+  "/warehouse": { module: "inventory", feature: "inventory" },
+  "/inventory/batches": { module: "inventory", feature: "inventory.cost" },
+  "/inventory/batches/new": { module: "inventory", feature: "inventory", action: "create" },
+  "/inventory/adjustments": { module: "inventory", feature: "inventory", action: "create" },
+  "/inventory/audit": { module: "inventory", feature: "inventory.cost" },
+  "/hr/overview": { module: "settings", feature: "hr" },
+  "/hr/payroll": { module: "settings", feature: "hr" },
+  "/analytics": { module: "reports", feature: "analytics.business" },
+  "/analytics/business/cost-profit": { module: "reports", feature: "analytics.business" },
+  "/analytics/customers/categories": { module: "reports", feature: "analytics.customers" },
+  "/analytics/products/categories": { module: "reports", feature: "analytics.products" },
+  "/analytics/products/stock": { module: "reports", feature: "analytics.products" },
+  "/reports/inventory": { module: "reports", feature: "reports.inventory" },
+  "/reports/finance/pnl": { module: "reports", feature: "reports.finance" },
+  "/reports/finance/cash-flow": { module: "reports", feature: "reports.finance" },
+  "/reports/finance/balance-sheet": { module: "reports", feature: "reports.finance" },
+}
+
+/**
+ * MÀN CON ĐỘNG (`/suppliers/<id>`, `/inventory/batches/<id>`…) kiểm như MỤC CHA.
+ *
+ * ⚠ Trước 25/09/2026 đường dẫn động rơi về phép kiểm mô-đun: NVBH bị giấu "Nhà cung cấp"
+ *   nhưng mở `/suppliers/<id>` vẫn vào (mô-đun `inventory` mở để xem tồn); thẻ kho /
+ *   chi tiết lô hiện giá vốn. Tiền tố dài nhất thắng; có dấu `/` cuối để không dính tên lạ.
+ */
+export const NAV_TIEN_TO: ReadonlyArray<readonly [string, string]> = [
+  ["/inventory/batches/", "/inventory/batches"],
+  ["/inventory/stock-card/", "/inventory/batches"],
+  ["/suppliers/", "/suppliers"],
+  ["/purchase-returns/", "/purchase-returns"],
+  ["/purchasing/invoices/", "/purchasing/invoices"],
+  ["/payables/", "/payables"],
+  ["/finance/expenses/", "/finance/expenses"],
+  ["/receivables/by-rep/", "/receivables/by-rep"],
+  ["/hr/", "/hr"],
+  ["/settings/users/", "/settings/users"],
+  ["/reports/finance/", "/reports/finance"],
+  ["/analytics/business/", "/analytics/business/overview"],
+  ["/analytics/products/", "/analytics/products/overview"],
+  ["/analytics/customers/", "/analytics/customers/overview"],
+  ["/analytics/performance/", "/analytics/performance/receivables"],
+]
+
+/** Mục cha của một đường dẫn động (theo `NAV_TIEN_TO`), hoặc null. */
+export function mucChaCua(pathname: string): string | null {
+  let best: readonly [string, string] | null = null
+  for (const x of NAV_TIEN_TO) {
+    if (pathname.startsWith(x[0]) && (!best || x[0].length > best[0].length)) best = x
+  }
+  return best ? best[1] : null
 }
 
 /**
@@ -310,6 +390,10 @@ export function duocVaoTrang(
   const p = pathname ?? ""
   if (laManLuongCu(p)) return false
   if (NAV_PERMISSION[p]) return canEnterHref(role, p)
+  if (CUA_VAO[p]) return kiemMuc(role, CUA_VAO[p])
+  const cha = mucChaCua(p)
+  const mucCha = cha ? NAV_PERMISSION[cha] ?? CUA_VAO[cha] : undefined
+  if (mucCha) return kiemMuc(role, mucCha)
   return canAccessModule(role, module)
 }
 
@@ -335,6 +419,11 @@ export function canEnterHref(role: Role | null | undefined, href: string): boole
   if (laManLuongCu(href)) return false
   const p = NAV_PERMISSION[href]
   if (!p) return false
+  return kiemMuc(role, p)
+}
+
+/** Luật của MỘT khai quyền (menu hoặc cửa vào). */
+function kiemMuc(role: Role, p: NavPermission): boolean {
   if (p.always) return true
 
   // ⚠ QUYỀN RIÊNG CỦA NGƯỜI DÙNG ĐÈ LÊN QUYỀN VAI TRÒ, và phải xét TRƯỚC.

@@ -147,9 +147,11 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
     products: ["read"],
     commissions: ["read"],
     receivables: ["read", "create"],
-    deliveries: ["read"],
+    /* Chủ nhà 25/09/2026 (mẫu NVBH): bỏ Giao hàng (không dùng chuyến giao) và Hóa đơn
+       điện tử — NVBH không cần. Xem `MAU_QUYEN_NVBH`. */
+    deliveries: [],
     promotions: ["read"],
-    invoices: ["read"],
+    invoices: [],
     returns: ["read", "create"],
     reports: ["read"],
     settings: [],
@@ -364,3 +366,43 @@ export function rowsToCache(
   }
   return out
 }
+
+/**
+ * Được thấy GIÁ VỐN / giá trị tồn kho / lãi gộp không (khoá `inventory.cost`).
+ *
+ * ⚠ CHỦ NHÀ 25/09/2026: NVBH "Không xem được các thông tin quan trọng của nhà phân phối".
+ *   Mặc định: chủ, quản lý, kế toán, thủ kho. Quyền riêng từng người đè lên (như menu).
+ */
+export function xemDuocGiaVon(role: Role | null | undefined): boolean {
+  if (!role) return false
+  if (role === "owner") return true
+  const ov = overrideFor(["inventory.cost"], "read")
+  if (ov !== null) return ov
+  return canAccessFeature(role, "inventory.cost", "inventory")
+}
+
+/**
+ * Các màn con của báo cáo có GIÁ VỐN / LÃI / GIÁ TRỊ KHO — ẩn khi `!xemDuocGiaVon`.
+ * ("Nhân viên" của báo cáo bán hàng có cột giá vốn + lợi nhuận theo người.)
+ */
+export const BIEN_THE_GIA_VON: ReadonlySet<string> = new Set(["profit", "stock_value", "movement", "movement_detail", "employee"])
+
+/** Lọc danh sách màn con của một báo cáo theo quyền xem giá vốn. */
+export function locBienThe<T extends { key: string }>(role: Role | null | undefined, ds: readonly T[]): T[] {
+  return xemDuocGiaVon(role) ? [...ds] : ds.filter((v) => !BIEN_THE_GIA_VON.has(v.key))
+}
+
+/**
+ * Được XUẤT FILE (Excel / CSV) ở mô-đun này không — ô "Xuất file" của ma trận quyền.
+ *
+ * ⚠ RÀ 25/09/2026: ô "Xuất file" có trong ma trận từ đầu nhưng KHÔNG chỗ nào đọc — tắt đi
+ *   vẫn xuất được cả danh sách. Mẫu NVBH không có quyền xuất.
+ */
+export function duocXuatFile(role: Role | null | undefined, module: Module): boolean {
+  if (!role) return false
+  if (role === "owner") return true
+  const ov = overrideFor([module], "export")
+  if (ov !== null) return ov
+  return hasPermission(role, module, "export")
+}
+

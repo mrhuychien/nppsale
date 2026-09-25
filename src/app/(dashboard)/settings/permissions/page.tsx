@@ -1,5 +1,6 @@
 "use client"
 
+import { oTheoMauNvbh } from "@/lib/permission-templates"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -250,6 +251,15 @@ export default function PermissionsPage() {
     setMatrix((prev) => ({ ...prev, [role]: defaults[role] }))
   }
 
+  /** Chủ nhà 25/09/2026 — mẫu NVBH: đủ để bán, không xem thông tin quan trọng của NPP. */
+  const apMauNvbh = () => {
+    setMatrix((prev) => {
+      const nextRole = { ...prev.sales }
+      for (const f of FEATURES) nextRole[f.key] = oTheoMauNvbh(f.key, ACTIONS)
+      return { ...prev, sales: nextRole }
+    })
+  }
+
   const discardChanges = () => {
     setMatrix(JSON.parse(JSON.stringify(original)) as FeatureMatrix)
   }
@@ -427,6 +437,16 @@ export default function PermissionsPage() {
           >
             <RefreshCcw className="mr-1.5 h-3.5 w-3.5" /> Khôi phục mặc định
           </Button>
+          {activeRole === "sales" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={apMauNvbh}
+              title="Đủ để bán hàng; không xem giá vốn, lãi, báo cáo toàn NPP, mua hàng, nhân sự. Bấm Lưu để áp dụng."
+            >
+              <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Áp mẫu NVBH
+            </Button>
+          )}
         </div>
       </div>
 

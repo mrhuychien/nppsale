@@ -48,6 +48,8 @@ export interface InvoiceRow {
     channel?: string | null
     ward?: string | null
     address?: string | null
+    district?: string | null
+    province?: string | null
   } | null
   sales_user?: { full_name?: string | null } | null
   /** Khách của tờ — xem nhanh dùng cho nút Trả hàng / Thu tiền. */

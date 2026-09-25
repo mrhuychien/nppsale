@@ -301,8 +301,8 @@ describe("cột Phường", () => {
     ]) {
       const s = read(p)
       expect(
-        (s.match(/\(store_name, phone, channel, ward, address\)/g) ?? []).length,
-        `${p}: cả câu thường lẫn câu !inner phải hỏi ward`
+        (s.match(/\(store_name, phone, channel, ward, address, district, province\)/g) ?? []).length,
+        `${p}: cả câu thường lẫn câu !inner phải hỏi ward + quận + tỉnh (xem nhanh hiện đủ địa chỉ)`
       ).toBe(2)
     }
   })

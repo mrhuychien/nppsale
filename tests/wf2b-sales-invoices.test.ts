@@ -537,8 +537,8 @@ describe("Danh sách hóa đơn bán", () => {
    */
   it("hai màn đều hỏi địa chỉ khách trong câu embed", () => {
     const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
-    expect(ORDERS).toContain("customer:customers(store_name, phone, channel, ward, address)")
-    expect(strip(LIST)).toContain("customer:customers(store_name, phone, channel, ward, address)")
+    expect(ORDERS).toContain("customer:customers(store_name, phone, channel, ward, address, district, province)")
+    expect(strip(LIST)).toContain("customer:customers(store_name, phone, channel, ward, address, district, province)")
   })
 
   /**
@@ -553,7 +553,7 @@ describe("Danh sách hóa đơn bán", () => {
    */
   it("lọc tuyến bật !inner, chỉ khi đang lọc, ở CẢ HAI câu", () => {
     const L = strip(LIST)
-    expect(L).toContain('customer:customers!inner(store_name, phone, channel, ward, address)')
+    expect(L).toContain('customer:customers!inner(store_name, phone, channel, ward, address, district, province)')
     /**
      * ⚠ BA CÂU, KHÔNG PHẢI HAI: danh sách · phép đếm của chip · phép
      * CỘNG TIỀN của dải tóm tắt trên điện thoại (mẫu mới). Câu nào quên

@@ -22,6 +22,7 @@ import {
   type ReturnSummaryRow,
 } from "@/components/orders/return-summary"
 import { InvoiceMoneySummary } from "@/components/orders/invoice-money-summary"
+import { CustomerQuickInfo } from "@/components/orders/customer-quick-info"
 import { noteBlocksOf } from "@/components/printing/sales-invoice"
 import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
 
@@ -215,23 +216,13 @@ export function InvoiceDrawer({
             */}
             <div className="grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
               <div className="grid grid-cols-2 gap-2.5">
-                <Cell
-                  label="Khách hàng"
-                  main={invoice.customer?.store_name || "Khách lẻ"}
-                  sub={routeName ?? invoice.customer?.phone ?? ""}
-                />
+                <CustomerQuickInfo customer={invoice.customer} routeName={routeName} className="col-span-2" />
                 <Cell
                   label="Tính cho NV"
                   main={invoice.sales_user?.full_name || "—"}
                   sub={invoice.order?.order_code ?? ""}
                 />
               </div>
-
-              {invoice.customer?.address && (
-                <div className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant">
-                  Địa chỉ: <span className="text-on-surface">{invoice.customer.address}</span>
-                </div>
-              )}
 
               <div className="overflow-hidden rounded-xl border border-outline-variant/40">
                 <div className="bg-surface-container-low px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">

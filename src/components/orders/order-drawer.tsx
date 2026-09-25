@@ -26,6 +26,7 @@ import { orderTone, vnTime } from "@/lib/orders/status-tone"
 import { isSellEditable } from "@/lib/sell/order-edit"
 import { errorMessage } from "@/lib/errors"
 import type { SalesOrder } from "@/types"
+import { CustomerQuickInfo } from "@/components/orders/customer-quick-info"
 
 /**
  * Ngăn chi tiết đơn bên phải trên MÁY TÍNH — theo mẫu thiết kế "Đơn hàng".
@@ -319,7 +320,7 @@ export function OrderDrawer({
             */}
             <div className="grid min-h-0 min-w-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 py-4">
               <div className="grid grid-cols-2 gap-2.5">
-                <Cell label="Khách hàng" main={order.customer?.store_name || "Khách lẻ"} sub={routeName ?? order.customer?.phone ?? ""} />
+                <CustomerQuickInfo customer={order.customer} routeName={routeName} className="col-span-2" />
                 <Cell label="Tính cho NV" main={order.sales_user?.full_name || "—"} sub={terms} />
               </div>
 

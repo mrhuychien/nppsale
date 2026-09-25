@@ -6,7 +6,6 @@ import { LOC_TRA_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
-import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -53,6 +52,7 @@ import { RETURN_REASONS } from "@/lib/constants"
 import { RotateCcw, PieChart, Info, Plus } from "lucide-react"
 import Link from "next/link"
 import type { Return } from "@/types"
+import { ReturnDrawer } from "@/components/returns/return-drawer"
 
 /** Nhân viên được tính khoản trừ của phiếu (`sales_user_id`). */
 const tenNV = (r: Return) => (r as Return & { seller?: { full_name?: string | null } | null }).seller?.full_name ?? null
@@ -82,6 +82,8 @@ export default function ReturnsPage() {
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
   const [returns, setReturns] = useState<Return[]>([])
+  /** Phiếu đang mở ở ngăn xem nhanh — `null` là đóng (chủ nhà 25/09/2026). */
+  const [xemNhanh, setXemNhanh] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
   /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
@@ -103,7 +105,6 @@ export default function ReturnsPage() {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const router = useRouter()
   const supabase = createClient()
 
   const {
@@ -483,7 +484,7 @@ export default function ReturnsPage() {
                         <TableRow
                           key={r.id}
                           className="cursor-pointer hover:bg-muted/40"
-                          onClick={() => router.push(`/returns/${r.id}`)}
+                          onClick={() => setXemNhanh(r.id)}
                         >
                           {show("date") && (
                             <TableCell className="text-sm whitespace-nowrap">
@@ -541,7 +542,7 @@ export default function ReturnsPage() {
                     <div
                       key={r.id}
                       className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                      onClick={() => router.push(`/returns/${r.id}`)}
+                      onClick={() => setXemNhanh(r.id)}
                     >
                       <div className="p-4">
                         <div className="flex justify-between items-start gap-3 mb-2">
@@ -639,6 +640,7 @@ export default function ReturnsPage() {
           </CardContent>
         </Card>
       </div>
+      <ReturnDrawer returnId={xemNhanh} onClose={() => setXemNhanh(null)} />
     </div>
   )
 }

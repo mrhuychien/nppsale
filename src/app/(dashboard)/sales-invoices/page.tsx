@@ -85,8 +85,8 @@ import type { Customer, User } from "@/types"
  * dùng `!inner` thì PostgREST mới lọc được trên bảng nhúng; dùng `!inner`
  * cho mọi trường hợp là âm thầm bỏ mất hóa đơn của khách đã bị xoá.
  */
-const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"
-const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address)"
+const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address, district, province)"
+const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address, district, province)"
 /**
  * ⚠ `created_at` VÀ `payment_terms` LÀ BẮT BUỘC, không phải cho đẹp.
  * `invoice_date` là cột kiểu `date` — không mang giờ, nên cột "Ngày xuất"

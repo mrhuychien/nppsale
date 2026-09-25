@@ -185,7 +185,7 @@ describe("Lọc theo tuyến bán hàng", () => {
    * dòng "—" trông như dữ liệu hỏng, chứ không phải như một bộ lọc.
    */
   it("bật !inner khi lọc tuyến", () => {
-    expect(ORDERS).toContain('const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address)"')
+    expect(ORDERS).toContain('const CUSTOMER_EMBED_INNER = "customer:customers!inner(store_name, phone, channel, ward, address, district, province)"')
     expect(ORDERS).toContain(
       "const cust = routeFilter !== \"all\" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED"
     )
@@ -196,7 +196,7 @@ describe("Lọc theo tuyến bán hàng", () => {
    * biến mất khỏi danh sách mà không ai biết vì sao.
    */
   it("không lọc thì giữ nguyên phép nối cũ", () => {
-    expect(ORDERS).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address)"')
+    expect(ORDERS).toContain('const CUSTOMER_EMBED = "customer:customers(store_name, phone, channel, ward, address, district, province)"')
   })
 
   /**

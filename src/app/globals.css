@@ -159,10 +159,9 @@
   Đặt data-paper-size="A4" trên <html> trước khi gọi window.print().
 */
 @media print {
+  /* Mặc định A5. ⚠ Khổ A4 KHÔNG đặt ở đây — `html[…] @page` là CSS sai, trình duyệt
+     bỏ qua. Nút In chèn `@page` của khổ đã chọn — xem `datKhoGiay` (print-button). */
   @page { size: A5 portrait; margin: 8mm; }
-  html[data-paper-size="A4"] @page,
-  body[data-paper-size="A4"] @page,
-  [data-paper-size="A4"] @page { size: A4 portrait; margin: 12mm; }
   /* T-11 — A5 needs tighter font to fit ~25 line orders on 1 page.
      Times New Roman matches official VN business slip aesthetic. */
   html:not([data-paper-size="A4"]) .print-page,
@@ -240,9 +239,15 @@
     chứng từ thì không có lý do nào để chữ ở khổ giấy này khác khổ giấy
     kia — A4 chỉ là chỗ rộng hơn nên chứa được nhiều dòng hàng hơn.
   */
+  /*
+    ⚠ A4 = TỜ A5 PHÓNG ĐẦY TRANG (chủ nhà 25/09/2026: "khi chọn khổ A4, tự giãn ra
+    đầy trang. Vì nhiều khi in dùng A4"). A4 rộng / cao gấp ≈1,41 lần A5, nên cỡ
+    chữ nhân đúng tỉ lệ ấy: 10,5pt → 14,5pt, tiêu đề 15pt → 21pt. Cùng số dòng
+    vừa một trang như bản A5, chỉ to ra cho đầy khổ.
+  */
   html[data-paper-size="A4"] .a4-doc {
     font-family: "Times New Roman", Times, serif;
-    font-size: 10.5pt;
+    font-size: 14.5pt;
     /*
       ⚠ TRƯỚC ĐÂY KHÔNG ĐẶT `line-height` Ở ĐÂY nên bảng thừa hưởng 1.5
       của Tailwind — bảy cột giãn thưa hết cả trang A4 mà không ai chọn
@@ -250,9 +255,9 @@
     */
     line-height: 1.15;
   }
-  html[data-paper-size="A4"] .a4-doc table { font-size: 10.5pt; }
+  html[data-paper-size="A4"] .a4-doc table { font-size: 14.5pt; }
   /* ⚠ Chỉ tiêu đề khác cỡ — xem chú thích ở khối A5 ngay trên. */
-  html[data-paper-size="A4"] .a4-doc h1 { font-size: 15pt; }
+  html[data-paper-size="A4"] .a4-doc h1 { font-size: 21pt; }
 }
 
 @layer utilities {

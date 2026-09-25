@@ -41,14 +41,20 @@ describe("một cỡ chữ cho cả tờ, trừ đúng tiêu đề", () => {
    * mẫu — tên nhà phân phối 13,5pt và ghi chú chân trang 7,5pt — ĐÃ BỎ.
    * Đây là chỗ CỐ Ý lệch với tờ mẫu, không phải quên chép.
    */
-  it.each([["A5"], ["A4"]] as const)("%s: thân và bảng cùng 10,5pt", (paper) => {
-    expect(pt(paper, ""), "thân tờ").toBe(10.5)
-    expect(pt(paper, " table"), "bảng — chính là tờ hóa đơn").toBe(10.5)
+  /*
+   * ⚠ CHỦ NHÀ 25/09/2026: "khi chọn khổ A4, tự giãn ra đầy trang". A4 rộng gấp
+   * ~1,41 lần A5 → cỡ chữ A4 = cỡ A5 × ~1,4 (10,5 → 14,5; 15 → 21). A5 giữ nguyên.
+   */
+  const CO = { A5: { than: 10.5, h1: 15 }, A4: { than: 14.5, h1: 21 } } as const
+
+  it.each([["A5"], ["A4"]] as const)("%s: thân và bảng cùng một cỡ", (paper) => {
+    expect(pt(paper, ""), "thân tờ").toBe(CO[paper].than)
+    expect(pt(paper, " table"), "bảng — chính là tờ hóa đơn").toBe(CO[paper].than)
   })
 
   it.each([["A5"], ["A4"]] as const)("%s: chỉ tiêu đề khác cỡ, và nó phải TO hơn", (paper) => {
     const h1 = pt(paper, " h1")
-    expect(h1, "mất cỡ riêng của tiêu đề").toBe(15)
+    expect(h1, "mất cỡ riêng của tiêu đề").toBe(CO[paper].h1)
     expect(h1!).toBeGreaterThan(pt(paper, "")!)
   })
 

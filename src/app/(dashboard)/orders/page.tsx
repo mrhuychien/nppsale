@@ -86,9 +86,7 @@ import {
   ShoppingCart,
   X,
   XCircle,
-  ClipboardList,
 } from "lucide-react"
-import { soanHangHref } from "@/lib/orders/pick-list"
 import type { Customer, Invoice, OrderStatus, SalesOrder, User } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -1308,16 +1306,6 @@ export default function OrdersPage() {
                     Hủy {cancellableCount} đơn
                   </Button>
                 )}
-                {/* SOẠN HÀNG (chủ nhà 25/09/2026): gộp các đơn đang chọn → tổng hàng cần xuất, in. */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid="nut-soan-hang"
-                  onClick={() => router.push(soanHangHref(Array.from(selectedIds)))}
-                >
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                  Soạn hàng
-                </Button>
                 <Button size="sm" variant="outline" onClick={handleExportCsv}>
                   <Download className="mr-2 h-4 w-4" />
                   Xuất CSV
@@ -1374,10 +1362,6 @@ export default function OrdersPage() {
             (`NEW_ORDER_HREF`), lúc nào cũng thấy — hai nút cùng việc nằm
             cách nhau một gang tay chỉ tốn chỗ của danh sách. Máy tính
             không có thanh dưới nên ở đó phải giữ. */}
-        {/* Soạn hàng: gộp nhiều đơn → tổng hàng cần xuất (chọn đơn ngay trong màn đó). */}
-        <Button variant="outline" onClick={() => router.push(soanHangHref([]))}>
-          <ClipboardList className="mr-2 h-4 w-4" /> Soạn hàng
-        </Button>
         {user && hasPermission(user.role, "orders", "create") && (
           <Button className="hidden lg:inline-flex" onClick={() => router.push(newOrderHref())}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn

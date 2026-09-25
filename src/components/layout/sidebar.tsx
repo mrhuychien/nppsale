@@ -11,7 +11,7 @@ import {
   ShoppingCart, Users, Package, Boxes, Settings, Award,
   CreditCard, Truck, Tag, FileText, RotateCcw, BarChart3, PackageSearch,
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
-  ChevronRight, UserCog, ClipboardList, Navigation, Wallet, Receipt,
+  ChevronRight, UserCog, ClipboardList, PackageCheck, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -99,6 +99,8 @@ const NAV_GROUPS: NavGroup[] = [
        *   cả bốn việc thì không còn chỗ cho hai mục menu lệch nhau.
        */
       { label: "Phiếu kho", href: "/inventory/entries", icon: ClipboardList },
+      /* Chủ nhà 25/09/2026: "Soạn hàng làm riêng 1 trang bên Kho vận" — gộp hóa đơn thành đơn tổng. */
+      { label: "Soạn hàng", href: "/inventory/soan-hang", icon: PackageCheck },
       { label: "Sản phẩm", href: "/products", icon: Package },
       { label: "Giao hàng", href: "/deliveries", icon: Truck },
     ],

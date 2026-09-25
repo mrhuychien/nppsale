@@ -102,6 +102,8 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
    *   theo `hasPermission(role, "inventory", "create")`.
    */
   "/inventory/entries": { module: "inventory", feature: "inventory" },
+  /* Soạn hàng — gộp hóa đơn thành đơn tổng, chỉ đọc (chủ nhà 25/09/2026). */
+  "/inventory/soan-hang": { module: "inventory", feature: "inventory" },
   // ⚠ PHIẾU NHẬP KHO NẰM Ở NHÓM KHO VẬN TỪ 20/09/2026 (chủ nhà chốt).
   //   Nó không còn là đường nhập hàng từ NCC — đường đó là
   //   `/purchasing/receipts`. Quyền giữ nguyên: nó vẫn cộng kho thật.

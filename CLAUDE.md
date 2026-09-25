@@ -65,6 +65,8 @@ không được kẹp về 0.
 - **KHÔNG đẩy lên `main` (production) khi chủ nhà chưa bảo rõ trong chính lượt đó.** Không tự đẩy
   theo thói quen của các đợt trước. `newdesign` là nhánh cũ, không push thêm. Không tạo PR khi chưa được bảo.
 - Preview và production **dùng chung một DB Supabase** — migration chạy là chạy thật.
+- Supabase ở **Singapore** → function Vercel chạy **`sin1`** (`vercel.json` → `regions`, chủ nhà chốt
+  25/09/2026). Không bỏ / đổi vùng: về `iad1` (Mỹ) là mọi lượt vẽ trang đi vòng VN → Mỹ → Singapore.
 - Commit message tiếng Việt. Không ghi tên / mã model vào bất cứ thứ gì đẩy lên repo.
 
 ## 3. Migration (`supabase/migrations/NNN_*.sql`)

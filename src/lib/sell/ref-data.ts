@@ -24,10 +24,19 @@ export type SellProduct = Product & {
  *     trả 400 và danh sách về RỖNG — màn hình trông như "chưa có sản phẩm
  *     nào". Nên có bước thử lại bằng `*`.
  */
+/**
+ * ⚠ CHỈ CỘT MÀN BÁN HÀNG / POS THẬT SỰ ĐỌC (chủ nhà 25/09/2026: tối ưu /sell trên di
+ *   động). Danh mục kéo về NGUYÊN KHỐI (1.700 SP) và làm mới mỗi 2 phút — mỗi cột thừa
+ *   nhân lên thành dữ liệu di động + thời gian chờ. Đã rà từng cột trong sell / POS /
+ *   lưu ngoại tuyến trước khi bỏ (xem `tests/sell-perf-cot.test.ts`).
+ * ⚠ KHÔNG CÒN `cost_price` (GIÁ VỐN) — trước đây về tận máy nhân viên bán hàng.
+ * ⚠ Sổ thiếu cột → nhánh dự phòng `*` bên dưới vẫn lấy đủ.
+ */
 const CUST_COLS =
-  "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)"
+  "id, org_id, store_name, owner_name, phone, address, group_id, credit_limit, payment_terms, status, group:customer_groups(id, name)"
 const PROD_COLS =
-  "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), units:product_units(*)"
+  "id, org_id, sku, name, barcode, base_unit, vat_rate, status, sell_price, images, allow_price_edit, " +
+  "price_lists(id, product_id, unit_name, price, group_id), units:product_units(id, product_id, unit_name, conversion)"
 
 export interface SellRefData {
   customers: Customer[]
@@ -192,6 +201,27 @@ export async function peekCachedSellRefData(): Promise<SellRefData | null> {
   }
 }
 
+/** Lô KHO BÁN còn hàng — nguồn của tồn kho trên màn bán. */
+function docLoBan(sb: Client) {
+  return (
+    fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).eq("warehouse_zone", "sale").order("id").range(from, to)) as any
+    )
+  )
+}
+
+/**
+ * CHỈ TỒN KHO (tối ưu /sell di động, 25/09/2026) — ~1/8 dữ liệu của `loadSellRefData`.
+ * `null` = đọc hỏng / thiếu trang: giữ số đang hiện, đừng thay bằng tồn 0.
+ */
+export async function loadSellStock(supabase: unknown): Promise<Record<string, number> | null> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return null
+  const res = await docLoBan(supabase as Client)
+  if (res.error || res.truncated) return null
+  return stockMapFrom(res.rows)
+}
+
 export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   const sb = supabase as Client
   const warnings: string[] = []
@@ -236,10 +266,7 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
      *   theo nó rồi màn Xuất hàng báo thiếu. Vùng `date` là hàng gần
      *   hạn (mig 028); muốn bán xả thì chuyển lô về vùng `sale` trước.
      */
-    fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).eq("warehouse_zone", "sale").order("id").range(from, to)) as any
-    ),
+    docLoBan(sb),
   ])
 
   let custRes = custRes0

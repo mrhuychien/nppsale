@@ -16,11 +16,16 @@ import {
   peekCachedSellRefData,
   type SellProduct,
   type SellRefData,
+  loadSellStock,
 } from "@/lib/sell/ref-data"
 import {
   isSellRefDataFresh,
   loadSellRefDataShared,
   peekSellRefData,
+  isSellCatalogFresh,
+  isCachedCatalogFresh,
+  seedSellRefData,
+  refreshSellStockShared,
 } from "@/lib/sell/ref-store"
 import { viMatchKey, viQueryWords, viSearchKey } from "@/lib/search"
 import type { Customer } from "@/types"
@@ -122,7 +127,26 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       } else {
         const cached = await peekCachedSellRefData()
         if (cancelled) return
-        if (cached) apply(cached, false)
+        if (cached) {
+          apply(cached, false)
+          /* Bản trên máy chưa quá 30 phút → lấy nó làm gốc, chỉ làm mới TỒN. */
+          if (isCachedCatalogFresh(cached.cachedAt)) seedSellRefData(cached, Date.parse(String(cached.cachedAt)))
+        }
+      }
+
+      /**
+       * ⚠ DANH MỤC CÒN MỚI → CHỈ LÀM MỚI TỒN KHO (~1/8 dữ liệu). Tồn phải mới vì
+       *   chốt vượt-tồn xét trên nó; sản phẩm / giá / khách thì 30 phút một lần là
+       *   đủ. Bấm "Tải lại danh mục" (`tick > 0`) vẫn tải đủ.
+       */
+      if (tick === 0 && isSellCatalogFresh()) {
+        const stock = await refreshSellStockShared(() => loadSellStock(createClient()))
+        if (cancelled) return
+        if (stock) {
+          setStockByProduct(stock)
+          return
+        }
+        // Đọc tồn hỏng → rơi xuống tải đủ như cũ (có sẵn nhánh báo lỗi / bản lưu).
       }
 
       const data = await loadSellRefDataShared(() => loadSellRefData(createClient()))

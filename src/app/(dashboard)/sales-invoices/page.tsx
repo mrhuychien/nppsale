@@ -52,6 +52,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { RouteFilter } from "@/components/orders/route-filter"
 import { StatusChips } from "@/components/ui/status-chips"
+import { trangThaiCuaChon } from "@/lib/list/status-multi"
 import {
   DesktopInvoiceTable,
   type InvoiceRow,
@@ -97,6 +98,13 @@ const BASE_COLS =
   "id, invoice_code, invoice_date, created_at, payment_terms, status, total, order_id, customer_id, sales_user_id, replaced_from, replaced_by"
 /* Người xuất (`posted_by`) cho cột "Người tạo" — tắt mặc định. */
 const SALES_EMBED = "sales_user:users!sales_invoices_sales_user_id_fkey(full_name), creator:users!sales_invoices_posted_by_fkey(full_name)"
+
+/** Lọc một hay NHIỀU trạng thái (chủ nhà 25/09/2026) — xem `status-multi.ts`. */
+function locTrangThai<Q extends { eq: (c: string, v: string) => Q; in: (c: string, v: string[]) => Q }>(q: Q, v: string): Q {
+  const ds = trangThaiCuaChon(v)
+  if (!ds) return q
+  return ds.length === 1 ? q.eq("status", ds[0]) : q.in("status", ds)
+}
 
 const TABS = [
   { key: "posted", label: "Đã xuất", accent: "#12b76a" },
@@ -327,7 +335,7 @@ export default function SalesInvoicesPage() {
       .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, { count: "exact" })
       .order("invoice_date", { ascending: false })
       .order("created_at", { ascending: false })
-    if (status !== "all") q = q.eq("status", status)
+    q = locTrangThai(q, status)
     q = applyFilters(q as never) as typeof q
 
     const { data, error, count } = await q.range(pg.from, pg.to)
@@ -389,7 +397,7 @@ export default function SalesInvoicesPage() {
       let q = supabase
         .from("sales_invoices")
         .select(routeFilter !== "all" ? `total, ${cust}` : "total", { count: "exact" })
-      if (status !== "all") q = q.eq("status", status)
+      if (status !== "all") q = locTrangThai(q, status)
       // Tab "Tất cả": hóa đơn đã huỷ không vào tổng tiền.
       else q = q.neq("status", "cancelled")
       return (applyFilters(q as never) as typeof q).range(from, to)
@@ -595,6 +603,7 @@ export default function SalesInvoicesPage() {
           trong cùng một nhóm; để một bên khung một bên viên thuốc là bắt
           người dùng học hai cách đọc cho cùng một việc. */}
       <StatusChips
+        multi
         active={status}
         onPick={setStatus}
         chips={TABS.map((t) => ({

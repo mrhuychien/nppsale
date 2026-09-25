@@ -98,9 +98,12 @@ describe("không trạng thái nào rơi khỏi màn hình", () => {
    * trên thành hành vi thật; thiếu nó thì bảng chỉ là chú thích.
    */
   it("truy vấn lọc theo cả nhóm trạng thái", () => {
-    expect(ORDERS).toContain('x.in("status", group)')
+    // Chọn nhiều (25/09/2026): bung NHÓM của từng chip rồi `.in(...)`.
+    expect(ORDERS).toContain("const ds = trangThaiCuaChon(status, TAB_STATUSES)")
+    expect(ORDERS).toContain('x.in("status", ds)')
     // Và giá trị KHÔNG phải tab (deep-link ?status=draft) vẫn lọc đúng nó.
-    expect(ORDERS).toContain('x.eq("status", status)')
+    //   `trangThaiCuaChon("draft", TAB_STATUSES)` = ["draft"] → một giá trị thì `.eq`.
+    expect(ORDERS).toContain('ds.length === 1 ? x.eq("status", ds[0])')
   })
 
   /**
@@ -168,6 +171,7 @@ describe("gộp tab KHÔNG làm mất đơn theo chiều ngược lại", () => 
   it("tab Tất cả không lọc trạng thái nào", () => {
     const i = ORDERS.indexOf("const applyStatusFilter")
     const fn = ORDERS.slice(i, ORDERS.indexOf("\n  }", i))
-    expect(fn).toContain('if (status === "all") return x as T')
+    // "all" → `trangThaiCuaChon` trả null → không lọc (xem tests/loc-nhieu-trang-thai.test.ts).
+    expect(fn).toContain("if (!ds) return x as T")
   })
 })

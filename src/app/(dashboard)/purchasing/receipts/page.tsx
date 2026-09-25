@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChips } from "@/components/ui/status-chips"
+import { dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
@@ -114,7 +115,9 @@ export default function PurchaseReceiptsPage() {
   const shown = useMemo(() => {
     const term = q.trim()
     return locRows.filter((r) => {
-      if (tab && tab !== "all" && r.status !== tab) return false
+      /* Chọn nhiều trạng thái (chủ nhà 25/09/2026). */
+      const chon = trangThaiCuaChon(tab)
+      if (chon && !chon.includes(r.status)) return false
       if (!term) return true
       return viMatchAllWords(term, r.receipt_code, r.invoice_number, r.supplier?.name, r.supplier?.code)
     })
@@ -124,7 +127,7 @@ export default function PurchaseReceiptsPage() {
     shown,
     (r) => r.total,
     // Đang xem tab "Đã huỷ" thì cộng chính các phiếu huỷ ấy.
-    (r) => tab !== "cancelled" && r.status === "cancelled",
+    (r) => !dangChon(tab, "cancelled") && r.status === "cancelled",
     !canhBao
   )
 
@@ -145,6 +148,7 @@ export default function PurchaseReceiptsPage() {
             key: s, label: receiptStatusLabel(s), count: counts[s] ?? 0, accent: receiptStatusTone(s),
           })),
         ]}
+        multi
         active={tab || "all"}
         onPick={setTab}
       />
@@ -167,7 +171,7 @@ export default function PurchaseReceiptsPage() {
         <DocListTotals
           className="rounded-xl border"
           label="Tổng tiền phiếu nhập"
-          countText={`${tongPhieu.soPhieu} phiếu nhập${tab !== "cancelled" && tab !== "draft" && tab !== "completed" ? " · không tính phiếu huỷ" : ""}`}
+          countText={`${tongPhieu.soPhieu} phiếu nhập${!dangChon(tab, "cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(",")) ? " · không tính phiếu huỷ" : ""}`}
           total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
         />
       )}

@@ -49,7 +49,8 @@ import { DocSearchBox } from "@/components/ui/doc-search-box"
 import { useFieldSearch } from "@/hooks/use-field-search"
 import { TRUONG_TRA_HANG } from "@/lib/search/doc-fields"
 import { RETURN_REASONS } from "@/lib/constants"
-import { RotateCcw, PieChart, Info, Plus } from "lucide-react"
+import { RotateCcw, PieChart, Info, Plus, Check } from "lucide-react"
+import { bamTrangThai, dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
 import Link from "next/link"
 import type { Return } from "@/types"
 import { ReturnDrawer } from "@/components/returns/return-drawer"
@@ -184,13 +185,15 @@ export default function ReturnsPage() {
    * hai con số cạnh nhau không khớp nhau.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any; is: (c: string, v: null) => any }>(q: Q): Q => {
+  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any; in: (c: string, v: string[]) => any; is: (c: string, v: null) => any }>(q: Q): Q => {
     let x = q
     if (listSearch.filter) x = x.or(listSearch.filter)
     for (const f of fieldSearch.filters) x = x.or(f)
     for (const f of locNC.menhDe) x = x.or(f)
     if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
-    if (statusFilter !== "all") x = x.eq("status", statusFilter)
+    /* ⚠ CHỌN NHIỀU TRẠNG THÁI (chủ nhà 25/09/2026) — xem `status-multi.ts`. */
+    const ttChon = trangThaiCuaChon(statusFilter)
+    if (ttChon) x = ttChon.length === 1 ? x.eq("status", ttChon[0]) : x.in("status", ttChon)
     if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
     else if (filterActive("seller") && sellerFilter !== "all") x = x.eq("sales_user_id", sellerFilter)
     return x
@@ -349,22 +352,30 @@ export default function ReturnsPage() {
               hướng của một hàng đợi việc, nên nó đứng ngoài và luôn nhìn
               thấy. "Tất cả" đứng CUỐI: nó là chỗ tra cứu, không phải chỗ
               làm việc. */}
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0">
+          <div
+            role="group"
+            aria-label="Lọc trạng thái — chọn được nhiều"
+            className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0"
+          >
             {RETURN_TABS.map((t) => {
-              const on = statusFilter === t.value
+              const on = dangChon(statusFilter, t.value)
               return (
                 <button
                   key={t.value}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => setStatusFilter(t.value)}
+                  data-status-chip={t.value}
+                  onClick={() => setStatusFilter(bamTrangThai(statusFilter, t.value, RETURN_TABS.map((x) => x.value)))}
                   className={`h-[34px] shrink-0 whitespace-nowrap rounded-full border-[1.5px] px-3 text-[13px] font-bold transition-colors ${
                     on
                       ? "border-on-surface bg-on-surface text-surface"
                       : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
                   }`}
                 >
-                  {t.label}
+                  <span className="inline-flex items-center gap-1">
+                    {on && t.value !== "all" && <Check aria-hidden className="h-3.5 w-3.5" strokeWidth={3} />}
+                    {t.label}
+                  </span>
                 </button>
               )
             })}

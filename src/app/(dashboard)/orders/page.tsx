@@ -45,6 +45,7 @@ import {
 } from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
 import { StatusChips } from "@/components/ui/status-chips"
+import { trangThaiCuaChon } from "@/lib/list/status-multi"
 import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
 import { OrderDrawer } from "@/components/orders/order-drawer"
 import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
@@ -568,11 +569,11 @@ export default function OrdersPage() {
    * một nhóm là trả về thứ người ta không hỏi.
    */
   const applyStatusFilter = <T,>(q: T, status: string): T => {
-    let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (status === "all") return x as T
-    const group = TAB_STATUSES[status]
-    x = group ? x.in("status", group) : x.eq("status", status)
-    return x as T
+    const x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    /* ⚠ CHỌN NHIỀU (chủ nhà 25/09/2026): "submitted,completed" → hợp các nhóm. */
+    const ds = trangThaiCuaChon(status, TAB_STATUSES)
+    if (!ds) return x as T
+    return (ds.length === 1 ? x.eq("status", ds[0]) : x.in("status", ds)) as T
   }
 
   /**
@@ -1409,6 +1410,7 @@ export default function OrdersPage() {
           biến mất khỏi mọi tab. Hàng cuộn ngang thì không có trần.
       */}
       <StatusChips
+        multi
         active={effectiveStatus}
         onPick={(k) => setStatusFilter(k)}
         chips={tabKeys.map((k) => ({

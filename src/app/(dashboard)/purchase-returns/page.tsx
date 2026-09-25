@@ -23,13 +23,16 @@ import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG_NCC } from "@/lib/search/list-filter-fields"
+import { bamTrangThai, dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
 import {
   PURCHASE_RETURN_COLUMNS,
   DEFAULT_PURCHASE_RETURN_COLUMNS,
   type PurchaseReturnColumnKey,
 } from "./list-config"
 
-type StatusFilter = "all" | "draft" | "completed" | "cancelled"
+/** "all" hoặc các trạng thái nối dấu phẩy — chọn nhiều (chủ nhà 25/09/2026). */
+type StatusFilter = string
+const TRANG_THAI_NCC = ["all", "draft", "completed", "cancelled"] as const
 
 const STATUS_LABEL: Record<string, { label: string; variant: "secondary" | "success" | "warning" }> = {
   draft: { label: "Nháp", variant: "warning" },
@@ -85,7 +88,8 @@ export default function PurchaseReturnsPage() {
           .eq("org_id", user.org_id)
           .order("created_at", { ascending: false })
           .order("id")
-        if (filter !== "all") q = q.eq("status", filter)
+        const chon = trangThaiCuaChon(filter)
+        if (chon) q = chon.length === 1 ? q.eq("status", chon[0]) : q.in("status", chon)
         for (const f of locNC.menhDe) q = q.or(f)
         return q.range(from, to)
       })
@@ -97,7 +101,7 @@ export default function PurchaseReturnsPage() {
     fetch()
   }, [user?.org_id, filter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => filter !== "cancelled" && r.status === "cancelled", !canhBao)
+  const tongPhieu = tongChungTu(rows, (r) => r.total, (r) => !dangChon(filter, "cancelled") && r.status === "cancelled", !canhBao)
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -113,12 +117,14 @@ export default function PurchaseReturnsPage() {
 
       <Card>
         <CardContent className="p-3 flex flex-wrap items-center gap-2">
-          {(["all", "draft", "completed", "cancelled"] as StatusFilter[]).map((f) => (
+          {TRANG_THAI_NCC.map((f) => (
             <Button
               key={f}
-              variant={filter === f ? "default" : "outline"}
+              variant={dangChon(filter, f) ? "default" : "outline"}
               size="sm"
-              onClick={() => setFilter(f)}
+              aria-pressed={dangChon(filter, f)}
+              data-status-chip={f}
+              onClick={() => setFilter(bamTrangThai(filter, f, TRANG_THAI_NCC))}
             >
               {f === "all" ? "Tất cả" : STATUS_LABEL[f]?.label || f}
             </Button>
@@ -142,7 +148,7 @@ export default function PurchaseReturnsPage() {
         <DocListTotals
           className="rounded-xl border"
           label="Tổng tiền trả NCC"
-          countText={`${tongPhieu.soPhieu} phiếu trả${filter === "all" ? " · không tính phiếu huỷ" : ""}`}
+          countText={`${tongPhieu.soPhieu} phiếu trả${!dangChon(filter, "cancelled") && filter !== "draft" && filter !== "completed" ? " · không tính phiếu huỷ" : ""}`}
           total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
         />
       )}

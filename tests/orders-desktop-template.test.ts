@@ -48,7 +48,9 @@ describe("Thẻ trạng thái (StatusChips) — cùng số với bảng bên dư
     expect(flat).toContain("overflow-x-auto")
     // Không co lại, không xuống dòng — dải dài thì cuộn, không gãy.
     expect(flat).toContain("shrink-0")
-    expect(flat).toContain("aria-selected={on}")
+    // Một lựa chọn: tab (aria-selected); chọn nhiều: nút bật/tắt (aria-pressed).
+    expect(flat).toContain("aria-selected={multi ? undefined : on}")
+    expect(flat).toContain("aria-pressed={multi ? on : undefined}")
     // Viên đang chọn tô đậm; chấm màu giữ lại ngôn ngữ màu của orderTone.
     expect(flat).toContain('on ? "bg-on-surface text-surface"')
     expect(flat).toContain("background: c.accent")

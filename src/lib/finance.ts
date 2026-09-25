@@ -7,8 +7,15 @@ export interface FinancePeriod {
 }
 
 export interface PnlData {
+  /** Doanh thu THUẦN = hóa đơn đã ghi sổ − hàng trả (mig 192). */
   revenue: number
+  /** Hóa đơn đã ghi sổ, chưa trừ hàng trả. */
+  revenueGross: number
+  /** Hàng trả trừ doanh số trong kỳ (theo `returns.revenue_date`). */
+  returnsValue: number
+  /** Giá vốn THUẦN = giá vốn xuất − giá vốn hàng trả đã nhập lại kho. */
   cogs: number
+  returnsCogs: number
   grossProfit: number
   expensesByBucket: Record<ExpenseBucket, number>
   totalExpenses: number
@@ -69,6 +76,10 @@ export async function fetchPnl(
 
   const revenue = num("revenue")
   const cogs = num("cogs")
+  /* ⚠ Chưa chạy mig 192 thì RPC chưa trả hai cột này: doanh thu lúc ấy là gộp. */
+  const returnsValue = num("returns_value")
+  const revenueGross = r["revenue_gross"] == null ? revenue : num("revenue_gross")
+  const returnsCogs = num("returns_cogs")
   const orderCount = num("order_count")
 
   const expensesByBucket: Record<ExpenseBucket, number> = {
@@ -96,7 +107,10 @@ export async function fetchPnl(
 
   return {
     revenue,
+    revenueGross,
+    returnsValue,
     cogs,
+    returnsCogs,
     grossProfit,
     expensesByBucket,
     totalExpenses,

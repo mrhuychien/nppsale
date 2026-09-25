@@ -38,7 +38,14 @@ export interface InvoiceRow {
   created_at?: string | null
   payment_terms?: string | null
   status: string
+  /**
+   * ⚠ SỐ TIỀN CÒN LẠI sau hàng trả (chủ nhà 25/09/2026: "HD 0403 thực chất số tiền
+   * còn 2988500 (sau khi trừ hàng trả)", mig 192) — trang danh sách trừ sẵn.
+   * `tong_hoa_don` giữ tổng trên tờ hóa đơn.
+   */
   total: number
+  tong_hoa_don?: number
+  tra_hang?: number
   order_id: string
   replaced_from: string | null
   replaced_by: string | null
@@ -259,6 +266,11 @@ export function DesktopInvoiceTable({
               {show("total") && (
                 <span className="px-2 text-right text-[13px] font-extrabold tabular-data text-on-surface">
                   {formatCurrency(r.total)}
+                  {(r.tra_hang ?? 0) > 0 && (
+                    <span className="block text-[11px] font-medium text-muted-foreground">
+                      HĐ {formatCurrency(r.tong_hoa_don ?? r.total)} · trả {formatCurrency(r.tra_hang ?? 0)}
+                    </span>
+                  )}
                 </span>
               )}
               {show("status") && (

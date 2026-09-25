@@ -44,6 +44,7 @@ import {
 } from "lucide-react"
 import type { Customer, CustomerAssignment } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { traCuaKhach, traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface OrderRow {
@@ -151,6 +152,8 @@ export default function CustomerDetailPage() {
   const [allInvoices, setAllInvoices] = useState<Array<{
     id: string; invoice_code: string; invoice_date: string; total: number; status: string
   }>>([])
+  /** Khoản trả đã trừ vào từng hóa đơn (mig 192) — cột tiền hiện SỐ CÒN LẠI. */
+  const [traHD, setTraHD] = useState<Map<string, number>>(new Map())
   const [allPayments, setAllPayments] = useState<Array<{
     id: string; amount: number; method: string; collected_at: string
   }>>([])
@@ -328,10 +331,26 @@ export default function CustomerDetailPage() {
 
     const sumTotal = (rows: Array<{ total: number }> | null) =>
       (rows || []).reduce((s, o) => s + (o.total || 0), 0)
-    setMonthRevenue(sumTotal(monthOrdersRes.data as Array<{ total: number }>))
-    setLastMonthRevenue(sumTotal(prevMonthOrdersRes.data as Array<{ total: number }>))
+    /* ⚠ DOANH THU THUẦN = hàng đi − hàng trả (chủ nhà 25/09/2026: "Doanh thu lệch công
+       nợ … Rà soát lại toàn bộ doanh số tính bằng số đi - số trả", mig 192). Hàng trả
+       theo `returns.revenue_date` — cùng luật với công nợ. */
+    const invoiceRows = ((invoicesRes.data as unknown) as typeof allInvoices) || []
+    /* ⚠ ĐỌC HỎNG THÌ NÓI RA — im lặng về 0 là hiện doanh thu gộp như thể đã trừ. */
+    let loiTra: string | null = null
+    const baoLoi = <T,>(macDinh: T) => (e: unknown) => { loiTra = errorMessage(e); return macDinh }
+    const [traThang, traThangTruoc, traTungHD] = await Promise.all([
+      traCuaKhach(supabase, id, ngayDauThang, null).catch(baoLoi(0)),
+      traCuaKhach(supabase, id, ngayDauThangTruoc, ngayDauThang).catch(baoLoi(0)),
+      traTheoHoaDon(supabase, invoiceRows.filter((v) => v.status === "posted").map((v) => v.id)).catch(
+        baoLoi(new Map<string, number>())
+      ),
+    ])
+    if (loiTra) setStatsError((cu) => cu ?? `Hàng trả (chưa trừ vào doanh thu): ${loiTra}`)
+    setMonthRevenue(sumTotal(monthOrdersRes.data as Array<{ total: number }>) - traThang)
+    setLastMonthRevenue(sumTotal(prevMonthOrdersRes.data as Array<{ total: number }>) - traThangTruoc)
+    setTraHD(traTungHD)
 
-    setAllInvoices(((invoicesRes.data as unknown) as typeof allInvoices) || [])
+    setAllInvoices(invoiceRows)
     setAllPayments(((paymentsRes.data as unknown) as typeof allPayments) || [])
 
     const orders = allOrdersRes.rows
@@ -968,9 +987,15 @@ export default function CustomerDetailPage() {
                               </span>
                             </span>
                             <span className="shrink-0 text-right">
+                              {/* ⚠ SỐ CÒN LẠI sau hàng trả — khớp công nợ (mig 192). */}
                               <span className="block text-sm font-bold">
-                                {formatCurrency(v.total)}
+                                {formatCurrency(v.total - (traHD.get(v.id) ?? 0))}
                               </span>
+                              {(traHD.get(v.id) ?? 0) > 0 && (
+                                <span className="block text-[11px] text-muted-foreground">
+                                  HĐ {formatCurrency(v.total)} · trả {formatCurrency(traHD.get(v.id) ?? 0)}
+                                </span>
+                              )}
                               {st && (
                                 <Badge variant={st.variant} className="mt-1">
                                   {st.label}

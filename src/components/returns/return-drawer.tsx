@@ -18,10 +18,16 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { RETURN_REASONS, RETURN_STATUS_MAP } from "@/lib/constants"
 import { CustomerQuickInfo, type QuickCustomer } from "@/components/orders/customer-quick-info"
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
+import { laNhapTheoDon, laPhieuTuSinh } from "@/lib/returns/loai-phieu"
 
 interface DrawerReturn {
   id: string
   status: string
+  credit_with_invoice?: boolean | null
+  invoice_id?: string | null
+  order_id?: string | null
+  return_code?: string | null
   created_at: string
   return_date?: string | null
   reason: string | null
@@ -45,7 +51,7 @@ interface DrawerReturn {
 }
 
 const COT =
-  "id, status, created_at, reason, notes, credit_note_amount, " +
+  "id, status, created_at, reason, notes, credit_note_amount, credit_with_invoice, invoice_id, order_id, " +
   "customer:customers(store_name, phone, address, ward, district, province), " +
   "seller:users!returns_sales_user_id_fkey(full_name), requester:users!returns_requested_by_fkey(full_name), " +
   "invoice:sales_invoices(id, invoice_code), order:sales_orders(order_code), " +
@@ -65,9 +71,10 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
     ;(async () => {
       const sb = createClient()
       /* `return_date` (mig 188) đọc riêng — sổ chưa có cột thì không hỏng cả ngăn. */
-      const [{ data, error: e }, ngay] = await Promise.all([
+      const [{ data, error: e }, ngay, ma] = await Promise.all([
         sb.from("returns").select(COT).eq("id", returnId).maybeSingle(),
         sb.from("returns").select("return_date").eq("id", returnId).maybeSingle(),
+        docMaPhieuTra(sb, [returnId]),
       ])
       if (huy) return
       if (e) { setError(errorMessage(e)); return }
@@ -75,6 +82,7 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
       setR({
         ...((data as unknown) as DrawerReturn),
         return_date: ((ngay.data as unknown) as { return_date?: string | null } | null)?.return_date ?? null,
+        return_code: ma.get(returnId) ?? null,
       })
     })()
     return () => { huy = true }
@@ -83,13 +91,27 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
   const st = r ? RETURN_STATUS_MAP[r.status] : null
   const tra = (r?.lines ?? []).filter((l) => !l.is_exchange)
   const doi = (r?.lines ?? []).filter((l) => l.is_exchange)
+  /**
+   * ⚠ NÚT SỬA THEO LOẠI PHIẾU (chủ nhà 25/09/2026): phiếu TỰ SINH → sửa HÓA ĐƠN (phiếu
+   *   ăn theo hóa đơn, mig 191); phiếu TỰ LẬP → POS sửa phiếu. Hàng trả còn nằm trong
+   *   ĐƠN chưa xuất → sửa đơn. Phiếu đã huỷ thì không sửa.
+   */
+  const suaHref = !r || r.status === "cancelled"
+    ? null
+    : laPhieuTuSinh(r)
+      ? (r.invoice_id ? `/sales-invoices/${r.invoice_id}/edit` : null)
+      : laNhapTheoDon(r)
+        ? (r.order_id ? `/pos/don-hang/${r.order_id}` : null)
+        : `/pos/tra-hang/${r.id}`
 
   return (
     <Sheet open={!!returnId} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="flex w-full max-w-[460px] flex-col gap-0 p-0 sm:max-w-[460px]">
         <div className="flex items-center gap-2.5 border-b border-outline-variant/40 py-4 pl-5 pr-14">
           <span className="min-w-0 flex-1">
-            <SheetTitle className="block truncate text-lg font-extrabold text-on-surface">Phiếu trả hàng</SheetTitle>
+            <SheetTitle className="block truncate font-mono text-lg font-extrabold text-on-surface">
+              {r ? tenPhieuTra(r.return_code) : "Phiếu trả hàng"}
+            </SheetTitle>
             <span className="mt-0.5 block text-xs font-semibold text-on-surface-variant">
               {r ? formatDate(r.return_date || r.created_at) : "…"}
               {r?.lines ? ` · ${r.lines.length} mặt hàng` : ""}
@@ -168,8 +190,16 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
               href={`/returns/${returnId}/print?auto=1`}
               className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
             >
-              In phiếu
+              In
             </NewTabLink>
+            {suaHref && (
+              <NewTabLink
+                href={suaHref}
+                className="h-11 flex-1 rounded-xl border-[1.5px] border-outline-variant bg-surface-container-lowest text-sm font-extrabold text-on-surface"
+              >
+                {r && laPhieuTuSinh(r) ? "Sửa hóa đơn" : "Sửa"}
+              </NewTabLink>
+            )}
             <NewTabLink
               href={`/returns/${returnId}`}
               className="h-11 flex-1 rounded-xl bg-primary text-sm font-extrabold text-on-primary"

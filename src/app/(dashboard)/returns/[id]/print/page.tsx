@@ -5,6 +5,7 @@
  * in đơn tại chỗ". Khuôn giấy: `ReturnSlip`. `?auto=1` thì bật thẳng hộp
  * thoại in (POS gọi trang này trong khung ẩn — xem `inTaiCho`).
  */
+import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -64,6 +65,7 @@ export default function ReturnPrintPage() {
   const [lines, setLines] = useState<LineRow[]>([])
   const [nvBan, setNvBan] = useState<string | null>(null)
   const [ngayTra, setNgayTra] = useState<string | null>(null)
+  const [maPhieu, setMaPhieu] = useState<string | null>(null)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
 
@@ -92,6 +94,7 @@ export default function ReturnPrintPage() {
     setRet(row)
     setLines((lineRes.data as unknown as LineRow[]) || [])
     setNgayTra(ngayRes.error ? null : ((ngayRes.data as { return_date?: string | null } | null)?.return_date ?? null))
+    setMaPhieu((await docMaPhieuTra(supabase, [id])).get(id) ?? null)
     setNvBan(nvRes.error ? null : (nvRes.data as { seller?: { full_name?: string | null } | null } | null)?.seller?.full_name ?? null)
     if (row?.org_id) setOrg(await loadOrgHeader(supabase, row.org_id))
     setLoading(false)
@@ -157,6 +160,7 @@ export default function ReturnPrintPage() {
           issuedAt={mocInPhieuTra(ret.created_at, ngayTra).at}
           issuedHasTime={mocInPhieuTra(ret.created_at, ngayTra).hasTime}
           refLabel={refLabel}
+          code={maPhieu}
           customerName={ret.customer?.billing_name || ret.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(ret.customer ?? {})}
           customerPhone={ret.customer?.phone}

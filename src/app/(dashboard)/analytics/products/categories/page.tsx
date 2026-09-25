@@ -16,7 +16,14 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchRevenueInvoices, fetchInvoiceLines, type InvoiceLineRow } from "@/lib/analytics/sales"
+import {
+  fetchRevenueInvoices,
+  fetchInvoiceLines,
+  fetchReturnsRows,
+  fetchReturnLines,
+  type InvoiceLineRow,
+  type ReturnLineRow,
+} from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
@@ -38,6 +45,13 @@ export default function ProductsCategoriesPage() {
   const [loading, setLoading] = useState(true)
   const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [prevLines, setPrevLines] = useState<InvoiceLineRow[]>([])
+  /**
+   * ⚠ Dòng hàng trả (không tính hàng đổi) của phiếu trừ trong kỳ — doanh thu THUẦN
+   *   theo nhóm / thương hiệu = dòng hóa đơn − dòng trả (chủ nhà 25/09/2026: "Rà soát
+   *   lại toàn bộ doanh số tính bằng số đi - số trả").
+   */
+  const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  const [prevReturnLines, setPrevReturnLines] = useState<ReturnLineRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
 
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -58,10 +72,12 @@ export default function ProductsCategoriesPage() {
      *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
     try {
-      const [orders, prevOrders, productsRes] = await Promise.all([
+      const [orders, prevOrders, retRows, prevRetRows, productsRes] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
         fetchRevenueInvoices(supabase, orgId, range),
         fetchRevenueInvoices(supabase, orgId, prev),
+        fetchReturnsRows(supabase, orgId, range),
+        fetchReturnsRows(supabase, orgId, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -73,12 +89,16 @@ export default function ProductsCategoriesPage() {
           "đọc danh mục hàng"
         ),
       ])
-      const [lineList, prevLineList] = await Promise.all([
+      const [lineList, prevLineList, retLineList, prevRetLineList] = await Promise.all([
         fetchInvoiceLines(supabase, orders.map((o) => o.id)),
         fetchInvoiceLines(supabase, prevOrders.map((o) => o.id)),
+        fetchReturnLines(supabase, retRows.map((r) => r.id)),
+        fetchReturnLines(supabase, prevRetRows.map((r) => r.id)),
       ])
       setLines(lineList)
       setPrevLines(prevLineList)
+      setReturnLines(retLineList)
+      setPrevReturnLines(prevRetLineList)
       setProducts(productsRes.rows)
       setTruncated(productsRes.truncated)
     } catch (e) {
@@ -100,7 +120,7 @@ export default function ProductsCategoriesPage() {
   }, [products])
 
   const aggregate = useCallback(
-    (rows: InvoiceLineRow[], key: "category" | "brand") => {
+    (rows: InvoiceLineRow[], retRows: ReturnLineRow[], key: "category" | "brand") => {
       const m = new Map<string, { qty: number; revenue: number; skuSet: Set<string> }>()
       for (const l of rows) {
         const p = productMap.get(l.product_id)
@@ -112,14 +132,22 @@ export default function ProductsCategoriesPage() {
         e.skuSet.add(l.product_id)
         m.set(k, e)
       }
+      // Số THUẦN: trừ dòng hàng trả vào nhóm / thương hiệu của mặt hàng.
+      for (const l of retRows) {
+        const p = productMap.get(l.product_id)
+        const k = (p?.[key] as string | null | undefined) || "Khác"
+        const e = m.get(k) || { qty: 0, revenue: 0, skuSet: new Set<string>() }
+        e.revenue -= Number(l.line_total || 0)
+        m.set(k, e)
+      }
       return m
     },
     [productMap]
   )
 
   const byCategory = useMemo(() => {
-    const cur = aggregate(lines, "category")
-    const prev = aggregate(prevLines, "category")
+    const cur = aggregate(lines, returnLines, "category")
+    const prev = aggregate(prevLines, prevReturnLines, "category")
     return Array.from(cur.entries())
       .map(([k, e]) => ({
         id: k,
@@ -130,11 +158,11 @@ export default function ProductsCategoriesPage() {
         changePct: pctChange(e.revenue, prev.get(k)?.revenue || 0),
       }))
       .sort((a, b) => b.revenue - a.revenue)
-  }, [lines, prevLines, aggregate])
+  }, [lines, prevLines, returnLines, prevReturnLines, aggregate])
 
   const byBrand = useMemo(() => {
-    const cur = aggregate(lines, "brand")
-    const prev = aggregate(prevLines, "brand")
+    const cur = aggregate(lines, returnLines, "brand")
+    const prev = aggregate(prevLines, prevReturnLines, "brand")
     return Array.from(cur.entries())
       .map(([k, e]) => ({
         id: k,
@@ -145,13 +173,15 @@ export default function ProductsCategoriesPage() {
         changePct: pctChange(e.revenue, prev.get(k)?.revenue || 0),
       }))
       .sort((a, b) => b.revenue - a.revenue)
-  }, [lines, prevLines, aggregate])
+  }, [lines, prevLines, returnLines, prevReturnLines, aggregate])
 
+  // Tổng doanh thu THUẦN (đi − trả) của kỳ này và kỳ trước, cùng một phép gộp.
   const totalRevenue = byCategory.reduce((s, r) => s + r.revenue, 0)
-  const prevTotalRevenue = byCategory.reduce((s, r) => {
-    const p = prevLines.filter((l) => productMap.get(l.product_id)?.category === r.name)
-    return s + p.reduce((a, x) => a + Number(x.line_total || 0), 0)
-  }, 0)
+  const prevTotalRevenue = useMemo(() => {
+    let t = 0
+    aggregate(prevLines, prevReturnLines, "category").forEach((e) => { t += e.revenue })
+    return t
+  }, [prevLines, prevReturnLines, aggregate])
 
   if (authLoading || loading) {
     return (
@@ -195,7 +225,7 @@ export default function ProductsCategoriesPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          label="Tổng doanh thu (đã phân loại)"
+          label="Tổng doanh thu thuần (đã phân loại)"
           value={totalRevenue}
           format="compactCurrency"
           changePct={pctChange(totalRevenue, prevTotalRevenue)}
@@ -222,7 +252,7 @@ export default function ProductsCategoriesPage() {
           { key: "name", label: "Nhóm hàng", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "skus", label: "SKU", align: "right", render: (r) => <NumberCell value={r.skus} /> },
           { key: "qty", label: "SL bán", align: "right", render: (r) => <NumberCell value={r.qty} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />
@@ -235,7 +265,7 @@ export default function ProductsCategoriesPage() {
           { key: "name", label: "Thương hiệu", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "skus", label: "SKU", align: "right", render: (r) => <NumberCell value={r.skus} /> },
           { key: "qty", label: "SL bán", align: "right", render: (r) => <NumberCell value={r.qty} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />

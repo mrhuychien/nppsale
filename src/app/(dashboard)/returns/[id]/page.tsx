@@ -1,5 +1,6 @@
 "use client"
 
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
@@ -64,6 +65,8 @@ export default function ReturnDetailPage() {
    *   Chưa có cột mà vẫn vẽ ô chọn là mời người ta bấm một cái nút mà
    *   máy chủ chắc chắn từ chối.
    */
+  /** Số phiếu TH- (mig 193), đọc riêng — xem `docMaPhieuTra`. */
+  const [maPhieu, setMaPhieu] = useState<string | null>(null)
   const [salesUserId, setSalesUserId] = useState<string | null>(null)
   const [salesUserName, setSalesUserName] = useState<string | null>(null)
   const [coCotNguoiDungTen, setCoCotNguoiDungTen] = useState(false)
@@ -118,6 +121,7 @@ export default function ReturnDetailPage() {
       })
     }
     setLines((linesRes.data as unknown as ReturnLine[]) || [])
+    setMaPhieu((await docMaPhieuTra(supabase, [id])).get(id) ?? null)
     if (nguoiRes.error) {
       // Chưa chạy mig 160 — giấu hẳn khối "tính cho nhân viên" đi.
       setCoCotNguoiDungTen(false)
@@ -355,7 +359,7 @@ export default function ReturnDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Phiếu trả — ${ret.customer?.store_name || "N/A"}`}
+        title={`${tenPhieuTra(maPhieu)} — ${ret.customer?.store_name || "N/A"}`}
         description={`Tạo: ${formatDate(ret.created_at)} • Lý do: ${reasonLabel}`}
         backHref="/returns"
       >

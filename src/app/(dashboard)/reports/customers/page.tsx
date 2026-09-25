@@ -20,6 +20,7 @@ import {
   type ReturnSummaryRow as ReturnRowMeta,
   fetchStockEntryLines,
   fetchReturnLines,
+  fetchReturnCosts,
   giaVonBinhQuanCoSo,
   soLuongCoSoDongHd,
   soLuongCoSoDongTra,
@@ -101,6 +102,10 @@ export default function CustomersReportPage() {
   const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [returns, setReturns] = useState<ReturnRowMeta[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  /** Giá vốn hàng trả ĐÃ NHẬP LẠI KHO, theo phiếu trả — trừ giá vốn ở màn Lợi nhuận. */
+  const [returnCosts, setReturnCosts] = useState<Map<string, { total: number; byProduct: Map<string, number> }>>(
+    () => new Map()
+  )
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [receivables, setReceivables] = useState<ReceivableRow[]>([])
@@ -162,16 +167,18 @@ export default function CustomersReportPage() {
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
       /* ⚠ PHÂN TRANG CẢ BA. Quá 1.000 dòng thì API trả đúng 1.000 kèm 200,
          không lỗi — báo cáo cộng thiếu mà trông vẫn bình thường. */
-      const [linesList, retLinesList, stockLinesList] = await Promise.all([
+      const [linesList, retLinesList, stockLinesList, retCosts] = await Promise.all([
         fetchInvoiceLines(supabase, invoiceIds),
         fetchReturnLines(supabase, returnIds),
         fetchStockEntryLines(supabase, stockEntryIds),
+        fetchReturnCosts(supabase, returnIds),
       ])
 
       setInvoices(invoiceList)
       setLines(linesList)
       setReturns(returnsRows)
       setReturnLines(retLinesList)
+      setReturnCosts(retCosts)
       setCustomers(customersRes.rows)
       setProducts(productsRes.rows)
       setReceivables(receivablesRes.rows)
@@ -275,7 +282,14 @@ export default function CustomersReportPage() {
   }, [invoices, returns, customerMap, matchSearch])
 
   // -------------------- Lợi nhuận (theo khách) --------------------
-  type ProfitRow = SalesRow & { cogs: number; profit: number; margin: number }
+  /**
+   * ⚠ LỢI NHUẬN TÍNH TRÊN SỐ THUẦN (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh
+   *   số tính bằng số đi - số trả"). Doanh thu thuần = Σ hóa đơn đã ghi sổ − hàng
+   *   trả trừ trong kỳ (cùng luật công nợ, `fetchReturnsRowsDu`); giá vốn thuần =
+   *   giá vốn hàng bán − giá vốn hàng trả đã nhập lại kho (`fetchReturnCosts`).
+   *   Chỉ trừ doanh thu mà không trừ giá vốn là hạ lãi oan; ngược lại là lãi phồng.
+   */
+  type ProfitRow = SalesRow & { cogs: number; returnCost: number; profit: number; margin: number }
   const profitRows: ProfitRow[] = useMemo(() => {
     // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ.
     const avgCost = giaVonBinhQuanCoSo(stockLines)
@@ -286,11 +300,9 @@ export default function CustomersReportPage() {
       linesByInvoice.set(l.invoice_id, a)
     }
     const m = new Map<string, ProfitRow>()
-    for (const o of invoices) {
-      const c = customerMap.get(o.customer_id)
-      if (!matchSearch(c)) continue
-      const e = m.get(o.customer_id) || {
-        id: o.customer_id,
+    const dong = (customerId: string, c: CustomerRow | undefined): ProfitRow =>
+      m.get(customerId) || {
+        id: customerId,
         name: c?.store_name || "—",
         channel: c?.channel || "—",
         orders: 0,
@@ -298,9 +310,14 @@ export default function CustomersReportPage() {
         returnValue: 0,
         netRevenue: 0,
         cogs: 0,
+        returnCost: 0,
         profit: 0,
         margin: 0,
       }
+    for (const o of invoices) {
+      const c = customerMap.get(o.customer_id)
+      if (!matchSearch(c)) continue
+      const e = dong(o.customer_id, c)
       e.orders += 1
       e.revenue += Number(o.total || 0)
       const ls = linesByInvoice.get(o.id) || []
@@ -310,13 +327,25 @@ export default function CustomersReportPage() {
       }
       m.set(o.customer_id, e)
     }
+    /* Hàng trả trừ trong kỳ: trừ doanh thu (tiền trả) VÀ giá vốn (hàng đã về kho).
+       Khách chỉ có phiếu trả trong kỳ vẫn có dòng — doanh thu thuần âm, như màn Bán hàng. */
+    for (const r of returns) {
+      const c = customerMap.get(r.customer_id)
+      if (!matchSearch(c)) continue
+      const e = dong(r.customer_id, c)
+      e.returnValue += Number(r.credit_note_amount || 0)
+      e.returnCost += returnCosts.get(r.id)?.total || 0
+      m.set(r.customer_id, e)
+    }
     return Array.from(m.values())
       .map((r) => {
-        const profit = r.revenue - r.cogs
-        return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
+        const netRevenue = r.revenue - r.returnValue
+        const cogs = r.cogs - r.returnCost
+        const profit = netRevenue - cogs
+        return { ...r, netRevenue, cogs, profit, margin: netRevenue > 0 ? (profit / netRevenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [invoices, lines, stockLines, customerMap, productMap, matchSearch])
+  }, [invoices, lines, stockLines, returns, returnCosts, customerMap, productMap, matchSearch])
 
   // -------------------- Công nợ --------------------
   type RecvRow = {
@@ -452,10 +481,10 @@ export default function CustomersReportPage() {
       downloadXlsx(`bao-cao-kh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
-        ["Khách hàng", "Kênh", "Số HĐ", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
+        ["Khách hàng", "Kênh", "Số HĐ", "Doanh thu", "Giá trị trả", "Doanh thu thuần", "Giá vốn thuần", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows)
-        out.push([r.name, r.channel, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
+        out.push([r.name, r.channel, r.orders, r.revenue, -r.returnValue, r.netRevenue, r.cogs, r.profit, r.margin.toFixed(2)])
       downloadXlsx(`bao-cao-kh-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "receivables") {
       const out: (string | number)[][] = [
@@ -580,17 +609,18 @@ function SalesView({ rows }: { rows: { id: string; name: string; channel: string
   )
 }
 
-function ProfitView({ rows }: { rows: { id: string; name: string; channel: string; orders: number; revenue: number; cogs: number; profit: number; margin: number }[] }) {
+function ProfitView({ rows }: { rows: { id: string; name: string; channel: string; orders: number; netRevenue: number; cogs: number; profit: number; margin: number }[] }) {
+  /* Số THUẦN (đi − trả): doanh thu thuần, giá vốn thuần — chủ nhà 25/09/2026. */
   const totals = rows.reduce(
     (acc, r) => ({
       orders: acc.orders + r.orders,
-      revenue: acc.revenue + r.revenue,
+      netRevenue: acc.netRevenue + r.netRevenue,
       cogs: acc.cogs + r.cogs,
       profit: acc.profit + r.profit,
     }),
-    { orders: 0, revenue: 0, cogs: 0, profit: 0 }
+    { orders: 0, netRevenue: 0, cogs: 0, profit: 0 }
   )
-  const totalMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0
+  const totalMargin = totals.netRevenue > 0 ? (totals.profit / totals.netRevenue) * 100 : 0
   return (
     <ReportTable
       rows={rows}
@@ -599,8 +629,8 @@ function ProfitView({ rows }: { rows: { id: string; name: string; channel: strin
         { key: "name", label: "Khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
         { key: "ch", label: "Kênh", render: (r) => r.channel },
         { key: "or", label: "Số HĐ", align: "right", render: (r) => r.orders },
-        { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+        { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => formatCurrency(r.netRevenue) },
+        { key: "cogs", label: "Giá vốn thuần", align: "right", render: (r) => formatCurrency(r.cogs) },
         { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>{formatCurrency(r.profit)}</span> },
         { key: "m", label: "Biên LN", align: "right", render: (r) => `${r.margin.toFixed(1)}%` },
       ]}
@@ -609,7 +639,7 @@ function ProfitView({ rows }: { rows: { id: string; name: string; channel: strin
           cells={[
             { content: `SL khách hàng: ${rows.length}`, colSpan: 2 },
             { content: totals.orders, align: "right" },
-            { content: formatCurrency(totals.revenue), align: "right" },
+            { content: formatCurrency(totals.netRevenue), align: "right" },
             { content: formatCurrency(totals.cogs), align: "right" },
             { content: formatCurrency(totals.profit), align: "right", className: "text-primary" },
             { content: `${totalMargin.toFixed(1)}%`, align: "right" },

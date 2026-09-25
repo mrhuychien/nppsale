@@ -9,7 +9,9 @@ export interface ProfitByProductRow {
   /** ⚠ Gộp theo nhóm thì lẫn đơn vị — không hiện. Hiện `qtyTheoDv`. */
   qty: number
   qtyTheoDv: SLTheoDonVi
+  /** Doanh thu THUẦN = dòng hóa đơn − dòng hàng trả (chủ nhà 25/09/2026: "số đi - số trả"). */
   revenue: number
+  /** Giá vốn THUẦN = phiếu xuất − giá vốn hàng trả đã nhập lại kho. */
   cogs: number
   profit: number
   margin: number
@@ -34,8 +36,8 @@ export function ProfitByProductView({ rows }: { rows: ProfitByProductRow[] }) {
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
         { key: "qty", label: "SL Bán", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
-        { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+        { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => formatCurrency(r.revenue) },
+        { key: "cogs", label: "Giá vốn thuần", align: "right", render: (r) => formatCurrency(r.cogs) },
         {
           key: "profit",
           label: "Lợi nhuận",

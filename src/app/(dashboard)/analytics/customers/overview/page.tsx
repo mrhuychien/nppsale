@@ -16,7 +16,12 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchRevenueInvoices, type RevenueInvoiceRow } from "@/lib/analytics/sales"
+import {
+  fetchRevenueInvoices,
+  fetchReturnsRows,
+  type RevenueInvoiceRow,
+  type ReturnSummaryRow,
+} from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { demHoacNem } from "../../_shared/doc-du"
@@ -41,6 +46,12 @@ export default function CustomersOverviewPage() {
   const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
   const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
+  /**
+   * ⚠ Phiếu trả trừ trong kỳ — doanh thu THUẦN = đi − trả (chủ nhà 25/09/2026: "Rà
+   *   soát lại toàn bộ doanh số tính bằng số đi - số trả"). Cùng luật công nợ.
+   */
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
+  const [prevReturns, setPrevReturns] = useState<ReturnSummaryRow[]>([])
 
   const [totalCustomers, setTotalCustomers] = useState(0)
   const [newCustomers, setNewCustomers] = useState(0)
@@ -67,10 +78,12 @@ export default function CustomersOverviewPage() {
      *     báo lỗi, không vẽ số 0.
      */
     try {
-      const [orderList, prevOrderList, cust, total, moi] = await Promise.all([
+      const [orderList, prevOrderList, retRows, prevRetRows, cust, total, moi] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
         fetchRevenueInvoices(supabase, orgId, range),
         fetchRevenueInvoices(supabase, orgId, prev),
+        fetchReturnsRows(supabase, orgId, range),
+        fetchReturnsRows(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -100,6 +113,8 @@ export default function CustomersOverviewPage() {
       ])
       setOrders(orderList)
       setPrevOrders(prevOrderList)
+      setReturns(retRows)
+      setPrevReturns(prevRetRows)
       setCustomers(cust.rows)
       setTruncated(cust.truncated)
       setTotalCustomers(total)
@@ -125,8 +140,10 @@ export default function CustomersOverviewPage() {
   const stats = useMemo(() => {
     const buyers = new Set(orders.map((o) => o.customer_id))
     const prevBuyers = new Set(prevOrders.map((o) => o.customer_id))
-    const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0)
-    const prevRevenue = prevOrders.reduce((s, o) => s + Number(o.total || 0), 0)
+    // Doanh thu THUẦN = Σ hóa đơn − Σ hàng trả trừ trong kỳ.
+    const tra = (rs: ReturnSummaryRow[]) => rs.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
+    const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0) - tra(returns)
+    const prevRevenue = prevOrders.reduce((s, o) => s + Number(o.total || 0), 0) - tra(prevReturns)
     return {
       totalCustomers,
       activeCustomers: buyers.size,
@@ -137,7 +154,7 @@ export default function CustomersOverviewPage() {
       arpu: buyers.size > 0 ? revenue / buyers.size : 0,
       prevArpu: prevBuyers.size > 0 ? prevRevenue / prevBuyers.size : 0,
     }
-  }, [orders, prevOrders, totalCustomers, newCustomers])
+  }, [orders, prevOrders, returns, prevReturns, totalCustomers, newCustomers])
 
   const topCustomers = useMemo(() => {
     const cur = new Map<string, { revenue: number; orders: number }>()
@@ -154,6 +171,16 @@ export default function CustomersOverviewPage() {
       e.orders += 1
       prev.set(o.customer_id, e)
     }
+    // Số THUẦN: trừ hàng trả của từng khách (khách chỉ có trả vẫn có dòng, DT âm).
+    const truTra = (m: typeof cur, rs: ReturnSummaryRow[]) => {
+      for (const r of rs) {
+        const e = m.get(r.customer_id) || { revenue: 0, orders: 0 }
+        e.revenue -= Number(r.credit_note_amount || 0)
+        m.set(r.customer_id, e)
+      }
+    }
+    truTra(cur, returns)
+    truTra(prev, prevReturns)
     return Array.from(cur.entries())
       .map(([cid, e]) => {
         const c = customerMap.get(cid)
@@ -169,7 +196,7 @@ export default function CustomersOverviewPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [orders, prevOrders, customerMap])
+  }, [orders, prevOrders, returns, prevReturns, customerMap])
 
   const inactive = useMemo(() => {
     const buyers = new Set(orders.map((o) => o.customer_id))
@@ -238,7 +265,7 @@ export default function CustomersOverviewPage() {
           changePct={null}
         />
         <KpiCard
-          label="Doanh thu / Khách"
+          label="Doanh thu thuần / Khách"
           value={stats.arpu}
           format="compactCurrency"
           changePct={pctChange(stats.arpu, stats.prevArpu)}
@@ -253,7 +280,7 @@ export default function CustomersOverviewPage() {
           { key: "name", label: "Tên khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "channel", label: "Kênh", render: (r) => r.channel },
           { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "aov", label: "DT TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}

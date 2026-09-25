@@ -18,6 +18,7 @@
  * đúng con số bản thiết kế — đừng tính lại ở đây.
  */
 
+import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import { inTaiCho } from "@/lib/pos/print-window"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -264,11 +265,11 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu trả này."); return }
-        /* ⚠ PHIẾU TRẢ CỦA KHÁCH KHÔNG CÓ MÃ — bảng `returns` không có cột
-           `return_code` (chỉ `supplier_returns` có). Bản trước đọc cột ấy:
-           mở lại một phiếu đã lưu là câu đọc hỏng 42703 và màn không tải
-           được phiếu. Tìm ra 23/09/2026 khi dựng ô tìm theo mã phiếu. */
-        setSlipCode(null)
+        /* ⚠ SỐ PHIẾU TH- CÓ TỪ MIG 193 — đọc RIÊNG (`docMaPhieuTra`), không nhét vào câu
+           đọc chính: sổ chưa chạy 193 thì câu chính hỏng 42703 và màn không tải được
+           phiếu (lỗi đã gặp 23/09/2026). Thiếu cột thì chỉ mất số. */
+        setSlipCode((await docMaPhieuTra(sb, [returnId])).get(returnId) ?? null)
+        if (huy) return
         setDaHuy(r.status === "cancelled")
         setTuSinh(!!r.credit_with_invoice)
         setInvoiceId(r.invoice_id)

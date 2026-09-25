@@ -17,7 +17,12 @@ import {
   pctChange,
   formatRangeLabel,
 } from "@/lib/analytics/period"
-import { fetchRevenueInvoices, type RevenueInvoiceRow } from "@/lib/analytics/sales"
+import {
+  fetchRevenueInvoices,
+  fetchReturnsRows,
+  type RevenueInvoiceRow,
+  type ReturnSummaryRow,
+} from "@/lib/analytics/sales"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
@@ -45,6 +50,12 @@ export default function CustomersCategoriesPage() {
   const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
   const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
+  /**
+   * ⚠ Phiếu trả trừ trong kỳ — doanh thu THUẦN = đi − trả (chủ nhà 25/09/2026: "Rà
+   *   soát lại toàn bộ doanh số tính bằng số đi - số trả"). Phân bổ theo khách của phiếu.
+   */
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
+  const [prevReturns, setPrevReturns] = useState<ReturnSummaryRow[]>([])
   const { groups } = useCustomerGroups()
 
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -66,10 +77,12 @@ export default function CustomersCategoriesPage() {
      * ⚠ Đọc hỏng ở bất kỳ đâu → báo lỗi, không vẽ bảng số 0.
      */
     try {
-      const [orderList, prevOrderList, cust] = await Promise.all([
+      const [orderList, prevOrderList, retRows, prevRetRows, cust] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
         fetchRevenueInvoices(supabase, orgId, range),
         fetchRevenueInvoices(supabase, orgId, prev),
+        fetchReturnsRows(supabase, orgId, range),
+        fetchReturnsRows(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -83,6 +96,8 @@ export default function CustomersCategoriesPage() {
       ])
       setOrders(orderList)
       setPrevOrders(prevOrderList)
+      setReturns(retRows)
+      setPrevReturns(prevRetRows)
       setCustomers(cust.rows)
       setTruncated(cust.truncated)
     } catch (e) {
@@ -131,6 +146,17 @@ export default function CustomersCategoriesPage() {
         e.customers.add(o.customer_id)
         prev.set(k, e)
       }
+      // Số THUẦN: trừ hàng trả vào nhóm / kênh / tỉnh của khách trên phiếu.
+      const truTra = (m: typeof cur, rs: ReturnSummaryRow[]) => {
+        for (const r of rs) {
+          const k = extractor(customerMap.get(r.customer_id))
+          const e = m.get(k) || { revenue: 0, orders: 0, customers: new Set<string>() }
+          e.revenue -= Number(r.credit_note_amount || 0)
+          m.set(k, e)
+        }
+      }
+      truTra(cur, returns)
+      truTra(prev, prevReturns)
       const rows: Row[] = Array.from(cur.entries()).map(([k, e]) => ({
         id: k,
         name: label ? label(k) : k,
@@ -141,7 +167,7 @@ export default function CustomersCategoriesPage() {
       }))
       return rows.sort((a, b) => b.revenue - a.revenue)
     },
-    [orders, prevOrders, customerMap]
+    [orders, prevOrders, returns, prevReturns, customerMap]
   )
 
   const byGroup = useMemo(
@@ -163,15 +189,11 @@ export default function CustomersCategoriesPage() {
     [aggregate]
   )
 
+  // Tổng doanh thu THUẦN (đi − trả) của kỳ này và kỳ trước.
   const totalRevenue = byGroup.reduce((s, r) => s + r.revenue, 0)
-  const prevTotalRevenue = byGroup.reduce((s, r) => {
-    const p = prevOrders.filter((o) => {
-      const cust = customerMap.get(o.customer_id)
-      const gid = cust?.group_id || "__none__"
-      return gid === r.id
-    })
-    return s + p.reduce((a, x) => a + Number(x.total || 0), 0)
-  }, 0)
+  const prevTotalRevenue =
+    prevOrders.reduce((a, x) => a + Number(x.total || 0), 0) -
+    prevReturns.reduce((a, r) => a + Number(r.credit_note_amount || 0), 0)
 
   if (authLoading || loading) {
     return (
@@ -214,7 +236,7 @@ export default function CustomersCategoriesPage() {
       {truncated && <CanhBaoThieuDong />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label="Tổng doanh thu" value={totalRevenue} format="compactCurrency" changePct={pctChange(totalRevenue, prevTotalRevenue)} />
+        <KpiCard label="Tổng doanh thu thuần" value={totalRevenue} format="compactCurrency" changePct={pctChange(totalRevenue, prevTotalRevenue)} />
         <KpiCard label="Số nhóm KH có DT" value={byGroup.length} format="number" changePct={null} />
         <KpiCard label="Số kênh có DT" value={byChannel.length} format="number" changePct={null} />
       </div>
@@ -227,7 +249,7 @@ export default function CustomersCategoriesPage() {
           { key: "name", label: "Nhóm khách hàng", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
           { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />
@@ -240,7 +262,7 @@ export default function CustomersCategoriesPage() {
           { key: "name", label: "Kênh bán", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
           { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />
@@ -253,7 +275,7 @@ export default function CustomersCategoriesPage() {
           { key: "name", label: "Tỉnh / Thành", render: (r) => <span className="font-medium">{r.name}</span> },
           { key: "customers", label: "Số khách", align: "right", render: (r) => <NumberCell value={r.customers} /> },
           { key: "orders", label: "Số HĐ", align: "right", render: (r) => <NumberCell value={r.orders} /> },
-          { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+          { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
           { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
         ]}
       />

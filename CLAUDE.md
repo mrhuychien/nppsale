@@ -29,6 +29,13 @@ Chủ nhà chốt 24/09/2026: *"làm tiếp phần doanh thu tính theo hoá đ�
 - **Không** cộng `sales_orders.total` (đơn "Hoàn thành") làm doanh thu. Đơn hàng chỉ dùng cho số
   liệu HOẠT ĐỘNG (số đơn đã đặt, nháp…).
 - `invoice_date` là DATE: so bằng ngày theo giờ VN (`vnDateKey`), không so với mốc ISO/UTC.
+- **Doanh số THUẦN = hàng đi − hàng trả** (chủ nhà 25/09/2026, mig 192: *"Rà soát lại toàn bộ doanh số
+  tính bằng số đi - số trả"*). Hàng trả trừ theo `returns.revenue_date` — **một luật khớp công nợ**:
+  phiếu tự sinh theo HĐ trừ vào ngày HĐ (kể cả khi còn Chờ xử lý), phiếu tự lập trừ vào ngày hoàn thành;
+  số tiền `credit_note_amount` (hàng đổi không tính). Dùng `fetchReturnsRowsDu` / `fetchReturnLines` /
+  `fetchReturnCosts` (`src/lib/analytics/sales.ts`), `traTheoHoaDon` / `traCuaKhach`
+  (`src/lib/analytics/net-revenue.ts`). Lãi gộp = doanh thu thuần − (giá vốn − giá vốn hàng trả đã nhập kho).
+  Tiền của một hóa đơn trong danh sách là **số còn lại** sau hàng trả.
 
 ### Quy đổi đơn vị trong báo cáo
 Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).

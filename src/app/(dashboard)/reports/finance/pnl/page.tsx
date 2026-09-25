@@ -125,7 +125,7 @@ export default function PnLPage() {
             <Card>
               <CardContent className="p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Doanh thu
+                  Doanh thu thuần
                 </p>
                 <p className="text-xl font-black mt-1">{formatCurrency(data.revenue)}</p>
                 <p className="text-xs text-muted-foreground">{data.orderCount} đơn</p>
@@ -173,12 +173,24 @@ export default function PnLPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1 font-mono text-sm">
+                {/* ⚠ Doanh số = hàng đi − hàng trả (chủ nhà 25/09/2026, mig 192). */}
+                <div className="flex justify-between py-2 pl-4 text-muted-foreground">
+                  <span>Doanh thu hóa đơn</span>
+                  <span>{formatCurrency(data.revenueGross)}</span>
+                </div>
+                <div className="flex justify-between py-2 pl-4 text-muted-foreground">
+                  <span>Trừ: Hàng trả</span>
+                  <span>({formatCurrency(data.returnsValue)})</span>
+                </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="font-semibold">Doanh thu (Revenue)</span>
+                  <span className="font-semibold">Doanh thu thuần</span>
                   <span className="font-bold">{formatCurrency(data.revenue)}</span>
                 </div>
                 <div className="flex justify-between py-2 pl-4 text-muted-foreground">
-                  <span>Trừ: Giá vốn hàng bán (COGS)</span>
+                  <span>
+                    Trừ: Giá vốn hàng bán (COGS)
+                    {data.returnsCogs > 0 ? ` — đã trừ ${formatCurrency(data.returnsCogs)} giá vốn hàng trả` : ""}
+                  </span>
                   <span>({formatCurrency(data.cogs)})</span>
                 </div>
                 <div className="flex justify-between py-2 border-b font-bold">

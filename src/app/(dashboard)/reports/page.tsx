@@ -11,7 +11,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import { vnDateKey } from "@/lib/orders/status-tone"
-import { REVENUE_INVOICE_STATUS } from "@/lib/analytics/sales"
+import { REVENUE_INVOICE_STATUS, fetchReturnsRowsDu, type ReturnSummaryRow } from "@/lib/analytics/sales"
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import {
   TrendingUp,
@@ -67,6 +68,11 @@ interface ReportStats {
   /** Đơn — chỉ để ĐẾM đơn đã đặt (số liệu hoạt động), không cộng tiền. */
   salesOrders: SalesOrder[]
   invoices: RevenueInvoice[]
+  /**
+   * Phiếu trả TRỪ DOANH SỐ (mig 192) — `created_at` là NGÀY TRỪ (DATE,
+   * `returns.revenue_date`), cùng luật với công nợ.
+   */
+  returns: ReturnSummaryRow[]
   receivables: Receivable[]
   batches: (Batch & { product?: { shelf_life_days: number | null } })[]
   users: User[]
@@ -75,6 +81,7 @@ interface ReportStats {
 
 export default function ReportsPage() {
   const { loading: authLoading } = useRoleGuard("reports")
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   // true = mọi con số trên trang này đang cộng thiếu vì dữ liệu bị cắt ở trần.
   const [truncated, setTruncated] = useState(false)
@@ -84,6 +91,7 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportStats>({
     salesOrders: [],
     invoices: [],
+    returns: [],
     receivables: [],
     batches: [],
     users: [],
@@ -93,6 +101,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     async function fetchAll() {
+      if (!user?.org_id) return
+      const orgId = user.org_id
       /**
        * ⚠ HỎNG THÌ NÓI, KHÔNG HIỆN 0. Bản cũ `console.error` rồi dựng
        *   trang từ `rows` rỗng — doanh thu, công nợ, tồn kho đều 0 trông
@@ -103,7 +113,7 @@ export default function ReportsPage() {
       try {
         setLoading(true)
         setLoadError(null)
-        const [ordersRes, invoicesRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
+        const [ordersRes, invoicesRes, returnsRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
           // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
           // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
           // báo cáo thiếu số còn tệ hơn báo cáo chậm.
@@ -129,6 +139,11 @@ export default function ReportsPage() {
                 .range(from, to),
             "đọc hóa đơn"
           ),
+          /* ⚠ DOANH SỐ THUẦN = HÀNG ĐI − HÀNG TRẢ (chủ nhà 25/09/2026: "Rà soát lại
+             toàn bộ doanh số tính bằng số đi - số trả"). Hóa đơn ở trên đọc cả sổ rồi
+             lọc kỳ ở trình duyệt, nên phiếu trả cũng đọc cả sổ (mốc 2000 như kỳ
+             "Tùy chỉnh") — lọc kỳ cùng một cách bên dưới. Đọc hỏng thì NÉM. */
+          fetchReturnsRowsDu(supabase, orgId, { from: "2000-01-01", to: "2999-12-31" }),
           docDuHoacNem<Receivable>(
             (from, to) =>
               supabase
@@ -164,10 +179,11 @@ export default function ReportsPage() {
           supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
         ])
         if (prodRes.error) throw new Error(`đếm mặt hàng: ${errorMessage(prodRes.error)}`)
-        setTruncated(ordersRes.truncated || invoicesRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
+        setTruncated(ordersRes.truncated || invoicesRes.truncated || returnsRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
         setData({
           salesOrders: ordersRes.rows,
           invoices: invoicesRes.rows,
+          returns: returnsRes.rows,
           receivables: recvRes.rows,
           batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
           users: usersRes.rows,
@@ -180,7 +196,7 @@ export default function ReportsPage() {
       }
     }
     fetchAll()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Range for current period + the immediately preceding equal-length
   // window (used for MoM% comparison). Returned as [start, end].
@@ -239,6 +255,21 @@ export default function ReportsPage() {
     })
   }, [data.invoices, periodWindows])
 
+  /* Phiếu trả theo NGÀY TRỪ (DATE, giờ VN) — cùng mốc với hóa đơn ở trên. */
+  const filteredReturns = useMemo(() => {
+    const tu = vnDateKey(periodWindows.start)
+    return data.returns.filter((r) => String(r.created_at).slice(0, 10) >= tu)
+  }, [data.returns, periodWindows])
+
+  const prevPeriodReturns = useMemo(() => {
+    const tu = vnDateKey(periodWindows.prevStart)
+    const den = vnDateKey(periodWindows.prevEnd)
+    return data.returns.filter((r) => {
+      const d = String(r.created_at).slice(0, 10)
+      return d >= tu && d < den
+    })
+  }, [data.returns, periodWindows])
+
   const momPct = (curr: number, prev: number): number | null => {
     if (!Number.isFinite(prev) || prev === 0) return null
     return ((curr - prev) / prev) * 100
@@ -254,15 +285,20 @@ export default function ReportsPage() {
   // KPI — doanh thu = Σ total hóa đơn đã ghi sổ; "đơn đã xuất hàng" = số
   // đơn KHÁC NHAU có hóa đơn (như `period_orders` của mig 126).
   const sumInvoices = (rows: RevenueInvoice[]) => rows.reduce((sum, i) => sum + Number(i.total || 0), 0)
+  // ⚠ `credit_note_amount` đã bỏ hàng ĐỔI (mig 055) — trừ thẳng, không kẹp.
+  const sumReturns = (rows: ReturnSummaryRow[]) => rows.reduce((sum, r) => sum + Number(r.credit_note_amount || 0), 0)
   const countInvoicedOrders = (rows: RevenueInvoice[]) => new Set(rows.map((i) => i.order_id)).size
-  const totalRevenue = sumInvoices(filteredInvoices)
+  /* ⚠ "Doanh thu thuần" THẬT SỰ THUẦN: hóa đơn − hàng trả trong kỳ (chủ nhà
+     25/09/2026). Bản cũ để nhãn "thuần" trên tổng hóa đơn gộp — cao hơn P&L
+     và dashboard đúng bằng tiền hàng trả. AOV / MoM cũng tính trên số thuần. */
+  const totalRevenue = sumInvoices(filteredInvoices) - sumReturns(filteredReturns)
   // Tổng đơn hàng là số liệu HOẠT ĐỘNG — vẫn đếm trên đơn.
   const totalOrders = filteredOrders.length
   const completedOrders = countInvoicedOrders(filteredInvoices)
   const aov = completedOrders > 0 ? totalRevenue / completedOrders : 0
 
   // Previous-period equivalents for MoM%
-  const prevRevenue = sumInvoices(prevPeriodInvoices)
+  const prevRevenue = sumInvoices(prevPeriodInvoices) - sumReturns(prevPeriodReturns)
   const prevTotalOrders = prevPeriodOrders.length
   const prevCompletedOrders = countInvoicedOrders(prevPeriodInvoices)
   const prevAov = prevCompletedOrders > 0 ? prevRevenue / prevCompletedOrders : 0
@@ -330,6 +366,15 @@ export default function ReportsPage() {
   filteredInvoices.forEach((i) => {
     const uid = i.sales_user_id ?? ""
     salesByUser.set(uid, (salesByUser.get(uid) || 0) + Number(i.total || 0))
+  })
+  /* ⚠ …TRỪ hàng trả của chính người ấy (số đi − số trả, chủ nhà 25/09/2026).
+     NV của phiếu trả (mig 160) trước, chưa gán thì lùi về NV của hóa đơn gắn
+     phiếu — cùng thứ tự với `payroll_returns_for` (mig 192). Tra trên CẢ sổ hóa
+     đơn: phiếu tháng này có thể gắn hóa đơn tháng trước. */
+  const nvCuaHoaDon = new Map(data.invoices.map((i) => [i.id, i.sales_user_id ?? ""]))
+  filteredReturns.forEach((r) => {
+    const uid = r.sales_user_id ?? (r.invoice_id ? nvCuaHoaDon.get(r.invoice_id) : undefined) ?? ""
+    salesByUser.set(uid, (salesByUser.get(uid) || 0) - Number(r.credit_note_amount || 0))
   })
   const topPerformers = Array.from(salesByUser.entries())
     .map(([uid, total]) => {
@@ -663,7 +708,7 @@ export default function ReportsPage() {
                 <div>
                   <h3 className="font-bold text-foreground">Top nhân viên xuất sắc</h3>
                   <p className="text-sm text-muted-foreground">
-                    Xếp hạng theo doanh thu trong {PERIOD_LABELS[period].toLowerCase()}
+                    Xếp hạng theo doanh thu thuần (đã trừ hàng trả) trong {PERIOD_LABELS[period].toLowerCase()}
                   </p>
                 </div>
               </div>
@@ -674,8 +719,9 @@ export default function ReportsPage() {
               ) : (
                 <div className="space-y-4">
                   {topPerformers.map((p, i) => {
-                    const max = topPerformers[0]?.total || 1
-                    const pct = Math.round((p.total / max) * 100)
+                    // Số thuần có thể ÂM (trả nhiều hơn bán trong kỳ) — thanh kẹp 0–100%.
+                    const max = topPerformers[0]?.total > 0 ? topPerformers[0].total : 1
+                    const pct = Math.min(100, Math.max(0, Math.round((p.total / max) * 100)))
                     return (
                       <div key={i} className="space-y-2">
                         <div className="flex items-center justify-between text-sm">

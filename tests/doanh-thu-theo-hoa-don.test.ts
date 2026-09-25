@@ -211,8 +211,10 @@ describe("trang Báo cáo (reports/page.tsx)", () => {
   it("đơn chỉ còn để ĐẾM — không đọc `total`, không cộng tiền đơn completed", () => {
     for (const q of cauTruyVan(S, "sales_orders")) expect(q).not.toMatch(/\btotal\b/)
     expect(S).not.toMatch(/status === "completed"/)
-    expect(S).toMatch(/const totalRevenue = sumInvoices\(filteredInvoices\)/)
-    expect(S).toMatch(/const prevRevenue = sumInvoices\(prevPeriodInvoices\)/)
+    /* Chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số tính bằng số đi - số trả"
+       — "Doanh thu thuần" = hóa đơn − hàng trả (xem tests/doanh-so-thuan-man-tong-hop.test.ts). */
+    expect(S).toMatch(/const totalRevenue = sumInvoices\(filteredInvoices\) - sumReturns\(filteredReturns\)/)
+    expect(S).toMatch(/const prevRevenue = sumInvoices\(prevPeriodInvoices\) - sumReturns\(prevPeriodReturns\)/)
   })
 
   it("doanh số theo nhân viên cộng hóa đơn", () => {

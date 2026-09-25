@@ -125,6 +125,10 @@ export default function DashboardPage() {
           // Database cộng sẵn (migration 093): doanh thu kỳ, số đơn, tổng
           // công nợ, số phiếu quá hạn — bốn con số trong một lời gọi, thay
           // cho việc tải cả bảng đơn hàng và công nợ về trình duyệt.
+          // ⚠ Từ mig 192 cả ba hàm trả doanh thu THUẦN (hóa đơn đã ghi sổ −
+          //   hàng trả theo `returns.revenue_date`) — chủ nhà 25/09/2026: "Rà
+          //   soát lại toàn bộ doanh số tính bằng số đi - số trả". Đừng trừ
+          //   hàng trả thêm lần nữa ở đây.
           supabase.rpc("dashboard_summary", { p_period_start: periodStart }).maybeSingle(),
           supabase.rpc("dashboard_top_customers", { p_period_start: periodStart, p_limit: 5 }),
           supabase.rpc("dashboard_channel_revenue", { p_period_start: periodStart }),
@@ -165,7 +169,7 @@ export default function DashboardPage() {
         const monthRevenue = Number(sum.period_revenue ?? 0)
         const openReceivables = Number(sum.open_receivables ?? 0)
 
-        // Top khách hàng: hàm SQL đã gộp, sắp xếp và giới hạn 5 dòng sẵn.
+        // Top khách hàng: hàm SQL đã gộp (thuần, đã trừ hàng trả), sắp xếp và giới hạn 5 dòng sẵn.
         const topList: TopCustomer[] = ((topCustRes.data as Array<{
           customer_id: string
           store_name: string
@@ -178,7 +182,7 @@ export default function DashboardPage() {
           order_count: Number(r.order_count || 0),
         }))
 
-        // Doanh thu theo kênh: hàm SQL đã gộp sẵn.
+        // Doanh thu THUẦN theo kênh: hàm SQL đã gộp sẵn (hàng trả trừ vào kênh của khách trả).
         const channelMap = new Map<string, number>()
         let channelTotal = 0
         for (const row of ((channelRes.data as Array<{ channel: string; total: number }> | null) || [])) {

@@ -23,7 +23,8 @@ import {
 } from "@/lib/analytics/period"
 import {
   fetchRevenueInvoices,
-  fetchReturnsValue,
+  fetchReturnsRows,
+  fetchReturnCosts,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
 import { formatCurrency } from "@/lib/utils"
@@ -122,13 +123,13 @@ export default function CostProfitPage() {
     /* ⚠ MỘT `try/catch` CHO CẢ LƯỢT — kể cả các hàm ở `lib/analytics/sales`
        (đang chuyển sang NÉM khi đọc hỏng). Bắt để BÁO, không phải để nuốt. */
     try {
-      const [orders, prevOrders, retVal, prevRetVal, cogsRes, prevCogsRes, exp, prevExp] =
+      const [orders, prevOrders, retRows, prevRetRows, cogsRes, prevCogsRes, exp, prevExp] =
         await Promise.all([
           // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
           fetchRevenueInvoices(supabase, orgId, range),
           fetchRevenueInvoices(supabase, orgId, prev),
-          fetchReturnsValue(supabase, orgId, range),
-          fetchReturnsValue(supabase, orgId, prev),
+          fetchReturnsRows(supabase, orgId, range),
+          fetchReturnsRows(supabase, orgId, prev),
           fetchCogsForRange(supabase, orgId, range),
           fetchCogsForRange(supabase, orgId, prev),
           fetchExpenses(orgId, range),
@@ -136,10 +137,24 @@ export default function CostProfitPage() {
         ])
       setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
       setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
-      setReturnsValue(retVal)
-      setPrevReturnsValue(prevRetVal)
-      setCogs(cogsRes.cogs)
-      setPrevCogs(prevCogsRes.cogs)
+      /**
+       * ⚠ SỐ THUẦN = SỐ ĐI − SỐ TRẢ (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số
+       *   tính bằng số đi - số trả"). Doanh thu đã trừ hàng trả thì giá vốn cũng phải
+       *   trừ giá vốn của chính số hàng ấy đã nhập lại kho — không thì lãi gộp bị hạ oan.
+       */
+      const [retCosts, prevRetCosts] = await Promise.all([
+        fetchReturnCosts(supabase, retRows.map((r) => r.id)),
+        fetchReturnCosts(supabase, prevRetRows.map((r) => r.id)),
+      ])
+      const tongGiaVonTra = (m: Awaited<ReturnType<typeof fetchReturnCosts>>) => {
+        let t = 0
+        m.forEach((c) => { t += c.total })
+        return t
+      }
+      setReturnsValue(retRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+      setPrevReturnsValue(prevRetRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+      setCogs(cogsRes.cogs - tongGiaVonTra(retCosts))
+      setPrevCogs(prevCogsRes.cogs - tongGiaVonTra(prevRetCosts))
       setExpenses(exp.rows)
       setPrevExpenses(prevExp.rows)
       setTruncated(exp.truncated || prevExp.truncated)
@@ -200,7 +215,8 @@ export default function CostProfitPage() {
     }
     // For revenue we don't have day-level; spread the totals evenly across days as fallback.
     // (Acceptable for the cost-profit page which focuses on expenses.)
-    const evenRevenue = revenue / Math.max(1, buckets.length)
+    // Doanh thu THUẦN (đi − trả) — cùng số với thẻ "Doanh thu thuần".
+    const evenRevenue = (revenue - returnsValue) / Math.max(1, buckets.length)
     const evenProfit = netProfit / Math.max(1, buckets.length)
     for (let i = 0; i < buckets.length; i++) {
       revenueArr[i] = evenRevenue
@@ -213,7 +229,7 @@ export default function CostProfitPage() {
       profit: profitArr,
       orderRevenueByDate,
     }
-  }, [range, expenses, revenue, netProfit])
+  }, [range, expenses, revenue, returnsValue, netProfit])
 
   if (authLoading || loading) {
     return (
@@ -291,7 +307,7 @@ export default function CostProfitPage() {
         <TrendChart
           labels={trend.labels}
           series={[
-            { key: "revenue", label: "Doanh thu", color: "#2563eb", data: trend.revenue },
+            { key: "revenue", label: "Doanh thu thuần", color: "#2563eb", data: trend.revenue },
             { key: "expenses", label: "Chi phí (theo ngày)", color: "#ef4444", data: trend.expenses },
             { key: "profit", label: "Lợi nhuận ròng", color: "#22c55e", data: trend.profit },
           ]}
@@ -341,7 +357,7 @@ export default function CostProfitPage() {
             <Row label="Doanh thu" value={revenue} bold />
             <Row label="Trừ: Trả hàng" value={-returnsValue} muted />
             <Row label="= Doanh thu thuần" value={netRevenue} bold />
-            <Row label="Trừ: Giá vốn hàng bán" value={-cogs} muted />
+            <Row label="Trừ: Giá vốn hàng bán (đã trừ hàng trả nhập kho)" value={-cogs} muted />
             <Row label="= Lợi nhuận gộp" value={grossProfit} bold accent />
             <div className="mt-3 border-t border-border/40 pt-2">
               <Row label="Chi phí vận hành" value={-(expensesByBucket.operating || 0)} muted />

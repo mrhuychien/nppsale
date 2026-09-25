@@ -93,7 +93,8 @@ describe("dải tóm tắt", () => {
     ["hóa đơn", "src/app/(dashboard)/sales-invoices/page.tsx"],
   ])("%s: tổng cộng bằng truy vấn riêng, chạm trần thì để null", (_l, rel) => {
     const src = read(rel)
-    expect(src).toContain("fetchAllForAggregate<{ total: number | string }>")
+    /* Hóa đơn đọc thêm `id` để trừ hàng trả của chính các tờ ấy (mig 192). */
+    expect(src).toMatch(/fetchAllForAggregate<\{ (id: string; )?total: number \| string \}>/)
     const at = src.indexOf("res.error || res.truncated")
     expect(at, "không xử lý trường hợp đọc thiếu").toBeGreaterThan(0)
     expect(src.slice(at, at + 300)).toContain("setFilteredTotal(null)")

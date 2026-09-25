@@ -46,6 +46,17 @@ export function vnDayRange(range: DateRange): { fromIso: string; toIso: string }
 const RETURN_PERIOD_COL = "credited_at"
 
 /**
+ * ⚠ NGÀY TRỪ DOANH SỐ CỦA PHIẾU TRẢ (mig 192) — cột DATE do trigger giữ.
+ *
+ * Chủ nhà 25/09/2026: "Doanh thu lệch công nợ … Rà soát lại toàn bộ doanh số tính
+ * bằng số đi - số trả". Bản cũ chỉ đọc phiếu 'approved'/'completed' theo
+ * `credited_at` → phiếu TỰ SINH theo hóa đơn đang Chờ xử lý (công nợ ĐÃ trừ) bị bỏ
+ * sót. Nay một luật, khớp công nợ: tự sinh trừ vào NGÀY HÓA ĐƠN, tự lập trừ vào
+ * ngày HOÀN THÀNH, NULL = không trừ. Chưa chạy mig 192 thì lùi về cách cũ.
+ */
+export const RETURN_REVENUE_DATE_COL = "revenue_date"
+
+/**
  * Mã lỗi PostgREST khi câu truy vấn nhắc tới một cột không tồn tại.
  * Xảy ra đúng một trường hợp: mã nguồn đã deploy mà migration chưa chạy
  * — `credited_at` là mig 097, `sales_user_id` là mig 160. Khi đó lùi về
@@ -56,7 +67,9 @@ function isMissingColumn(err: string | null | undefined): boolean {
   return (
     err.includes("42703") ||
     err.includes(RETURN_PERIOD_COL) ||
-    err.includes("sales_user_id")
+    err.includes(RETURN_REVENUE_DATE_COL) ||
+    err.includes("sales_user_id") ||
+    err.includes("is_exchange")
   )
 }
 
@@ -536,10 +549,76 @@ export async function fetchReturnLines(
         .from("return_lines")
         .select("return_id, product_id, unit_name, quantity, line_total", { count: "exact" })
         .in("return_id", lo)
+        /* ⚠ HÀNG ĐỔI KHÔNG TRỪ DOANH SỐ (mig 055: `credit_note_amount` bỏ nó) — cộng
+           nó vào ở cấp dòng là số theo mặt hàng lệch với số tổng. */
+        .eq("is_exchange", false)
         .order("id")
         .range(from, to),
     "đọc dòng hàng trả"
   )
+}
+
+/**
+ * Giá vốn hàng khách trả ĐÃ NHẬP LẠI KHO, theo phiếu trả (và theo mặt hàng).
+ *
+ * ⚠ Doanh số trừ hàng trả thì giá vốn cũng phải trừ giá vốn của chính số hàng ấy,
+ *   không thì lãi gộp bị hạ oan. Đọc phiếu nhập `complete_return` ghi ("Nhập lại
+ *   từ phiếu trả <id>"); phiếu đã đảo mang đuôi "(đã đảo)" nên không khớp. Phiếu tự
+ *   sinh còn Chờ xử lý chưa có phiếu nhập — hàng chưa về kho thì chưa có giá vốn trả.
+ *   Cùng luật với `finance_pnl` (mig 192).
+ */
+export async function fetchReturnCosts(
+  supabase: SupabaseClient,
+  returnIds: string[]
+): Promise<Map<string, { total: number; byProduct: Map<string, number> }>> {
+  const out = new Map<string, { total: number; byProduct: Map<string, number> }>()
+  if (returnIds.length === 0) return out
+  const noteOf = new Map(returnIds.map((id) => [`Nhập lại từ phiếu trả ${id}`, id]))
+  const entries = await docTheoLoId<{ id: string; notes: string | null }>(
+    Array.from(noteOf.keys()),
+    (lo, from, to) =>
+      supabase
+        .from("stock_entries")
+        .select("id, notes", { count: "exact" })
+        .eq("type", "import")
+        .eq("status", "posted")
+        .in("notes", lo)
+        .order("id")
+        .range(from, to),
+    "đọc phiếu nhập hàng trả"
+  )
+  const retOfEntry = new Map<string, string>()
+  for (const e of entries) {
+    const rid = e.notes ? noteOf.get(e.notes) : undefined
+    if (rid) retOfEntry.set(e.id, rid)
+  }
+  if (retOfEntry.size === 0) return out
+  const lines = await docTheoLoId<{
+    entry_id: string; product_id: string; quantity: number | null
+    qty_in_base_uom: number | null; conversion_factor_snapshot: number | null; unit_cost: number | null
+  }>(
+    Array.from(retOfEntry.keys()),
+    (lo, from, to) =>
+      supabase
+        .from("stock_entry_lines")
+        .select("entry_id, product_id, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost", { count: "exact" })
+        .in("entry_id", lo)
+        .order("id")
+        .range(from, to),
+    "đọc dòng phiếu nhập hàng trả"
+  )
+  for (const l of lines) {
+    const rid = retOfEntry.get(l.entry_id)
+    if (!rid) continue
+    // ⚠ `unit_cost` là giá mỗi ĐƠN VỊ CƠ SỞ (luật báo cáo 24/09/2026).
+    const base = Math.abs(Number(l.qty_in_base_uom ?? Number(l.quantity || 0) * Number(l.conversion_factor_snapshot || 1)))
+    const cost = base * Number(l.unit_cost || 0)
+    const o = out.get(rid) ?? { total: 0, byProduct: new Map<string, number>() }
+    o.total += cost
+    o.byProduct.set(l.product_id, (o.byProduct.get(l.product_id) ?? 0) + cost)
+    out.set(rid, o)
+  }
+  return out
 }
 
 /**
@@ -566,7 +645,18 @@ export async function fetchReturnsValueDu(
         .order("id")
         .range(from, to)
     )
-  let dataRes = await load(RETURN_PERIOD_COL)
+  /* (mig 192) Ngày trừ doanh số — cùng luật với công nợ. */
+  let dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("returns")
+      .select(`id, status, ${RETURN_REVENUE_DATE_COL}, credit_note_amount`, { count: "exact" })
+      .eq("org_id", orgId)
+      .gte(RETURN_REVENUE_DATE_COL, range.from)
+      .lte(RETURN_REVENUE_DATE_COL, range.to)
+      .order("id")
+      .range(from, to)
+  )
+  if (isMissingColumn(dataRes.error)) dataRes = await load(RETURN_PERIOD_COL)
   if (isMissingColumn(dataRes.error)) dataRes = await load("created_at")
   nemNeuLoi(dataRes.error, "đọc phiếu trả")
   let total = 0
@@ -599,6 +689,8 @@ export interface ReturnSummaryRow {
    * Báo cáo phải đọc đúng nghĩa đó, đừng bỏ phiếu ra khỏi sổ.
    */
   sales_user_id: string | null
+  /** Hóa đơn gắn phiếu (null = phiếu độc lập) — để lùi về NV của hóa đơn. */
+  invoice_id?: string | null
 }
 
 export async function fetchReturnsRowsDu(
@@ -629,12 +721,23 @@ export async function fetchReturnsRowsDu(
    *   nên lùi lần lượt qua đủ bốn tổ hợp thay vì đoán. Mỗi bước chỉ chạy
    *   khi bước trước đúng là lỗi cột thiếu — không phải lỗi khác.
    */
-  let dataRes = await load(RETURN_PERIOD_COL, true)
+  /* (mig 192) Ngày trừ doanh số — cùng luật với công nợ; phiếu tự sinh Chờ xử lý có mặt. */
+  let dataRes = await fetchAllForAggregate((from, to) =>
+    supabase
+      .from("returns")
+      .select(`id, status, customer_id, invoice_id, credit_note_amount, created_at, ${RETURN_REVENUE_DATE_COL}, sales_user_id`, { count: "exact" })
+      .eq("org_id", orgId)
+      .gte(RETURN_REVENUE_DATE_COL, range.from)
+      .lte(RETURN_REVENUE_DATE_COL, range.to)
+      .order("id")
+      .range(from, to)
+  )
+  if (isMissingColumn(dataRes.error)) dataRes = await load(RETURN_PERIOD_COL, true)
   if (isMissingColumn(dataRes.error)) dataRes = await load("created_at", true)
   if (isMissingColumn(dataRes.error)) dataRes = await load(RETURN_PERIOD_COL, false)
   if (isMissingColumn(dataRes.error)) dataRes = await load("created_at", false)
   nemNeuLoi(dataRes.error, "đọc phiếu trả")
-  const data = dataRes.rows as Array<{ id: string; status: string; customer_id: string; credit_note_amount: number | null; created_at: string; credited_at?: string | null; sales_user_id?: string | null }>
+  const data = dataRes.rows as Array<{ id: string; status: string; customer_id: string; invoice_id?: string | null; credit_note_amount: number | null; created_at: string; credited_at?: string | null; revenue_date?: string | null; sales_user_id?: string | null }>
   const rows = data.map((r) => ({
     id: r.id,
     status: r.status,
@@ -643,8 +746,10 @@ export async function fetchReturnsRowsDu(
     // Ngày dùng để xếp vào cột thời gian trên báo cáo phải là ngày DUYỆT,
     // khớp với cách bảng lương gom (mig 097). Chưa chạy 097 thì không có
     // credited_at và lùi về created_at như cũ.
-    created_at: r.credited_at || r.created_at,
+    // ⚠ (mig 192) Ngày trừ doanh số là DATE theo giờ VN — `slice(0, 10)` ra đúng ngày.
+    created_at: r.revenue_date || r.credited_at || r.created_at,
     sales_user_id: r.sales_user_id ?? null,
+    invoice_id: r.invoice_id ?? null,
   }))
   return { rows, truncated: dataRes.truncated }
 }

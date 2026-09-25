@@ -20,6 +20,7 @@
  *   hàng đổi trả và không vào khoản trừ — nó không trừ gì.
  */
 
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -61,6 +62,8 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
   const [don, setDon] = useState<Don | null>(null)
   const [hoaDon, setHoaDon] = useState<HoaDon[]>([])
   const [tra, setTra] = useState<PhieuTra[]>([])
+  /** Số phiếu TH- (mig 193), đọc riêng — xem `docMaPhieuTra`. */
+  const [maTra, setMaTra] = useState<Map<string, string>>(new Map())
   const [loi, setLoi] = useState<string | null>(null)
   const [xong, setXong] = useState(false)
 
@@ -91,7 +94,10 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
       if (e) setLoi(errorMessage(e))
       setDon((o.data as unknown as Don) ?? null)
       setHoaDon((hd.data as unknown as HoaDon[]) ?? [])
-      setTra((rt.data as unknown as PhieuTra[]) ?? [])
+      const dsTra = (rt.data as unknown as PhieuTra[]) ?? []
+      setTra(dsTra)
+      setMaTra(await docMaPhieuTra(sb, dsTra.map((r) => r.id)))
+      if (huy) return
       setXong(true)
     })()
     return () => { huy = true }
@@ -142,7 +148,7 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
         {tra.map((r) => (
           <Link key={r.id} href={hrefTra(r.id)} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50">
             <span className="min-w-0 truncate">
-              Phiếu trả <span className="text-muted-foreground">· {formatDate(r.created_at)}</span>
+              <b className="font-mono">{tenPhieuTra(maTra.get(r.id))}</b> <span className="text-muted-foreground">· {formatDate(r.created_at)}</span>
               {invoiceId && r.invoice_id && r.invoice_id !== invoiceId && (
                 <span className="text-muted-foreground"> · của hóa đơn khác</span>
               )}

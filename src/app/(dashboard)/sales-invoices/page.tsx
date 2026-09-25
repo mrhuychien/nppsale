@@ -21,6 +21,7 @@
  * nói thẳng điều đó.
  */
 
+import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_HOA_DON } from "@/lib/search/list-filter-fields"
@@ -341,7 +342,17 @@ export default function SalesInvoicesPage() {
     const { data, error, count } = await q.range(pg.from, pg.to)
     if (luot !== luotRef.current.ds) return
     if (error) console.error("[sales-invoices] truy vấn lỗi:", error.message)
-    const list = ((data as unknown) as InvoiceRow[]) || []
+    const tho = ((data as unknown) as InvoiceRow[]) || []
+    /* ⚠ Cột tiền là SỐ CÒN LẠI sau hàng trả — khớp công nợ (mig 192). */
+    const tra = await traTheoHoaDon(supabase, tho.map((r) => r.id)).catch((e) => {
+      console.error("[sales-invoices] không đọc được hàng trả:", e)
+      return new Map<string, number>()
+    })
+    if (luot !== luotRef.current.ds) return
+    const list = tho.map((r) => {
+      const t = tra.get(r.id) ?? 0
+      return t ? { ...r, tong_hoa_don: r.total, tra_hang: t, total: Number(r.total || 0) - t } : r
+    })
     setRows(list)
     pg.setTotal(count ?? 0)
     setLoading(false)
@@ -393,10 +404,10 @@ export default function SalesInvoicesPage() {
     if (!searchReady) return
     const luot = ++luotRef.current.tong
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
-    const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
+    const res = await fetchAllForAggregate<{ id: string; total: number | string }>((from, to) => {
       let q = supabase
         .from("sales_invoices")
-        .select(routeFilter !== "all" ? `total, ${cust}` : "total", { count: "exact" })
+        .select(routeFilter !== "all" ? `id, total, ${cust}` : "id, total", { count: "exact" })
       if (status !== "all") q = locTrangThai(q, status)
       // Tab "Tất cả": hóa đơn đã huỷ không vào tổng tiền.
       else q = q.neq("status", "cancelled")
@@ -408,7 +419,17 @@ export default function SalesInvoicesPage() {
       setFilteredTotal(null)
       return
     }
-    setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
+    /* ⚠ TỔNG THUẦN = hóa đơn − hàng trả đã trừ vào chính các hóa đơn ấy (mig 192). */
+    let tra: Map<string, number>
+    try {
+      tra = await traTheoHoaDon(supabase, res.rows.map((r) => r.id))
+    } catch (e) {
+      console.warn("[sales-invoices] không cộng được hàng trả:", e)
+      if (luot === luotRef.current.tong) setFilteredTotal(null)
+      return
+    }
+    if (luot !== luotRef.current.tong) return
+    setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0) - (tra.get(r.id) ?? 0), 0))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, applyFilters, routeFilter, searchReady])
 
@@ -714,7 +735,7 @@ export default function SalesInvoicesPage() {
         {/* Khối thống kê (máy tính) — điện thoại có `DocListSummary` bên dưới. */}
         <DocListTotals
           desktopOnly
-          label="Tổng tiền hóa đơn"
+          label="Tổng tiền (đã trừ hàng trả)"
           countText={`${pg.total} hóa đơn`}
           total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
         />

@@ -83,8 +83,17 @@ describe("095 — trừ đúng khoản, đúng phiếu", () => {
    * Chạy thật: 4 phiếu trong tháng 4 — approved 20tr, pending 30tr,
    * rejected 40tr, completed-tạo-tay 5tr → tổng trừ = 25tr.
    */
-  it("chỉ tính phiếu approved/completed — giống công nợ và báo cáo", () => {
-    expect(RETURNS_FN).toContain("r.status IN ('approved', 'completed')")
+  /**
+   * ⚠ (mig 192, chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số tính bằng số đi - số
+   *   trả") Trạng thái nào được trừ nay do `returns.revenue_date` quyết — CÙNG LUẬT CÔNG
+   *   NỢ: approved/completed, và phiếu TỰ SINH theo hóa đơn từ Chờ xử lý. Bản cũ lọc
+   *   approved/completed nên phiếu tự sinh Chờ xử lý (công nợ đã trừ) bị bỏ sót.
+   */
+  it("chỉ tính phiếu có ngày trừ doanh số — giống công nợ và báo cáo", () => {
+    expect(RETURNS_FN).toContain("r.revenue_date BETWEEN p_start AND p_end")
+    const trg = readFileSync(resolve(__dirname, "..", "supabase/migrations/192_doanh_so_thuan_tru_hang_tra.sql"), "utf-8")
+    expect(trg).toContain("ELSIF NEW.status IN ('approved', 'completed') THEN")
+    expect(trg).toMatch(/credit_with_invoice, false\) AND NEW\.status IN \('submitted', 'completed'\)/)
   })
 })
 
@@ -124,9 +133,8 @@ describe("095 — quy phiếu trả về đúng nhân viên", () => {
     // …và mốc so sánh phải là chính mốc xếp kỳ của phiếu, đã đổi về giờ VN
     // (từ 097 là ngày DUYỆT, dự phòng ngày lập), không phải một hằng số
     // hay một ngày khác.
-    expect(sub).toMatch(
-      /o2\.order_date <= \(\(COALESCE\(r\.credited_at, r\.created_at\) AT TIME ZONE 'Asia\/Ho_Chi_Minh'\)::date\)/
-    )
+    // (mig 192: mốc là ngày trừ doanh số `revenue_date`, DATE theo giờ VN.)
+    expect(sub).toMatch(/o2\.order_date <= r\.revenue_date/)
   })
 
   it("chỉ suy từ đơn thật, không suy từ đơn nháp/đã huỷ", () => {
@@ -141,8 +149,9 @@ describe("095 — quy phiếu trả về đúng nhân viên", () => {
    *   096 → gộp 100tr, trừ    0đ, thuần 100tr
    */
   it("KHÔNG trừ phiếu trả gắn vào đơn nháp/đã huỷ — đơn đó chưa từng được cộng", () => {
+    // (mig 192) Phiếu gắn HÓA ĐƠN đã ghi sổ thì đơn chắc chắn đã được cộng.
     expect(RETURNS_FN).toContain(
-      "(r.order_id IS NULL OR public.is_revenue_status(o.status))"
+      "(r.order_id IS NULL OR r.invoice_id IS NOT NULL OR public.is_revenue_status(o.status))"
     )
   })
 
@@ -166,7 +175,8 @@ describe("095 — kỳ tính theo giờ Việt Nam, không phải UTC", () => {
    *   dùng AT TIME ZONE 'Asia/Ho_Chi_Minh' → đúng tháng 5
    */
   it("SQL đổi múi giờ trước khi lấy ngày", () => {
-    expect(RETURNS_FN).toContain("AT TIME ZONE 'Asia/Ho_Chi_Minh'")
+    // (mig 192) Ngày trừ doanh số chốt ở trigger, đổi giờ VN TRƯỚC khi lấy ngày.
+    expect(readFileSync(resolve(__dirname, "..", "supabase/migrations/192_doanh_so_thuan_tru_hang_tra.sql"), "utf-8")).toContain("(NEW.credited_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date")
     // ::date trần trên timestamptz là đúng cái bẫy này.
     expect(RETURNS_FN).not.toMatch(/r\.created_at::date/)
   })
@@ -273,7 +283,8 @@ describe("097 — phiếu trả duyệt sang tháng sau không được biến m
   })
 
   it("hàm tính hàng trả gom theo mốc duyệt, có dự phòng ngày lập", () => {
-    expect(RETURNS_FN).toContain("COALESCE(r.credited_at, r.created_at)")
+    // (mig 192) Mốc duyệt → ngày chứng từ → ngày lập, chốt trong trigger `revenue_date`.
+    expect(readFileSync(resolve(__dirname, "..", "supabase/migrations/192_doanh_so_thuan_tru_hang_tra.sql"), "utf-8")).toMatch(/NEW\.revenue_date := COALESCE\(\s*\(NEW\.credited_at AT TIME ZONE 'Asia\/Ho_Chi_Minh'\)::date,\s*NEW\.return_date,\s*\(NEW\.created_at AT TIME ZONE/)
     // Dùng credited_at trần thì phiếu cũ chưa kịp bù sẽ im lặng biến mất —
     // đúng cái lỗi migration này đang đi sửa.
     expect(RETURNS_FN).not.toMatch(/\(r\.credited_at AT TIME ZONE/)

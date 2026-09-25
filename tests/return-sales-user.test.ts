@@ -312,31 +312,37 @@ describe("báo cáo nhân viên — đọc cột thay vì đoán", () => {
     expect(at.slice(j, at.indexOf("\n}", j))).toContain("sales_user_id")
   })
 
-  it("CẢ HAI chỗ quy phiếu trả về nhân viên đều đọc cột trước, đoán sau", () => {
+  it("MỌI chỗ quy phiếu trả về nhân viên đi qua MỘT luật: đọc cột trước, đoán sau", () => {
     /**
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
-     *   MỘT TRANG, và không ai biết tin bảng nào. Trang này có hai chỗ
-     *   quy phiếu trả: bảng "Bán hàng" (theo phiếu) và bảng "Hàng bán
-     *   theo nhân viên" (theo dòng hàng trả).
+     *   MỘT TRANG, và không ai biết tin bảng nào. Từ khi doanh số tính
+     *   THUẦN ở mọi tab (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số
+     *   tính bằng số đi - số trả") trang có năm bảng trừ hàng trả — tất cả
+     *   đọc `nvPhieuTra` ← `nhanVienPhieuTra` (tên trên phiếu → NV hóa đơn
+     *   gắn → hóa đơn gần nhất của khách; hành vi chốt ở
+     *   tests/doanh-so-thuan-nhan-vien.test.ts).
      */
-    const choDoc = bc.match(/r\.sales_user_id/g) || []
-    expect(choDoc.length).toBeGreaterThanOrEqual(2)
+    expect(bc).toContain("nhanVienPhieuTra(returns, invoices)")
+    const lib = boChuThich(doc("src/lib/analytics/hang-ban-nhan-vien.ts"))
+    const i = lib.indexOf("export function nhanVienPhieuTra(")
+    expect(i).toBeGreaterThan(0)
+    const than = lib.slice(i, lib.indexOf("\n}\n", i))
+    // Đọc cột trước, rồi hóa đơn gắn, rồi mới đoán.
+    const a = than.indexOf("r.sales_user_id")
+    const b = than.indexOf("nvHoaDon.get(r.invoice_id)")
+    const c = than.indexOf("ganNhatCuaKhach.get(r.customer_id)")
+    expect(a).toBeGreaterThan(0)
+    expect(b).toBeGreaterThan(a)
+    expect(c).toBeGreaterThan(b)
 
-    /* Chỗ 1 — vòng theo phiếu. */
-    const i1 = bc.indexOf("for (const r of returns) {")
-    expect(i1).toBeGreaterThan(0)
-    const v1 = bc.slice(i1, bc.indexOf("\n    }", i1))
-    expect(v1).toContain("r.sales_user_id")
-    /* Vẫn đoán cho phiếu CHƯA GÁN — bỏ chúng ra ngoài sổ là doanh số
-       thuần của cả năm ngoái tự nhiên tăng lên. */
-    expect(v1).toContain("orderByCustomer")
-
-    /* Chỗ 2 — bảng theo dòng hàng trả. */
-    const i2 = bc.indexOf("const returnIdToSalesUser")
-    expect(i2).toBeGreaterThan(0)
-    const v2 = bc.slice(i2, i2 + 400)
-    expect(v2).toContain("r.sales_user_id")
-    expect(v2).toContain("lastSalesUserByCustomer")
+    /* Không còn vòng nào tự quy phiếu trả bằng tay trong trang. */
+    expect(bc).not.toContain("orderByCustomer")
+    expect(bc).not.toContain("lastSalesUserByCustomer")
+    expect(bc).not.toContain("returnIdToSalesUser")
+    /* Bảng theo phiếu và bảng theo dòng đều lấy nhân viên từ cùng Map. */
+    expect(bc).toMatch(/const uid = nvPhieuTra\.get\(r\.id\)/)
+    expect(bc).toMatch(/const uid = nvPhieuTra\.get\(rl\.return_id\)/)
+    expect((bc.match(/for \(const \{ uid, r \} of returnsTheoNv\)/g) || []).length).toBeGreaterThanOrEqual(3)
   })
 
   it("không còn chỗ nào quy phiếu trả BẰNG ĐOÁN mà không thử đọc cột trước", () => {

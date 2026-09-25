@@ -4,7 +4,9 @@ import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 export interface ProfitByDayRow {
   date: string
   label: string
+  /** Doanh thu THUẦN = hóa đơn − hàng trả (chủ nhà 25/09/2026, mig 192). */
   revenue: number
+  /** Giá vốn THUẦN = giá vốn xuất − giá vốn hàng trả đã nhập lại kho. */
   cogs: number
   profit: number
   margin: number
@@ -26,8 +28,8 @@ export function ProfitByTimeView({ rows }: { rows: ProfitByDayRow[] }) {
       rowKey={(r) => r.date}
       columns={[
         { key: "time", label: "Thời gian", render: (r) => <span className="font-medium text-primary">{r.label}</span> },
-        { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+        { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => formatCurrency(r.revenue) },
+        { key: "cogs", label: "Giá vốn thuần", align: "right", render: (r) => formatCurrency(r.cogs) },
         {
           key: "profit",
           label: "Lợi nhuận",

@@ -43,6 +43,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { DocSearchBox } from "@/components/ui/doc-search-box"
@@ -87,6 +88,8 @@ export default function ReturnsPage() {
   const [returns, setReturns] = useState<Return[]>([])
   /** Phiếu đang mở ở ngăn xem nhanh — `null` là đóng (chủ nhà 25/09/2026). */
   const [xemNhanh, setXemNhanh] = useState<string | null>(null)
+  /** Số phiếu TH- (mig 193), đọc riêng — sổ chưa có cột thì chỉ mất số. */
+  const [maPhieu, setMaPhieu] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState("all")
   /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
@@ -173,7 +176,8 @@ export default function ReturnsPage() {
    *   cho `or` bắc qua bảng nhúng.
    */
   const listSearch = useListSearch(
-    supabase, debouncedSearch, authUser?.org_id, [],
+    /* Tìm theo số phiếu TH- (mig 193) như tìm HD- / DH-. */
+    supabase, debouncedSearch, authUser?.org_id, ["return_code"],
     [
       { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
       { column: "requested_by", table: "users", columns: ["full_name"] },
@@ -243,8 +247,10 @@ export default function ReturnsPage() {
       /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc. Lọc hai lần
          theo hai luật khác nhau là dòng máy chủ vừa trả về lại bị trình
          duyệt giấu đi, và số trên phân trang không khớp số dòng thấy. */
-      setReturns((data as unknown as Return[]) || [])
+      const ds = (data as unknown as Return[]) || []
+      setReturns(ds)
       pg.setTotal(count ?? 0)
+      docMaPhieuTra(supabase, ds.map((r) => r.id)).then((m) => { if (!cancelled) setMaPhieu(m) })
       setLoading(false)
     }
     fetch()
@@ -479,6 +485,7 @@ export default function ReturnsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Số phiếu</TableHead>
                       {show("date") && <TableHead>Ngày</TableHead>}
                       <TableHead>Khách hàng</TableHead>
                       {show("orderCode") && <TableHead>Đơn gốc</TableHead>}
@@ -501,6 +508,17 @@ export default function ReturnsPage() {
                           className="cursor-pointer hover:bg-muted/40"
                           onClick={() => setXemNhanh(r.id)}
                         >
+                          {/* ⚠ BẤM SỐ → CHI TIẾT, BẤM DÒNG → XEM NHANH (chủ nhà 25/09/2026, như
+                              đơn / hóa đơn). */}
+                          <TableCell>
+                            <Link
+                              href={`/returns/${r.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-mono text-xs font-bold text-primary hover:underline"
+                            >
+                              {tenPhieuTra(maPhieu.get(r.id))}
+                            </Link>
+                          </TableCell>
                           {show("date") && (
                             <TableCell className="text-sm whitespace-nowrap">
                               {formatDate(r.created_at)}
@@ -567,6 +585,13 @@ export default function ReturnsPage() {
                       <div className="p-4">
                         <div className="flex justify-between items-start gap-3 mb-2">
                           <div className="min-w-0 flex-1">
+                            <Link
+                              href={`/returns/${r.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-mono text-xs font-bold text-primary"
+                            >
+                              {tenPhieuTra(maPhieu.get(r.id))}
+                            </Link>
                             <h3 className="font-extrabold text-base leading-tight truncate">
                               {r.customer?.store_name || "—"}
                             </h3>

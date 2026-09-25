@@ -20,6 +20,7 @@ import {
   fetchInvoiceLines,
   fetchReturnsRowsDu,
   fetchReturnLines,
+  fetchReturnCosts,
   fetchStockEntryLines,
   fetchPostedStockEntries,
   fetchOrgRows,
@@ -110,6 +111,8 @@ export default function ProductsReportPage() {
   const [invoices, setInvoices] = useState<RevenueInvoiceRow[]>([])
   const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  /** Giá vốn hàng trả ĐÃ NHẬP LẠI KHO theo mặt hàng — trừ giá vốn ở màn Lợi nhuận. */
+  const [returnCostByProduct, setReturnCostByProduct] = useState<Map<string, number>>(() => new Map())
   const [products, setProducts] = useState<ProductRow[]>([])
   const [batches, setBatches] = useState<BatchRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
@@ -165,11 +168,17 @@ export default function ProductsReportPage() {
           fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
         ])
 
-      const [lineList, returnLineList, stockLineList] = await Promise.all([
+      const returnIds = returnsRes.rows.map((r) => r.id)
+      const [lineList, returnLineList, stockLineList, returnCosts] = await Promise.all([
         fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id)),
-        fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id)),
+        fetchReturnLines(supabase, returnIds),
         fetchStockEntryLines(supabase, entriesRes.rows.map((e) => e.id)),
+        fetchReturnCosts(supabase, returnIds),
       ])
+      const costByProduct = new Map<string, number>()
+      returnCosts.forEach((c) => {
+        c.byProduct.forEach((v, pid) => costByProduct.set(pid, (costByProduct.get(pid) ?? 0) + v))
+      })
 
       setTruncated(
         invoiceRes.truncated || productsRes.truncated || batchesRes.truncated || returnsRes.truncated ||
@@ -178,6 +187,7 @@ export default function ProductsReportPage() {
       setInvoices(invoiceRes.rows)
       setLines(lineList)
       setReturnLines(returnLineList)
+      setReturnCostByProduct(costByProduct)
       setProducts(productsRes.rows)
       setBatches(batchesRes.rows)
       setStockEntries(entriesRes.rows)
@@ -308,42 +318,68 @@ export default function ProductsReportPage() {
   }, [lines, returnLines, productMap, filterFn, groupKey, groupLabel, groupSameType])
 
   // -------------------- Lợi nhuận --------------------
+  /**
+   * ⚠ SỐ THUẦN = SỐ ĐI − SỐ TRẢ (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số
+   *   tính bằng số đi - số trả"). Doanh thu = Σ dòng hóa đơn đã ghi sổ − Σ dòng hàng
+   *   trả (không tính hàng đổi) trừ trong kỳ; giá vốn = phiếu xuất − giá vốn hàng trả
+   *   đã nhập lại kho (`fetchReturnCosts`). Trừ một vế mà quên vế kia là lãi lệch.
+   */
   const profitRows: ProfitByProductRow[] = useMemo(() => {
     // Doanh thu & SL từ dòng hóa đơn đã ghi sổ; COGS from posted export entry lines
     const m = new Map<string, ProfitByProductRow>()
     const exportLines = stockLines.filter(
       (l) => stockEntryMap.get(l.entry_id)?.type === "export"
     )
+    const moiDong = (k: string, p: ProductRow): ProfitByProductRow => {
+      const lbl = groupLabel(k, p)
+      return { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
+    }
 
     for (const l of lines) {
       const p = productMap.get(l.product_id)
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
-      const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
+      const e = m.get(k) || moiDong(k, p)
       const q = soLuongCoSoDongHd(l, p)
       e.qty += q
       congSL(e.qtyTheoDv, p.base_unit, q)
       e.revenue += Number(l.line_total || 0)
       m.set(k, e)
     }
+    // Hàng trả trừ doanh thu (dòng không đổi — cùng số với `credit_note_amount`).
+    for (const l of returnLines) {
+      const p = productMap.get(l.product_id)
+      if (!p || !filterFn(p)) continue
+      const k = groupKey(p)
+      const e = m.get(k) || moiDong(k, p)
+      e.revenue -= Number(l.line_total || 0)
+      m.set(k, e)
+    }
     for (const l of exportLines) {
       const p = productMap.get(l.product_id)
       if (!p || !filterFn(p)) continue
       const k = groupKey(p)
-      const lbl = groupLabel(k, p)
-      const e = m.get(k) || { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
+      const e = m.get(k) || moiDong(k, p)
       // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
       e.cogs += giaTriDongKho(l)
       m.set(k, e)
     }
+    // Giá vốn của chính số hàng trả đã về kho — trừ khỏi giá vốn.
+    returnCostByProduct.forEach((cost, pid) => {
+      const p = productMap.get(pid)
+      if (!p || !filterFn(p)) return
+      const k = groupKey(p)
+      const e = m.get(k) || moiDong(k, p)
+      e.cogs -= cost
+      m.set(k, e)
+    })
     return Array.from(m.values())
       .map((r) => {
         const profit = r.revenue - r.cogs
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [lines, stockLines, stockEntryMap, productMap, filterFn, groupKey, groupLabel])
+  }, [lines, returnLines, stockLines, returnCostByProduct, stockEntryMap, productMap, filterFn, groupKey, groupLabel])
 
   // -------------------- Giá trị kho --------------------
   const stockValueRows: StockValueRow[] = useMemo(() => {
@@ -476,7 +512,7 @@ export default function ProductsReportPage() {
       downloadXlsx(`bao-cao-hh-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
-        ["Mã hàng", "Tên hàng", "SL bán", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
+        ["Mã hàng", "Tên hàng", "SL bán", "Doanh thu thuần", "Giá vốn thuần", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows) {
         out.push([r.sku, r.name, slXuat(r.qty, r.qtyTheoDv), r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])

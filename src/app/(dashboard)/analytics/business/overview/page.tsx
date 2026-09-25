@@ -23,12 +23,16 @@ import {
 import {
   fetchRevenueInvoices,
   fetchInvoiceLines,
-  fetchReturnsValue,
+  fetchReturnsRows,
+  fetchReturnLines,
+  fetchReturnCosts,
   fetchCogsForRange,
   type RevenueInvoiceRow,
   type InvoiceLineRow,
+  type ReturnSummaryRow,
+  type ReturnLineRow,
 } from "@/lib/analytics/sales"
-import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
@@ -63,6 +67,10 @@ interface ProductRow {
   category: string | null
 }
 
+/** Tổng tiền trả (không tính hàng đổi) của các phiếu — cùng số trừ doanh thu. */
+const tongTra = (rs: ReadonlyArray<Pick<ReturnSummaryRow, "credit_note_amount">>) =>
+  rs.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0)
+
 export default function BusinessOverviewPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
@@ -77,8 +85,18 @@ export default function BusinessOverviewPage() {
   const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
   const [lines, setLines] = useState<InvoiceLineRow[]>([])
   const [prevLines, setPrevLines] = useState<InvoiceLineRow[]>([])
-  const [returnsValue, setReturnsValue] = useState(0)
-  const [prevReturnsValue, setPrevReturnsValue] = useState(0)
+  /**
+   * ⚠ PHIẾU TRẢ TRỪ TRONG KỲ, KHÔNG CHỈ MỘT CON SỐ TỔNG (chủ nhà 25/09/2026: "Rà soát
+   *   lại toàn bộ doanh số tính bằng số đi - số trả"). Các bảng Top theo nhóm / kênh /
+   *   nhân viên / mặt hàng phải trừ đúng phần trả của mình — cần khách, NV, hóa đơn
+   *   và dòng hàng của từng phiếu.
+   */
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
+  const [prevReturns, setPrevReturns] = useState<ReturnSummaryRow[]>([])
+  const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  const [prevReturnLines, setPrevReturnLines] = useState<ReturnLineRow[]>([])
+  /** NV mỗi phiếu trả tính cho: NV trên phiếu → NV của hóa đơn gắn phiếu → "" (chưa gán). */
+  const [returnUser, setReturnUser] = useState<Map<string, string>>(() => new Map())
   const [cogs, setCogs] = useState(0)
   const [prevCogs, setPrevCogs] = useState(0)
   const [customers, setCustomers] = useState<CustomerRow[]>([])
@@ -111,8 +129,8 @@ export default function BusinessOverviewPage() {
       const [
         orderList,
         prevOrderList,
-        retVal,
-        prevRetVal,
+        retRows,
+        prevRetRows,
         cogsRes,
         prevCogsRes,
         customersRes,
@@ -122,8 +140,8 @@ export default function BusinessOverviewPage() {
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
         fetchRevenueInvoices(supabase, orgId, range),
         fetchRevenueInvoices(supabase, orgId, prev),
-        fetchReturnsValue(supabase, orgId, range),
-        fetchReturnsValue(supabase, orgId, prev),
+        fetchReturnsRows(supabase, orgId, range),
+        fetchReturnsRows(supabase, orgId, prev),
         fetchCogsForRange(supabase, orgId, range),
         fetchCogsForRange(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
@@ -159,19 +177,61 @@ export default function BusinessOverviewPage() {
       ])
       const orderIds = orderList.map((o) => o.id)
       const prevOrderIds = prevOrderList.map((o) => o.id)
-      const [lineList, prevLineList] = await Promise.all([
-        fetchInvoiceLines(supabase, orderIds),
-        fetchInvoiceLines(supabase, prevOrderIds),
-      ])
+      const retIds = retRows.map((r) => r.id)
+      const prevRetIds = prevRetRows.map((r) => r.id)
+      /* NV của hóa đơn gắn phiếu trả: hóa đơn trong hai kỳ đã có; hóa đơn cũ hơn thì đọc thêm. */
+      const nvHoaDon = new Map<string, string>()
+      for (const o of orderList.concat(prevOrderList)) nvHoaDon.set(o.id, o.sales_user_id || "")
+      const thieuHd = Array.from(
+        new Set(
+          retRows
+            .concat(prevRetRows)
+            .map((r) => (!r.sales_user_id && r.invoice_id && !nvHoaDon.has(r.invoice_id) ? r.invoice_id : ""))
+            .filter(Boolean)
+        )
+      )
+      const [lineList, prevLineList, retLineList, prevRetLineList, retCosts, prevRetCosts, hdCu] =
+        await Promise.all([
+          fetchInvoiceLines(supabase, orderIds),
+          fetchInvoiceLines(supabase, prevOrderIds),
+          fetchReturnLines(supabase, retIds),
+          fetchReturnLines(supabase, prevRetIds),
+          fetchReturnCosts(supabase, retIds),
+          fetchReturnCosts(supabase, prevRetIds),
+          docTheoLoId<{ id: string; sales_user_id: string | null }>(
+            thieuHd,
+            (lo, from, to) =>
+              supabase
+                .from("sales_invoices")
+                .select("id, sales_user_id", { count: "exact" })
+                .in("id", lo)
+                .order("id")
+                .range(from, to),
+            "đọc NV của hóa đơn gắn phiếu trả"
+          ),
+        ])
+      for (const h of hdCu) nvHoaDon.set(h.id, h.sales_user_id || "")
+      const nvTra = new Map<string, string>()
+      for (const r of retRows.concat(prevRetRows)) {
+        nvTra.set(r.id, r.sales_user_id || (r.invoice_id ? nvHoaDon.get(r.invoice_id) : "") || "")
+      }
+      /* Giá vốn THUẦN = phiếu xuất − giá vốn hàng trả đã nhập lại kho. */
+      let giaVonTra = 0
+      retCosts.forEach((c) => { giaVonTra += c.total })
+      let giaVonTraTruoc = 0
+      prevRetCosts.forEach((c) => { giaVonTraTruoc += c.total })
 
       setOrders(orderList)
       setPrevOrders(prevOrderList)
       setLines(lineList)
       setPrevLines(prevLineList)
-      setReturnsValue(retVal)
-      setPrevReturnsValue(prevRetVal)
-      setCogs(cogsRes.cogs)
-      setPrevCogs(prevCogsRes.cogs)
+      setReturns(retRows)
+      setPrevReturns(prevRetRows)
+      setReturnLines(retLineList)
+      setPrevReturnLines(prevRetLineList)
+      setReturnUser(nvTra)
+      setCogs(cogsRes.cogs - giaVonTra)
+      setPrevCogs(prevCogsRes.cogs - giaVonTraTruoc)
       setCustomers(customersRes.rows)
       setProducts(productsRes.rows)
       setUsers(usersRes.rows)
@@ -189,6 +249,9 @@ export default function BusinessOverviewPage() {
   }, [load])
 
   const days = daysBetween(range)
+
+  const returnsValue = useMemo(() => tongTra(returns), [returns])
+  const prevReturnsValue = useMemo(() => tongTra(prevReturns), [prevReturns])
 
   const totals = useMemo(() => {
     const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0)
@@ -227,14 +290,17 @@ export default function BusinessOverviewPage() {
       const i = dayIdx.get(d)
       if (i !== undefined) revenueArr[i] += Number(o.total || 0)
     }
-    // We don't have per-day cogs/returns precise mapping cheaply; approximate by spreading totals
-    // proportionally to revenue distribution (good enough for visualisation).
+    // Hàng trả theo đúng ngày trừ doanh số (`created_at` của phiếu = ngày trừ, YYYY-MM-DD).
+    for (const r of returns) {
+      const i = dayIdx.get(String(r.created_at).slice(0, 10))
+      if (i !== undefined) returnsArr[i] += Number(r.credit_note_amount || 0)
+    }
+    // Giá vốn chưa có theo ngày rẻ tiền — rải theo tỉ lệ doanh thu (đủ cho biểu đồ).
     const totalRevenue = revenueArr.reduce((s, v) => s + v, 0)
     for (let i = 0; i < buckets.length; i++) {
       const r = revenueArr[i]
       const ratio = totalRevenue > 0 ? r / totalRevenue : 0
       cogsArr[i] = cogs * ratio
-      returnsArr[i] = returnsValue * ratio
       profitArr[i] = r - returnsArr[i] - cogsArr[i]
     }
     return {
@@ -244,7 +310,7 @@ export default function BusinessOverviewPage() {
       returns: returnsArr,
       profit: profitArr,
     }
-  }, [orders, range, cogs, returnsValue])
+  }, [orders, returns, range, cogs])
 
   // Top customer groups by revenue
   const topGroups = useMemo(() => {
@@ -271,6 +337,17 @@ export default function BusinessOverviewPage() {
       e.orders += 1
       prev.set(gid, e)
     }
+    // Số THUẦN: trừ hàng trả của khách trong nhóm (chủ nhà 25/09/2026).
+    const truTra = (m: typeof cur, rs: ReturnSummaryRow[]) => {
+      for (const r of rs) {
+        const gid = customerMap.get(r.customer_id)?.group_id || ""
+        const e = m.get(gid) || { revenue: 0, orders: 0 }
+        e.revenue -= Number(r.credit_note_amount || 0)
+        m.set(gid, e)
+      }
+    }
+    truTra(cur, returns)
+    truTra(prev, prevReturns)
     return Array.from(cur.entries())
       .map(([gid, e]) => {
         const p = prev.get(gid)
@@ -285,7 +362,7 @@ export default function BusinessOverviewPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [orders, prevOrders, customers, groups])
+  }, [orders, prevOrders, returns, prevReturns, customers, groups])
 
   // Top products by revenue
   const topProducts = useMemo(() => {
@@ -308,6 +385,16 @@ export default function BusinessOverviewPage() {
       e.orders.add(l.invoice_id)
       prev.set(l.product_id, e)
     }
+    // Số THUẦN: trừ dòng hàng trả (không tính hàng đổi) của mặt hàng.
+    const truTra = (m: typeof cur, rls: ReturnLineRow[]) => {
+      for (const l of rls) {
+        const e = m.get(l.product_id) || { revenue: 0, qty: 0, orders: new Set<string>() }
+        e.revenue -= Number(l.line_total || 0)
+        m.set(l.product_id, e)
+      }
+    }
+    truTra(cur, returnLines)
+    truTra(prev, prevReturnLines)
     return Array.from(cur.entries())
       .map(([pid, e]) => {
         const p = prev.get(pid)
@@ -323,7 +410,7 @@ export default function BusinessOverviewPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [lines, prevLines, products])
+  }, [lines, prevLines, returnLines, prevReturnLines, products])
 
   // Top channels — channel stored on customer.
   const topChannels = useMemo(() => {
@@ -346,6 +433,17 @@ export default function BusinessOverviewPage() {
       e.orders += 1
       prev.set(ch, e)
     }
+    // Số THUẦN: trừ hàng trả theo kênh của khách.
+    const truTra = (m: typeof cur, rs: ReturnSummaryRow[]) => {
+      for (const r of rs) {
+        const ch = customerMap.get(r.customer_id)?.channel || fallback
+        const e = m.get(ch) || { revenue: 0, orders: 0 }
+        e.revenue -= Number(r.credit_note_amount || 0)
+        m.set(ch, e)
+      }
+    }
+    truTra(cur, returns)
+    truTra(prev, prevReturns)
     return Array.from(cur.entries())
       .map(([ch, e]) => {
         const p = prev.get(ch)
@@ -360,7 +458,7 @@ export default function BusinessOverviewPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [orders, prevOrders, customers])
+  }, [orders, prevOrders, returns, prevReturns, customers])
 
   // Top employees
   const topEmployees = useMemo(() => {
@@ -380,6 +478,17 @@ export default function BusinessOverviewPage() {
       e.orders += 1
       prev.set(o.sales_user_id, e)
     }
+    // Số THUẦN: trừ hàng trả của NV (NV phiếu → NV hóa đơn gắn phiếu → chưa gán).
+    const truTra = (m: typeof cur, rs: ReturnSummaryRow[]) => {
+      for (const r of rs) {
+        const uid = returnUser.get(r.id) ?? ""
+        const e = m.get(uid) || { revenue: 0, orders: 0 }
+        e.revenue -= Number(r.credit_note_amount || 0)
+        m.set(uid, e)
+      }
+    }
+    truTra(cur, returns)
+    truTra(prev, prevReturns)
     return Array.from(cur.entries())
       .map(([uid, e]) => {
         const p = prev.get(uid)
@@ -394,7 +503,7 @@ export default function BusinessOverviewPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [orders, prevOrders, users])
+  }, [orders, prevOrders, returns, prevReturns, returnUser, users])
 
   if (authLoading || loading) {
     return (
@@ -466,7 +575,7 @@ export default function BusinessOverviewPage() {
           changePct={pctChange(totals.netRevenue, totals.prevNet)}
         />
         <KpiCard
-          label="Tổng giá vốn"
+          label="Giá vốn thuần"
           value={totals.cogs}
           format="compactCurrency"
           avgValue={days > 0 ? totals.cogs / days : 0}
@@ -534,7 +643,7 @@ export default function BusinessOverviewPage() {
           rowKey={(r) => r.id}
           columns={[
             { key: "name", label: "Tên nhóm hàng", render: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+            { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
             { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
@@ -546,7 +655,7 @@ export default function BusinessOverviewPage() {
           rowKey={(r) => r.id}
           columns={[
             { key: "name", label: "Tên hàng hóa", render: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+            { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
             { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
@@ -558,7 +667,7 @@ export default function BusinessOverviewPage() {
           rowKey={(r) => r.id}
           columns={[
             { key: "name", label: "Kênh bán", render: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+            { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
             { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}
@@ -570,7 +679,7 @@ export default function BusinessOverviewPage() {
           rowKey={(r) => r.id}
           columns={[
             { key: "name", label: "Tên nhân viên", render: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "revenue", label: "Doanh thu", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
+            { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
             { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },
           ]}

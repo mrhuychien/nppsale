@@ -17,16 +17,17 @@ import {
 } from "@/lib/analytics/filter-catalogs"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"
-import { quaLocCuoiNgay } from "@/lib/analytics/loc-cuoi-ngay"
+import { quaLocCuoiNgay, type ChungTuCuoiNgay } from "@/lib/analytics/loc-cuoi-ngay"
 import {
   fetchAllOrdersDu,
   fetchRevenueInvoicesDu,
-  fetchReturnsValueDu,
+  fetchReturnsRowsDu,
+  fetchReturnCosts,
   fetchCogsForRange,
   type SalesOrderRow,
   type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
-import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import { type DateRange, rangeFromPreset } from "@/lib/analytics/period"
@@ -39,6 +40,21 @@ interface CashReceiptRow {
   status: string
   received_at: string | null
   source_type: string
+}
+
+/**
+ * Một phiếu trả TRỪ DOANH SỐ trong ngày, mang đủ cột để qua CÙNG bộ lọc với
+ * hóa đơn (`quaLocCuoiNgay`):
+ * · khách → `customer_id` của phiếu;
+ * · nhân viên → NV của phiếu (mig 160), chưa gán thì NV của hóa đơn gắn phiếu;
+ * · người tạo → `requested_by` (người lập phiếu);
+ * · hình thức thanh toán → của hóa đơn gắn phiếu (phiếu độc lập không có).
+ */
+interface ReturnCuoiNgay extends ChungTuCuoiNgay {
+  id: string
+  amount: number
+  /** Giá vốn hàng trả ĐÃ nhập lại kho — trừ vào giá vốn. */
+  cost: number
 }
 
 interface ExpenseRow {
@@ -58,7 +74,7 @@ export default function EndOfDayPage() {
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   // Hóa đơn ghi sổ trong ngày — DOANH THU tính theo hóa đơn (chủ nhà 24/09/2026).
   const [delivered, setDelivered] = useState<RevenueInvoiceRow[]>([])
-  const [returnsValue, setReturnsValue] = useState(0)
+  const [returnRows, setReturnRows] = useState<ReturnCuoiNgay[]>([])
   const [cogs, setCogs] = useState(0)
   const [cashReceipts, setCashReceipts] = useState<CashReceiptRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
@@ -86,7 +102,7 @@ export default function EndOfDayPage() {
       const [allRes, delivRes, retRes, cogsRes, cashRes, expRes] = await Promise.all([
         fetchAllOrdersDu(supabase, orgId, range),
         fetchRevenueInvoicesDu(supabase, orgId, range),
-        fetchReturnsValueDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, range),
         fetchCogsForRange(supabase, orgId, range),
         docDuHoacNem<CashReceiptRow>(
           (from, to) =>
@@ -111,13 +127,64 @@ export default function EndOfDayPage() {
           "đọc chi phí"
         ),
       ])
+      /* ⚠ HÀNG TRẢ PHẢI QUA CÙNG BỘ LỌC (chủ nhà 25/09/2026: "Rà soát lại toàn bộ
+         doanh số tính bằng số đi - số trả"). Bản cũ trừ TỔNG hàng trả cả ngày vào
+         doanh thu ĐÃ LỌC — chọn một khách là trừ cả hàng trả của khách khác, doanh
+         thu thuần âm oan. Đọc thêm người lập phiếu và NV / hình thức của hóa đơn
+         gắn phiếu (hóa đơn có thể của ngày trước), cùng giá vốn hàng trả. */
+      const retIds = retRes.rows.map((r) => r.id)
+      const hdTrongNgay = new Map(delivRes.rows.map((i) => [i.id, i]))
+      const hdThieu = retRes.rows
+        .map((r) => r.invoice_id)
+        .filter((id): id is string => !!id && !hdTrongNgay.has(id))
+      const [nguoiLap, hdKhac, giaVonTra] = await Promise.all([
+        docTheoLoId<{ id: string; requested_by: string | null }>(
+          retIds,
+          (lo, from, to) =>
+            supabase
+              .from("returns")
+              .select("id, requested_by", { count: "exact" })
+              .in("id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc người lập phiếu trả"
+        ),
+        docTheoLoId<{ id: string; sales_user_id: string | null; payment_terms: string | null }>(
+          hdThieu,
+          (lo, from, to) =>
+            supabase
+              .from("sales_invoices")
+              .select("id, sales_user_id, payment_terms", { count: "exact" })
+              .in("id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc hóa đơn gắn phiếu trả"
+        ),
+        fetchReturnCosts(supabase, retIds),
+      ])
+      const lapBoi = new Map(nguoiLap.map((r) => [r.id, r.requested_by]))
+      const hdCua = new Map<string, { sales_user_id: string | null; payment_terms?: string | null }>(
+        [...delivRes.rows, ...hdKhac].map((i) => [i.id, i])
+      )
+      const rows: ReturnCuoiNgay[] = retRes.rows.map((r) => {
+        const hd = r.invoice_id ? hdCua.get(r.invoice_id) : undefined
+        return {
+          id: r.id,
+          amount: Number(r.credit_note_amount || 0),
+          cost: giaVonTra.get(r.id)?.total ?? 0,
+          customer_id: r.customer_id,
+          sales_user_id: r.sales_user_id ?? hd?.sales_user_id ?? "",
+          created_by: lapBoi.get(r.id) ?? "",
+          payment_terms: hd?.payment_terms ?? null,
+        }
+      })
       setTruncated(
         allRes.truncated || delivRes.truncated || retRes.truncated || cogsRes.truncated ||
           cashRes.truncated || expRes.truncated
       )
       setOrders(allRes.rows)
       setDelivered(delivRes.rows)
-      setReturnsValue(retRes.total)
+      setReturnRows(rows)
       setCogs(cogsRes.cogs)
       setCashReceipts(cashRes.rows)
       setExpenses(expRes.rows)
@@ -134,7 +201,7 @@ export default function EndOfDayPage() {
 
   /* Một luật lọc cho cả đơn lẫn hóa đơn — xem `quaLocCuoiNgay`. */
   const passesFilters = useCallback(
-    (o: SalesOrderRow | RevenueInvoiceRow) =>
+    (o: SalesOrderRow | RevenueInvoiceRow | ReturnCuoiNgay) =>
       quaLocCuoiNgay(o, {
         khach: customerFilter,
         nhanVien: salesUserFilter,
@@ -150,9 +217,20 @@ export default function EndOfDayPage() {
     [delivered, passesFilters]
   )
 
+  const filteredReturns = useMemo(
+    () => returnRows.filter(passesFilters),
+    [returnRows, passesFilters]
+  )
+
   const revenue = filteredDelivered.reduce((s, o) => s + Number(o.total || 0), 0)
+  // Hàng trả của ĐÚNG những khách / NV / người tạo đang lọc — không phải cả ngày.
+  const returnsValue = filteredReturns.reduce((s, r) => s + r.amount, 0)
   const netRevenue = revenue - returnsValue
-  const grossProfit = netRevenue - cogs
+  /* Lãi gộp = thuần − (giá vốn − giá vốn hàng trả đã nhập lại kho). ⚠ Giá vốn
+     (phiếu xuất) là của CẢ ngày, không theo bộ lọc — nên giá vốn hàng trả trừ đi
+     cũng lấy cả ngày cho hai vế cùng phạm vi. */
+  const returnsCost = returnRows.reduce((s, r) => s + r.cost, 0)
+  const grossProfit = netRevenue - (cogs - returnsCost)
   const cashIn = cashReceipts
     .filter((r) => r.status === "received")
     .reduce((s, r) => s + Number(r.submitted_amount || 0), 0)

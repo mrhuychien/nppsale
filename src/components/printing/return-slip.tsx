@@ -42,6 +42,8 @@ export interface ReturnSlipProps {
   issuedHasTime?: boolean
   /** Chứng từ gốc — "HĐ HD-0318-1" / "Đơn DH-0154". */
   refLabel?: string | null
+  /** Số phiếu TH-xxxx (mig 193). */
+  code?: string | null
   customerName: string
   customerAddress?: string | null
   customerPhone?: string | null
@@ -102,6 +104,7 @@ export function ReturnSlip(p: ReturnSlipProps) {
 
       <div className="mb-1.5 text-center">
         <h1 className="text-xl font-bold leading-tight">PHIẾU TRẢ HÀNG</h1>
+        {p.code && <p className="font-bold leading-tight">Số: {p.code}</p>}
         <p className="font-bold leading-tight">Ngày {p.issuedHasTime === false ? dateVN(p.issuedAt) : stampVN(p.issuedAt)}</p>
         {p.refLabel && <p className="leading-tight">Theo {p.refLabel}</p>}
       </div>

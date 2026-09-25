@@ -167,3 +167,187 @@ export function congHangBanNhanVien(input: {
   }
   return out.sort((a, b) => b.revenue - a.revenue)
 }
+
+/* =====================================================================
+ * DOANH SỐ THUẦN / LÃI GỘP THUẦN — dùng chung cho `reports/sales` và
+ * `reports/employees`.
+ *
+ * ⚠ CHỦ NHÀ 25/09/2026 (mig 192): "Rà soát lại toàn bộ doanh số tính bằng
+ *   số đi - số trả". Doanh thu = hóa đơn đã ghi sổ − hàng trả trừ trong kỳ
+ *   (`fetchReturnsRowsDu`, cùng luật công nợ); giá vốn = giá vốn xuất − giá
+ *   vốn hàng trả ĐÃ NHẬP LẠI KHO (`fetchReturnCosts`). Trừ doanh thu mà
+ *   không trừ giá vốn là lãi bị hạ oan; trừ giá vốn mà không trừ doanh thu
+ *   là lãi phồng.
+ * ===================================================================== */
+
+export interface PhieuTraQuyNv {
+  id: string
+  customer_id: string
+  sales_user_id: string | null
+  invoice_id?: string | null
+}
+export interface HoaDonQuyNv {
+  id: string
+  customer_id: string
+  sales_user_id: string
+  invoice_date: string
+}
+
+/**
+ * Nhân viên MỘT phiếu trả tính cho — một luật cho mọi bảng của cả hai màn:
+ *   1. `returns.sales_user_id` (mig 160) — phiếu có ghi tên thì đọc tên;
+ *   2. nhân viên của hóa đơn phiếu gắn (`invoice_id`);
+ *   3. phiếu cũ chưa gán, không gắn HĐ (hoặc HĐ ngoài kỳ): nhân viên của hóa
+ *      đơn GẦN NHẤT của cùng khách trong kỳ — đường đoán cũ, giữ để phiếu
+ *      trước mig 160 không rơi khỏi sổ.
+ * Không đoán được → không có trong Map (nơi gọi quyết định bỏ hay gom "Chưa gán").
+ *
+ * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG MỘT TRANG.
+ */
+export function nhanVienPhieuTra(
+  phieuTra: ReadonlyArray<PhieuTraQuyNv>,
+  hoaDon: ReadonlyArray<HoaDonQuyNv>
+): Map<string, string> {
+  const nvHoaDon = new Map<string, string>()
+  const ganNhatCuaKhach = new Map<string, HoaDonQuyNv>()
+  for (const o of hoaDon) {
+    if (o.sales_user_id) nvHoaDon.set(o.id, o.sales_user_id)
+    const cu = ganNhatCuaKhach.get(o.customer_id)
+    if (!cu || o.invoice_date > cu.invoice_date) ganNhatCuaKhach.set(o.customer_id, o)
+  }
+  const out = new Map<string, string>()
+  for (const r of phieuTra) {
+    const uid =
+      r.sales_user_id ||
+      (r.invoice_id ? nvHoaDon.get(r.invoice_id) : undefined) ||
+      ganNhatCuaKhach.get(r.customer_id)?.sales_user_id
+    if (uid) out.set(r.id, uid)
+  }
+  return out
+}
+
+/** Giá vốn hàng trả đã nhập lại kho của một phiếu (lọc mặt hàng nếu có). */
+export function giaVonTraCuaPhieu(
+  gv: { total: number; byProduct: ReadonlyMap<string, number> } | undefined,
+  matHangQua?: (productId: string) => boolean
+): number {
+  if (!gv) return 0
+  if (!matHangQua) return gv.total
+  let s = 0
+  gv.byProduct.forEach((v, pid) => {
+    if (matHangQua(pid)) s += v
+  })
+  return s
+}
+
+export interface LoiNhuanNhanVien {
+  /** "" = phiếu trả không quy được về ai (nơi gọi quyết định bỏ hay hiện "Chưa gán"). */
+  id: string
+  orders: number
+  /** Tiền hóa đơn đã ghi sổ (hàng đi). */
+  grossRevenue: number
+  /** Hàng trả trừ doanh số (`credit_note_amount`). */
+  returnValue: number
+  /** DOANH THU THUẦN = hàng đi − hàng trả. */
+  revenue: number
+  grossCogs: number
+  /** Giá vốn hàng trả đã nhập lại kho. */
+  returnCost: number
+  /** GIÁ VỐN THUẦN = giá vốn xuất − giá vốn hàng trả. */
+  cogs: number
+  profit: number
+}
+
+/**
+ * Lãi gộp THUẦN theo nhân viên. `hoaDon` / `phieuTra` đã lọc sẵn theo bộ lọc
+ * của màn; `giaVonHoaDon(id)` là giá vốn các dòng đã lọc của hóa đơn.
+ */
+export function congLoiNhuanNhanVien(input: {
+  hoaDon: ReadonlyArray<{ id: string; sales_user_id: string; total: number | null }>
+  giaVonHoaDon: (invoiceId: string) => number
+  phieuTra: ReadonlyArray<{ id: string; credit_note_amount: number | null }>
+  nvPhieuTra: ReadonlyMap<string, string>
+  giaVonTra: ReadonlyMap<string, { total: number; byProduct: ReadonlyMap<string, number> }>
+  /** Lọc mặt hàng phía giá vốn — cùng bộ lọc với dòng hóa đơn. */
+  matHangQua?: (productId: string) => boolean
+}): LoiNhuanNhanVien[] {
+  const m = new Map<string, LoiNhuanNhanVien>()
+  const dong = (uid: string) => {
+    let r = m.get(uid)
+    if (!r) {
+      r = { id: uid, orders: 0, grossRevenue: 0, returnValue: 0, revenue: 0, grossCogs: 0, returnCost: 0, cogs: 0, profit: 0 }
+      m.set(uid, r)
+    }
+    return r
+  }
+  for (const o of input.hoaDon) {
+    const r = dong(o.sales_user_id)
+    r.orders += 1
+    r.grossRevenue += Number(o.total || 0)
+    r.grossCogs += input.giaVonHoaDon(o.id)
+  }
+  for (const t of input.phieuTra) {
+    const r = dong(input.nvPhieuTra.get(t.id) ?? "")
+    r.returnValue += Number(t.credit_note_amount || 0)
+    r.returnCost += giaVonTraCuaPhieu(input.giaVonTra.get(t.id), input.matHangQua)
+  }
+  return Array.from(m.values()).map((r) => {
+    const revenue = r.grossRevenue - r.returnValue
+    const cogs = r.grossCogs - r.returnCost
+    return { ...r, revenue, cogs, profit: revenue - cogs }
+  })
+}
+
+export interface LoiNhuanNgay {
+  date: string
+  label: string
+  grossRevenue: number
+  returnValue: number
+  /** DOANH THU THUẦN của ngày. */
+  revenue: number
+  grossCogs: number
+  returnCost: number
+  /** GIÁ VỐN THUẦN của ngày. */
+  cogs: number
+  profit: number
+  margin: number
+}
+
+/**
+ * Lãi gộp THUẦN theo ngày. Hóa đơn theo `invoice_date`, hàng trả theo ngày trừ
+ * doanh số (`created_at` của `fetchReturnsRowsDu` = `revenue_date`), giá vốn xuất
+ * / giá vốn hàng trả theo ngày nơi gọi đã xếp (giờ VN).
+ */
+export function congLoiNhuanTheoNgay(input: {
+  hoaDon: ReadonlyArray<{ invoice_date: string; total: number | null }>
+  phieuTra: ReadonlyArray<{ created_at: string; credit_note_amount: number | null }>
+  giaVonXuat: ReadonlyArray<{ ngay: string; giaVon: number }>
+  giaVonTra: ReadonlyArray<{ ngay: string; giaVon: number }>
+}): LoiNhuanNgay[] {
+  const m = new Map<string, LoiNhuanNgay>()
+  const ngay = (raw: string) => {
+    const d = String(raw).slice(0, 10)
+    let e = m.get(d)
+    if (!e) {
+      const dd = d.split("-")
+      e = {
+        date: d, label: `${dd[2]}/${dd[1]}/${dd[0]}`,
+        grossRevenue: 0, returnValue: 0, revenue: 0, grossCogs: 0, returnCost: 0, cogs: 0, profit: 0, margin: 0,
+      }
+      m.set(d, e)
+    }
+    return e
+  }
+  for (const o of input.hoaDon) ngay(o.invoice_date).grossRevenue += Number(o.total || 0)
+  for (const r of input.phieuTra) ngay(r.created_at).returnValue += Number(r.credit_note_amount || 0)
+  for (const x of input.giaVonXuat) ngay(x.ngay).grossCogs += x.giaVon
+  for (const x of input.giaVonTra) ngay(x.ngay).returnCost += x.giaVon
+  return Array.from(m.values())
+    .map((e) => {
+      const revenue = e.grossRevenue - e.returnValue
+      const cogs = e.grossCogs - e.returnCost
+      const profit = revenue - cogs
+      return { ...e, revenue, cogs, profit, margin: revenue > 0 ? (profit / revenue) * 100 : 0 }
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+}

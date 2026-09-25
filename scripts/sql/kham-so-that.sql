@@ -272,4 +272,24 @@ SELECT 31, 'Mig 191 (phiếu trả tự sinh chỉ huỷ; tự lập hoàn thàn
        WHEN EXISTS (SELECT 1 FROM returns WHERE status = 'submitted' AND NOT COALESCE(credit_with_invoice, false))
        THEN 'LỆCH — còn phiếu tự lập ở Chờ xử lý, chạy lại mig 191'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 32. Mig 192 — doanh số thuần = hàng đi − hàng trả (khớp công nợ)
+SELECT 32, 'Mig 192 (doanh số trừ hàng trả, kể cả phiếu tự sinh Chờ xử lý)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'returns' AND column_name = 'revenue_date')
+       THEN 'CHƯA — doanh thu vẫn là tổng hóa đơn gộp, lệch công nợ khi có hàng trả'
+       WHEN EXISTS (SELECT 1 FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
+                    WHERE r.credit_with_invoice AND r.status IN ('submitted', 'completed')
+                      AND si.status = 'posted' AND r.revenue_date IS DISTINCT FROM si.invoice_date)
+       THEN 'LỆCH — có phiếu tự sinh chưa có ngày trừ doanh số, chạy lại mig 192'
+       ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 33. Mig 193 — số phiếu trả TH-xxxx
+SELECT 33, 'Mig 193 (phiếu trả có số TH-)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'returns' AND column_name = 'return_code')
+       THEN 'CHƯA — phiếu trả chưa có số, ô tìm theo TH- báo lỗi'
+       WHEN EXISTS (SELECT 1 FROM returns WHERE return_code IS NULL)
+       THEN 'LỆCH — còn phiếu trả chưa có số, chạy lại mig 193'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

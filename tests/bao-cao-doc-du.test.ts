@@ -44,7 +44,7 @@ interface GiaOpts {
   /** Bảng → lỗi trả về cho MỌI lần đọc bảng ấy. */
   loi?: Record<string, string>
   /** Bảng → cột mà câu `select` nhắc tới thì báo lỗi 42703 (cột chưa có). */
-  thieuCot?: Record<string, string>
+  thieuCot?: Record<string, string | string[]>
   /** Bảng → `count` giả (để thử chạm trần mà không phải dựng 20.000 dòng). */
   demGia?: Record<string, number>
 }
@@ -65,8 +65,8 @@ function postgrestGia(o: GiaOpts) {
       select(c: string, opts?: { count?: string }) {
         cols = c
         dem = opts?.count === "exact"
-        const thieu = o.thieuCot?.[bang]
-        if (thieu && c.includes(thieu)) loiRieng = `42703 column ${bang}.${thieu} does not exist`
+        const thieu = ([] as string[]).concat(o.thieuCot?.[bang] ?? []).find((x) => c.includes(x))
+        if (thieu) loiRieng = `42703 column ${bang}.${thieu} does not exist`
         return q
       },
       eq(c: string, v: unknown) { loc.push((r) => r[c] === v); return q },
@@ -178,12 +178,13 @@ describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
     await expect(fetchReturnsRows(client, ORG, KY)).rejects.toThrow(/hết giờ/)
   })
 
-  it("phiếu trả: thiếu cột `credited_at` thì LÙI về `created_at`, không ném", async () => {
+  /* Sổ rất cũ: chưa có cả `revenue_date` (mig 192) lẫn `credited_at` (mig 097). */
+  it("phiếu trả: thiếu cột `revenue_date` + `credited_at` thì LÙI về `created_at`, không ném", async () => {
     const tra = Array.from({ length: 1200 }, (_, i) => ({
       id: `r-${pad(i)}`, org_id: ORG, status: "approved",
       created_at: "2026-09-10T03:00:00Z", credit_note_amount: -10,
     }))
-    const { client } = postgrestGia({ bang: { returns: tra }, thieuCot: { returns: "credited_at" } })
+    const { client } = postgrestGia({ bang: { returns: tra }, thieuCot: { returns: ["revenue_date", "credited_at"] } })
     const r = await fetchReturnsValueDu(client, ORG, KY)
     /* 1.200 phiếu × 10 — đủ cả phần vượt 1.000 dòng. */
     expect(r.total).toBe(12000)

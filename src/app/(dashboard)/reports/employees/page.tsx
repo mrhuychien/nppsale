@@ -20,6 +20,7 @@ import {
   type ReturnSummaryRow,
   fetchStockEntryLines,
   fetchReturnLines,
+  fetchReturnCosts,
   giaVonBinhQuanCoSo,
   soLuongCoSoDongHd,
   COT_SP_QUY_DOI,
@@ -28,6 +29,8 @@ import {
 } from "@/lib/analytics/sales"
 import {
   congHangBanNhanVien,
+  congLoiNhuanNhanVien,
+  nhanVienPhieuTra,
   type HangBanNhanVien,
   type HangBanSanPham,
   type SanPhamHangBan,
@@ -113,6 +116,8 @@ export default function EmployeesReportPage() {
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  // Giá vốn hàng trả ĐÃ NHẬP LẠI KHO theo phiếu — trừ khỏi giá vốn (mig 192).
+  const [returnCosts, setReturnCosts] = useState<Awaited<ReturnType<typeof fetchReturnCosts>>>(new Map())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
@@ -159,10 +164,12 @@ export default function EmployeesReportPage() {
          trang, còn dòng kho và dòng trả nằm ngay cạnh trong cùng
          `Promise.all` thì đọc trần — quá 1.000 dòng là API trả đúng 1.000,
          không lỗi, và giá vốn thiếu kéo hoa hồng sai theo. */
-      const [linesList, stockLinesList, returnLinesList] = await Promise.all([
+      /* Giá vốn hàng trả đọc hỏng thì NÉM như ba bảng kia — 0 là lãi hạ oan. */
+      const [linesList, stockLinesList, returnLinesList, returnCostMap] = await Promise.all([
         fetchInvoiceLines(supabase, invoiceIds),
         fetchStockEntryLines(supabase, stockEntryIds),
         fetchReturnLines(supabase, returnIds),
+        fetchReturnCosts(supabase, returnIds),
       ])
       setInvoices(invoiceList)
       setLines(linesList)
@@ -173,6 +180,7 @@ export default function EmployeesReportPage() {
       setStockEntries(stockEntriesRes.rows)
       setStockLines(stockLinesList)
       setReturnLines(returnLinesList)
+      setReturnCosts(returnCostMap)
     } catch (err) {
       setLoadError(errorMessage(err))
       toast({
@@ -221,18 +229,6 @@ export default function EmployeesReportPage() {
     return m
   }, [lines])
 
-  // Map customer_id -> đơn của khách. Chỉ còn dùng cho phiếu trả CHƯA
-  // GÁN nhân viên (lập trước mig 160) — phiếu có ghi tên thì đọc tên.
-  const orderByCustomer = useMemo(() => {
-    const m = new Map<string, RevenueInvoiceRow[]>()
-    for (const o of invoices) {
-      const a = m.get(o.customer_id) || []
-      a.push(o)
-      m.set(o.customer_id, a)
-    }
-    return m
-  }, [invoices])
-
   const matchSearchUser = useCallback(
     (uid: string) => {
       if (salesUserFilter.length && !salesUserFilter.includes(uid)) return false
@@ -278,6 +274,48 @@ export default function EmployeesReportPage() {
     [groupFilter, routeFilter, customerMap, catalogs.routes]
   )
 
+  /**
+   * Quy phiếu trả về nhân viên — MỘT LUẬT cho mọi bảng của trang (`nhanVienPhieuTra`):
+   * tên trên phiếu (mig 160) → NV của hóa đơn phiếu gắn → NV hóa đơn gần nhất của
+   * cùng khách (phiếu cũ chưa gán — vẫn đoán, không bỏ ra ngoài sổ).
+   *
+   * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG MỘT TRANG.
+   */
+  const nvPhieuTra = useMemo(() => nhanVienPhieuTra(returns, invoices), [returns, invoices])
+
+  const returnById = useMemo(() => {
+    const m = new Map<string, ReturnSummaryRow>()
+    for (const r of returns) m.set(r.id, r)
+    return m
+  }, [returns])
+
+  /**
+   * Dòng hàng trả đã quy nhân viên, qua CÙNG bộ lọc với dòng hóa đơn (người bán,
+   * khách, mặt hàng). Dùng cho các bảng theo mặt hàng.
+   */
+  const returnLinesTheoNv = useMemo(() => {
+    const out: { uid: string; customerId: string; line: ReturnLineRow }[] = []
+    for (const rl of returnLines) {
+      const r = returnById.get(rl.return_id)
+      const uid = nvPhieuTra.get(rl.return_id)
+      if (!r || !uid || !matchSearchUser(uid)) continue
+      if (!customerPasses(r.customer_id) || !productPasses(rl.product_id)) continue
+      out.push({ uid, customerId: r.customer_id, line: rl })
+    }
+    return out
+  }, [returnLines, returnById, nvPhieuTra, matchSearchUser, customerPasses, productPasses])
+
+  /** Phiếu trả đã quy nhân viên, qua bộ lọc người bán + khách (cấp tiền của phiếu). */
+  const returnsTheoNv = useMemo(() => {
+    const out: { uid: string; r: ReturnSummaryRow }[] = []
+    for (const r of returns) {
+      const uid = nvPhieuTra.get(r.id)
+      if (!uid || !matchSearchUser(uid) || !customerPasses(r.customer_id)) continue
+      out.push({ uid, r })
+    }
+    return out
+  }, [returns, nvPhieuTra, matchSearchUser, customerPasses])
+
   // ============== Bán hàng (drill-down theo thời gian) ==============
   type SalesRow = {
     id: string
@@ -320,25 +358,17 @@ export default function EmployeesReportPage() {
       m.set(o.sales_user_id, e)
     }
     /**
-     * Quy phiếu trả về nhân viên.
+     * Quy phiếu trả về nhân viên — `returnsTheoNv` (luật chung `nhanVienPhieuTra`).
      *
-     * ⚠ PHIẾU CÓ GHI TÊN THÌ ĐỌC TÊN, ĐỪNG ĐOÁN (mig 160). Đường vòng
-     *   dưới đây — lấy nhân viên của đơn GẦN NHẤT của cùng khách — sai
-     *   ngay khi một khách mua của hai nhân viên, và nó sai vào đúng con
-     *   số trừ doanh số.
+     * ⚠ PHIẾU CÓ GHI TÊN THÌ ĐỌC TÊN, ĐỪNG ĐOÁN (mig 160). Đoán theo hóa
+     *   đơn gần nhất của cùng khách sai ngay khi một khách mua của hai
+     *   nhân viên, và nó sai vào đúng con số trừ doanh số.
      *
-     * ⚠ PHIẾU CHƯA GÁN THÌ VẪN ĐOÁN NHƯ CŨ, KHÔNG BỎ RA NGOÀI SỔ. Mọi
-     *   phiếu lập trước mig 160 đều rỗng cột ấy; bỏ chúng đi là doanh số
-     *   thuần của cả năm ngoái tự nhiên tăng lên, không ai hiểu vì sao.
+     * ⚠ PHIẾU CHƯA GÁN THÌ VẪN ĐOÁN, KHÔNG BỎ RA NGOÀI SỔ. Mọi phiếu lập
+     *   trước mig 160 đều rỗng cột ấy; bỏ chúng đi là doanh số thuần của
+     *   cả năm ngoái tự nhiên tăng lên, không ai hiểu vì sao.
      */
-    for (const r of returns) {
-      let uid = r.sales_user_id ?? ""
-      if (!uid) {
-        const ords = orderByCustomer.get(r.customer_id) || []
-        if (ords.length === 0) continue
-        uid = ords.reduce((a, b) => (a.invoice_date > b.invoice_date ? a : b)).sales_user_id
-      }
-      if (!matchSearchUser(uid)) continue
+    for (const { uid, r } of returnsTheoNv) {
       const u = userMap.get(uid)
       const e =
         m.get(uid) ||
@@ -373,7 +403,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [invoices, returns, orderByCustomer, userMap, matchSearchUser, customerPasses])
+  }, [invoices, returnsTheoNv, userMap, matchSearchUser, customerPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -386,41 +416,51 @@ export default function EmployeesReportPage() {
     profit: number
     margin: number
   }
+  /**
+   * ⚠ LÃI GỘP THUẦN (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số tính bằng
+   *   số đi - số trả"). Doanh thu = hóa đơn − hàng trả quy về nhân viên; giá vốn =
+   *   giá vốn dòng hóa đơn − giá vốn hàng trả đã nhập lại kho (lọc mặt hàng như
+   *   dòng hóa đơn). Bản cũ lấy nguyên tiền hóa đơn — hoa hồng tính trên số phồng.
+   */
   const profitRows: ProfitRow[] = useMemo(() => {
-    const m = new Map<string, ProfitRow>()
-    for (const o of invoices) {
-      if (!matchSearchUser(o.sales_user_id)) continue
-      if (!customerPasses(o.customer_id)) continue
-      const u = userMap.get(o.sales_user_id)
-      const e =
-        m.get(o.sales_user_id) ||
-        ({
-          id: o.sales_user_id,
-          name: u?.full_name || "—",
-          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
-          orders: 0,
-          revenue: 0,
-          cogs: 0,
-          profit: 0,
-          margin: 0,
-        } as ProfitRow)
-      e.orders += 1
-      e.revenue += Number(o.total || 0)
-      const ls = linesByInvoice.get(o.id) || []
-      for (const l of ls) {
+    const hoaDon = invoices.filter((o) => matchSearchUser(o.sales_user_id) && customerPasses(o.customer_id))
+    const giaVonHoaDon = (invoiceId: string) => {
+      let cogs = 0
+      for (const l of linesByInvoice.get(invoiceId) || []) {
         if (!productPasses(l.product_id)) continue
         // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
-        e.cogs += soLuongCoSoDongHd(l, productMap.get(l.product_id)) * (avgCostMap.get(l.product_id) || 0)
+        cogs += soLuongCoSoDongHd(l, productMap.get(l.product_id)) * (avgCostMap.get(l.product_id) || 0)
       }
-      m.set(o.sales_user_id, e)
+      return cogs
     }
-    return Array.from(m.values())
+    const tra = returnsTheoNv.map((x) => x.r)
+    const nv = new Map(returnsTheoNv.map((x) => [x.r.id, x.uid] as const))
+    return congLoiNhuanNhanVien({
+      hoaDon,
+      giaVonHoaDon,
+      phieuTra: tra,
+      nvPhieuTra: nv,
+      giaVonTra: returnCosts,
+      matHangQua: productPasses,
+    })
       .map((r) => {
-        const profit = r.revenue - r.cogs
-        return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
+        const u = userMap.get(r.id)
+        return {
+          id: r.id,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          orders: r.orders,
+          revenue: r.revenue,
+          cogs: r.cogs,
+          profit: r.profit,
+          margin: r.revenue > 0 ? (r.profit / r.revenue) * 100 : 0,
+        }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [invoices, linesByInvoice, avgCostMap, userMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [
+    invoices, linesByInvoice, avgCostMap, returnsTheoNv, returnCosts, userMap, productMap,
+    matchSearchUser, customerPasses, productPasses,
+  ])
 
   // ============== Hàng bán theo nhân viên ==============
   type EmployeeProductRow = {
@@ -493,12 +533,55 @@ export default function EmployeesReportPage() {
       }
       m.set(o.sales_user_id, e)
     }
+    /**
+     * ⚠ DOANH THU THUẦN (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số tính
+     *   bằng số đi - số trả"). Cấp nhân viên trừ `credit_note_amount` của phiếu (cùng
+     *   cấp với tiền hóa đơn); cấp mặt hàng / khách trừ `line_total` dòng trả (hàng
+     *   đổi đã bỏ). SL giữ là SL BÁN — SL trả xem tab "Hàng bán theo nhân viên".
+     */
+    const dongNv = (uid: string) => {
+      let e = m.get(uid)
+      if (!e) {
+        const u = userMap.get(uid)
+        e = {
+          id: uid,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          qty: 0,
+          qtyTheoDv: {},
+          products: [],
+        }
+        m.set(uid, e)
+      }
+      return e
+    }
+    for (const { uid, r } of returnsTheoNv) dongNv(uid).revenue -= Number(r.credit_note_amount || 0)
+    for (const { uid, customerId, line } of returnLinesTheoNv) {
+      const e = dongNv(uid)
+      const prod = productMap.get(line.product_id)
+      let pr = e.products.find((x) => x.id === line.product_id)
+      if (!pr) {
+        pr = { id: line.product_id, sku: prod?.sku || "—", name: prod?.name || "—", unit: prod?.base_unit || "", qty: 0, revenue: 0, customers: [] }
+        e.products.push(pr)
+      }
+      pr.revenue -= Number(line.line_total || 0)
+      let cust = pr.customers.find((x) => x.id === customerId)
+      if (!cust) {
+        cust = { id: customerId, store_name: customerMap.get(customerId)?.store_name || "—", qty: 0, revenue: 0 }
+        pr.customers.push(cust)
+      }
+      cust.revenue -= Number(line.line_total || 0)
+    }
     for (const e of Array.from(m.values())) {
       e.products.sort((a, b) => b.revenue - a.revenue)
       for (const p of e.products) p.customers.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [invoices, linesByInvoice, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [
+    invoices, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    matchSearchUser, customerPasses, productPasses,
+  ])
 
   // ============== Theo khách hàng (NV → KH → mặt hàng) ==============
   type EmployeeCustomerRow = {
@@ -575,12 +658,70 @@ export default function EmployeesReportPage() {
       }
       m.set(o.sales_user_id, e)
     }
+    /**
+     * ⚠ DOANH THU THUẦN (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số tính
+     *   bằng số đi - số trả"). Nhân viên + khách trừ `credit_note_amount` của phiếu
+     *   (cùng cấp với tiền hóa đơn); mặt hàng của khách trừ `line_total` dòng trả.
+     *   Khách chỉ có hàng trả trong kỳ vẫn hiện (0 HĐ, doanh thu âm).
+     */
+    const dongNv = (uid: string) => {
+      let e = m.get(uid)
+      if (!e) {
+        const u = userMap.get(uid)
+        e = {
+          id: uid,
+          name: u?.full_name || "—",
+          role: ROLE_LABEL[u?.role || ""] || u?.role || "—",
+          revenue: 0,
+          qty: 0,
+          qtyTheoDv: {},
+          customers: [],
+        }
+        m.set(uid, e)
+      }
+      return e
+    }
+    const dongKhach = (e: EmployeeCustomerRow, customerId: string) => {
+      let cust = e.customers.find((x) => x.id === customerId)
+      if (!cust) {
+        cust = {
+          id: customerId,
+          store_name: customerMap.get(customerId)?.store_name || "—",
+          orders: 0,
+          qty: 0,
+          qtyTheoDv: {},
+          revenue: 0,
+          products: [],
+        }
+        e.customers.push(cust)
+      }
+      return cust
+    }
+    for (const { uid, r } of returnsTheoNv) {
+      const e = dongNv(uid)
+      const amt = Number(r.credit_note_amount || 0)
+      e.revenue -= amt
+      dongKhach(e, r.customer_id).revenue -= amt
+    }
+    for (const { uid, customerId, line } of returnLinesTheoNv) {
+      const cust = dongKhach(dongNv(uid), customerId)
+      let pr = cust.products.find((x) => x.id === line.product_id)
+      if (!pr) {
+        const prod = productMap.get(line.product_id)
+        pr = { id: line.product_id, sku: prod?.sku || "—", name: prod?.name || "—", unit: prod?.base_unit || "", qty: 0, revenue: 0 }
+        cust.products.push(pr)
+      }
+      pr.revenue -= Number(line.line_total || 0)
+    }
     for (const e of Array.from(m.values())) {
       e.customers.sort((a, b) => b.revenue - a.revenue)
       for (const c of e.customers) c.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [invoices, linesByInvoice, userMap, customerMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [
+    invoices, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    matchSearchUser, customerPasses, productPasses,
+  ])
 
   // ============== Hàng bán theo nhân viên (summary 9 cột) ==============
   // SL quy về đơn vị cơ sở, niêm yết theo giá của đúng đơn vị dòng — `congHangBanNhanVien`.
@@ -600,36 +741,20 @@ export default function EmployeesReportPage() {
 
     /**
      * Quy dòng hàng trả về nhân viên — CÙNG MỘT LUẬT với bảng doanh số
-     * phía trên, không được lệch. Phiếu có ghi tên thì đọc tên (mig
-     * 160); chưa gán thì mới đoán theo đơn gần nhất của cùng khách.
+     * phía trên (`returnLinesTheoNv` ← `nhanVienPhieuTra`: tên trên phiếu,
+     * rồi NV hóa đơn gắn, rồi mới đoán theo hóa đơn gần nhất của khách),
+     * và qua cùng bộ lọc khách / mặt hàng với dòng bán.
      *
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
-    const lastSalesUserByCustomer = new Map<string, string>()
-    const sortedOrders = [...invoices].sort((a, b) => b.invoice_date.localeCompare(a.invoice_date))
-    for (const o of sortedOrders) {
-      if (!lastSalesUserByCustomer.has(o.customer_id)) {
-        lastSalesUserByCustomer.set(o.customer_id, o.sales_user_id)
-      }
-    }
-    const returnIdToSalesUser = new Map<string, string>()
-    for (const r of returns) {
-      const uid = r.sales_user_id || lastSalesUserByCustomer.get(r.customer_id)
-      if (uid) returnIdToSalesUser.set(r.id, uid)
-    }
-    const tra: { uid: string; line: ReturnLineRow }[] = []
-    for (const rl of returnLines) {
-      const uid = returnIdToSalesUser.get(rl.return_id)
-      if (!uid || !matchSearchUser(uid)) continue
-      tra.push({ uid, line: rl })
-    }
+    const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line }))
 
     return congHangBanNhanVien({ ban, tra, sanPham: productMap }).map((r) => {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returns, returnLines, userMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, returnLinesTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -641,14 +766,14 @@ export default function EmployeesReportPage() {
       downloadXlsx(`bao-cao-nv-banhang-${range.from}-${range.to}`, out)
     } else if (variant === "profit") {
       const out: (string | number)[][] = [
-        ["Người bán", "Vai trò", "Số HĐ", "Doanh thu", "Giá vốn", "Lợi nhuận", "Biên LN (%)"],
+        ["Người bán", "Vai trò", "Số HĐ", "Doanh thu thuần", "Giá vốn thuần", "Lợi nhuận", "Biên LN (%)"],
       ]
       for (const r of profitRows)
         out.push([r.name, r.role, r.orders, r.revenue, r.cogs, r.profit, r.margin.toFixed(2)])
       downloadXlsx(`bao-cao-nv-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "by_customer") {
       const out: (string | number)[][] = [
-        ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "Đơn vị", "SL", "Doanh thu"],
+        ["Nhân viên", "Khách hàng", "Mã hàng", "Tên hàng", "Đơn vị", "SL", "Doanh thu thuần"],
       ]
       for (const e of employeeCustomerRows) {
         for (const c of e.customers) {
@@ -660,7 +785,7 @@ export default function EmployeesReportPage() {
       downloadXlsx(`bao-cao-nv-theo-khach-${range.from}-${range.to}`, out)
     } else if (variant === "products") {
       const out: (string | number)[][] = [
-        ["Nhân viên", "Mã hàng", "Tên hàng", "Đơn vị", "Khách hàng", "SL", "Doanh thu"],
+        ["Nhân viên", "Mã hàng", "Tên hàng", "Đơn vị", "Khách hàng", "SL", "Doanh thu thuần"],
       ]
       for (const e of employeeProductRows) {
         for (const p of e.products) {
@@ -919,8 +1044,8 @@ export default function EmployeesReportPage() {
             { key: "name", label: "Người bán", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "or", label: "Số HĐ", align: "right", render: (r) => r.orders },
-            { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-            { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+            { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => formatCurrency(r.revenue) },
+            { key: "cogs", label: "Giá vốn thuần", align: "right", render: (r) => formatCurrency(r.cogs) },
             { key: "profit", label: "Lợi nhuận", align: "right", render: (r) => <span className={r.profit >= 0 ? "font-semibold text-tertiary" : "font-semibold text-error"}>{formatCurrency(r.profit)}</span> },
             { key: "m", label: "Biên LN", align: "right", render: (r) => `${r.margin.toFixed(1)}%` },
           ]}
@@ -953,7 +1078,7 @@ export default function EmployeesReportPage() {
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "ck", label: "Số khách", align: "right", render: (r) => r.customers.length },
             { key: "qty", label: "Tổng SL", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
-            { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
+            { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
           ]}
           totalsRow={
             <TotalsRow
@@ -987,7 +1112,7 @@ export default function EmployeesReportPage() {
                           {hienSLTheoDonVi(c.qtyTheoDv)}
                         </span>
                         <span className="mx-2">·</span>
-                        Doanh thu:{" "}
+                        DT thuần:{" "}
                         <span className="font-semibold text-primary">
                           {formatCurrency(c.revenue)}
                         </span>
@@ -1006,7 +1131,7 @@ export default function EmployeesReportPage() {
                             SL
                           </th>
                           <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">
-                            Doanh thu
+                            DT thuần
                           </th>
                         </tr>
                       </thead>
@@ -1253,7 +1378,7 @@ export default function EmployeesReportPage() {
             { key: "role", label: "Vai trò", render: (r) => r.role },
             { key: "skus", label: "Số mặt hàng", align: "right", render: (r) => r.products.length },
             { key: "qty", label: "Tổng SL", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
-            { key: "rev", label: "Doanh thu", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
+            { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => <span className="font-semibold text-primary">{formatCurrency(r.revenue)}</span> },
           ]}
           totalsRow={
             <TotalsRow
@@ -1281,7 +1406,7 @@ export default function EmployeesReportPage() {
                       <div className="text-xs text-muted-foreground">
                         SL: <span className="font-semibold text-foreground">{p.qty.toLocaleString("vi-VN")}{p.unit ? ` ${p.unit}` : ""}</span>
                         <span className="mx-2">·</span>
-                        DT: <span className="font-semibold text-primary">{formatCurrency(p.revenue)}</span>
+                        DT thuần: <span className="font-semibold text-primary">{formatCurrency(p.revenue)}</span>
                       </div>
                     </div>
                     <table className="w-full text-sm">
@@ -1289,7 +1414,7 @@ export default function EmployeesReportPage() {
                         <tr className="bg-muted/30">
                           <th className="px-3 py-1.5 text-left text-xs font-semibold uppercase">Khách hàng</th>
                           <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">SL</th>
-                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">Doanh thu</th>
+                          <th className="px-3 py-1.5 text-right text-xs font-semibold uppercase">DT thuần</th>
                         </tr>
                       </thead>
                       <tbody>

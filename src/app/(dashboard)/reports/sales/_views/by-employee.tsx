@@ -6,7 +6,9 @@ export interface EmployeeRow {
   name: string
   role: string
   orders: number
+  /** Doanh thu THUẦN = hóa đơn − hàng trả (chủ nhà 25/09/2026, mig 192). */
   revenue: number
+  /** Giá vốn THUẦN = giá vốn xuất − giá vốn hàng trả đã nhập lại kho. */
   cogs: number
   profit: number
   aov: number
@@ -30,8 +32,8 @@ export function EmployeeView({ rows }: { rows: EmployeeRow[] }) {
         { key: "name", label: "Nhân viên", render: (r) => <span className="font-medium">{r.name}</span> },
         { key: "role", label: "Vai trò", render: (r) => r.role },
         { key: "orders", label: "Số HĐ", align: "right", render: (r) => r.orders },
-        { key: "rev", label: "Doanh thu", align: "right", render: (r) => formatCurrency(r.revenue) },
-        { key: "cogs", label: "Giá vốn", align: "right", render: (r) => formatCurrency(r.cogs) },
+        { key: "rev", label: "Doanh thu thuần", align: "right", render: (r) => formatCurrency(r.revenue) },
+        { key: "cogs", label: "Giá vốn thuần", align: "right", render: (r) => formatCurrency(r.cogs) },
         {
           key: "profit",
           label: "Lợi nhuận",

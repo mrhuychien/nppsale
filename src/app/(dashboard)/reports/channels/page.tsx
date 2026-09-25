@@ -8,7 +8,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
 import { FilterField, FilterMultiSelect } from "@/components/analytics/report-shell"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
-import { fetchRevenueInvoicesDu, fetchOrgRows, type RevenueInvoiceRow } from "@/lib/analytics/sales"
+import {
+  fetchRevenueInvoicesDu,
+  fetchReturnsRowsDu,
+  fetchOrgRows,
+  type RevenueInvoiceRow,
+  type ReturnSummaryRow,
+} from "@/lib/analytics/sales"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -34,6 +40,8 @@ export default function ChannelsReportPage() {
   const [loading, setLoading] = useState(true)
   // Hóa đơn ĐÃ GHI SỔ trong kỳ — doanh thu tính theo hóa đơn (chủ nhà 24/09/2026).
   const [invoices, setInvoices] = useState<RevenueInvoiceRow[]>([])
+  /* Phiếu trả TRỪ DOANH SỐ trong kỳ (mig 192, theo `revenue_date` — khớp công nợ). */
+  const [returns, setReturns] = useState<ReturnSummaryRow[]>([])
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -49,12 +57,14 @@ export default function ChannelsReportPage() {
     try {
       setLoading(true)
       setLoadError(null)
-      const [invoiceRes, customersRes] = await Promise.all([
+      const [invoiceRes, returnsRes, customersRes] = await Promise.all([
         fetchRevenueInvoicesDu(supabase, user.org_id, range),
+        fetchReturnsRowsDu(supabase, user.org_id, range),
         fetchOrgRows<CustomerRow>(supabase, "customers", user.org_id, "id, store_name, channel", "đọc khách hàng"),
       ])
-      setTruncated(invoiceRes.truncated || customersRes.truncated)
+      setTruncated(invoiceRes.truncated || returnsRes.truncated || customersRes.truncated)
       setInvoices(invoiceRes.rows)
+      setReturns(returnsRes.rows)
       setCustomers(customersRes.rows)
     } catch (err) {
       setLoadError(errorMessage(err))
@@ -94,6 +104,18 @@ export default function ChannelsReportPage() {
       e.customers.add(o.customer_id)
       m.set(ch, e)
     }
+    /* ⚠ DOANH SỐ THUẦN = SỐ ĐI − SỐ TRẢ (chủ nhà 25/09/2026: "Rà soát lại toàn bộ
+       doanh số tính bằng số đi - số trả"). Hàng trả trừ vào KÊNH CỦA KHÁCH TRẢ —
+       như `dashboard_channel_revenue` (mig 192) — và qua cùng bộ lọc khách / kênh.
+       Không đếm là một HĐ, không đếm thêm khách. */
+    for (const r of returns) {
+      if (customerFilter.length && !customerFilter.includes(r.customer_id)) continue
+      const ch = customerMap.get(r.customer_id)?.channel || fallback
+      if (matchVals && !matchVals.has(ch)) continue
+      const e = m.get(ch) || { revenue: 0, orders: 0, customers: new Set() }
+      e.revenue -= Number(r.credit_note_amount || 0)
+      m.set(ch, e)
+    }
     return Array.from(m.entries())
       .map(([ch, e]) => ({
         id: ch,
@@ -104,7 +126,7 @@ export default function ChannelsReportPage() {
         aov: e.orders > 0 ? e.revenue / e.orders : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue)
-  }, [invoices, customerMap, customerFilter, routeFilter, catalogs.routes])
+  }, [invoices, returns, customerMap, customerFilter, routeFilter, catalogs.routes])
 
   const totals = rows.reduce(
     (acc, r) => ({
@@ -117,7 +139,7 @@ export default function ChannelsReportPage() {
 
   const handleExport = () => {
     const out: (string | number)[][] = [
-      ["Kênh bán", "Số khách", "Số HĐ", "Doanh thu", "TB/HĐ"],
+      ["Kênh bán", "Số khách", "Số HĐ", "Doanh thu thuần", "TB/HĐ"],
     ]
     for (const r of rows) {
       out.push([r.name, r.customers, r.orders, r.revenue, r.aov])
@@ -173,7 +195,7 @@ export default function ChannelsReportPage() {
               <th className="px-3 py-2 text-left font-semibold">Kênh bán</th>
               <th className="px-3 py-2 text-right font-semibold">Số khách</th>
               <th className="px-3 py-2 text-right font-semibold">Số HĐ</th>
-              <th className="px-3 py-2 text-right font-semibold">Doanh thu</th>
+              <th className="px-3 py-2 text-right font-semibold" title="Hóa đơn đã ghi sổ − hàng trả trong kỳ">Doanh thu thuần</th>
               <th className="px-3 py-2 text-right font-semibold">TB/HĐ</th>
             </tr>
             <tr className="border-t border-border/30 bg-muted/10 font-semibold">

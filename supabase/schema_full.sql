@@ -33999,28 +33999,33 @@ REVOKE ALL ON FUNCTION public.cancel_return(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.cancel_return(uuid, text) TO authenticated;
 
 -- 4. complete_return — phiếu độc lập ghi công nợ âm (vá chuỗi bản đang chạy) ------
+-- ⚠ DÒ BẰNG BIỂU THỨC CHÍNH QUY, không so từng ký tự: bản đang chạy trên Supabase có
+--   thể khác khoảng trắng / kiểu xuống dòng (\r\n khi dán vào SQL Editor) — bản đầu
+--   của 191 so nguyên văn và báo "thấy 0 chỗ" trên sổ thật (chủ nhà 25/09/2026).
 DO $p$
 DECLARE
-  v_src  text;
-  v_from text := E'    PERFORM public._wf2_recompute_receivable(r.order_id);\n  END IF;\n\n  PERFORM public._wf2_notify(';
-  v_n    int;
+  v_src text;
+  v_re  text := '(PERFORM\s+public\._wf2_recompute_receivable\s*\(\s*r\.order_id\s*\)\s*;\s*)(END\s+IF\s*;)';
+  v_n   int;
+  v_i   int;
 BEGIN
   v_src := pg_get_functiondef('public.complete_return(uuid, text)'::regprocedure);
   IF position('_cong_no_phieu_tra' IN v_src) > 0 THEN
     RAISE NOTICE '--- 191: complete_return đã ghi công nợ phiếu độc lập, bỏ qua ---';
     RETURN;
   END IF;
-  v_n := (length(v_src) - length(replace(v_src, v_from, ''))) / length(v_from);
+  SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
   IF v_n <> 1 THEN
-    RAISE EXCEPTION '191: thấy % chỗ tính lại công nợ trong complete_return, cần đúng 1', v_n
+    v_i := position('_recompute_receivable' IN v_src);
+    RAISE EXCEPTION '191: thấy % chỗ tính lại công nợ theo đơn trong complete_return, cần đúng 1. Đoạn quanh đó: %',
+      v_n, CASE WHEN v_i > 0 THEN substr(v_src, GREATEST(1, v_i - 200), 450) ELSE '(không có _recompute_receivable)' END
       USING ERRCODE = 'P0001';
   END IF;
-  v_src := replace(v_src, v_from,
-    E'    PERFORM public._wf2_recompute_receivable(r.order_id);\n'
-    || E'  ELSE\n'
-    || E'    -- (mig 191) Phiếu độc lập: hoàn thành là trừ nợ ngay — công nợ âm của khách.\n'
-    || E'    PERFORM public._cong_no_phieu_tra(p_return_id);\n'
-    || E'  END IF;\n\n  PERFORM public._wf2_notify(');
+  v_src := regexp_replace(v_src, v_re,
+    '\1ELSE' || chr(10)
+    || '    -- (mig 191) Phiếu độc lập: hoàn thành là trừ nợ ngay — công nợ âm của khách.' || chr(10)
+    || '    PERFORM public._cong_no_phieu_tra(p_return_id);' || chr(10)
+    || '  \2');
   EXECUTE v_src;
 END;
 $p$;
@@ -34028,28 +34033,31 @@ $p$;
 -- 4b. complete_return — phiếu tự lập hoàn thành thẳng từ Nháp -------------------
 DO $p$
 DECLARE
-  v_src  text;
-  v_from text := E'  IF r.status <> ''submitted'' THEN\n    RAISE EXCEPTION ''RETURN_NOT_SUBMITTED';
-  v_n    int;
+  v_src text;
+  v_re  text := '(IF\s+r\.status\s*<>\s*''submitted''\s+THEN\s+RAISE\s+EXCEPTION\s+''RETURN_NOT_SUBMITTED)';
+  v_n   int;
+  v_i   int;
 BEGIN
   v_src := pg_get_functiondef('public.complete_return(uuid, text)'::regprocedure);
   IF position('(mig 191) Phiếu tự lập không có Chờ xử lý' IN v_src) > 0 THEN
     RAISE NOTICE '--- 191: complete_return đã nhận phiếu nháp tự lập, bỏ qua ---';
     RETURN;
   END IF;
-  v_n := (length(v_src) - length(replace(v_src, v_from, ''))) / length(v_from);
+  SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
   IF v_n <> 1 THEN
-    RAISE EXCEPTION '191: thấy % chỗ kiểm trạng thái trong complete_return, cần đúng 1', v_n
+    v_i := position('RETURN_NOT_SUBMITTED' IN v_src);
+    RAISE EXCEPTION '191: thấy % chỗ kiểm trạng thái trong complete_return, cần đúng 1. Đoạn quanh đó: %',
+      v_n, CASE WHEN v_i > 0 THEN substr(v_src, GREATEST(1, v_i - 200), 350) ELSE '(không có RETURN_NOT_SUBMITTED)' END
       USING ERRCODE = 'P0001';
   END IF;
-  v_src := replace(v_src, v_from,
-    E'  -- (mig 191) Phiếu tự lập không có Chờ xử lý: hoàn thành thẳng từ Nháp. Nháp\n'
-    || E'  --   đi theo đơn chưa xuất hóa đơn thì không — nó chờ hóa đơn.\n'
-    || E'  IF r.status = ''draft'' AND NOT COALESCE(r.credit_with_invoice, false)\n'
-    || E'     AND NOT (r.order_id IS NOT NULL AND r.invoice_id IS NULL) THEN\n'
-    || E'    r.status := ''submitted'';\n'
-    || E'  END IF;\n'
-    || v_from);
+  v_src := regexp_replace(v_src, v_re,
+    '-- (mig 191) Phiếu tự lập không có Chờ xử lý: hoàn thành thẳng từ Nháp. Nháp' || chr(10)
+    || '  --   đi theo đơn chưa xuất hóa đơn thì không — nó chờ hóa đơn.' || chr(10)
+    || '  IF r.status = ''draft'' AND NOT COALESCE(r.credit_with_invoice, false)' || chr(10)
+    || '     AND NOT (r.order_id IS NOT NULL AND r.invoice_id IS NULL) THEN' || chr(10)
+    || '    r.status := ''submitted'';' || chr(10)
+    || '  END IF;' || chr(10)
+    || '  \1');
   EXECUTE v_src;
 END;
 $p$;
@@ -34227,25 +34235,28 @@ CREATE TRIGGER trg_khoa_dong_tra_tu_sinh
 -- 7. create_cash_receipt — thôi cấn trừ phiếu trả đã nằm trong công nợ --------
 DO $p$
 DECLARE
-  v_src  text;
-  v_from text := E'        AND r.status = ''completed'' AND r.order_id IS NULL\n        AND r.applied_receipt_id IS NULL\n';
-  v_n    int;
+  v_src text;
+  v_re  text := '(AND\s+r\.status\s*=\s*''completed''\s+AND\s+r\.order_id\s+IS\s+NULL\s+AND\s+r\.applied_receipt_id\s+IS\s+NULL)';
+  v_n   int;
+  v_i   int;
 BEGIN
   v_src := pg_get_functiondef('public.create_cash_receipt(jsonb)'::regprocedure);
   IF position('(mig 191)' IN v_src) > 0 THEN
     RAISE NOTICE '--- 191: create_cash_receipt đã vá, bỏ qua ---';
     RETURN;
   END IF;
-  v_n := (length(v_src) - length(replace(v_src, v_from, ''))) / length(v_from);
+  SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
   IF v_n <> 1 THEN
-    RAISE EXCEPTION '191: thấy % điều kiện cấn trừ phiếu trả trong create_cash_receipt, cần đúng 1', v_n
+    v_i := position('applied_receipt_id IS NULL' IN v_src);
+    RAISE EXCEPTION '191: thấy % điều kiện cấn trừ phiếu trả trong create_cash_receipt, cần đúng 1. Đoạn quanh đó: %',
+      v_n, CASE WHEN v_i > 0 THEN substr(v_src, GREATEST(1, v_i - 250), 400) ELSE '(không có)' END
       USING ERRCODE = 'P0001';
   END IF;
-  v_src := replace(v_src, v_from,
-    v_from
-    || E'        -- (mig 191) Phiếu gắn hóa đơn đã trừ vào hóa đơn; phiếu độc lập đã là công nợ âm.\n'
-    || E'        AND r.invoice_id IS NULL\n'
-    || E'        AND NOT EXISTS (SELECT 1 FROM receivables rc2 WHERE rc2.return_id = r.id)\n');
+  v_src := regexp_replace(v_src, v_re,
+    '\1' || chr(10)
+    || '        -- (mig 191) Phiếu gắn hóa đơn đã trừ vào hóa đơn; phiếu độc lập đã là công nợ âm.' || chr(10)
+    || '        AND r.invoice_id IS NULL' || chr(10)
+    || '        AND NOT EXISTS (SELECT 1 FROM receivables rc2 WHERE rc2.return_id = r.id)');
   EXECUTE v_src;
 END;
 $p$;

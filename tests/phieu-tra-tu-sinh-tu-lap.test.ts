@@ -86,8 +86,8 @@ describe("mig 191 — máy chủ giữ luật", () => {
 
   it("complete_return: phiếu tự lập hoàn thành thẳng từ Nháp, phiếu độc lập ghi công nợ âm", () => {
     expect(MIG).toContain("pg_get_functiondef('public.complete_return(uuid, text)'::regprocedure)")
-    expect(MIG).toContain("E'    PERFORM public._cong_no_phieu_tra(p_return_id);\\n'")
-    expect(MIG).toContain("E'    r.status := ''submitted'';\\n'")
+    expect(MIG).toContain("|| '    PERFORM public._cong_no_phieu_tra(p_return_id);' || chr(10)")
+    expect(MIG).toContain("|| '    r.status := ''submitted'';' || chr(10)")
   })
 
   it("save_pos_return chặn sửa phiếu tự sinh", () => {
@@ -103,7 +103,7 @@ describe("mig 191 — máy chủ giữ luật", () => {
   })
 
   it("phiếu thu không cấn trừ lần hai phiếu gắn HĐ / phiếu đã là công nợ âm", () => {
-    expect(MIG).toContain("E'        AND r.invoice_id IS NULL\\n'")
+    expect(MIG).toContain("|| '        AND r.invoice_id IS NULL' || chr(10)")
     expect(MIG).toContain("NOT EXISTS (SELECT 1 FROM receivables rc2 WHERE rc2.return_id = r.id)")
   })
 
@@ -120,6 +120,32 @@ describe("mig 191 — máy chủ giữ luật", () => {
   it("ghi bù phiếu cũ + chuyển phiếu tự lập đang Chờ xử lý về Nháp", () => {
     expect(MIG).toMatch(/UPDATE returns SET status = 'draft'\s*WHERE status = 'submitted' AND NOT COALESCE\(credit_with_invoice, false\);/)
     expect(MIG).toContain("AND NOT EXISTS (SELECT 1 FROM receivables rc WHERE rc.return_id = ret.id)")
+  })
+})
+
+describe("vá chuỗi chịu được sổ thật", () => {
+  /**
+   * ⚠ CHỦ NHÀ CHẠY BẢN ĐẦU CỦA 191 TRÊN SUPABASE 25/09/2026 BÁO LỖI: "191: thấy 0 chỗ
+   *   tính lại công nợ trong complete_return, cần đúng 1". Bản ấy so NGUYÊN VĂN từng
+   *   ký tự xuống dòng; hàm trên sổ thật lưu khác (tái hiện được bằng `\r\n` — dán vào
+   *   SQL Editor). Nay dò bằng biểu thức chính quy `\s+`, và báo kèm đoạn mã khi không thấy.
+   */
+  it("ba chỗ vá dò bằng regexp, không so nguyên văn", () => {
+    const code = boChuThich(MIG)
+    expect(code).not.toMatch(/v_from\s+text\s*:=\s*E'/)
+    expect(code.match(/SELECT count\(\*\) INTO v_n FROM regexp_matches\(v_src, v_re, 'g'\)/g)?.length).toBe(3)
+    expect(code.match(/v_src := regexp_replace\(v_src, v_re,/g)?.length).toBe(3)
+    expect(code).toContain("Đoạn quanh đó: %")
+  })
+
+  it("mẫu dò chịu cả xuống dòng \\r\\n và thụt lề bằng tab", () => {
+    // Chép đúng mẫu trong migration sang JS (cú pháp regexp POSIX của Postgres ở đây tương đương).
+    const re = /(PERFORM\s+public\._wf2_recompute_receivable\s*\(\s*r\.order_id\s*\)\s*;\s*)(END\s+IF\s*;)/g
+    const lf = "    PERFORM public._wf2_recompute_receivable(r.order_id);\n  END IF;\n\n  PERFORM public._wf2_notify("
+    const crlf = lf.replace(/\n/g, "\r\n").replace("    PERFORM", "\t\tPERFORM")
+    expect(lf.match(re)?.length).toBe(1)
+    expect(crlf.match(re)?.length).toBe(1)
+    expect(MIG).toContain(String.raw`(PERFORM\s+public\._wf2_recompute_receivable\s*\(\s*r\.order_id\s*\)\s*;\s*)(END\s+IF\s*;)`)
   })
 })
 

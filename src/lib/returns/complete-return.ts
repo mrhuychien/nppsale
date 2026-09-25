@@ -74,6 +74,12 @@ export function explainReturnError(message: string): string {
   if (m.includes("NO_IMPORT_TO_REVERSE")) {
     return m.replace(/^.*NO_IMPORT_TO_REVERSE:\s*/, "")
   }
+  /* Mã của `save_pos_return` (mig 190). */
+  if (m.includes("RETURN_LOCKED")) return m.replace(/^.*RETURN_LOCKED:\s*/, "")
+  if (m.includes("RETURN_COMPLETED")) return m.replace(/^.*RETURN_COMPLETED:\s*/, "")
+  if (m.includes("CUSTOMER_NOT_FOUND")) return "Không tìm thấy khách hàng."
+  if (m.includes("INVOICE_NOT_FOUND")) return "Không tìm thấy hóa đơn gốc."
+  if (m.includes("BAD_PAYLOAD")) return m.replace(/^.*BAD_PAYLOAD:\s*/, "")
   if (m.includes("FORBIDDEN")) return m.replace(/^.*FORBIDDEN:\s*/, "")
   if (m.includes("does not exist") && (m.includes("complete_return") || m.includes("cancel_return"))) {
     return "Chưa chạy migration 119 + 120 trên cơ sở dữ liệu — chạy `supabase db push` rồi thử lại."

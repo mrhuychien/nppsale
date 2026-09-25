@@ -122,6 +122,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   /** Giá khách đã mua theo mặt hàng — từ hóa đơn gốc, chỉ để đối chiếu. */
   const [giaGoc, setGiaGoc] = useState<Record<string, number>>({})
   const [daNap, setDaNap] = useState(!returnId)
+  /** Phiếu đã huỷ thì chỉ xem — máy chủ cũng từ chối (RETURN_LOCKED, mig 190). */
+  const [daHuy, setDaHuy] = useState(false)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   /* ⚠ MẶC ĐỊNH KHO CẬN DATE cho hàng trả về: hàng khách trả thường
      không bán lại ngay được. Người lập phiếu đổi được, nhưng mặc định
@@ -241,6 +243,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         if (error) { setLoiNap(errorMessage(error)); return }
         const r = (data as unknown) as {
           customer_id: string; invoice_id: string | null
+          status?: string | null
           reason: string | null; notes: string | null
           requested_by?: string | null; sales_user_id?: string | null
           destination_zone?: string | null
@@ -259,6 +262,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
            mở lại một phiếu đã lưu là câu đọc hỏng 42703 và màn không tải
            được phiếu. Tìm ra 23/09/2026 khi dựng ô tìm theo mã phiếu. */
         setSlipCode(null)
+        setDaHuy(r.status === "cancelled")
         setInvoiceId(r.invoice_id)
         setLyDo(r.reason || "damaged")
         setGhiChu(r.notes || "")
@@ -756,6 +760,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
           {loiNap && <DocBanner tone="warn">Không nạp được phiếu — {loiNap}</DocBanner>}
+          {daHuy && <DocBanner tone="warn">Phiếu trả đã huỷ — chỉ xem, không sửa được. Cần thì lập phiếu mới.</DocBanner>}
 
           {/*
             ⚠ BANNER MÔ TẢ CƠ CHẾ ĐANG CÓ (spec §7.2). Phiếu đã nhập kho
@@ -764,7 +769,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               Đây là điểm khác hẳn màn sửa hóa đơn, nơi tờ cũ bị huỷ và
               tờ mới mang số `-1`.
           */}
-          {mode === "sua" && (
+          {mode === "sua" && !daHuy && (
             <DocBanner tone="warn">
               Phiếu đã nhập kho. Ghi nhận lại sẽ hoàn tác bút toán kho và công nợ cũ rồi ghi
               lại theo số mới, trong cùng một giao dịch — giữ nguyên số phiếu.
@@ -1022,17 +1027,19 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             </PanelButton>
             <PanelButton
               width={96}
-              disabled={dangLuu}
+              disabled={dangLuu || (daHuy && mode !== "sua")}
               onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
             >
               {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
             </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={dangLuu || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
+              disabled={dangLuu || daHuy || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
               onClick={() => luuPhieu(true)}
               title={
-                t.returnLineCount === 0 && t.exchangeLineCount === 0
+                daHuy
+                  ? "Phiếu trả đã huỷ"
+                  : t.returnLineCount === 0 && t.exchangeLineCount === 0
                   ? "Chưa có dòng hàng nào trong phiếu"
                   : !khach
                     ? "Chưa chọn khách hàng"

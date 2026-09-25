@@ -254,4 +254,12 @@ SELECT 29, 'Mig 189 (hàng trả thêm lúc xuất hóa đơn)',
                     WHERE si.status = 'posted' AND ret.status = 'draft' AND ret.created_at = si.created_at)
        THEN 'LỆCH — còn phiếu trả kẹt nháp, chạy lại mig 189'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 30. Mig 190 — phiếu trả POS một giao dịch; huỷ phiếu trả tính lại công nợ
+SELECT 30, 'Mig 190 (phiếu trả POS + huỷ phiếu trả tính lại công nợ)',
+  CASE WHEN to_regprocedure('public.save_pos_return(jsonb)') IS NULL
+       THEN 'CHƯA — POS bấm Ghi nhận & nhập kho luôn lỗi; sửa phiếu đã nhập kho không đảo kho/công nợ'
+       WHEN position('(mig 190)' IN pg_get_functiondef('public.cancel_return(uuid, text)'::regprocedure)) = 0
+       THEN 'CHƯA — huỷ phiếu trả đi cùng hóa đơn đang chờ thì công nợ vẫn trừ'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

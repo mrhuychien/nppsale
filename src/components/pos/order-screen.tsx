@@ -995,12 +995,19 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           /* ⚠ ĐI TRONG TẢI TRỌNG, KHÔNG ĐI TRONG `ctx` — xem mig 153. */
           salesUserId: nvbh || null,
         })
+        /* ⚠ Đơn vượt hạn mức thì nói ra, vì đó là thứ NPP phải ngó trước khi xuất hàng. */
+        const lyDoCanh =
+          vuotHanMuc != null
+            ? `Vượt hạn mức công nợ ${formatCurrency(vuotHanMuc)} — cần quản lý duyệt`
+            : ""
         const r = await savePosOrder(createClient(), {
           orderId,
           payload,
           lines,
           status: asDraft ? "draft" : "submitted",
-          reason: "",
+          /* ⚠ SỬA ĐƠN CŨNG GHI LẠI LÝ DO — truyền "" là mỗi lần sửa ở POS xoá mất
+             cảnh báo vượt hạn mức của đơn (desktop tính lại qua `decideEditStatus`). */
+          reason: asDraft ? "" : lyDoCanh,
           userId: user.id,
           orgId: user.org_id,
           salesUserId: nvbh || null,
@@ -1009,10 +1016,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           /* ⚠ RỖNG = ĐƠN SẠCH, và phải là chuỗi rỗng chứ không phải
              `null` — xem `savePosOrder`. Đơn vượt hạn mức thì nói ra,
              vì đó là thứ NPP phải ngó trước khi xuất hàng. */
-          approvalReason:
-            vuotHanMuc != null
-              ? `Vượt hạn mức công nợ ${formatCurrency(vuotHanMuc)} — cần quản lý duyệt`
-              : "",
+          approvalReason: lyDoCanh,
         })
         setMocChuaLuu(chuKy)
         if (asDraft) {

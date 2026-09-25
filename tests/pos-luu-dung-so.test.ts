@@ -73,9 +73,11 @@ describe("Gửi đơn phải ra PHIẾU TẠM, không ra nháp", () => {
    *   có mạng, và nó hiện thành huy hiệu cảnh báo ở danh sách đơn.
    */
   it("đơn sạch gửi chuỗi RỖNG, không gửi null", () => {
-    const i = DON.indexOf("approvalReason:")
-    expect(i, "màn đơn không gửi lý do duyệt").toBeGreaterThan(-1)
-    const khoi = DON.slice(i, i + 260)
+    expect(DON, "màn đơn không gửi lý do duyệt").toContain("approvalReason: lyDoCanh,")
+    /* Lý do dựng một lần (`lyDoCanh`) — dùng cho cả đơn mới và sửa đơn. */
+    const i = DON.indexOf("const lyDoCanh =")
+    expect(i, "màn đơn không còn dựng lý do duyệt").toBeGreaterThan(-1)
+    const khoi = DON.slice(i, i + 200)
     expect(khoi, "đơn sạch gửi null — sẽ bị gán nhãn 'Tạo offline'")
       .not.toMatch(/:\s*null/)
     expect(khoi, "không còn nhánh đơn sạch").toContain('""')

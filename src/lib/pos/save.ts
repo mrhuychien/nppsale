@@ -29,7 +29,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createOrderRecords, type OfflineOrderPayload } from "@/lib/orders/create"
 import { applyOrderEdit } from "@/lib/sell/order-edit"
-import { completeReturn, type ReturnZone } from "@/lib/returns/complete-return"
+import { completeReturn, explainReturnError, type ReturnZone } from "@/lib/returns/complete-return"
 import { saveReceiptLines, saveReturnLines } from "@/lib/purchasing/save-receipt"
 import { percentToRatio } from "@/lib/purchasing/return-form"
 import type { ReceiptLine } from "@/lib/purchasing/receipt-form"
@@ -222,6 +222,19 @@ export function dongTraGhiSo(returnId: string, l: PosLine) {
   }
 }
 
+/** Dòng trả gửi lên `save_pos_return` — máy chủ tự tính `line_total`. */
+export function dongTraGuiLen(l: PosLine) {
+  const { return_id: _r, line_total: _t, ...dong } = dongTraGhiSo("", l)
+  void _r; void _t
+  return dong
+}
+
+/** Sổ chưa có hàm `save_pos_return` (chưa chạy mig 190). */
+export function thieuHamLuuTra(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false
+  return (err.code === "PGRST202" || err.code === "42883") && (err.message || "").includes("save_pos_return")
+}
+
 /** Sổ chưa có cột `returns.return_date` (chưa chạy mig 188). */
 export function thieuCotNgayTra(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false
@@ -257,6 +270,29 @@ export async function savePosReturn(
     zone: ReturnZone
   }
 ): Promise<{ returnId: string }> {
+  /**
+   * ⚠ MỘT RPC, MỘT GIAO DỊCH (mig 190). Đường ghi thẳng bên dưới lập phiếu ở
+   *   'draft' rồi gọi `complete_return` — hàm chỉ nhận 'submitted', nên "Ghi
+   *   nhận & nhập kho" luôn hỏng, và mỗi lần bấm lại để lại thêm một phiếu nháp.
+   *   Sửa phiếu đã nhập kho thì RPC đảo bút toán cũ rồi ghi lại (spec §7.2).
+   */
+  const { data: rpcId, error: rpcErr } = await sb.rpc("save_pos_return", {
+    p: {
+      return_id: o.returnId,
+      customer_id: o.customerId,
+      invoice_id: o.invoiceId ?? null,
+      reason: o.reason || null,
+      notes: o.notes || null,
+      return_date: o.returnDate || null,
+      complete: o.complete,
+      zone: o.zone,
+      lines: o.lines.filter((l) => l.productId && l.qty > 0).map(dongTraGuiLen),
+    },
+  })
+  if (rpcErr && !thieuHamLuuTra(rpcErr)) throw new Error(explainReturnError(rpcErr.message || String(rpcErr)))
+  if (!rpcErr && typeof rpcId === "string" && rpcId) return { returnId: rpcId }
+
+  /* Sổ chưa chạy mig 190 → đường cũ (chỉ Lưu nháp là chạy được). */
   let id = o.returnId
   /**
    * ⚠ NGÀY CHỨNG TỪ (mig 188) — chủ nhà 24/09/2026: "POS phiếu trả hàng cho phép

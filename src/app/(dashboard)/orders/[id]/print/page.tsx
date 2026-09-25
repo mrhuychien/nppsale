@@ -36,6 +36,7 @@ import {
 import { invoiceAddressOf } from "@/lib/customers/address"
 import { docStampAt } from "@/lib/printing/doc-stamp"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
+import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 
 interface OrderRow {
   id: string
@@ -44,6 +45,9 @@ interface OrderRow {
   order_date: string
   status: string
   total: number
+  /** SAU giảm giá đơn, CHƯA trừ hàng trả — tiền hàng thật của đơn. */
+  subtotal?: number | null
+  vat?: number | null
   created_at: string | null
   notes: string | null
   customer?: {
@@ -104,7 +108,7 @@ export default function OrderPrintPage() {
       supabase
         .from("sales_orders")
         .select(
-          "id, org_id, order_code, order_date, status, total, created_at, notes, " +
+          "id, org_id, order_code, order_date, status, subtotal, vat, total, created_at, notes, " +
             "customer:customers(store_name, billing_name, billing_address, address, ward, district, province, phone), " +
             "sales_user:users!sales_orders_sales_user_id_fkey(full_name, phone)"
         )
@@ -201,9 +205,9 @@ export default function OrderPrintPage() {
    * (chủ nhà chốt): ghi rõ "(Hàng đổi)" / "(Hàng trả)" đầu tên hàng,
    * dòng đổi ghi "không trừ".
    *
-   * ⚠ KHÔNG TRỪ VÀO "TỔNG CỘNG" CỦA ĐƠN. Đơn đặt hàng chưa xuất thì
-   *   khoản trừ chưa vào sổ; ghi một dòng "còn phải thu" ở đây là hứa
-   *   một con số trước khi nó tồn tại. Chúng chỉ đứng liệt kê.
+   * ⚠ CHỦ NHÀ 25/09/2026: "Mẫu in đơn đặt hàng in ra sai bét" + "phần còn phải
+   *   thu phải in cả số âm". In "Tổng cộng" (tiền hàng) → "Trừ hàng trả" →
+   *   "Còn phải thu", y như hóa đơn — âm là khách được ghi có.
    */
   const printReturnLines: SalesInvoiceReturnLine[] = returns.flatMap((r) =>
     (r.lines ?? []).map((l) => ({
@@ -218,6 +222,19 @@ export default function OrderPrintPage() {
   )
 
   const st = ORDER_STATUS_MAP[order.status]
+
+  /**
+   * ⚠ TIỀN HÀNG LẤY TỪ `subtotal + vat`, KHÔNG TỪ `total`. `sales_orders.total`
+   *   ĐÃ TRỪ hàng trả rồi KẸP VỀ 0 lúc lưu đơn (`cartTotals`, màn POS). Đưa nó
+   *   vào khuôn là `grossUpLines` giãn các dòng bán cho khớp 0 — đúng tờ chủ nhà
+   *   chụp: đơn giá 0đ, Tổng tiền hàng 0đ, "Không đồng", mà hàng trả vẫn −250.000.
+   *   Đơn cũ thiếu hai cột → lùi về `total` như trước.
+   */
+  const tienHang =
+    order.subtotal != null ? (Number(order.subtotal) || 0) + (Number(order.vat) || 0) : Number(order.total) || 0
+  const traHang = printReturnLines.reduce((s, l) => s + (l.credit || 0), 0)
+  /** Giảm giá cả đơn (mig 183) — suy từ dòng và `subtotal`, như hóa đơn. */
+  const giamDon = order.subtotal == null ? 0 : giamCuaHoaDon(lines, order.subtotal)
 
   return (
     <div className="space-y-4">
@@ -251,7 +268,9 @@ export default function OrderPrintPage() {
            *   nhận hàng cần đọc được "giao trước 8h".
            */
           notes={[{ label: "Ghi chú đơn hàng", text: order.notes }]}
-          total={Number(order.total) || 0}
+          total={tienHang}
+          invoiceDiscount={giamDon}
+          returnCredit={traHang}
           returnLines={printReturnLines}
           /**
            * ⚠ NÓI RÕ ĐÂY LÀ LỜI ĐẶT, KHÔNG PHẢI CHỨNG TỪ THANH TOÁN.

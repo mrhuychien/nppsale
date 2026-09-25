@@ -244,6 +244,12 @@ export function grossUpLines(
  */
 const CELL = "border border-black px-1 py-[2px] align-top leading-tight"
 
+/** Số tiền bằng chữ — số âm (dư có của khách) đọc "Âm …". */
+export function bangChu(n: number): string {
+  const chu = numberToVietnameseWords(Math.abs(Number(n) || 0))
+  return n < 0 ? `Âm ${chu.charAt(0).toLowerCase()}${chu.slice(1)}` : chu
+}
+
 /**
  * Các khối ghi chú thật sự in ra: bỏ khối rỗng, khử trùng theo NỘI DUNG.
  *
@@ -482,7 +488,8 @@ export function SalesInvoice(props: SalesInvoiceProps) {
               <span className="font-bold">Bằng chữ:</span>{" "}
               {/* ⚠ BẰNG CHỮ ĐỌC SỐ PHẢI TRẢ, không đọc tổng hóa đơn. Người
                   cầm tờ giấy đi thu tiền đọc đúng dòng này. */}
-              <span className="italic">{numberToVietnameseWords(netDue)}</span>
+              {/* Số âm (dư có của khách, mig 186) đọc có chữ "Âm". */}
+              <span className="italic">{bangChu(netDue)}</span>
             </td>
           </tr>
         </tbody>

@@ -1,91 +1,71 @@
 import { describe, it, expect } from "vitest"
-import { setLinesQty, addLine, type CartLine } from "../src/lib/sell/cart"
-
-const L = (productId: string, unit: string, qty: number, price = 10_000): CartLine => ({
-  productId, unit, qty, price, listPrice: price, note: "", conversion: 1, vatRate: 0,
-})
+import { readFileSync } from "node:fs"
+import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem, khoaChonNhieu, KHOA_CHON_NHIEU } from "../src/lib/sell/pick-mode"
 
 /**
- * ⚠ CHẾ ĐỘ CHỌN NHIỀU Ở /sell (chủ nhà yêu cầu 23/09/2026): gõ số lượng cho
- *   nhiều mặt hàng rồi mới sang đơn. Số trong ô là số TUYỆT ĐỐI sẽ nằm trong
- *   giỏ — không cộng dồn như chạm từng món.
+ * ⚠ CHỦ NHÀ 25/09/2026: "Đảo ngược: chế độ chọn từng sản phẩm một là mặc định,
+ *   chế độ chọn nhiều sản phẩm là option" — công tắc giữ tới khi người dùng tự
+ *   tắt, bán và trả riêng. Và "bỏ dấu + ở từng dòng … bấm vào dòng".
  */
-describe("setLinesQty — đặt số lượng cho nhiều mặt hàng một lần", () => {
-  it("dòng đã có: lấy đúng số mới, KHÔNG cộng dồn", () => {
-    const gio = [L("a", "hộp", 2)]
-    expect(setLinesQty(gio, [L("a", "hộp", 5)])[0].qty).toBe(5)
-    // Đối chứng: addLine thì cộng dồn — đó là luật của chạm từng món.
-    expect(addLine(gio, L("a", "hộp", 5))[0].qty).toBe(7)
+describe("chế độ chọn nhiều (tuỳ chọn) / chọn từng mã (mặc định)", () => {
+  const kho = () => {
+    const m = new Map<string, string>()
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+      m,
+    }
+  }
+  it("mặc định chọn TỪNG mã; bật / tắt chọn nhiều được lưu", () => {
+    const s = kho()
+    expect(docChonNhieu("ban", s)).toBe(false)
+    ghiChonNhieu(true, "ban", s)
+    expect(s.m.get(KHOA_CHON_NHIEU)).toBe("1")
+    expect(docChonNhieu("ban", s)).toBe(true)
+    ghiChonNhieu(false, "ban", s)
+    expect(docChonNhieu("ban", s)).toBe(false)
   })
-
-  it("0 là bỏ dòng đang có; 0 cho món chưa có thì không thêm gì", () => {
-    const gio = [L("a", "hộp", 2), L("b", "hộp", 1)]
-    expect(setLinesQty(gio, [L("a", "hộp", 0), L("c", "hộp", 0)])).toEqual([L("b", "hộp", 1)])
+  it("khoá cũ 'chọn từng mã' KHÔNG bị đọc lại (nghĩa ngược)", () => {
+    const s = kho()
+    s.m.set("npp.sell.chon-tung-ma", "1")
+    expect(docChonNhieu("ban", s)).toBe(false)
+    expect(KHOA_CHON_NHIEU).not.toBe("npp.sell.chon-tung-ma")
   })
-
-  it("dòng mới lên đầu theo thứ tự chọn; dòng cũ giữ vị trí", () => {
-    const gio = [L("x", "hộp", 1), L("y", "hộp", 1)]
-    const sau = setLinesQty(gio, [L("m", "hộp", 3), L("y", "hộp", 4), L("n", "thùng", 1)])
-    expect(sau.map((l) => `${l.productId}:${l.qty}`)).toEqual(["m:3", "n:1", "x:1", "y:4"])
+  it("bán và trả là hai công tắc riêng", () => {
+    const s = kho()
+    ghiChonNhieu(true, "tra", s)
+    expect(docChonNhieu("tra", s)).toBe(true)
+    expect(docChonNhieu("ban", s)).toBe(false)
+    expect(khoaChonNhieu("tra")).not.toBe(khoaChonNhieu("ban"))
   })
-
-  /**
-   * ⚠ LỖI MÀ PHÉP NÀY SINH RA ĐỂ TRÁNH: vòng `addLine` rồi `setQty(index)`.
-   *   `addLine` đẩy dòng mới lên đầu, chỉ số tính trước lệch đi, và
-   *   `setQty` sửa nhầm dòng. Ở đây mọi thứ theo khoá (sản phẩm + đơn vị).
-   */
-  it("thêm mới và sửa dòng cũ cùng lúc không sửa nhầm dòng", () => {
-    const gio = [L("a", "hộp", 1), L("b", "hộp", 1)]
-    const sau = setLinesQty(gio, [L("moi", "hộp", 9), L("b", "hộp", 6)])
-    expect(sau.find((l) => l.productId === "a")!.qty).toBe(1)
-    expect(sau.find((l) => l.productId === "b")!.qty).toBe(6)
-    expect(sau.find((l) => l.productId === "moi")!.qty).toBe(9)
+  it("bộ nhớ bị chặn thì về mặc định, không làm hỏng màn", () => {
+    const hong = { getItem: () => { throw new Error("blocked") }, setItem: () => { throw new Error("blocked") }, removeItem: () => { throw new Error("blocked") } }
+    expect(docChonNhieu("ban", hong)).toBe(false)
+    expect(() => ghiChonNhieu(true, "tra", hong)).not.toThrow()
   })
-
-  it("cùng mặt hàng khác đơn vị là hai dòng", () => {
-    const sau = setLinesQty([], [L("a", "hộp", 3), L("a", "thùng", 2)])
-    expect(sau.map((l) => `${l.unit}:${l.qty}`)).toEqual(["hộp:3", "thùng:2"])
+  it("rời màn khi: chọn TỪNG mã, thêm, dòng MỚI", () => {
+    const co = { chonNhieu: false, delta: 1, dongMoi: true }
+    expect(roiManSauKhiThem(co)).toBe(true)
+    expect(roiManSauKhiThem({ ...co, chonNhieu: true })).toBe(false)
+    expect(roiManSauKhiThem({ ...co, delta: -1 })).toBe(false)
+    expect(roiManSauKhiThem({ ...co, dongMoi: false })).toBe(false)
   })
-
-  it("dòng đã sửa giá tay giữ giá của nó", () => {
-    const gio = [{ ...L("a", "hộp", 2), price: 9_000 }]
-    expect(setLinesQty(gio, [L("a", "hộp", 4, 10_000)])[0]).toMatchObject({ qty: 4, price: 9_000 })
+  it("màn /sell: nút chọn nhiều ở cả bán lẫn trả; đọc bộ nhớ sau khi gắn màn", () => {
+    const S = readFileSync("src/app/(dashboard)/sell/page.tsx", "utf8")
+    expect(S).toContain("useEffect(() => { setChonNhieu(docChonNhieu(loaiChon)) }, [loaiChon])")
+    expect(S).toContain("{!returning && nutChonNhieu}")
+    expect(S.match(/\{nutChonNhieu\}/g)?.length).toBe(1)
+    expect(S).toMatch(/if \(roiManSauKhiThem\(\{ chonNhieu, delta, dongMoi: j < 0 \}\)\) \{\s*clearSearchMemory\(\)\s*backToReturnSlip\(router\)/)
   })
-
-  it("hai lựa chọn trùng khoá: lựa chọn sau thắng", () => {
-    expect(setLinesQty([], [L("a", "hộp", 3), L("a", "hộp", 7)])).toEqual([L("a", "hộp", 7)])
-  })
-
-  it("không đụng tới mảng giỏ cũ", () => {
-    const gio = [L("a", "hộp", 2)]
-    setLinesQty(gio, [L("a", "hộp", 0)])
-    expect(gio).toEqual([L("a", "hộp", 2)])
-  })
-})
-
-import { setReturnLinesQty, type ReturnCartLine } from "../src/lib/sell/returns"
-
-const R = (productId: string, unit: string, qty: number, extra: Partial<ReturnCartLine> = {}): ReturnCartLine => ({
-  productId, unit, qty, price: 10_000, vatRate: 0, isExchange: false, note: "", ...extra,
-})
-
-/** Màn CHỌN HÀNG TRẢ cũng chọn nhiều được (chủ nhà yêu cầu 23/09/2026). */
-describe("setReturnLinesQty — chọn nhiều ở màn hàng trả", () => {
-  it("dòng đã có: lấy đúng số mới, giữ giá sửa tay / đổi hàng / ghi chú / lý do", () => {
-    const cu = [R("a", "gói", 2, { price: 9_000, isExchange: true, note: "móp", reason: "damaged" })]
-    const moi = setReturnLinesQty(cu, [R("a", "gói", 5)])
-    expect(moi).toEqual([{ ...cu[0], qty: 5 }])
-  })
-  it("số 0 là bỏ dòng; dòng mới lên đầu, mặc định trả tiền", () => {
-    const cu = [R("a", "gói", 2), R("b", "hộp", 1)]
-    const moi = setReturnLinesQty(cu, [R("a", "gói", 0), R("c", "thùng", 3)])
-    expect(moi.map((l) => `${l.productId}:${l.qty}:${l.isExchange}`)).toEqual(["c:3:false", "b:1:false"])
-  })
-  it("chọn 0 cho mặt hàng chưa có thì không thêm dòng rỗng", () => {
-    expect(setReturnLinesQty([], [R("a", "gói", 0)])).toEqual([])
-  })
-  it("cùng mặt hàng khác đơn vị là hai dòng; trùng thì lựa chọn sau thắng", () => {
-    const moi = setReturnLinesQty([], [R("a", "gói", 1), R("a", "thùng", 2), R("a", "gói", 4)])
-    expect(moi.map((l) => `${l.unit}:${l.qty}`).sort()).toEqual(["gói:4", "thùng:2"])
+  it("thẻ: bấm dòng là +1, bỏ nút + LÚC ĐẦU; bộ − số + giữ, nút con chặn lan chạm", () => {
+    const C = readFileSync("src/components/sell/product-card.tsx", "utf8")
+    expect(C).toContain('role="button"')
+    expect(C).toContain("onClick={them}")
+    expect(C).toContain("onClick={rieng(() => onPickUnit(product.id, u))}")
+    expect(C).toContain("onClick={rieng(() => onStep(product, unit, -1))}")
+    expect(C).toContain("onClick={rieng(them)}") // + trong bộ đếm: không +2
+    expect(C).not.toContain("<Plus") // nút + lúc đầu đã bỏ
+    expect(C).not.toMatch(/onStep\(product, unit, 1\)\}\s*className/)
   })
 })

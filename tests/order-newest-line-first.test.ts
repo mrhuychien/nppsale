@@ -75,7 +75,8 @@ describe("Thêm xong phải NHÌN THẤY dòng vừa thêm", () => {
   it("chạm + là thẻ đổi thành bộ đếm, số lượng lấy từ giỏ", () => {
     const CARD = read("src/components/sell/product-card.tsx")
     expect(CARD).toContain("const co = qty > 0")
-    expect(CARD).toMatch(/\{co \? \(\s*<div className="flex h-9 shrink-0 items-center rounded-\[10px\] bg-primary/)
+    // 25/09/2026: bỏ nút + lúc đầu (bấm dòng là thêm) — đã có hàng thì hiện bộ đếm.
+    expect(CARD).toMatch(/\{co && \(\s*<div className="flex h-9 shrink-0 items-center rounded-\[10px\] bg-primary/)
     expect(CARD).toContain('co ? "border-primary" : "border-transparent"')
     expect(POS).toContain("qty={i >= 0 ? (returning ? cart.returnLines[i].qty : cart.cart[i].qty) : 0}")
     expect(POS).toContain("mặt hàng trong đơn")

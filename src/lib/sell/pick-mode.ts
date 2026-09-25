@@ -1,47 +1,49 @@
 /**
- * CHẾ ĐỘ CHỌN HÀNG ở /sell: chọn nhiều mã (mặc định) hay chọn TỪNG mã.
+ * CHẾ ĐỘ CHỌN HÀNG ở /sell: chọn TỪNG mã (mặc định) hay chọn nhiều mã (tuỳ chọn).
  *
- * ⚠ CHỦ NHÀ 25/09/2026: "thêm 1 nút icon option chọn từng mã … khi người dùng chọn
- *   thì người dùng phải tắt đi mới tắt chứ k tự tắt (lưu trạng thái)".
- *   Chọn từng mã: bấm thêm một mã MỚI là sang thẳng màn Đơn hàng.
- *   Chủ nhà 25/09/2026: "Thêm cả cho phần chọn hàng trả" — chọn hàng trả thì
- *   thêm một mã mới là về thẳng phiếu trả.
+ * ⚠ CHỦ NHÀ 25/09/2026, theo thứ tự:
+ *   · "thêm 1 nút icon option chọn từng mã … người dùng phải tắt đi mới tắt chứ
+ *     k tự tắt (lưu trạng thái)"; "Thêm cả cho phần chọn hàng trả".
+ *   · "Đảo ngược: chế độ chọn từng sản phẩm một là mặc định, chế độ chọn nhiều
+ *     sản phẩm là option".
+ *   Chọn từng mã: thêm một mã MỚI là rời màn (bán → Đơn hàng, trả → phiếu trả).
+ *   Chọn nhiều: ở lại màn, thêm tiếp.
  *
- * ⚠ HAI CÔNG TẮC RIÊNG (bán / trả): chọn nhiều khi bán mà chọn từng mã khi nhận
- *   hàng trả là thói quen hợp lý — dùng chung là bật bên này tắt luôn bên kia.
- *
- * ⚠ LƯU TRÊN MÁY (localStorage) — là thói quen của người cầm máy, không phải dữ
- *   liệu sổ. Trình duyệt chặn bộ nhớ thì coi như chọn nhiều, không làm hỏng màn.
+ * ⚠ HAI CÔNG TẮC RIÊNG (bán / trả) — bật bên này không bật bên kia.
+ * ⚠ KHOÁ MỚI `npp.sell.chon-nhieu` (không dùng lại `…chon-tung-ma`): khoá cũ lưu
+ *   "đã bật chọn từng mã", nghĩa ngược với công tắc bây giờ — đọc lại là máy nào
+ *   đã bật chọn từng mã sẽ bị lật sang chọn nhiều.
+ * ⚠ LƯU TRÊN MÁY (localStorage). Bộ nhớ bị chặn thì về mặc định: chọn từng mã.
  */
 
 export type LoaiChon = "ban" | "tra"
-export const KHOA_CHON_TUNG_MA = "npp.sell.chon-tung-ma"
-export const khoaChonTungMa = (loai: LoaiChon = "ban") => (loai === "tra" ? `${KHOA_CHON_TUNG_MA}.tra` : KHOA_CHON_TUNG_MA)
+export const KHOA_CHON_NHIEU = "npp.sell.chon-nhieu"
+export const khoaChonNhieu = (loai: LoaiChon = "ban") => (loai === "tra" ? `${KHOA_CHON_NHIEU}.tra` : KHOA_CHON_NHIEU)
 
-export function docChonTungMa(loai: LoaiChon = "ban", store: Pick<Storage, "getItem"> | null = khoLuu()): boolean {
+export function docChonNhieu(loai: LoaiChon = "ban", store: Pick<Storage, "getItem"> | null = khoLuu()): boolean {
   try {
-    return store?.getItem(khoaChonTungMa(loai)) === "1"
+    return store?.getItem(khoaChonNhieu(loai)) === "1"
   } catch {
     return false
   }
 }
 
-export function ghiChonTungMa(
+export function ghiChonNhieu(
   bat: boolean,
   loai: LoaiChon = "ban",
   store: Pick<Storage, "setItem" | "removeItem"> | null = khoLuu()
 ): void {
   try {
-    if (bat) store?.setItem(khoaChonTungMa(loai), "1")
-    else store?.removeItem(khoaChonTungMa(loai))
+    if (bat) store?.setItem(khoaChonNhieu(loai), "1")
+    else store?.removeItem(khoaChonNhieu(loai))
   } catch {
     /* bộ nhớ bị chặn — chế độ chỉ sống tới khi rời màn */
   }
 }
 
-/** Thêm dòng MỚI ở chế độ chọn từng mã thì rời màn (bán → Đơn hàng, trả → phiếu trả). */
-export function roiManSauKhiThem(o: { chonTungMa: boolean; delta: number; dongMoi: boolean }): boolean {
-  return o.chonTungMa && o.delta > 0 && o.dongMoi
+/** Thêm dòng MỚI khi đang chọn TỪNG mã thì rời màn (bán → Đơn hàng, trả → phiếu trả). */
+export function roiManSauKhiThem(o: { chonNhieu: boolean; delta: number; dongMoi: boolean }): boolean {
+  return !o.chonNhieu && o.delta > 0 && o.dongMoi
 }
 
 function khoLuu(): Storage | null {

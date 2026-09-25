@@ -1,7 +1,6 @@
 "use client"
 
-import { memo } from "react"
-import { Plus } from "lucide-react"
+import { memo, type KeyboardEvent, type MouseEvent } from "react"
 import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { sellableUnits, stockInUnit, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
 import { stockDisplayFor } from "@/lib/sell/committed"
@@ -14,8 +13,12 @@ import { stockDisplayFor } from "@/lib/sell/committed"
  *   thì hiện bộ − số + nền xanh. Trước đây chạm thẻ là nhảy sang giỏ (và có
  *   chế độ "chọn nhiều" riêng để gõ số cho nhiều món) — bộ tăng giảm trên thẻ
  *   làm cả hai việc ấy trong một cách, nên chế độ riêng không còn.
- * ⚠ THẺ KHÔNG PHẢI NÚT. Cả thẻ bấm được là mỗi lần chạm nhầm lúc cuộn thêm một
- *   món; nay chỉ nút thêm / bộ tăng giảm / pill đơn vị nhận chạm.
+ * ⚠ BẤM VÀO DÒNG = THÊM 1 (chủ nhà 25/09/2026: "bỏ dấu + ở từng dòng, thay vì
+ *   bấm vào dấu cộng khó bấm thì người dùng bấm vào dòng, tác dụng giống bấm vào
+ *   dấu +" — "Dấu + lúc đầu chứ ko phải dấu + trong +- sản phẩm"). Bỏ nút + lúc
+ *   CHƯA có hàng; bộ − số + khi đã có thì giữ. Pill đơn vị và nút −/+ chặn lan
+ *   chạm lên thẻ.
+ *   (Vuốt cuộn không bắn `click` — trình duyệt bỏ chạm khi ngón tay đã trượt.)
  * ⚠ THẺ ĐƯỢC `memo`, callback nhận sản phẩm làm tham số — màn truyền hàm ổn
  *   định, 60 thẻ không vẽ lại mỗi phím gõ ở ô tìm.
  */
@@ -58,13 +61,31 @@ export const ProductCard = memo(function ProductCard({
   const sd = stockDisplayFor(stock, committedUnit)
   const co = qty > 0
   const image = product.images?.[0]
+  const them = () => onStep(product, unit, 1)
+  /** Nút con trên thẻ: làm đúng việc của nó, KHÔNG thêm hàng. */
+  const rieng = (fn: () => void) => (e: MouseEvent) => {
+    e.stopPropagation()
+    fn()
+  }
+  const phim = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      them()
+    }
+  }
 
   return (
     <div
       data-testid="the-san-pham"
       data-chon={co ? "" : undefined}
+      role="button"
+      tabIndex={0}
+      aria-label={`${addLabel || "Thêm"} ${product.name}`}
+      onClick={them}
+      onKeyDown={phim}
       className={cn(
-        "flex flex-col gap-2.5 rounded-[14px] border-[1.5px] bg-surface-container-lowest p-3",
+        "flex cursor-pointer select-none flex-col gap-2.5 rounded-[14px] border-[1.5px] bg-surface-container-lowest p-3 transition-transform active:scale-[0.99]",
         /* ⚠ Thẻ ngoài màn hình không dựng bố cục — 60 thẻ ~7.000px. */
         "[content-visibility:auto] [contain-intrinsic-size:auto_112px]",
         co ? "border-primary" : "border-transparent"
@@ -123,7 +144,7 @@ export const ProductCard = memo(function ProductCard({
                 key={u}
                 type="button"
                 aria-pressed={active}
-                onClick={() => onPickUnit(product.id, u)}
+                onClick={rieng(() => onPickUnit(product.id, u))}
                 className={cn(
                   "h-[30px] shrink-0 rounded-lg px-3 text-[13px]",
                   active ? "bg-surface-container-lowest font-semibold text-primary shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "font-medium text-on-surface-variant"
@@ -135,12 +156,13 @@ export const ProductCard = memo(function ProductCard({
           })}
         </div>
         <div className="flex-1" />
-        {co ? (
+        {/* Đã có trong đơn: bộ − số + GIỮ NGUYÊN (chủ nhà: chỉ bỏ dấu + lúc đầu). */}
+        {co && (
           <div className="flex h-9 shrink-0 items-center rounded-[10px] bg-primary text-primary-foreground [&>button]:active:bg-black/10">
             <button
               type="button"
               aria-label={`Bớt ${product.name}`}
-              onClick={() => onStep(product, unit, -1)}
+              onClick={rieng(() => onStep(product, unit, -1))}
               className="h-9 w-9 text-[18px]"
             >
               −
@@ -148,28 +170,16 @@ export const ProductCard = memo(function ProductCard({
             <span aria-label={`Số lượng ${product.name}`} className="min-w-6 text-center text-[14px] font-bold tabular-data">
               {qty}
             </span>
+            {/* ⚠ Chặn lan chạm — không thì một lần bấm + là +2 (nút + cả dòng). */}
             <button
               type="button"
-              aria-label={`Thêm ${product.name}`}
-              onClick={() => onStep(product, unit, 1)}
+              aria-label={`Tăng ${product.name}`}
+              onClick={rieng(them)}
               className="h-9 w-9 text-[18px]"
             >
               +
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            aria-label={`${addLabel || "Thêm"} ${product.name}`}
-            onClick={() => onStep(product, unit, 1)}
-            className={cn(
-              "flex h-9 shrink-0 items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-primary bg-surface-container-lowest text-[13px] font-semibold text-primary active:scale-95",
-              addLabel ? "px-3.5" : "w-10"
-            )}
-          >
-            <Plus className={addLabel ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.6} aria-hidden />
-            {addLabel}
-          </button>
         )}
       </div>
     </div>

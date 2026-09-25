@@ -16,7 +16,7 @@
 --      191) đổi theo → trigger đẩy người sang dòng nợ. Phiếu không ghi tên người thì
 --      điền một lần theo luật: HĐ gắn → đơn gắn → HĐ gần nhất của khách (đúng đường đoán
 --      của màn doanh số), để hai bên đọc CÙNG một cột.
---   4. `receivables_by_rep` / `receivables_summary` kẹp từng dòng về 0
+--   4. (mig 195) `receivables_by_rep` / `receivables_summary` kẹp từng dòng về 0
 --      (`GREATEST(0, …)`) — sai luật công nợ âm (mig 186): dư có của khách phải được
 --      trừ vào tổng nợ. Dòng không có nhân viên thì hiện thành một dòng riêng thay vì
 --      biến mất.
@@ -227,109 +227,8 @@ $fn$;
 REVOKE ALL ON FUNCTION public.assign_doc_seller(text, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assign_doc_seller(text, uuid, uuid) TO authenticated;
 
--- 4. Hai hàm tổng công nợ: bỏ kẹp 0, dòng không NV hiện riêng -------------
-DROP FUNCTION IF EXISTS public.receivables_summary();
-CREATE FUNCTION public.receivables_summary()
-RETURNS TABLE (
-  total_outstanding  numeric,
-  current_amount     numeric,
-  current_count      bigint,
-  warning_amount     numeric,
-  warning_count      bigint,
-  overdue_amount     numeric,
-  overdue_count      bigint,
-  critical_amount    numeric,
-  critical_count     bigint
-)
-LANGUAGE sql
-STABLE
-SET search_path = public
-AS $$
-  WITH r AS (
-    SELECT
-      -- ⚠ KHÔNG KẸP 0 (mig 186/194): dòng âm là dư có của khách, trừ vào tổng nợ.
-      COALESCE(amount, 0) - COALESCE(paid, 0) AS remaining,
-      CASE
-        WHEN due_date IS NULL THEN 'current'
-        WHEN (public.vn_today() - due_date) <= 0  THEN 'current'
-        WHEN (public.vn_today() - due_date) <= 30 THEN 'warning'
-        WHEN (public.vn_today() - due_date) <= 60 THEN 'overdue'
-        ELSE 'critical'
-      END AS bucket
-    FROM receivables
-    WHERE org_id = public.user_org_id()
-      AND status <> 'paid'
-  )
-  SELECT
-    COALESCE(SUM(remaining), 0),
-    COALESCE(SUM(remaining) FILTER (WHERE bucket = 'current'),  0),
-    COUNT(*)                FILTER (WHERE bucket = 'current'),
-    COALESCE(SUM(remaining) FILTER (WHERE bucket = 'warning'),  0),
-    COUNT(*)                FILTER (WHERE bucket = 'warning'),
-    COALESCE(SUM(remaining) FILTER (WHERE bucket = 'overdue'),  0),
-    COUNT(*)                FILTER (WHERE bucket = 'overdue'),
-    COALESCE(SUM(remaining) FILTER (WHERE bucket = 'critical'), 0),
-    COUNT(*)                FILTER (WHERE bucket = 'critical')
-  FROM r;
-$$;
-
-DROP FUNCTION IF EXISTS public.receivables_by_rep();
-CREATE FUNCTION public.receivables_by_rep()
-RETURNS TABLE (
-  user_id             uuid,
-  full_name           text,
-  customer_count      bigint,
-  customers_with_debt bigint,
-  total_debt          numeric,
-  total_paid          numeric,
-  total_amount        numeric,
-  overdue_amount      numeric,
-  collection_rate     integer,
-  dso                 integer
-)
-LANGUAGE sql
-STABLE
-SET search_path = public
-AS $$
-  WITH r AS (
-    SELECT
-      rc.sales_user_id,
-      rc.customer_id,
-      COALESCE(rc.amount, 0) AS amount,
-      COALESCE(rc.paid, 0)   AS paid,
-      -- ⚠ (mig 194) Σ(amount − paid) trên dòng CHƯA 'paid', KHÔNG kẹp 0 — cùng luật
-      --   `loadDebtByCustomer` và trang chi tiết nhân viên. Dòng trả dư đã 'paid' thì 0.
-      CASE WHEN rc.status <> 'paid'
-           THEN COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) ELSE 0 END AS remaining,
-      rc.status,
-      rc.status <> 'paid' AND COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) > 0 AS has_debt,
-      GREATEST(0, public.vn_today() - COALESCE(rc.due_date, public.vn_today())) AS aging_days
-    FROM receivables rc
-    WHERE rc.org_id = public.user_org_id()
-  )
-  SELECT
-    r.sales_user_id,
-    CASE WHEN r.sales_user_id IS NULL THEN '(Chưa gán nhân viên)' ELSE COALESCE(u.full_name, '-') END,
-    COUNT(DISTINCT r.customer_id),
-    COUNT(DISTINCT r.customer_id) FILTER (WHERE r.has_debt),
-    COALESCE(SUM(r.remaining), 0),
-    COALESCE(SUM(r.paid), 0),
-    COALESCE(SUM(r.amount), 0),
-    COALESCE(SUM(r.remaining) FILTER (WHERE r.status = 'overdue'), 0),
-    CASE WHEN COALESCE(SUM(r.amount), 0) > 0
-         THEN GREATEST(0, LEAST(100, ROUND(SUM(r.paid) / SUM(r.amount) * 100)::integer))
-         ELSE 0 END,
-    CASE WHEN COUNT(*) FILTER (WHERE r.has_debt) > 0
-         THEN ROUND(AVG(r.aging_days) FILTER (WHERE r.has_debt))::integer
-         ELSE 0 END
-  FROM r
-  LEFT JOIN users u ON u.id = r.sales_user_id
-  GROUP BY r.sales_user_id, u.full_name
-  ORDER BY COALESCE(SUM(r.remaining), 0) DESC;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.receivables_summary() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.receivables_by_rep()  TO authenticated;
+-- 4. Hai hàm tổng công nợ (bỏ kẹp 0): tách sang mig 195 — tệp định nghĩa chúng không
+--    được có SECURITY DEFINER (chốt tests/aging-thresholds).
 
 -- 5. Ghi bù dữ liệu cũ ------------------------------------------------------
 DO $bu$
@@ -365,9 +264,8 @@ $bu$;
 
 NOTIFY pgrst, 'reload schema';
 
-SELECT 'Công nợ theo nhân viên khớp doanh số' AS hang_muc,
+SELECT 'Người đứng tên công nợ khớp doanh số' AS hang_muc,
        CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi')
-                 AND position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_rep()'::regprocedure)) = 0
             THEN 'có' ELSE 'CHƯA' END AS trang_thai,
        (SELECT count(*) FROM receivables rc JOIN sales_invoices si ON si.id = rc.invoice_id
          WHERE rc.sales_user_id IS DISTINCT FROM si.sales_user_id) AS no_hd_lech_nguoi,

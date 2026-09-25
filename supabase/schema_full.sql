@@ -34863,7 +34863,7 @@ SELECT 'Số phiếu trả TH-' AS hang_muc,
 --      191) đổi theo → trigger đẩy người sang dòng nợ. Phiếu không ghi tên người thì
 --      điền một lần theo luật: HĐ gắn → đơn gắn → HĐ gần nhất của khách (đúng đường đoán
 --      của màn doanh số), để hai bên đọc CÙNG một cột.
---   4. `receivables_by_rep` / `receivables_summary` kẹp từng dòng về 0
+--   4. (mig 195) `receivables_by_rep` / `receivables_summary` kẹp từng dòng về 0
 --      (`GREATEST(0, …)`) — sai luật công nợ âm (mig 186): dư có của khách phải được
 --      trừ vào tổng nợ. Dòng không có nhân viên thì hiện thành một dòng riêng thay vì
 --      biến mất.
@@ -35074,7 +35074,72 @@ $fn$;
 REVOKE ALL ON FUNCTION public.assign_doc_seller(text, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assign_doc_seller(text, uuid, uuid) TO authenticated;
 
--- 4. Hai hàm tổng công nợ: bỏ kẹp 0, dòng không NV hiện riêng -------------
+-- 4. Hai hàm tổng công nợ (bỏ kẹp 0): tách sang mig 195 — tệp định nghĩa chúng không
+--    được có SECURITY DEFINER (chốt tests/aging-thresholds).
+
+-- 5. Ghi bù dữ liệu cũ ------------------------------------------------------
+DO $bu$
+DECLARE
+  v_rc int; v_tra int; v_am int;
+BEGIN
+  -- Phiếu trả: người theo luật (gắn HĐ → người HĐ; trống → đơn → HĐ gần nhất của khách).
+  UPDATE returns r
+  SET sales_user_id = public._nguoi_cua_phieu_tra(r.invoice_id, r.order_id, r.customer_id, r.org_id, r.sales_user_id)
+  WHERE r.sales_user_id IS DISTINCT FROM
+        public._nguoi_cua_phieu_tra(r.invoice_id, r.order_id, r.customer_id, r.org_id, r.sales_user_id);
+  GET DIAGNOSTICS v_tra = ROW_COUNT;
+
+  -- Dòng nợ của hóa đơn: người + khách theo hóa đơn.
+  UPDATE receivables rc
+  SET sales_user_id = si.sales_user_id, customer_id = si.customer_id
+  FROM sales_invoices si
+  WHERE si.id = rc.invoice_id
+    AND (rc.sales_user_id IS DISTINCT FROM si.sales_user_id
+         OR rc.customer_id IS DISTINCT FROM si.customer_id);
+  GET DIAGNOSTICS v_rc = ROW_COUNT;
+
+  -- Dòng nợ âm của phiếu trả tự lập: người theo phiếu.
+  UPDATE receivables rc
+  SET sales_user_id = r.sales_user_id
+  FROM returns r
+  WHERE r.id = rc.return_id AND rc.sales_user_id IS DISTINCT FROM r.sales_user_id;
+  GET DIAGNOSTICS v_am = ROW_COUNT;
+
+  RAISE NOTICE '--- 194: sửa người % phiếu trả, % dòng nợ HĐ, % dòng nợ âm ---', v_tra, v_rc, v_am;
+END;
+$bu$;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Người đứng tên công nợ khớp doanh số' AS hang_muc,
+       CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi')
+            THEN 'có' ELSE 'CHƯA' END AS trang_thai,
+       (SELECT count(*) FROM receivables rc JOIN sales_invoices si ON si.id = rc.invoice_id
+         WHERE rc.sales_user_id IS DISTINCT FROM si.sales_user_id) AS no_hd_lech_nguoi,
+       (SELECT count(*) FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
+         WHERE r.sales_user_id IS DISTINCT FROM si.sales_user_id AND si.sales_user_id IS NOT NULL) AS tra_lech_nguoi_hd,
+       (SELECT count(*) FROM returns WHERE status = 'approved') AS phieu_tra_approved_cu;
+
+
+-- ####################################################################
+-- # 195_cong_no_theo_nv_bo_kep_0.sql
+-- ####################################################################
+
+-- ====================================================================
+-- CÔNG NỢ THEO NHÂN VIÊN / Ô TỔNG CÔNG NỢ: BỎ KẸP 0, HIỆN DÒNG CHƯA GÁN NV
+--
+-- VÌ SAO — chủ nhà 25/09/2026: "rà soát lại toàn bộ cho tao tại sao doanh số nhân
+--   viên lại lệch so với công nợ nhân viên". Hai hàm này kẹp TỪNG dòng về 0
+--   (`GREATEST(0, amount − paid)`) — sai luật công nợ âm chủ nhà chốt 24/09/2026
+--   (mig 186): dư có của khách (hàng trả vượt tiền HĐ, phiếu trả tự lập) phải được
+--   trừ vào tổng nợ. Màn "Công nợ theo NV" vì vậy cao hơn trang chi tiết của chính
+--   nhân viên đó, và cao hơn doanh số thuần. `receivables_by_rep` còn bỏ hẳn dòng nợ
+--   không có nhân viên → tổng các nhân viên không bằng tổng nợ.
+--   Luật mới = `loadDebtByCustomer`: Σ(amount − paid) trên dòng chưa 'paid'.
+-- ⚠ Không SECURITY DEFINER (RLS + lọc org_id của người gọi) — chốt tests/aging-thresholds.
+-- Đi cùng mig 194 (người đứng tên công nợ theo hóa đơn / phiếu trả).
+-- ====================================================================
+
 DROP FUNCTION IF EXISTS public.receivables_summary();
 CREATE FUNCTION public.receivables_summary()
 RETURNS TABLE (
@@ -35178,47 +35243,10 @@ $$;
 GRANT EXECUTE ON FUNCTION public.receivables_summary() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.receivables_by_rep()  TO authenticated;
 
--- 5. Ghi bù dữ liệu cũ ------------------------------------------------------
-DO $bu$
-DECLARE
-  v_rc int; v_tra int; v_am int;
-BEGIN
-  -- Phiếu trả: người theo luật (gắn HĐ → người HĐ; trống → đơn → HĐ gần nhất của khách).
-  UPDATE returns r
-  SET sales_user_id = public._nguoi_cua_phieu_tra(r.invoice_id, r.order_id, r.customer_id, r.org_id, r.sales_user_id)
-  WHERE r.sales_user_id IS DISTINCT FROM
-        public._nguoi_cua_phieu_tra(r.invoice_id, r.order_id, r.customer_id, r.org_id, r.sales_user_id);
-  GET DIAGNOSTICS v_tra = ROW_COUNT;
-
-  -- Dòng nợ của hóa đơn: người + khách theo hóa đơn.
-  UPDATE receivables rc
-  SET sales_user_id = si.sales_user_id, customer_id = si.customer_id
-  FROM sales_invoices si
-  WHERE si.id = rc.invoice_id
-    AND (rc.sales_user_id IS DISTINCT FROM si.sales_user_id
-         OR rc.customer_id IS DISTINCT FROM si.customer_id);
-  GET DIAGNOSTICS v_rc = ROW_COUNT;
-
-  -- Dòng nợ âm của phiếu trả tự lập: người theo phiếu.
-  UPDATE receivables rc
-  SET sales_user_id = r.sales_user_id
-  FROM returns r
-  WHERE r.id = rc.return_id AND rc.sales_user_id IS DISTINCT FROM r.sales_user_id;
-  GET DIAGNOSTICS v_am = ROW_COUNT;
-
-  RAISE NOTICE '--- 194: sửa người % phiếu trả, % dòng nợ HĐ, % dòng nợ âm ---', v_tra, v_rc, v_am;
-END;
-$bu$;
-
 NOTIFY pgrst, 'reload schema';
 
-SELECT 'Công nợ theo nhân viên khớp doanh số' AS hang_muc,
-       CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi')
-                 AND position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_rep()'::regprocedure)) = 0
+SELECT 'Công nợ theo NV bỏ kẹp 0' AS hang_muc,
+       CASE WHEN position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_rep()'::regprocedure)) = 0
             THEN 'có' ELSE 'CHƯA' END AS trang_thai,
-       (SELECT count(*) FROM receivables rc JOIN sales_invoices si ON si.id = rc.invoice_id
-         WHERE rc.sales_user_id IS DISTINCT FROM si.sales_user_id) AS no_hd_lech_nguoi,
-       (SELECT count(*) FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
-         WHERE r.sales_user_id IS DISTINCT FROM si.sales_user_id AND si.sales_user_id IS NOT NULL) AS tra_lech_nguoi_hd,
-       (SELECT count(*) FROM returns WHERE status = 'approved') AS phieu_tra_approved_cu;
+       (SELECT total_outstanding FROM public.receivables_summary()) AS tong_no_cua_nguoi_chay;
 

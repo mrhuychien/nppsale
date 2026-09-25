@@ -9,9 +9,14 @@ import { resolve } from "node:path"
  */
 const doc = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
 const MIG = doc("supabase/migrations/194_nguoi_dung_ten_cong_no_khop_doanh_so.sql")
+const MIG195 = doc("supabase/migrations/195_cong_no_theo_nv_bo_kep_0.sql")
 const than = (ten: string) => {
+  if (ten.startsWith("receivables")) {
+    const i = MIG195.indexOf(`FUNCTION public.${ten}(`)
+    return MIG195.slice(i, MIG195.indexOf("$$;", i))
+  }
   const i = MIG.indexOf(`FUNCTION public.${ten}(`)
-  return MIG.slice(i, MIG.indexOf("$$;", i) > 0 && ten.startsWith("receivables") ? MIG.indexOf("$$;", i) : MIG.indexOf("$fn$;", i))
+  return MIG.slice(i, MIG.indexOf("$fn$;", i))
 }
 
 describe("mig 194 — người đứng tên công nợ = người của doanh số", () => {
@@ -34,6 +39,7 @@ describe("mig 194 — người đứng tên công nợ = người của doanh s�
     expect(f).not.toContain("rc.sales_user_id IS NOT NULL")
     expect(f).toContain("(Chưa gán nhân viên)")
     expect(than("receivables_summary")).not.toContain("GREATEST(0, COALESCE(amount")
+    expect(than("receivables_summary")).toContain("COALESCE(amount, 0) - COALESCE(paid, 0) AS remaining")
   })
   it("hàm nội bộ bị thu quyền; kết thúc bằng NOTIFY + SELECT", () => {
     for (const f of ["_nguoi_cua_phieu_tra(uuid, uuid, uuid, uuid, uuid)", "_phieu_tra_theo_nguoi_hoa_don()",
@@ -42,5 +48,11 @@ describe("mig 194 — người đứng tên công nợ = người của doanh s�
     }
     expect(MIG).toContain("NOTIFY pgrst, 'reload schema';")
     expect(doc("scripts/sql/kham-so-that.sql")).toContain("Mig 194")
+  })
+  it("giao diện: phiếu trả gắn HĐ không đổi người tại phiếu; dòng chưa gán NV không bấm vào", () => {
+    expect(doc("src/app/(dashboard)/returns/[id]/page.tsx")).toContain("canPickSeller && ret.invoice_id ?")
+    const rep = doc("src/app/(dashboard)/receivables/by-rep/page.tsx")
+    expect(rep).toContain("userId: string | null")
+    expect(rep).not.toContain("onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}")
   })
 })

@@ -17,7 +17,7 @@ import { UserCog } from "lucide-react"
 
 /** Một dòng trả về của hàm SQL `receivables_by_rep()` (migration 093). */
 interface RepDebtRowRaw {
-  user_id: string
+  user_id: string | null
   full_name: string
   customer_count: number
   customers_with_debt: number
@@ -30,7 +30,8 @@ interface RepDebtRowRaw {
 }
 
 interface RepDebtRow {
-  userId: string
+  /** `null` = dòng nợ chưa gán nhân viên (mig 194 hiện riêng, không bỏ). */
+  userId: string | null
   fullName: string
   customerCount: number
   customersWithDebt: number
@@ -185,9 +186,9 @@ export default function ReceivablesByRepPage() {
                   <TableBody>
                     {rows.map((row) => (
                       <TableRow
-                        key={row.userId}
+                        key={row.userId ?? "_chua_gan"}
                         className="cursor-pointer"
-                        onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
+                        onClick={() => row.userId && router.push(`/receivables/by-rep/${row.userId}`)}
                       >
                         <TableCell className="font-medium">{row.fullName}</TableCell>
                         <TableCell className="text-right">{row.customerCount}</TableCell>
@@ -218,9 +219,9 @@ export default function ReceivablesByRepPage() {
           <div className="lg:hidden space-y-3">
             {rows.map((row) => (
               <div
-                key={row.userId}
+                key={row.userId ?? "_chua_gan"}
                 className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                onClick={() => router.push(`/receivables/by-rep/${row.userId}`)}
+                onClick={() => row.userId && router.push(`/receivables/by-rep/${row.userId}`)}
               >
                 <div className="p-4">
                   <div className="flex justify-between items-start gap-3 mb-2">

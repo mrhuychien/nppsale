@@ -810,7 +810,11 @@ export default function ReturnDetailPage() {
                       <p className={salesUserId ? "" : "text-muted-foreground"}>
                         {salesUserName || (salesUserId ? "—" : "Chưa gán")}
                       </p>
-                      {canPickSeller && (
+                      {/* ⚠ Mig 194: phiếu gắn HĐ đi theo người đứng tên HĐ — gán lại ở HĐ,
+                          để doanh số và công nợ của phiếu cùng về một người. */}
+                      {canPickSeller && ret.invoice_id ? (
+                        <span className="text-xs text-muted-foreground">Theo người đứng tên hóa đơn</span>
+                      ) : canPickSeller && (
                         <Button
                           size="sm"
                           variant="ghost"

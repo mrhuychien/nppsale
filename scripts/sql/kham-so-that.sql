@@ -294,7 +294,7 @@ SELECT 33, 'Mig 193 (phiếu trả có số TH-)',
        ELSE 'OK — đã vá' END, ''
 UNION ALL
 -- 34. Mig 194 — công nợ theo nhân viên khớp doanh số
-SELECT 34, 'Mig 194 (người đứng tên công nợ khớp doanh số, bỏ kẹp 0 ở Công nợ theo NV)',
+SELECT 34, 'Mig 194 + 195 (người đứng tên công nợ khớp doanh số, bỏ kẹp 0 ở Công nợ theo NV)',
   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi')
             OR position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_rep()'::regprocedure)) > 0
        THEN 'CHƯA — công nợ theo NV lệch doanh số NV (nợ kẹt người cũ, kẹp 0 dư có)'

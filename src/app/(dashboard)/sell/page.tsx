@@ -2,7 +2,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, ScanBarcode, ChevronLeft, ChevronRight, User } from "lucide-react"
+import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, MousePointerClick } from "lucide-react"
+import { docChonTungMa, ghiChonTungMa, sangDonSauKhiThem } from "@/lib/sell/pick-mode"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
@@ -81,6 +82,19 @@ export default function SellPage() {
   const [tab, setTab] = useState<"freq" | "all">(() => listMemory.current.tab)
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})
   const [frequentIds, setFrequentIds] = useState<string[]>([])
+  /**
+   * CHỌN TỪNG MÃ (chủ nhà 25/09/2026) — bật thì thêm mã mới là sang màn Đơn hàng.
+   * ⚠ Đọc bộ nhớ SAU khi gắn màn (không đọc lúc khởi tạo): server không có
+   *   localStorage, đọc sớm là vẽ lệch giữa server và máy.
+   */
+  const [chonTungMa, setChonTungMa] = useState(false)
+  useEffect(() => { setChonTungMa(docChonTungMa()) }, [])
+  const doiCheDoChon = () => {
+    setChonTungMa((v) => {
+      ghiChonTungMa(!v)
+      return !v
+    })
+  }
   useEffect(() => {
     listMemory.current.q = q
     listMemory.current.tab = tab
@@ -240,6 +254,11 @@ export default function SellPage() {
         conversion: conversionFor(p, unit),
         vatRate: Number(p.vat_rate ?? 0),
       })
+    /* Chọn từng mã: vừa thêm một mã MỚI thì sang màn Đơn hàng (chỉnh SL ở đó). */
+    if (sangDonSauKhiThem({ chonTungMa, delta, dongMoi: i < 0, traHang: returning })) {
+      clearSearchMemory()
+      router.push("/sell/cart")
+    }
   }
 
   /**
@@ -286,6 +305,23 @@ export default function SellPage() {
             <span className="flex h-8 items-center rounded-[10px] border border-border px-2.5 text-[12px] font-medium text-on-surface-variant">
               {bangGia}
             </span>
+          )}
+          {/* ⚠ CHỌN TỪNG MÃ — bật tới khi người dùng tự tắt (lưu trên máy). */}
+          {!returning && (
+            <button
+              type="button"
+              aria-pressed={chonTungMa}
+              aria-label={chonTungMa ? "Đang chọn từng mã — bấm để chọn nhiều mã" : "Chọn từng mã"}
+              title={chonTungMa ? "Đang chọn từng mã: thêm một mã là sang đơn. Bấm để tắt." : "Chọn từng mã: thêm một mã là sang đơn ngay"}
+              onClick={doiCheDoChon}
+              data-testid="chon-tung-ma"
+              className={cn(
+                "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors",
+                chonTungMa ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
+              )}
+            >
+              <MousePointerClick className="h-[18px] w-[18px]" />
+            </button>
           )}
         </div>
 

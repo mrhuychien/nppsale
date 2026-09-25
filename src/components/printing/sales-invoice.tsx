@@ -60,7 +60,7 @@
 
 import { formatCurrency } from "@/lib/utils"
 import { stampVN, longDateVN } from "@/lib/printing/doc-stamp"
-import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
+import { bangChuCoAm } from "@/lib/utils/number-to-vn-words"
 import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
 
 export interface SalesInvoiceLine {
@@ -246,8 +246,7 @@ const CELL = "border border-black px-1 py-[2px] align-top leading-tight"
 
 /** Số tiền bằng chữ — số âm (dư có của khách) đọc "Âm …". */
 export function bangChu(n: number): string {
-  const chu = numberToVietnameseWords(Math.abs(Number(n) || 0))
-  return n < 0 ? `Âm ${chu.charAt(0).toLowerCase()}${chu.slice(1)}` : chu
+  return bangChuCoAm(n)
 }
 
 /**

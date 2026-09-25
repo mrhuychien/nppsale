@@ -53,3 +53,13 @@ export function numberToVietnameseWords(amount: number): string {
   const text = parts.join(" ").replace(/\s+/g, " ").trim() + " đồng"
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+/**
+ * Bằng chữ có dấu — số âm đọc "Âm …" (chủ nhà 25/09/2026: in cả số âm). Dùng
+ * chung cho hóa đơn / đơn hàng (còn phải thu âm) và phiếu trả (khoản trừ).
+ */
+export function bangChuCoAm(amount: number): string {
+  const n = Number(amount) || 0
+  const chu = numberToVietnameseWords(Math.abs(n))
+  return n < 0 ? `Âm ${chu.charAt(0).toLowerCase()}${chu.slice(1)}` : chu
+}

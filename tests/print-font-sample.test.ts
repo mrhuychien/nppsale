@@ -25,12 +25,33 @@ const DOC = readFileSync(
   resolve(__dirname, "..", "src/components/printing/sales-invoice.tsx"), "utf-8"
 )
 
+type Kho = "A5" | "A4" | "A3"
+
+/**
+ * Khối CSS in của từng khổ. ⚠ Khổ do HỘP THOẠI IN chọn (chủ nhà 25/09/2026), nên
+ * không còn thuộc tính `data-paper-size`: A5 là khối gốc (khối có `@page`), khổ lớn
+ * là khối `@media print and (min-width: …)` — lúc in, `width` là bề rộng tờ giấy.
+ */
+const MO: Record<Kho, string> = {
+  A5: "@media print {\n  @page { margin: 8mm; }",
+  A4: "@media print and (min-width: 160mm) {",
+  A3: "@media print and (min-width: 250mm) {",
+}
+function khoi(kho: Kho): string {
+  const i = CSS.indexOf(MO[kho])
+  if (i < 0) return ""
+  let d = 0
+  for (let j = CSS.indexOf("{", i); j < CSS.length; j++) {
+    if (CSS[j] === "{") d++
+    else if (CSS[j] === "}" && --d === 0) return CSS.slice(i, j)
+  }
+  return ""
+}
+
 /** Cỡ chữ của một bộ chọn, theo khổ giấy. */
-function pt(paper: "A5" | "A4", selector: string): number | null {
-  const scope =
-    paper === "A4" ? 'html\\[data-paper-size="A4"\\]' : 'html:not\\(\\[data-paper-size="A4"\\]\\)'
-  const re = new RegExp(`${scope} \\.a4-doc${selector}\\s*\\{[^}]*?font-size:\\s*([\\d.]+)pt`)
-  const m = re.exec(CSS)
+function pt(paper: Kho, selector: string): number | null {
+  const re = new RegExp(`html \\.a4-doc${selector}\\s*\\{[^}]*?font-size:\\s*([\\d.]+)pt`)
+  const m = re.exec(khoi(paper))
   return m ? Number(m[1]) : null
 }
 
@@ -42,17 +63,17 @@ describe("một cỡ chữ cho cả tờ, trừ đúng tiêu đề", () => {
    * Đây là chỗ CỐ Ý lệch với tờ mẫu, không phải quên chép.
    */
   /*
-   * ⚠ CHỦ NHÀ 25/09/2026: "khi chọn khổ A4, tự giãn ra đầy trang". A4 rộng gấp
-   * ~1,41 lần A5 → cỡ chữ A4 = cỡ A5 × ~1,4 (10,5 → 14,5; 15 → 21). A5 giữ nguyên.
+   * ⚠ CHỦ NHÀ 25/09/2026: "khi chọn khổ A4, tự giãn ra đầy trang" / "chọn khổ nào
+   * thì tràn ra khổ đấy". Cỡ chữ phóng theo tỉ lệ khổ: A4 ≈ 1,41 × A5, A3 = 2 × A5.
    */
-  const CO = { A5: { than: 10.5, h1: 15 }, A4: { than: 14.5, h1: 21 } } as const
+  const CO = { A5: { than: 10.5, h1: 15 }, A4: { than: 14.5, h1: 21 }, A3: { than: 21, h1: 30 } } as const
 
-  it.each([["A5"], ["A4"]] as const)("%s: thân và bảng cùng một cỡ", (paper) => {
+  it.each([["A5"], ["A4"], ["A3"]] as const)("%s: thân và bảng cùng một cỡ", (paper) => {
     expect(pt(paper, ""), "thân tờ").toBe(CO[paper].than)
     expect(pt(paper, " table"), "bảng — chính là tờ hóa đơn").toBe(CO[paper].than)
   })
 
-  it.each([["A5"], ["A4"]] as const)("%s: chỉ tiêu đề khác cỡ, và nó phải TO hơn", (paper) => {
+  it.each([["A5"], ["A4"], ["A3"]] as const)("%s: chỉ tiêu đề khác cỡ, và nó phải TO hơn", (paper) => {
     const h1 = pt(paper, " h1")
     expect(h1, "mất cỡ riêng của tiêu đề").toBe(CO[paper].h1)
     expect(h1!).toBeGreaterThan(pt(paper, "")!)
@@ -64,12 +85,11 @@ describe("một cỡ chữ cho cả tờ, trừ đúng tiêu đề", () => {
    * lần trước đúng là đã quên mất hai chỗ, nên tên nhà phân phối vẫn to
    * còn ghi chú chân trang vẫn bé sau khi cả tờ đã đổi cỡ.
    */
-  it.each([["A5"], ["A4"]] as const)("%s: chỉ có đúng ba khai báo cỡ chữ", (paper) => {
-    const scope =
-      paper === "A4" ? 'html\\[data-paper-size="A4"\\]' : 'html:not\\(\\[data-paper-size="A4"\\]\\)'
-    const re = new RegExp(`${scope} \\.a4-doc([^{]*)\\{[^}]*?font-size:\\s*([\\d.]+)pt`, "g")
+  it.each([["A5"], ["A4"], ["A3"]] as const)("%s: chỉ có đúng ba khai báo cỡ chữ", (paper) => {
+    const re = new RegExp(`html \\.a4-doc([^{]*)\\{[^}]*?font-size:\\s*([\\d.]+)pt`, "g")
+    const css = khoi(paper)
     const found: Array<[string, string]> = []
-    for (let m = re.exec(CSS); m; m = re.exec(CSS)) found.push([m[1].trim(), m[2]])
+    for (let m = re.exec(css); m; m = re.exec(css)) found.push([m[1].trim(), m[2]])
     // thân · bảng · tiêu đề — không hơn.
     expect(found.map((f) => f[0]).sort()).toEqual(["", "h1", "table"])
     expect(found.find((f) => f[0] === "")?.[1]).toBe(found.find((f) => f[0] === "table")?.[1])
@@ -109,8 +129,10 @@ describe("một cỡ chữ cho cả tờ, trừ đúng tiêu đề", () => {
    * để tiết kiệm giấy". Tờ mẫu đo được ~1.14; ở đây cố ý chặt hơn.
    */
   it("dãn dòng không bị nới ra theo", () => {
-    const i = CSS.indexOf('html:not([data-paper-size="A4"]) .a4-doc {')
-    expect(CSS.slice(i, CSS.indexOf("}", i))).toContain("line-height: 1.08")
+    const a5 = khoi("A5")
+    const i = a5.indexOf("html .a4-doc {")
+    expect(i).toBeGreaterThan(0)
+    expect(a5.slice(i, a5.indexOf("}", i))).toContain("line-height: 1.08")
   })
 })
 
@@ -182,5 +204,25 @@ describe("bề rộng cột: dồn chỗ cho tên hàng", () => {
    */
   it("đệm ngang của ô bảng là px-1", () => {
     expect(DOC).toContain('const CELL = "border border-black px-1 py-[2px] align-top leading-tight"')
+  })
+})
+
+describe("khổ giấy do hộp thoại in chọn", () => {
+  /**
+   * ⚠ CHỦ NHÀ 25/09/2026: "tao muốn chọn khổ nào thì tràn ra khổ đấy trên hộp thoại in
+   *   của trình duyệt". `@page { size }` ở bất cứ đâu là Chrome khoá ô Khổ giấy.
+   */
+  it("không `@page` nào đặt size", () => {
+    expect(CSS.match(/@page\s*\{[^}]*\}/g)).toEqual(["@page { margin: 8mm; }"])
+    const BTN = readFileSync(resolve(__dirname, "..", "src/components/ui/print-button.tsx"), "utf-8")
+    expect(BTN).not.toMatch(/size:\s*A[345]/)
+    expect(BTN).not.toContain("data-paper-size")
+  })
+
+  it("mỗi khổ lớn hơn thì chữ to hơn", () => {
+    for (const sel of ["", " table", " h1"]) {
+      expect(pt("A4", sel)!, sel).toBeGreaterThan(pt("A5", sel)!)
+      expect(pt("A3", sel)!, sel).toBeGreaterThan(pt("A4", sel)!)
+    }
   })
 })

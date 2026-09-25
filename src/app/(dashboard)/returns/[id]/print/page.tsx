@@ -10,7 +10,7 @@ import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
-import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { PrintButton, moHopThoaiIn } from "@/components/ui/print-button"
 import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -108,7 +108,7 @@ export default function ReturnPrintPage() {
     if (loading || !ret || printedRef.current) return
     if (params.get("auto") !== "1") return
     printedRef.current = true
-    printWithPaper("A5")
+    moHopThoaiIn()
   }, [loading, ret, params])
 
   useLeaveAfterPrint(!loading)
@@ -148,7 +148,7 @@ export default function ReturnPrintPage() {
     <div className="space-y-4">
       <div className="no-print">
         <PageHeader title="In phiếu trả hàng" backHref={`/returns/${id}`}>
-          <PrintButton label="In phiếu trả" defaultPaper="A5" />
+          <PrintButton label="In phiếu trả" />
         </PageHeader>
       </div>
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">

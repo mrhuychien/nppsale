@@ -324,29 +324,22 @@ describe("Những chỗ KHÔNG được làm mất", () => {
 
 describe("Khổ giấy", () => {
   /**
-   * ⚠ MẶC ĐỊNH CỦA KHO NÀY LÀ A5 (phiếu giao). Hoá đơn bảy cột ở A5 thì
-   * chữ rơi xuống 8pt và hai cột tiền dính nhau — nên chứng từ này phải
-   * tự khai A4, không bắt người dùng nhớ mở dropdown mỗi lần in.
+   * ⚠ CHỦ NHÀ 25/09/2026: "tao muốn chọn khổ nào thì tràn ra khổ đấy trên hộp thoại
+   * in của trình duyệt". Nút In không còn dropdown khổ — hộp thoại in quyết.
    */
-  it("nút in của hoá đơn mặc định A4", () => {
-    expect(PAGE).toContain('<PrintButton label="In hóa đơn" defaultPaper="A4" />')
-    expect(BTN).toContain("defaultPaper?: PaperSize")
-    expect(BTN).toContain('defaultPaper = "A5"')
-  })
-
-  /** Dấu tick trong dropdown phải chỉ đúng khổ mặc định của chứng từ. */
-  it("dropdown đánh dấu đúng khổ mặc định", () => {
-    expect(BTN).toContain("sz === defaultPaper ? (")
+  it("nút in của hoá đơn không ép khổ", () => {
+    expect(PAGE).toContain('<PrintButton label="In hóa đơn" />')
+    expect(BTN).not.toContain("defaultPaper")
   })
 
   /**
-   * ⚠ Dropdown VẪN cho chọn A5. Không có khối CSS này thì chọn A5 là
-   * bảng tràn lề và cột tiền bị cắt — hỏng chỉ lộ ra trên giấy, sau khi
-   * đã in.
+   * ⚠ Chọn A5 trong hộp thoại thì mẫu phải co lại. Không có khối gốc này thì bảng
+   * tràn lề và cột tiền bị cắt — hỏng chỉ lộ ra trên giấy, sau khi đã in.
    */
-  it("chọn A5 thì mẫu co lại, không tràn lề", () => {
-    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc {')
-    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc table')
+  it("khổ nhỏ (A5) có cỡ riêng, khổ lớn giãn theo bề rộng giấy", () => {
+    expect(CSS).toContain("html .a4-doc {")
+    expect(CSS).toContain("html .a4-doc table")
+    expect(CSS).toContain("@media print and (min-width: 160mm) {")
     expect(TPL).toContain('className="a4-doc')
   })
 })

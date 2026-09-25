@@ -18,7 +18,7 @@ import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
-import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { PrintButton, moHopThoaiIn } from "@/components/ui/print-button"
 import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import {
@@ -176,7 +176,7 @@ export default function SalesInvoicePrintPage() {
     if (loading || !inv || printedRef.current) return
     if (params.get("auto") !== "1") return
     printedRef.current = true
-    printWithPaper("A5")
+    moHopThoaiIn()
   }, [loading, inv, params])
 
   /**
@@ -276,7 +276,7 @@ export default function SalesInvoicePrintPage() {
               trong máy in của kho, và nhà phân phối in tờ này mỗi ngày
               vài chục lần. Ai cần A4 thì vẫn chọn được ở dropdown.
           */}
-          <PrintButton label="In hóa đơn" defaultPaper="A5" />
+          <PrintButton label="In hóa đơn" />
         </PageHeader>
       </div>
 

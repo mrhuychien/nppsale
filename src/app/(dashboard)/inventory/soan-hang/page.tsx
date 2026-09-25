@@ -215,7 +215,7 @@ function Trang() {
           description="Chọn các hóa đơn cần giao → gộp thành đơn tổng để kho nhặt hàng một lượt, rồi in."
           backHref="/inventory"
         >
-          <PrintButton label="In đơn tổng" defaultPaper="A4" disabled={rows.length === 0 || dangNap} />
+          <PrintButton label="In đơn tổng" disabled={rows.length === 0 || dangNap} />
         </PageHeader>
 
         <div className="grid gap-4 lg:grid-cols-3">

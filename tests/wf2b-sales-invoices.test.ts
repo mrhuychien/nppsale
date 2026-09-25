@@ -240,13 +240,12 @@ describe("Bản in hóa đơn bán", () => {
   })
 
   /**
-   * ⚠ A5 (chủ nhà chốt). Trước để A4 vì bảy cột ở khổ A5 thì chữ rơi
-   * xuống 8pt; nhưng giấy A5 mới là thứ nằm trong máy in của kho, và
-   * nhà phân phối in tờ này mỗi ngày vài chục lần. A4 vẫn chọn được ở
-   * dropdown.
+   * ⚠ Khổ giấy chọn trong HỘP THOẠI IN (chủ nhà 25/09/2026: "chọn khổ nào thì tràn
+   * ra khổ đấy trên hộp thoại in của trình duyệt") — trang in không ép khổ nào.
    */
-  it("mặc định khổ A5", () => {
-    expect(CODE).toContain('defaultPaper="A5"')
+  it("không ép khổ giấy", () => {
+    expect(CODE).toContain('<PrintButton label="In hóa đơn" />')
+    expect(CODE).not.toContain("defaultPaper")
   })
 
   /** Mẫu không có dòng thuế — chỉ truyền `total` đã gồm thuế. */

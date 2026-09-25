@@ -238,8 +238,9 @@ describe("in hóa đơn", () => {
   const BTN = read("src/components/ui/print-button.tsx")
   const EDITOR = read("src/components/orders/invoice-editor.tsx")
 
-  it("hóa đơn bán mặc định khổ A5", () => {
-    expect(P_SALES).toContain('<PrintButton label="In hóa đơn" defaultPaper="A5" />')
+  /** ⚠ Chủ nhà 25/09/2026: khổ giấy chọn trong hộp thoại in — nút không ép khổ. */
+  it("nút in hóa đơn bán không ép khổ giấy", () => {
+    expect(P_SALES).toContain('<PrintButton label="In hóa đơn" />')
   })
 
   /**
@@ -247,15 +248,9 @@ describe("in hóa đơn", () => {
    * thì một ngày nào đó chỉ một trong hai đặt đúng khổ giấy.
    */
   it("nút In và in tự động đi qua cùng một hàm", () => {
-    expect(BTN).toContain("export function printWithPaper(size: PaperSize): void")
-    expect(BTN).toContain("const print = printWithPaper")
-    expect(P_SALES).toContain('printWithPaper("A5")')
-  })
-
-  /** ⚠ Đặt data-paper-size rồi để nguyên là mọi lần in sau đều ra A4. */
-  it("trả thuộc tính khổ giấy về như cũ sau khi in", () => {
-    expect(BTN).toContain("if (previous == null) html.removeAttribute(\"data-paper-size\")")
-    expect(BTN).toContain("else html.setAttribute(\"data-paper-size\", previous)")
+    expect(BTN).toContain("export function moHopThoaiIn(): void")
+    expect(BTN).toContain("onClick={moHopThoaiIn}")
+    expect(P_SALES).toContain("moHopThoaiIn()")
   })
 
   it("xuất hàng xong thì sang màn in kèm cờ tự in", () => {

@@ -182,9 +182,10 @@ describe("tờ in gọn lại", () => {
    * tờ mẫu). Chỉ đổi tiếp khi có một tờ giấy thật để đo.
    */
   it("A4 có dãn dòng riêng, không thừa hưởng 1.5 của Tailwind", () => {
-    const i = CSS.indexOf('html[data-paper-size="A4"] .a4-doc {')
+    const k = CSS.slice(CSS.indexOf("@media print and (min-width: 160mm) {"))
+    const i = k.indexOf("html .a4-doc {")
     expect(i).toBeGreaterThan(0)
-    expect(CSS.slice(i, CSS.indexOf("}", i))).toContain("line-height: 1.15")
+    expect(k.slice(i, k.indexOf("}", i))).toContain("line-height: 1.15")
   })
 
   /**
@@ -231,7 +232,7 @@ describe("tờ in gọn lại", () => {
    */
   it("ô ký giữ nguyên tên lớp mà CSS đang bám vào", () => {
     expect(DOC).toContain('<div className="h-16" />')
-    expect(CSS).toContain('html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }')
+    expect(CSS).toContain("html .a4-doc .h-16 { height: 2.2rem; }")
   })
 })
 

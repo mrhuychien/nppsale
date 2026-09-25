@@ -26,7 +26,7 @@ import { useParams, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
-import { PrintButton, printWithPaper } from "@/components/ui/print-button"
+import { PrintButton, moHopThoaiIn } from "@/components/ui/print-button"
 import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -165,7 +165,7 @@ export default function OrderPrintPage() {
     if (loading || !order || printedRef.current) return
     if (params.get("auto") !== "1") return
     printedRef.current = true
-    printWithPaper("A5")
+    moHopThoaiIn()
   }, [loading, order, params])
 
   /**
@@ -244,7 +244,7 @@ export default function OrderPrintPage() {
           description={`Đơn ${order.order_code}`}
           backHref={`/orders/${id}`}
         >
-          <PrintButton label="In đơn hàng" defaultPaper="A5" />
+          <PrintButton label="In đơn hàng" />
         </PageHeader>
       </div>
 

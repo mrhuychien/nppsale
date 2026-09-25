@@ -155,109 +155,100 @@
 }
 
 /*
-  Phiếu giao hàng — A5 portrait mặc định, A4 portrait là tuỳ chọn.
-  Đặt data-paper-size="A4" trên <html> trước khi gọi window.print().
+  KHỔ GIẤY IN — DO HỘP THOẠI IN CỦA TRÌNH DUYỆT QUYẾT.
+
+  ⚠ CHỦ NHÀ 25/09/2026: "tao muốn chọn khổ nào thì tràn ra khổ đấy trên hộp thoại
+    in của trình duyệt". Nên `@page` CHỈ đặt lề, KHÔNG đặt `size`: có `size` là Chrome
+    khoá ô "Khổ giấy" và in đúng khổ trong CSS dù người dùng chọn gì.
+  ⚠ TỜ IN GIÃN THEO KHỔ BẰNG `@media print and (min-width: …)`. Khi in, `width` là bề
+    rộng vùng in của tờ giấy đã chọn (đã trừ lề): A5 ≈ 132mm, A4 / Letter ≈ 194mm,
+    A3 ≈ 281mm. Khối gốc bên dưới là cỡ A5; hai khối sau phóng theo tỉ lệ khổ
+    (A4 ≈ 1,41 × A5, A3 = 2 × A5) để chữ đầy trang chứ không co một góc.
+  ⚠ Luôn viết `html .lớp` (không phải `.lớp`): phải thắng `text-[12px]` của Tailwind
+    ở bản xem trước trên màn hình.
 */
 @media print {
-  /* Mặc định A5. ⚠ Khổ A4 KHÔNG đặt ở đây — `html[…] @page` là CSS sai, trình duyệt
-     bỏ qua. Nút In chèn `@page` của khổ đã chọn — xem `datKhoGiay` (print-button). */
-  @page { size: A5 portrait; margin: 8mm; }
+  @page { margin: 8mm; }
   /* T-11 — A5 needs tighter font to fit ~25 line orders on 1 page.
      Times New Roman matches official VN business slip aesthetic. */
-  html:not([data-paper-size="A4"]) .print-page,
-  html:not([data-paper-size="A4"]) .a5-doc {
+  html .print-page,
+  html .a5-doc {
     font-size: 8pt;
     line-height: 1.15;
     font-family: "Times New Roman", Times, serif;
   }
-  html:not([data-paper-size="A4"]) .print-page table,
-  html:not([data-paper-size="A4"]) .a5-doc table { font-size: 8pt; border-collapse: collapse; }
-  html:not([data-paper-size="A4"]) .print-page h1,
-  html:not([data-paper-size="A4"]) .a5-doc h1 { font-size: 11pt; }
-  html:not([data-paper-size="A4"]) .print-page h2,
-  html:not([data-paper-size="A4"]) .a5-doc h2 { font-size: 9pt; }
-  html:not([data-paper-size="A4"]) .a5-doc .signatures { font-size: 7pt; }
+  html .print-page table,
+  html .a5-doc table { font-size: 8pt; border-collapse: collapse; }
+  html .print-page h1,
+  html .a5-doc h1 { font-size: 11pt; }
+  html .print-page h2,
+  html .a5-doc h2 { font-size: 9pt; }
+  html .a5-doc .signatures { font-size: 7pt; }
 
   /*
-    Hoá đơn bán hàng — chứng từ BẢY CỘT, dựng cho A4.
+    Đơn hàng / Hoá đơn / Phiếu trả (`.a4-doc`).
 
-    ⚠ Nút in của nó mặc định A4, nhưng dropdown vẫn cho chọn A5. Không có
-    khối này thì chọn A5 là bảng tràn ra ngoài lề và cột tiền bị cắt —
-    hỏng theo kiểu chỉ lộ ra trên giấy, sau khi đã in.
-  */
-  /*
     ⚠ CỠ CHỮ TRÊN GIẤY DO KHỐI NÀY QUYẾT, KHÔNG PHẢI `text-[12px]` Ở
     COMPONENT. Các lớp Tailwind kia chỉ còn tác dụng ở bản xem trước trên
     màn hình; muốn tờ in đổi cỡ thì phải sửa ở đây.
 
-    CÁC CON SỐ DƯỚI ĐÂY ĐO TỪ CHÍNH TỜ MẪU CHỦ NHÀ GỬI, không phải ước
-    lượng: KiotViet - Đơn hàng - Hóa đơn.pdf, khổ A5 (420 × 594,96pt),
-    Times New Roman. Giải nén luồng nội dung rồi đọc toán tử `Tf` — cỡ ở
-    đó tính bằng px CSS, nhân 0,75 ra pt:
+    CÁC CON SỐ Ở KHỔ A5 ĐO TỪ CHÍNH TỜ MẪU CHỦ NHÀ GỬI (KiotViet - Đơn hàng -
+    Hóa đơn.pdf, A5, Times New Roman; toán tử `Tf` px × 0,75 = pt):
       · "HÓA ĐƠN BÁN HÀNG"         20px → 15pt
       · TOÀN BỘ phần còn lại       14px → 10,5pt
+    Chủ nhà chốt 20/09/2026: "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ
+    cho bằng size font chữ trong bảng" — nên CHỈ tiêu đề khác cỡ. Đừng thêm một
+    `.a4-doc .cái-gì-đó { font-size: … }` nữa: lần trước đúng là đã quên mất hai chỗ.
 
-    Tờ mẫu còn có hai cỡ nữa — tên nhà phân phối 18px (13,5pt) và ghi
-    chú chân trang 10px (7,5pt) — nhưng chủ nhà chốt 20/09/2026 bỏ cả
-    hai: "trừ chữ HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ cho bằng size
-    font chữ trong bảng". Đây là chỗ CỐ Ý lệch với tờ mẫu.
-
-    ⚠ 13pt HÔM QUA LÀ TÔI ĐOÁN SAI. Chủ nhà chốt "cho lên 13" khi đang
-    nhìn một tờ 8,5pt; đo tờ mẫu mới ra con số thật là 10,5pt, và chính
-    chủ nhà báo lại "font to quá". Giữ 13pt vì nó từng được nói ra là
-    giữ một con số không ai còn muốn.
-
-    ⚠ TỜ MẪU CHỨNG MINH BẢY CỘT VỪA KHỔ A5 Ở 10,5pt — nên không còn lý do
-    nào để đổi khổ giấy mặc định.
-
-    ⚠ DÃN DÒNG GIỮ MỨC CHẶT 1.08 (chủ nhà chốt "đẩy sát khoảng cách các
-    dòng để tiết kiệm giấy"). Tờ mẫu đo được ~1.14; ở đây cố ý chặt hơn
-    một chút, và đó là chỗ DUY NHẤT lệch với mẫu.
+    ⚠ DÃN DÒNG CHẶT 1.08 ở A5 (chủ nhà chốt "đẩy sát khoảng cách các dòng để
+    tiết kiệm giấy"). Ở khổ lớn KHÔNG để trống `line-height` — bảng sẽ thừa hưởng
+    1.5 của Tailwind và giãn thưa hết cả trang.
   */
-  html:not([data-paper-size="A4"]) .a4-doc {
+  html .a4-doc {
     font-size: 10.5pt; /* đo từ tờ mẫu KiotViet (14px CSS) */
     line-height: 1.08;
     font-family: "Times New Roman", Times, serif;
   }
-  html:not([data-paper-size="A4"]) .a4-doc table { font-size: 10.5pt; }
-  /*
-    ⚠ CHỈ TIÊU ĐỀ MỚI ĐƯỢC KHÁC CỠ (chủ nhà chốt 20/09/2026: "trừ chữ
-    HOÁ ĐƠN BÁN HÀNG, còn lại size font chữ cho bằng size font chữ trong
-    bảng"). Tên nhà phân phối trước đây 13,5pt và ghi chú chân trang
-    7,5pt — hai cỡ ấy ĐÃ BỎ, cả hai nay bằng phần còn lại.
-
-    Đừng thêm một `.a4-doc .cái-gì-đó { font-size: … }` nữa: mỗi cỡ thêm
-    vào là một chỗ phải nhớ khi chủ nhà đổi cỡ chữ lần sau, và lần trước
-    đúng là đã quên mất hai chỗ.
-  */
-  html:not([data-paper-size="A4"]) .a4-doc h1 { font-size: 15pt; }
+  html .a4-doc table { font-size: 10.5pt; }
+  html .a4-doc h1 { font-size: 15pt; }
   /* Chỗ ký thu lại cho vừa trang; vẫn đủ để ký tay. */
-  html:not([data-paper-size="A4"]) .a4-doc .h-16 { height: 2.2rem; }
+  html .a4-doc .h-16 { height: 2.2rem; }
+}
 
-  /*
-    Ở A4 dùng CÙNG bộ cỡ chữ với A5. Tờ mẫu chỉ có bản A5, và cùng một
-    chứng từ thì không có lý do nào để chữ ở khổ giấy này khác khổ giấy
-    kia — A4 chỉ là chỗ rộng hơn nên chứa được nhiều dòng hàng hơn.
-  */
-  /*
-    ⚠ A4 = TỜ A5 PHÓNG ĐẦY TRANG (chủ nhà 25/09/2026: "khi chọn khổ A4, tự giãn ra
-    đầy trang. Vì nhiều khi in dùng A4"). A4 rộng / cao gấp ≈1,41 lần A5, nên cỡ
-    chữ nhân đúng tỉ lệ ấy: 10,5pt → 14,5pt, tiêu đề 15pt → 21pt. Cùng số dòng
-    vừa một trang như bản A5, chỉ to ra cho đầy khổ.
-  */
-  html[data-paper-size="A4"] .a4-doc {
-    font-family: "Times New Roman", Times, serif;
-    font-size: 14.5pt;
-    /*
-      ⚠ TRƯỚC ĐÂY KHÔNG ĐẶT `line-height` Ở ĐÂY nên bảng thừa hưởng 1.5
-      của Tailwind — bảy cột giãn thưa hết cả trang A4 mà không ai chọn
-      thế. Đây là phần lớn chỗ giấy tiết kiệm được.
-    */
-    line-height: 1.15;
-  }
-  html[data-paper-size="A4"] .a4-doc table { font-size: 14.5pt; }
-  /* ⚠ Chỉ tiêu đề khác cỡ — xem chú thích ở khối A5 ngay trên. */
-  html[data-paper-size="A4"] .a4-doc h1 { font-size: 21pt; }
+/* Khổ A4 / Letter (vùng in ≥ 160mm) — ≈ 1,41 × A5. */
+@media print and (min-width: 160mm) {
+  html .print-page,
+  html .a5-doc { font-size: 11pt; }
+  html .print-page table,
+  html .a5-doc table { font-size: 11pt; }
+  html .print-page h1,
+  html .a5-doc h1 { font-size: 15.5pt; }
+  html .print-page h2,
+  html .a5-doc h2 { font-size: 12.5pt; }
+  html .a5-doc .signatures { font-size: 10pt; }
+
+  html .a4-doc { font-size: 14.5pt; line-height: 1.15; }
+  html .a4-doc table { font-size: 14.5pt; }
+  html .a4-doc h1 { font-size: 21pt; }
+  html .a4-doc .h-16 { height: 3.1rem; }
+}
+
+/* Khổ A3 (vùng in ≥ 250mm) — 2 × A5. */
+@media print and (min-width: 250mm) {
+  html .print-page,
+  html .a5-doc { font-size: 16pt; }
+  html .print-page table,
+  html .a5-doc table { font-size: 16pt; }
+  html .print-page h1,
+  html .a5-doc h1 { font-size: 22pt; }
+  html .print-page h2,
+  html .a5-doc h2 { font-size: 18pt; }
+  html .a5-doc .signatures { font-size: 14pt; }
+
+  html .a4-doc { font-size: 21pt; line-height: 1.15; }
+  html .a4-doc table { font-size: 21pt; }
+  html .a4-doc h1 { font-size: 30pt; }
+  html .a4-doc .h-16 { height: 4.4rem; }
 }
 
 @layer utilities {

@@ -3,7 +3,7 @@
 // =====================================================================
 // T-08 — Phiếu thu lái xe (Mẫu 01-TT, TT 200/2014/TT-BTC).
 // Single-liên, A5 portrait. Caller wraps in any layout and triggers
-// window.print() — globals.css `@page A5 portrait` does the rest.
+// window.print() — khổ giấy chọn trong hộp thoại in; globals.css giãn theo khổ.
 // =====================================================================
 
 import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"

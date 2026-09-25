@@ -165,7 +165,7 @@ export default function InvoicePrintPage() {
         >
           {/* ⚠ A4, KHÔNG PHẢI A5 MẶC ĐỊNH. Bảy cột ở khổ A5 thì chữ còn
               8pt và hai cột tiền dính vào nhau. */}
-          {canPrint && <PrintButton label="In hóa đơn" defaultPaper="A4" />}
+          {canPrint && <PrintButton label="In hóa đơn" />}
         </PageHeader>
       </div>
 

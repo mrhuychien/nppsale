@@ -462,10 +462,13 @@ html[data-print-mode="<your-key>"] .print-only { display: none !important; }
 html[data-print-mode="<your-key>"] .print-<your-key>-only { display: block !important; }
 ```
 
-A5 portrait is the **default print size** (driver-friendly). A4 is
-opt-in via the `<PrintButton>`'s dropdown which sets
-`data-paper-size="A4"` on `<html>`. Layouts must be readable at 8pt
-Times New Roman (`.a5-doc` class enforces this — apply to the wrapper).
+Paper size is chosen in the **browser's print dialog** (owner 25/09/2026:
+"chọn khổ nào thì tràn ra khổ đấy trên hộp thoại in"). Never set
+`@page { size }` — it locks the dialog's paper selector. `<PrintButton>`
+just opens the dialog (`moHopThoaiIn`). Layouts scale with the page via
+`@media print and (min-width: 160mm)` (A4/Letter) and `(min-width: 250mm)`
+(A3); the base block is A5 and must stay readable at 8pt Times New Roman
+(`.a5-doc`) / 10.5pt (`.a4-doc`). Always write print rules as `html .class`.
 
 UOM display on print: when `conversion_factor_snapshot > 1`, render
 `{txQty} {unit_name} ({baseQty} {base_unit})` — e.g. "4 thùng (40 hộp)".

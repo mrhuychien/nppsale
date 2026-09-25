@@ -35250,3 +35250,88 @@ SELECT 'Công nợ theo NV bỏ kẹp 0' AS hang_muc,
             THEN 'có' ELSE 'CHƯA' END AS trang_thai,
        (SELECT total_outstanding FROM public.receivables_summary()) AS tong_no_cua_nguoi_chay;
 
+
+-- ####################################################################
+-- # 196_muc_tieu_doanh_so_nvbh.sql
+-- ####################################################################
+
+-- ====================================================================
+-- MỤC TIÊU DOANH SỐ CHO TRANG CHỦ NVBH
+--
+-- VÌ SAO — chủ nhà 25/09/2026: "Làm lại trang chủ cho nhân viên bán hàng theo mẫu"
+--   (mẫu: "Doanh số của tôi … 75% · mục tiêu 80 tr · Còn 4 ngày · cần thêm 19,7 tr").
+--   Mục tiêu tháng đang nằm ở cấu hình lương (`hr_salary_config.kpi_target_revenue`,
+--   mig 061) — bảng nhân sự, NVBH không được đọc thẳng (lương / thưởng của NPP).
+--   Hàm này chỉ trả ĐÚNG MỘT SỐ: mục tiêu tháng của đơn vị người gọi.
+-- ====================================================================
+
+CREATE OR REPLACE FUNCTION public.my_sales_target()
+RETURNS numeric
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+  SELECT COALESCE(max(c.kpi_target_revenue), 0)::numeric
+  FROM hr_salary_config c
+  WHERE c.org_id = public.user_org_id()
+$fn$;
+
+REVOKE ALL ON FUNCTION public.my_sales_target() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_sales_target() TO authenticated;
+
+COMMENT ON FUNCTION public.my_sales_target() IS
+  'Mục tiêu doanh số THÁNG của đơn vị người gọi (max kpi_target_revenue) — trang chủ NVBH (mig 196).';
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Mục tiêu doanh số trang chủ NVBH' AS hang_muc,
+       CASE WHEN to_regprocedure('public.my_sales_target()') IS NOT NULL THEN 'có' ELSE 'CHƯA' END AS trang_thai;
+
+
+-- ####################################################################
+-- # 197_khoa_nhan_su_voi_nvbh.sql
+-- ####################################################################
+
+-- ====================================================================
+-- NVBH KHÔNG ĐỌC ĐƯỢC LƯƠNG / THƯỞNG / CHẤM CÔNG CỦA NGƯỜI KHÁC
+--
+-- VÌ SAO — chủ nhà 25/09/2026: "Rà soát lại bảng phân quyền … Xây dựng cho tao phân
+--   quyền mẫu cho nhân viên bán hàng: Đủ để nhân viên bán hàng; Không xem được các
+--   thông tin quan trọng của nhà phân phối".
+--   Rà ra ba bảng nhân sự có chính sách ĐỌC chỉ là `org_id = user_org_id()` — mọi tài
+--   khoản của NPP (kể cả NVBH) gọi thẳng API là đọc được:
+--     · hr_salary_config — lương cơ bản, phụ cấp, bậc thưởng KPI;
+--     · hr_monthly_bonus — cơ chế thưởng tháng;
+--     · hr_attendance    — chấm công của MỌI nhân viên.
+--   Màn Nhân sự vốn đã ẩn với NVBH; đây là khoá ở tầng dữ liệu (quyền đổi qua RLS /
+--   RPC, không tin trình duyệt). Mục tiêu doanh số NVBH cần thì đọc qua
+--   `my_sales_target()` (mig 196) — một con số, không mở cả bảng.
+--   Bảng lương (`hr_payroll`) đã đúng từ trước: chỉ của mình hoặc chủ / kế toán / quản lý.
+-- ====================================================================
+
+DROP POLICY IF EXISTS "View salary config" ON public.hr_salary_config;
+CREATE POLICY "View salary config" ON public.hr_salary_config
+  FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id()
+         AND public.user_role() IN ('owner', 'manager', 'accountant'));
+
+DROP POLICY IF EXISTS "View monthly bonus" ON public.hr_monthly_bonus;
+CREATE POLICY "View monthly bonus" ON public.hr_monthly_bonus
+  FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id()
+         AND public.user_role() IN ('owner', 'manager', 'accountant'));
+
+DROP POLICY IF EXISTS "View attendance" ON public.hr_attendance;
+CREATE POLICY "View attendance" ON public.hr_attendance
+  FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id()
+         AND (user_id = (SELECT auth.uid())
+              OR public.user_role() IN ('owner', 'manager', 'accountant')));
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT tablename AS bang, policyname AS chinh_sach,
+       CASE WHEN position('user_role()' IN qual) > 0 THEN 'đã khoá theo vai' ELSE 'CHƯA — ai trong NPP cũng đọc được' END AS trang_thai
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename IN ('hr_salary_config', 'hr_monthly_bonus', 'hr_attendance')
+  AND cmd = 'SELECT'
+ORDER BY 1;
+

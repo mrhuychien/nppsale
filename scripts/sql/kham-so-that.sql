@@ -302,4 +302,19 @@ SELECT 34, 'Mig 194 + 195 (người đứng tên công nợ khớp doanh số, b
                     WHERE rc.sales_user_id IS DISTINCT FROM si.sales_user_id)
        THEN 'LỆCH — còn dòng nợ khác người HĐ, chạy lại mig 194'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 35. Mig 196 — mục tiêu doanh số cho trang chủ NVBH
+SELECT 35, 'Mig 196 (mục tiêu doanh số trên trang chủ NVBH)',
+  CASE WHEN to_regprocedure('public.my_sales_target()') IS NULL
+       THEN 'CHƯA — trang chủ NVBH không hiện % mục tiêu'
+       ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 36. Mig 197 — NVBH không đọc được lương / thưởng / chấm công
+SELECT 36, 'Mig 197 (khoá bảng nhân sự với NVBH)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_policies
+                    WHERE schemaname = 'public' AND cmd = 'SELECT'
+                      AND tablename IN ('hr_salary_config', 'hr_monthly_bonus', 'hr_attendance')
+                      AND position('user_role()' IN qual) = 0)
+       THEN 'CHƯA — NVBH gọi API vẫn đọc được cấu hình lương / thưởng / chấm công'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
 import { filterByPermission } from "@/lib/nav/nav-permission"
 import { SetupBanner } from "@/components/setup/setup-banner"
+import { SalesHome } from "@/components/home/sales-home"
 import {
   ShoppingCart,
   Users,
@@ -139,6 +140,16 @@ const TILES: Tile[] = [
   { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue" },
 ]
 
+/** Thứ tự ô "Chức năng" trên trang chủ NVBH theo mẫu; ô còn lại theo sau. */
+const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/products", "/promotions", "/finance/cash-receipts", "/commissions", "/reports"]
+function oChucNangNvbh(tiles: Tile[]) {
+  const hang = (t: Tile) => {
+    const i = THU_TU_NVBH.indexOf(t.href)
+    return i < 0 ? THU_TU_NVBH.length : i
+  }
+  return [...tiles].sort((a, b) => hang(a) - hang(b)).map((t) => ({ ...t, color: COLOR_CLASS[t.color] }))
+}
+
 /* ⚠ `order_date` / `visit_date` là DATE: so bằng NGÀY theo giờ VN. Mốc nửa đêm
    dạng ISO (UTC) là 17:00 hôm qua — so kiểu ngày thì lọt cả đơn hôm qua. */
 function todayDateOnly(): string {
@@ -160,6 +171,8 @@ export default function HomeLauncherPage() {
   const [search, setSearch] = useState("")
   const orgName = org?.name ?? null
   const [snapshot, setSnapshot] = useState<SalesSnapshot | null>(null)
+  /** NVBH bấm kính lúp trên trang chủ mới → hiện lại màn tìm tính năng cũ. */
+  const [timKiem, setTimKiem] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const role = user?.role
@@ -299,6 +312,24 @@ export default function HomeLauncherPage() {
   // Câu nói hôm nay — same quote cho mọi user trong cùng 1 ngày UTC.
   const dailyQuote = useMemo(() => getDailyQuote(), [])
 
+  /*
+   * ⚠ CHỦ NHÀ 25/09/2026: "Làm lại trang chủ cho nhân viên bán hàng theo mẫu". NVBH thấy
+   *   trang chủ mới (doanh số của tôi, cần xử lý, chức năng…); bấm kính lúp mới về màn tìm.
+   */
+  if (isSales && user?.id && !timKiem && !searching) {
+    return (
+      <SalesHome
+        userId={user.id}
+        fullName={user.full_name || ""}
+        tiles={oChucNangNvbh(visibleTiles)}
+        onSearch={() => {
+          setTimKiem(true)
+          requestAnimationFrame(() => inputRef.current?.focus())
+        }}
+      />
+    )
+  }
+
   return (
     // Đệm đáy khớp với dashboard-shell — trang này nay cũng có thanh nav dưới.
     <div className="min-h-screen bg-background pb-nav lg:pb-0">
@@ -306,6 +337,10 @@ export default function HomeLauncherPage() {
       <header className="sticky top-0 z-20 flex items-center justify-between bg-background/80 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
         <Link
           href="/home"
+          onClick={() => {
+            setTimKiem(false)
+            setSearch("")
+          }}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-zinc-700 transition-colors hover:bg-zinc-300"
           title="Trang chủ"
         >

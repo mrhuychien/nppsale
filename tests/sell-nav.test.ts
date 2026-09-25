@@ -50,7 +50,9 @@ describe("Chọn hàng trả xong thì ĐÓNG màn đó, không mở thêm một
     const calls = POS.match(/backToReturnSlip\(router\)/g) ?? []
     // Thiết kế 24/09/2026 (1a): hai đường ra — nút lùi ở đầu và "Tiếp tục" ở
     // thanh đáy (thẻ +/− ngay tại chỗ, không rời màn; bỏ chế độ chọn nhiều).
-    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(2)
+    // Đường thứ ba (25/09/2026): bật "chọn từng mã" thì thêm một mã mới là về
+    // phiếu trả — cũng qua `backToReturnSlip` (replace), không push.
+    expect(calls.length, "thiếu đường quay về phiếu trả").toBe(3)
   })
 
   /** Giỏ hàng MỞ phiếu trả nên nó vẫn `push` — đó là tầng đúng. */

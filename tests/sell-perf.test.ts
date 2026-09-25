@@ -265,8 +265,9 @@ describe("Về danh sách thì thấy lại đúng chỗ vừa đứng", () => {
     // trả). Thiết kế 24/09/2026 bỏ chế độ chọn nhiều — thẻ có bộ đếm ngay
     // trên thẻ. Dòng khai báo không khớp mẫu này (`= () =>`), nên đúng bằng
     // số nơi GỌI. Lối thứ ba (25/09/2026): chế độ "chọn từng mã" thêm một mã
-    // mới là sang thẳng giỏ — cũng rời màn nên cũng phải xoá ô tìm.
-    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(3)
+    // mới là sang thẳng giỏ — cũng rời màn nên cũng phải xoá ô tìm. Và lối thứ
+    // tư: chọn từng mã ở màn chọn hàng TRẢ về thẳng phiếu trả.
+    expect((POS.match(/clearSearchMemory\(\)/g) ?? []).length).toBe(4)
   })
 
   /**

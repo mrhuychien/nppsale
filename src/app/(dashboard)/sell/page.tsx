@@ -3,7 +3,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, MousePointerClick } from "lucide-react"
-import { docChonTungMa, ghiChonTungMa, sangDonSauKhiThem } from "@/lib/sell/pick-mode"
+import { docChonTungMa, ghiChonTungMa, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
@@ -88,10 +88,12 @@ export default function SellPage() {
    *   localStorage, đọc sớm là vẽ lệch giữa server và máy.
    */
   const [chonTungMa, setChonTungMa] = useState(false)
-  useEffect(() => { setChonTungMa(docChonTungMa()) }, [])
+  /* Bán và trả là HAI công tắc riêng (xem `pick-mode.ts`). */
+  const loaiChon = returning ? "tra" : "ban"
+  useEffect(() => { setChonTungMa(docChonTungMa(loaiChon)) }, [loaiChon])
   const doiCheDoChon = () => {
     setChonTungMa((v) => {
-      ghiChonTungMa(!v)
+      ghiChonTungMa(!v, loaiChon)
       return !v
     })
   }
@@ -219,6 +221,11 @@ export default function SellPage() {
           isExchange: false,
           note: "",
         })
+      /* Chọn từng mã (25/09/2026): vừa thêm một mã MỚI thì về phiếu trả. */
+      if (roiManSauKhiThem({ chonTungMa, delta, dongMoi: j < 0 })) {
+        clearSearchMemory()
+        backToReturnSlip(router)
+      }
       return
     }
     const i = findLine(cart.cart, p.id, unit)
@@ -255,7 +262,7 @@ export default function SellPage() {
         vatRate: Number(p.vat_rate ?? 0),
       })
     /* Chọn từng mã: vừa thêm một mã MỚI thì sang màn Đơn hàng (chỉnh SL ở đó). */
-    if (sangDonSauKhiThem({ chonTungMa, delta, dongMoi: i < 0, traHang: returning })) {
+    if (roiManSauKhiThem({ chonTungMa, delta, dongMoi: i < 0 })) {
       clearSearchMemory()
       router.push("/sell/cart")
     }
@@ -275,6 +282,24 @@ export default function SellPage() {
   const showTabs = frequentIds.length > 0 && !q.trim()
   const tenKhach = customer?.store_name ?? ""
   const bangGia = customer?.group?.name ?? "Bảng giá chung"
+  /* Một nút cho cả hai màn: bán (cạnh bảng giá trên đầu) và trả (hàng khách + bảng giá). */
+  const noiDen = returning ? "về phiếu trả" : "sang đơn"
+  const nutChonTungMa = (
+    <button
+      type="button"
+      aria-pressed={chonTungMa}
+      aria-label={chonTungMa ? "Đang chọn từng mã — bấm để chọn nhiều mã" : "Chọn từng mã"}
+      title={chonTungMa ? `Đang chọn từng mã: thêm một mã là ${noiDen}. Bấm để tắt.` : `Chọn từng mã: thêm một mã là ${noiDen} ngay`}
+      onClick={doiCheDoChon}
+      data-testid="chon-tung-ma"
+      className={cn(
+        "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors",
+        chonTungMa ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
+      )}
+    >
+      <MousePointerClick className="h-[18px] w-[18px]" />
+    </button>
+  )
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-container-low pb-32">
@@ -307,22 +332,7 @@ export default function SellPage() {
             </span>
           )}
           {/* ⚠ CHỌN TỪNG MÃ — bật tới khi người dùng tự tắt (lưu trên máy). */}
-          {!returning && (
-            <button
-              type="button"
-              aria-pressed={chonTungMa}
-              aria-label={chonTungMa ? "Đang chọn từng mã — bấm để chọn nhiều mã" : "Chọn từng mã"}
-              title={chonTungMa ? "Đang chọn từng mã: thêm một mã là sang đơn. Bấm để tắt." : "Chọn từng mã: thêm một mã là sang đơn ngay"}
-              onClick={doiCheDoChon}
-              data-testid="chon-tung-ma"
-              className={cn(
-                "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors",
-                chonTungMa ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
-              )}
-            >
-              <MousePointerClick className="h-[18px] w-[18px]" />
-            </button>
-          )}
+          {!returning && nutChonTungMa}
         </div>
 
         <SellCustomerDeepLink />
@@ -413,6 +423,7 @@ export default function SellPage() {
             <span className="flex h-9 items-center rounded-[10px] border border-border px-2.5 text-[13px] font-medium text-on-surface-variant">
               {bangGia}
             </span>
+            {nutChonTungMa}
           </div>
         )}
 

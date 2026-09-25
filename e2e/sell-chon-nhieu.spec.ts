@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap } from "./helpers"
+import { dangNhap, tiepTucDonDo } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 25/09/2026:
@@ -59,10 +59,12 @@ test("chọn nhiều (tuỳ chọn): bấm dòng ở lại màn; bộ − số +
   await expect(page.getByLabel("Số lượng Sữa hộp", { exact: true })).toHaveText("2")
 
   await page.reload()
+  await tiepTucDonDo(page) // giỏ còn hàng → hỏi đơn dở
   await expect(nut).toHaveAttribute("aria-pressed", "true")
   await nut.click()
   await expect(nut).toHaveAttribute("aria-pressed", "false")
   await page.reload()
+  await tiepTucDonDo(page)
   await expect(nut).toHaveAttribute("aria-pressed", "false")
 })
 
@@ -75,8 +77,10 @@ test("chọn hàng trả: mặc định chọn từng mã — bấm dòng là v�
   await expect(page, "chọn từng mã mà không về phiếu trả").not.toHaveURL(/\/sell\?mode=return/)
 
   await page.goto("/sell?mode=return")
+  await tiepTucDonDo(page) // đã có hàng trả trong giỏ → hỏi đơn dở
   await nut.click()
   await expect(nut).toHaveAttribute("aria-pressed", "true")
   await page.goto("/sell")
+  await tiepTucDonDo(page)
   await expect(nut).toHaveAttribute("aria-pressed", "false") // màn bán không bị bật theo
 })

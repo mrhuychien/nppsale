@@ -2,6 +2,7 @@ import { SellCartProvider } from "@/hooks/use-sell-cart"
 import { SellDataProvider } from "@/hooks/use-sell-data"
 import { CommittedStockProvider } from "@/hooks/use-committed-stock"
 import { SellPrefetch } from "@/components/sell/prefetch"
+import { DonDoModal } from "@/components/sell/don-do-modal"
 
 /**
  * Luồng bán hàng trên điện thoại.
@@ -23,6 +24,8 @@ export default function SellLayout({ children }: { children: React.ReactNode }) 
       <SellCartProvider>
         <CommittedStockProvider>
           <SellPrefetch />
+          {/* Chủ nhà 25/09/2026: vào làm đơn mà còn đơn dở thì hỏi Có / Không. */}
+          <DonDoModal />
           {children}
         </CommittedStockProvider>
       </SellCartProvider>

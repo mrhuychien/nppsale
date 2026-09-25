@@ -65,3 +65,10 @@ export async function theoDoiIn(page: Page) {
     tabMoi: () => tabMoi,
   }
 }
+
+/** Vào lại /sell khi giỏ còn hàng → modal "đơn đang làm dở" (chủ nhà 25/09/2026) → bấm Có. */
+export async function tiepTucDonDo(page: Page) {
+  const hop = page.getByRole("dialog").filter({ hasText: "Bạn có đơn hàng đang làm dở" })
+  await hop.getByRole("button", { name: "Có", exact: true }).click()
+  await hop.waitFor({ state: "detached" })
+}

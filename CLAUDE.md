@@ -59,8 +59,11 @@ không được kẹp về 0.
   `X-Frame-Options: SAMEORIGIN` (DENY làm nút In không chạy).
 
 ## 2. Git / phát hành
-- **Chỉ push lên nhánh `newdesign`** (`git push -u origin newdesign`). Không push `main`. Không tạo PR
-  khi chưa được bảo.
+- Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ
+  trên branch preview rồi mới đẩy lên production"*.
+- **Phát triển và push trên nhánh `upv2`** (`git push -u origin upv2`) — đó là bản preview để thử.
+- **KHÔNG đẩy lên `main` (production) khi chủ nhà chưa bảo rõ trong chính lượt đó.** Không tự đẩy
+  theo thói quen của các đợt trước. `newdesign` là nhánh cũ, không push thêm. Không tạo PR khi chưa được bảo.
 - Preview và production **dùng chung một DB Supabase** — migration chạy là chạy thật.
 - Commit message tiếng Việt. Không ghi tên / mã model vào bất cứ thứ gì đẩy lên repo.
 

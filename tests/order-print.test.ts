@@ -140,3 +140,21 @@ describe("bằng chữ số âm", () => {
     expect(bangChu(0)).toBe("Không đồng")
   })
 })
+
+describe("phiếu trả in số âm (chủ nhà 25/09/2026)", () => {
+  it("soAm: tiền trả thành âm, 0 vẫn 0; bằng chữ đọc Âm", async () => {
+    const { soAm } = await import("../src/components/printing/return-slip")
+    const { bangChuCoAm } = await import("../src/lib/utils/number-to-vn-words")
+    expect(soAm(60_000)).toBe(-60_000)
+    expect(soAm(-60_000)).toBe(-60_000)
+    expect(soAm(0)).toBe(0)
+    expect(bangChuCoAm(soAm(60_000))).toMatch(/^Âm sáu mươi nghìn/)
+  })
+  it("mẫu phiếu trả: Thành tiền, Tổng trừ công nợ, Bằng chữ đều qua soAm; POS dùng chung trang in", () => {
+    const S = readFileSync("src/components/printing/return-slip.tsx", "utf8")
+    expect(S).toContain('formatCurrency(soAm(l.lineTotal))')
+    expect(S).toContain("formatCurrency(soAm(credit))")
+    expect(S).toContain("bangChuCoAm(soAm(credit))")
+    expect(readFileSync("src/app/in/tra-hang/[id]/page.tsx", "utf8")).toContain('export { default } from "@/app/(dashboard)/returns/[id]/print/page"')
+  })
+})

@@ -12,10 +12,15 @@
  *
  * ⚠ LÝ DO / GHI CHÚ TỪNG DÒNG in ngay dưới tên hàng — chúng là lý do kho
  *   nhận lại món ấy, người ký phiếu phải đọc được.
+ *
+ * ⚠ TIỀN IN SỐ ÂM (chủ nhà 25/09/2026: "Mẫu in phiếu trả hàng cũng in số âm").
+ *   Hàng trả là khoản TRỪ vào công nợ của khách — cùng cách hóa đơn in dòng
+ *   "(Hàng trả) … −220.000đ". Đơn giá vẫn dương; Thành tiền, Tổng trừ công nợ
+ *   và Bằng chữ ("Âm …") mang dấu âm.
  */
 import { formatCurrency } from "@/lib/utils"
 import { stampVN, longDateVN, dateVN } from "@/lib/printing/doc-stamp"
-import { numberToVietnameseWords } from "@/lib/utils/number-to-vn-words"
+import { bangChuCoAm } from "@/lib/utils/number-to-vn-words"
 
 export interface ReturnSlipLine {
   id: string
@@ -53,6 +58,12 @@ export interface ReturnSlipProps {
 
 const CELL = "border border-black px-1 py-[2px] align-top leading-tight"
 
+/** Tiền hàng trả in thành số âm (khoản trừ công nợ); 0 vẫn là 0. */
+export function soAm(n: number): number {
+  const v = Math.abs(Math.round(Number(n) || 0))
+  return v === 0 ? 0 : -v
+}
+
 function Bang({ lines, exchange, startAt = 0 }: { lines: ReturnSlipLine[]; exchange: boolean; startAt?: number }) {
   return (
     <>
@@ -71,7 +82,7 @@ function Bang({ lines, exchange, startAt = 0 }: { lines: ReturnSlipLine[]; excha
           <td className={`${CELL} text-center`}>{l.unitName}</td>
           <td className={`${CELL} text-center tabular-nums`}>{l.quantity}</td>
           <td className={`${CELL} text-right tabular-nums`}>{exchange ? "" : formatCurrency(l.unitPrice)}</td>
-          <td className={`${CELL} text-right tabular-nums`}>{exchange ? "không trừ" : formatCurrency(l.lineTotal)}</td>
+          <td className={`${CELL} text-right tabular-nums`}>{exchange ? "không trừ" : formatCurrency(soAm(l.lineTotal))}</td>
         </tr>
       ))}
     </>
@@ -128,7 +139,7 @@ export function ReturnSlip(p: ReturnSlipProps) {
             <td className={`${CELL} text-center`} colSpan={3}>Tổng trừ công nợ</td>
             <td className={`${CELL} text-center tabular-nums`}>{sl}</td>
             <td className={CELL}></td>
-            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(credit)}</td>
+            <td className={`${CELL} text-right tabular-nums`}>{formatCurrency(soAm(credit))}</td>
           </tr>
           {p.exchangeLines.length > 0 && (
             <>
@@ -148,7 +159,7 @@ export function ReturnSlip(p: ReturnSlipProps) {
           <tr>
             <td className={CELL} colSpan={6}>
               <span className="font-bold">Bằng chữ:</span>{" "}
-              <span className="italic">{numberToVietnameseWords(credit)}</span>
+              <span className="italic">{bangChuCoAm(soAm(credit))}</span>
             </td>
           </tr>
         </tbody>

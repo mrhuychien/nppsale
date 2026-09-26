@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { baoLoiVeMayChu, taiLaiNeuLoiTaiMa } from "@/lib/client-error"
 
 export default function DashboardError({
   error,
@@ -14,6 +15,9 @@ export default function DashboardError({
 
   useEffect(() => {
     console.error("[dashboard/error]", error)
+    // Bản cũ còn mở sau khi phát hành → tải lại một lần; lỗi khác thì báo về máy chủ.
+    if (taiLaiNeuLoiTaiMa(error)) return
+    baoLoiVeMayChu(error, "dashboard/error")
   }, [error])
 
   return (

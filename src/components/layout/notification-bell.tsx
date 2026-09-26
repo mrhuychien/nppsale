@@ -1,5 +1,6 @@
 "use client"
 
+import { KhungAnToan } from "@/components/ui/error-boundary"
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -46,7 +47,7 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("vi-VN")
 }
 
-export function NotificationBell() {
+function ChuongThongBao() {
   const { authUser } = useAuth()
   const supabase = createClient()
   const router = useRouter()
@@ -257,5 +258,14 @@ export function NotificationBell() {
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Chuông trong vùng bắt lỗi riêng: kênh realtime hay dữ liệu thông báo hỏng thì chỉ mất chuông. */
+export function NotificationBell() {
+  return (
+    <KhungAnToan noi="notification-bell">
+      <ChuongThongBao />
+    </KhungAnToan>
   )
 }

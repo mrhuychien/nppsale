@@ -14,6 +14,7 @@
  * patch / delete vào bộ nhớ; RPC theo bảng xử lý. Mọi yêu cầu được ghi
  * vào `requests` — chốt đọc qua GET /__log.
  */
+import { WebSocketServer } from "ws"
 import http from "node:http"
 import crypto from "node:crypto"
 
@@ -281,6 +282,28 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       return send(res, 200, out[0], headers)
     }
     return send(res, 200, out, headers)
+  })
+
+  /**
+   * ⚠ REALTIME GIẢ (Phoenix vsn 2.0.0). Không có nó thì kênh không bao giờ vào trạng thái
+   *   "đã join", nên lỗi "cannot add postgres_changes callbacks after subscribe()" (chuông gắn
+   *   lại kênh cũ chưa rời xong — trắng màn /dashboard trên production 26/09/2026) không hiện
+   *   ra được trong chốt. Rời kênh trả lời trễ như mạng thật.
+   */
+  const wss = new WebSocketServer({ noServer: true })
+  server.on("upgrade", (req, socket, head) => {
+    if (!req.url.startsWith("/realtime/v1/websocket")) return socket.destroy()
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.on("message", (raw) => {
+        let m
+        try { m = JSON.parse(String(raw)) } catch { return }
+        const [joinRef, ref, topic, event] = m
+        const reply = (response = {}) => ws.send(JSON.stringify([joinRef, ref, topic, "phx_reply", { status: "ok", response }]))
+        if (event === "phx_join") reply({ postgres_changes: [] })
+        else if (event === "phx_leave") setTimeout(() => { if (ws.readyState === 1) reply() }, 800)
+        else reply()
+      })
+    })
   })
 
   return { server, requests, db }

@@ -137,11 +137,7 @@ describe("Tính năng không thừa hưởng bừa từ mô-đun cha", () => {
     "/customers",
     "/sales/visits",
     "/promotions",
-    "/inventory",
-    "/products",
     "/receivables",
-    "/receivables/collect",
-    "/finance/cash-receipts",
     "/commissions",
     "/reports/sales",
   ])("NVBH vẫn thấy %s", (href) => {

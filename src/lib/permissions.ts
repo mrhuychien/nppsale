@@ -143,16 +143,19 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
     // chính sách RLS ở migration 115. Ô này chỉ là công tắc tổng.
     orders: ["read", "create", "update"],
     customers: ["read", "create", "update"],
-    inventory: ["read"],
-    products: ["read"],
+    /* ⚠ CHỦ NHÀ 26/09/2026: "NV bán hàng chỉ cần Module bán hàng và - Xem được công nợ của
+       mình - Xem được báo cáo bán hàng của mình - Xem được phiếu lương của mình. Còn lại bỏ
+       hết". Bỏ: kho, sản phẩm, trả hàng, thu tiền / phiếu thu, báo cáo đặt hàng / hàng hoá /
+       khách. Công nợ chỉ XEM; báo cáo chỉ còn Bán hàng (`reports.*` khác khai `defaultRoles`).
+       Tồn kho ở /sell vẫn đọc qua RLS — ô này chỉ giấu màn Kho / Sản phẩm. Xem `MAU_QUYEN_NVBH`. */
+    inventory: [],
+    products: [],
     commissions: ["read"],
-    receivables: ["read", "create"],
-    /* Chủ nhà 25/09/2026 (mẫu NVBH): bỏ Giao hàng (không dùng chuyến giao) và Hóa đơn
-       điện tử — NVBH không cần. Xem `MAU_QUYEN_NVBH`. */
+    receivables: ["read"],
     deliveries: [],
     promotions: ["read"],
     invoices: [],
-    returns: ["read", "create"],
+    returns: [],
     reports: ["read"],
     settings: [],
   },

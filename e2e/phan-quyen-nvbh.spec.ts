@@ -11,21 +11,34 @@ const SUA = "00000000-0000-4000-8000-0000000000d1"
 const doiVai = (role: string) =>
   fetch(`${FAKE}/rest/v1/users?id=eq.${OWNER}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) })
 
-test("NVBH: không vào lãi lỗ / lô hàng, không thấy giá vốn; vẫn xem sản phẩm và lên đơn", async ({ page }) => {
+test("NVBH: không vào lãi lỗ / lô hàng / sản phẩm / kho / phiếu thu; vẫn lên đơn", async ({ page }) => {
   await dangNhap(page)
   await doiVai("sales")
   try {
-    await page.goto("/reports/finance/pnl")
-    await expect(page).not.toHaveURL(/\/reports\/finance\/pnl/)
-    await page.goto("/inventory/batches")
-    await expect(page).not.toHaveURL(/\/inventory\/batches/)
-
-    await page.goto(`/products/${SUA}`)
-    await expect(page.getByLabel("Giá bán")).toBeVisible()
-    await expect(page.getByLabel("Giá vốn")).toHaveCount(0)
+    /* Chủ nhà 26/09/2026: NVBH chỉ còn module bán hàng + công nợ / báo cáo bán hàng / phiếu lương. */
+    for (const url of ["/reports/finance/pnl", "/inventory/batches", "/inventory", `/products/${SUA}`,
+      "/finance/cash-receipts", "/reports/products", "/reports"]) {
+      await page.goto(url)
+      await expect(page, url).not.toHaveURL(new RegExp(url.replace(/\//g, "\\/") + "$"))
+    }
 
     await page.goto("/sell")
     await expect(page.getByRole("button", { name: "Thêm Sữa hộp", exact: true })).toBeVisible()
+  } finally {
+    await doiVai("owner")
+  }
+})
+
+test("NVBH: Phiếu lương của tôi — kỳ đã chốt, các khoản cộng ra thực nhận", async ({ page }) => {
+  await dangNhap(page)
+  await doiVai("sales")
+  try {
+    await page.goto("/luong-cua-toi")
+    const ds = page.getByTestId("phieu-luong")
+    await expect(ds.getByText("Tháng 08/2026")).toBeVisible()
+    await expect(ds.getByText("8.660.000đ").first()).toBeVisible()
+    await expect(ds.getByText("BHXH")).toBeVisible()
+    await expect(ds.getByText("-840.000đ")).toBeVisible()
   } finally {
     await doiVai("owner")
   }

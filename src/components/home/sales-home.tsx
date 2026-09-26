@@ -44,8 +44,16 @@ const HUE_KENH = ["bg-primary", "bg-[#12b76a]", "bg-[#fdb022]", "bg-[#6941c6]", 
  * NVBH (RLS) và lọc `sales_user_id = mình`. Doanh số theo HÓA ĐƠN trừ hàng trả.
  */
 export function SalesHome({
-  userId, fullName, tiles, onSearch,
-}: { userId: string; fullName: string; tiles: OChucNang[]; onSearch: () => void }) {
+  userId, fullName, tiles, onSearch, xemKho = true,
+}: {
+  userId: string
+  fullName: string
+  tiles: OChucNang[]
+  onSearch: () => void
+  /** Được vào màn Sản phẩm / Kho không — không thì bỏ việc "Tồn kho thấp" và dòng lô sắp hết
+   *  hạn (chủ nhà 26/09/2026: NVBH chỉ còn module bán hàng). */
+  xemKho?: boolean
+}) {
   const [ky, setKy] = useState<KyTrangChu>("month")
   const [homNay, setHomNay] = useState("")
   const [dl, setDl] = useState<DuLieu | null>(null)
@@ -125,15 +133,20 @@ export function SalesHome({
         const kenhTen = new Map<string, string>()
         for (const r of (kenhData ?? []) as Array<{ code: string; name: string }>) kenhTen.set(r.code, r.name)
 
-        const [ton, prod, lo] = await Promise.all([
-          loadSellStock(sb),
-          fetchAllForAggregate<{ id: string }>((f, t) =>
-            sb.from("products").select("id", { count: "exact" }).eq("status", "active").order("id").range(f, t)),
-          sb.from("batches").select("id", { count: "exact", head: true }).gt("qty_on_hand", 0)
-            .eq("warehouse_zone", "sale").lte("expires_at", congNgay(homNay, 30)),
-        ])
-        if (huy) return
-        const tonThap = ton && !prod.error ? prod.rows.filter((p) => (ton[p.id] ?? 0) < 10).length : null
+        let tonThap: number | null = null
+        let loSapHet = 0
+        if (xemKho) {
+          const [ton, prod, lo] = await Promise.all([
+            loadSellStock(sb),
+            fetchAllForAggregate<{ id: string }>((f, t) =>
+              sb.from("products").select("id", { count: "exact" }).eq("status", "active").order("id").range(f, t)),
+            sb.from("batches").select("id", { count: "exact", head: true }).gt("qty_on_hand", 0)
+              .eq("warehouse_zone", "sale").lte("expires_at", congNgay(homNay, 30)),
+          ])
+          if (huy) return
+          tonThap = ton && !prod.error ? prod.rows.filter((p) => (ton[p.id] ?? 0) < 10).length : null
+          loSapHet = lo.count ?? 0
+        }
 
         const tuyenIds = new Set(((tuyenR.data ?? []) as Array<{ customer_id: string }>).map((r) => r.customer_id))
         const thamHomNay = new Set(thamR.rows.filter((v) => v.visit_date === homNay).map((v) => v.customer_id))
@@ -156,14 +169,14 @@ export function SalesHome({
           kenhTen,
           mucTieuThang: tgR.error ? 0 : Number(tgR.data || 0),
           tonThap,
-          loSapHet: lo.count ?? 0,
+          loSapHet,
         })
       } catch (e) {
         if (!huy) setLoi(errorMessage(e))
       }
     })()
     return () => { huy = true }
-  }, [homNay, userId])
+  }, [homNay, userId, xemKho])
 
   const tinh = useMemo(() => {
     if (!dl || !homNay) return null
@@ -194,7 +207,7 @@ export function SalesHome({
   const tamO = tiles.slice(0, 8)
   const oHien = moHet ? tiles : tamO
   const viec = dl
-    ? (dl.nhap.count > 0 ? 1 : 0) + (dl.no.tong > 0 ? 1 : 0) + ((dl.tonThap ?? 0) > 0 ? 1 : 0)
+    ? (dl.nhap.count > 0 ? 1 : 0) + (dl.no.tong > 0 ? 1 : 0) + (xemKho && (dl.tonThap ?? 0) > 0 ? 1 : 0)
     : 0
   const tongKenh = tinh ? tinh.kenh.reduce((s, x) => s + x.total, 0) : 0
   const topMax = tinh?.top[0]?.total ?? 0
@@ -300,7 +313,7 @@ export function SalesHome({
                 <Viec icon={CreditCard} tone="bg-destructive/10 text-destructive" tieuDe="Công nợ khách hàng"
                   phu={`${formatCurrency(dl.no.tong)} · ${dl.no.quaHan} khoản quá hạn`} href="/receivables" nut="Nhắc nợ" />
               )}
-              {(dl.tonThap ?? 0) > 0 && (
+              {xemKho && (dl.tonThap ?? 0) > 0 && (
                 <Viec icon={Warehouse} tone="bg-primary/10 text-primary" tieuDe="Tồn kho thấp"
                   phu={`${dl.tonThap} SKU dưới 10 đơn vị`} href="/products" nut="Xem kho" />
               )}
@@ -308,8 +321,12 @@ export function SalesHome({
             </div>
             <p className="mt-2 flex items-center gap-1 text-xs text-[#067647]">
               <Check className="h-3.5 w-3.5" />
-              {dl.loSapHet > 0 ? `${dl.loSapHet} lô sắp hết hạn` : "Không có lô sắp hết hạn"}
-              {" · "}
+              {xemKho && (
+                <>
+                  {dl.loSapHet > 0 ? `${dl.loSapHet} lô sắp hết hạn` : "Không có lô sắp hết hạn"}
+                  {" · "}
+                </>
+              )}
               {dl.no.vuotHanMuc > 0 ? `${dl.no.vuotHanMuc} KH vượt hạn mức nợ` : "Không KH vượt hạn mức nợ"}
             </p>
           </section>

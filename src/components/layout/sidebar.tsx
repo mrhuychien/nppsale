@@ -131,6 +131,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Cấu hình lương", href: "/hr/salary-config", icon: Wallet },
       { label: "Bảng lương", href: "/hr/payroll/runs", icon: Receipt },
       { label: "Hoa hồng (báo cáo)", href: "/commissions", icon: Award },
+      { label: "Phiếu lương của tôi", href: "/luong-cua-toi", icon: Wallet },
     ],
   },
   {

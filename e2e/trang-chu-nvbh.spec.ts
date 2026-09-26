@@ -34,6 +34,12 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
     await expect(trang.getByRole("link", { name: /Tạo đơn hàng mới/ })).toBeVisible()
     await expect(trang.getByRole("heading", { name: "Chức năng" })).toBeVisible()
     await expect(trang.getByRole("link", { name: "Bán hàng" })).toBeVisible()
+    // Chủ nhà 26/09/2026: NVBH chỉ còn bán hàng + công nợ / báo cáo bán hàng / phiếu lương.
+    await expect(trang.getByRole("link", { name: "Phiếu lương" })).toHaveAttribute("href", "/luong-cua-toi")
+    await expect(trang.getByRole("link", { name: "Báo cáo" })).toHaveAttribute("href", "/reports/sales")
+    await expect(trang.getByRole("link", { name: "Sản phẩm" })).toHaveCount(0)
+    await expect(trang.getByRole("link", { name: "Phiếu thu" })).toHaveCount(0)
+    await expect(trang.getByText("Tồn kho thấp")).toHaveCount(0)
     // Kính lúp → màn tìm tính năng.
     await trang.getByRole("button", { name: "Tìm tính năng" }).click()
     await expect(page.getByPlaceholder("Tìm tính năng…")).toBeFocused()

@@ -61,7 +61,8 @@ describe("vào được màn tạo ⇒ RLS cho chèn", () => {
   it("/receivables/collect: quản lý không vào (RPC đòi receivables.create)", () => {
     expect(duocVaoTrang("manager", "/receivables/collect", "receivables")).toBe(false)
     expect(duocVaoTrang("accountant", "/receivables/collect", "receivables")).toBe(true)
-    expect(duocVaoTrang("sales", "/receivables/collect", "receivables")).toBe(true)
+    // Chủ nhà 26/09/2026: NVBH chỉ XEM công nợ của mình — không lập phiếu thu.
+    expect(duocVaoTrang("sales", "/receivables/collect", "receivables")).toBe(false)
   })
 })
 

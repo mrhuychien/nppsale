@@ -346,4 +346,11 @@ SELECT 40, 'Mig 201 (Phiếu lương của tôi)',
   CASE WHEN to_regprocedure('public.my_payslips()') IS NULL
        THEN 'CHƯA — màn Phiếu lương của tôi báo lỗi'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 41. Mig 202 — NVBH chỉ còn module bán hàng (tắt ô quyền cũ, bỏ lập phiếu thu)
+SELECT 41, 'Mig 202 (NVBH chỉ còn bán hàng)',
+  CASE WHEN EXISTS (SELECT 1 FROM role_permissions WHERE role = 'sales' AND allowed
+                      AND module = 'receivables' AND action = 'create')
+       THEN 'CHƯA — NVBH còn lập phiếu thu / ô quyền cũ'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

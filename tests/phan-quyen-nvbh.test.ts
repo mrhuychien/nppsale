@@ -4,7 +4,7 @@ import { resolve } from "node:path"
 import { duocVaoTrang, mucChaCua, CUA_VAO, NAV_PERMISSION } from "@/lib/nav/nav-permission"
 import {
   xemDuocGiaVon, locBienThe, duocXuatFile, setPermissionsCache, rowsToCache, setUserOverrides, ACTIONS,
-  type Action,
+  type Action, type Module,
 } from "@/lib/permissions"
 import { FEATURES } from "@/lib/permissions-features"
 import { MAU_QUYEN_NVBH, oTheoMauNvbh } from "@/lib/permission-templates"
@@ -17,7 +17,7 @@ import { MAU_QUYEN_NVBH, oTheoMauNvbh } from "@/lib/permission-templates"
 const doc = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
 afterEach(() => { setPermissionsCache(null); setUserOverrides(null) })
 
-const CAM_NVBH: Array<[string, "reports" | "inventory" | "settings" | "receivables"]> = [
+const CAM_NVBH: Array<[string, Module]> = [
   ["/reports/finance/pnl", "reports"],
   ["/reports/finance/balance-sheet", "reports"],
   ["/analytics/business/cost-profit", "reports"],
@@ -35,11 +35,23 @@ const CAM_NVBH: Array<[string, "reports" | "inventory" | "settings" | "receivabl
   ["/payables/by-supplier", "receivables"],
   ["/hr/payroll", "settings"],
   ["/hr/payroll/abc", "settings"],
+  /* Chủ nhà 26/09/2026: NVBH chỉ còn module bán hàng + công nợ / báo cáo bán hàng / phiếu lương. */
+  ["/inventory", "inventory"],
+  ["/products", "products"],
+  ["/returns", "returns"],
+  ["/returns/new", "returns"],
+  ["/finance/cash-receipts", "receivables"],
+  ["/finance/cash-receipts/new", "receivables"],
+  ["/receivables/collect", "receivables"],
+  ["/reports/orders", "reports"],
+  ["/reports/products", "reports"],
+  ["/reports/customers", "reports"],
 ]
-const DUOC_NVBH: Array<[string, "orders" | "customers" | "reports" | "inventory" | "returns" | "receivables"]> = [
+const DUOC_NVBH: Array<[string, Module]> = [
   ["/sell", "orders"], ["/sell/cart", "orders"], ["/sell/drafts", "orders"], ["/orders/abc", "orders"],
-  ["/customers/new", "customers"], ["/returns/new", "returns"], ["/reports/sales", "reports"],
-  ["/inventory", "inventory"], ["/finance/cash-receipts/new", "receivables"], ["/notifications", "orders"],
+  ["/customers/new", "customers"], ["/reports/sales", "reports"], ["/receivables", "receivables"],
+  ["/receivables/by-customer", "receivables"], ["/luong-cua-toi", "orders"], ["/notifications", "orders"],
+  ["/promotions", "promotions"], ["/sales/visits", "customers"], ["/commissions", "commissions"],
 ]
 
 describe("NVBH — cổng vào trang (mặc định)", () => {

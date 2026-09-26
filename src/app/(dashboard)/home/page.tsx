@@ -7,7 +7,7 @@ import { newOrderHref } from "@/lib/nav/new-order"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
-import { filterByPermission } from "@/lib/nav/nav-permission"
+import { canSeeHref, filterByPermission } from "@/lib/nav/nav-permission"
 import { SetupBanner } from "@/components/setup/setup-banner"
 import { SalesHome } from "@/components/home/sales-home"
 import {
@@ -135,13 +135,19 @@ const TILES: Tile[] = [
 
   // Hệ thống
   { label: "Nhân sự", href: "/hr", icon: UserCog, color: "orange" },
+  { label: "Phiếu lương", href: "/luong-cua-toi", icon: Wallet, color: "emerald" },
   { label: "Cài đặt", href: "/settings", icon: Settings, color: "slate" },
   { label: "Phân quyền", href: "/settings/permissions", icon: ShieldCheck, color: "zinc" },
   { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue" },
 ]
 
+/** Ô riêng của trang chủ NVBH: báo cáo bán hàng của mình (trang gộp /reports là số toàn NPP). */
+const TILES_NVBH: Tile[] = [
+  { label: "Báo cáo", href: "/reports/sales", icon: BarChart3, color: "blue" },
+]
+
 /** Thứ tự ô "Chức năng" trên trang chủ NVBH theo mẫu; ô còn lại theo sau. */
-const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/products", "/promotions", "/finance/cash-receipts", "/commissions", "/reports"]
+const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/promotions", "/receivables", "/reports/sales", "/luong-cua-toi", "/commissions"]
 function oChucNangNvbh(tiles: Tile[]) {
   const hang = (t: Tile) => {
     const i = THU_TU_NVBH.indexOf(t.href)
@@ -321,7 +327,11 @@ export default function HomeLauncherPage() {
       <SalesHome
         userId={user.id}
         fullName={user.full_name || ""}
-        tiles={oChucNangNvbh(visibleTiles)}
+        tiles={oChucNangNvbh([
+          ...visibleTiles,
+          ...filterByPermission(role, TILES_NVBH).filter((t) => !visibleTiles.some((v) => v.href === t.href)),
+        ])}
+        xemKho={canSeeHref(role, "/products")}
         onSearch={() => {
           setTimKiem(true)
           requestAnimationFrame(() => inputRef.current?.focus())

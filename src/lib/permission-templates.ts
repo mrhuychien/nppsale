@@ -92,14 +92,15 @@ export function getTemplate(key: TemplateKey | string): PermissionTemplate | und
 /**
  * MẪU PHÂN QUYỀN NHÂN VIÊN BÁN HÀNG — áp vào ma trận /settings/permissions (vai `sales`).
  *
- * ⚠ CHỦ NHÀ 25/09/2026: "Xây dựng cho tao phân quyền mẫu cho nhân viên bán hàng: Đủ để
- *   nhân viên bán hàng; Không xem được các thông tin quan trọng của nhà phân phối".
- *   · ĐỦ ĐỂ BÁN: lên đơn, sửa đơn của mình, khách hàng + đi tuyến, khuyến mãi, xem tồn
- *     (số lượng), trả hàng, thu tiền / phiếu thu, công nợ khách của mình, hoa hồng của mình,
- *     báo cáo bán hàng / đặt hàng / khách / hàng hoá (chỉ số của mình — RLS; không có màn lãi).
- *   · KHÔNG XEM: giá vốn / giá trị tồn / lãi (`inventory.cost`), tổng quan & cuối ngày toàn
- *     NPP, phân tích, báo cáo tài chính / NCC / nhân viên / kênh / tồn kho, mua hàng, NCC,
- *     công nợ NCC, chi phí, công nợ theo nhân viên, nhân sự, cài đặt, hóa đơn điện tử.
+ * ⚠ CHỦ NHÀ 26/09/2026 (thay mẫu 25/09): "NV bán hàng chỉ cần Module bán hàng và - Xem được
+ *   công nợ của mình - Xem được báo cáo bán hàng của mình - Xem được phiếu lương của mình.
+ *   Còn lại bỏ hết".
+ *   · MODULE BÁN HÀNG: lên đơn (/sell, kèm hàng trả/đổi trong đơn), sửa đơn của mình, khách
+ *     hàng + đi tuyến, khuyến mãi, hoa hồng của mình.
+ *   · Công nợ khách của mình (chỉ xem), báo cáo bán hàng của mình (RLS; không có màn lãi),
+ *     phiếu lương của mình (/luong-cua-toi — luôn hiện, hàm `my_payslips`).
+ *   · BỎ: kho, sản phẩm, trả hàng, thu tiền / phiếu thu, báo cáo đặt hàng / hàng hoá / khách,
+ *     và mọi thứ của mẫu cũ đã bỏ (giá vốn, tổng quan NPP, mua hàng, nhân sự, cài đặt…).
  *   Tính năng KHÔNG có trong bảng = không quyền nào.
  */
 export const MAU_QUYEN_NVBH: Readonly<Record<string, readonly Action[]>> = {
@@ -108,16 +109,9 @@ export const MAU_QUYEN_NVBH: Readonly<Record<string, readonly Action[]>> = {
   "customers.visits": ["read", "create", "update"],
   promotions: ["read"],
   commissions: ["read"],
-  returns: ["read", "create"],
-  inventory: ["read"],
-  products: ["read"],
-  receivables: ["read", "create"],
+  receivables: ["read"],
   "receivables.by_customer": ["read"],
-  "finance.cash_receipts": ["read", "create"],
   "reports.sales": ["read"],
-  "reports.orders": ["read"],
-  "reports.customers": ["read"],
-  "reports.products": ["read"],
 }
 
 /** Ô của một tính năng theo mẫu NVBH. */

@@ -193,6 +193,13 @@ export const rpc = {
   post_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f004", invoice_code: "HD-E2E-3", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "partially_invoiced" }],
   assign_doc_seller: () => null,
   user_has_permission: () => true,
+  /* Phiếu lương của tôi (mig 201) — một kỳ đã chốt. */
+  my_payslips: () => [{
+    payroll_run_id: "00000000-0000-4000-8000-00000000a701", month: "2026-08-01", locked_at: "2026-09-02T03:00:00Z",
+    base_salary: 8000000, standard_workdays: 26, actual_workdays: 26, prorated_base: 8000000, allowances: 500000,
+    kpi_bonus: 1000000, order_count_bonus: 0, activity_bonus: 0, overtime: 0, deductions: 0, social_insurance: 840000,
+    manual_adjustment: 0, net_salary: 8660000, computed_breakdown: { revenue: 150000000 }, notes: null,
+  }],
   lookup_email_by_identifier: () => "chu@npp.test",
   create_order_with_lines: (_a) => [{ order_id: "00000000-0000-4000-8000-00000000f001", order_code: "DH-E2E-1", already_existed: false }],
   create_return_with_lines: () => "00000000-0000-4000-8000-00000000f002",

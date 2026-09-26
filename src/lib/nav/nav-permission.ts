@@ -47,6 +47,9 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   // Luôn hiện — không có gì để giấu.
   "/home": { module: "orders", always: true },
   "/help": { module: "settings", always: true },
+  /* Phiếu lương của CHÍNH MÌNH (chủ nhà 26/09/2026) — ai cũng có; hàm `my_payslips` (mig 201)
+     chỉ trả dòng của người gọi, nên không cần gác thêm. */
+  "/luong-cua-toi": { module: "settings", always: true },
 
   // Bán hàng
   //
@@ -169,7 +172,9 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/analytics/performance/receivables": { module: "reports", feature: "analytics.performance" },
 
   // Báo cáo
-  "/reports": { module: "reports" },
+  /* ⚠ Trang gộp /reports có tab Kho / Tài chính / Nhân sự — số liệu TOÀN NPP như Tổng quan, nên
+     đi cùng khoá `reports.dashboard`. NVBH (chủ nhà 26/09/2026) vào thẳng /reports/sales. */
+  "/reports": { module: "reports", feature: "reports.dashboard" },
   "/dashboard": { module: "reports", feature: "reports.dashboard" },
   "/reports/end-of-day": { module: "reports", feature: "reports.end_of_day" },
   "/reports/sales": { module: "reports", feature: "reports.sales" },

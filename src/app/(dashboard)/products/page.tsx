@@ -3,13 +3,14 @@
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_SAN_PHAM } from "@/lib/search/list-filter-fields"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -52,6 +53,8 @@ export default function ProductsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [usedFallback, setUsedFallback] = useState(false)
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
@@ -121,12 +124,12 @@ export default function ProductsPage() {
     // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự
     // thử lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error
     // để hiển thị nguyên nhân cho người dùng.
-    const build = (select: string) => {
+    const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
       let q = supabase
         .from("products")
-        .select(select, { count: "exact" })
+        .select(select, dem ? { count: "exact" } : undefined)
         .order("name")
-        .range(pg.from, pg.to)
+        .range(from, to)
       if (debouncedSearch) {
         q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
       }
@@ -137,11 +140,19 @@ export default function ProductsPage() {
       if (statusFilter !== "all") q = q.eq("status", statusFilter)
       return q
     }
-    const res = await selectResilient<Product>(
-      build,
+    const res = await taiHaiNhip<Product, ResilientResult<Product>>(
+      (from, to, dem) => selectResilient<Product>((sel) => build(sel, from, to, dem),
       "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)",
       // eslint-disable-next-line no-restricted-syntax
-      "*, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)"
+      "*, price_lists(*), supplier:suppliers!products_primary_supplier_id_fkey(id, name)"),
+      pg.from,
+      pg.to,
+      (dau) => {
+        setProducts(dau.data)
+        pg.setTotal(dau.count ?? 0)
+        setLoading(false)
+      },
+      { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) }
     )
     setProducts(res.data)
     setLoadError(res.error)

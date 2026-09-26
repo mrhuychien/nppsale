@@ -5,7 +5,7 @@ import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { gopCongNoTheoDon } from "@/lib/orders/receivable-sum"
 import { LOC_DON_HANG } from "@/lib/search/list-filter-fields"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
 import { usePagination } from "@/hooks/use-pagination"
 import { MATCH_CAP } from "@/lib/search/list-search"
@@ -14,7 +14,8 @@ import { SearchSelect } from "@/components/ui/search-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { useAuth } from "@/hooks/use-auth"
@@ -254,6 +255,8 @@ export default function OrdersPage() {
     Record<string, { amount: number; paid: number; status: string; due_date: string | null }>
   >({})
   const [loading, setLoading] = useState(true)
+  /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
+  const khoaTaiRef = useRef<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -666,24 +669,39 @@ export default function OrdersPage() {
       if (!searchReady) return
       // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự thử
       // lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error để hiển thị.
-      const build = (select: string) => {
+      const build = (select: string, from: number, to: number, dem: boolean) => {
         // audit-ok: `selectResilient` trả lỗi ra ngoài và nơi gọi đưa vào
         // `setLoadError` để hiện lên màn hình.
         const q = supabase
           .from("sales_orders")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           .order("created_at", { ascending: false })
-          .range(pg.from, pg.to)
+          .range(from, to)
         return applyStatusFilter(applyCommonFilters(q), effectiveStatus)
       }
       // ⚠ `!inner` CHỈ khi đang lọc tuyến. Bật luôn thì đơn nào chưa gắn
       // khách sẽ biến mất khỏi danh sách mà không ai biết vì sao.
       const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
-      const res = await selectResilient<SalesOrder>(
-        build,
-        `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name), creator:users!sales_orders_created_by_fkey(full_name)`,
-        // eslint-disable-next-line no-restricted-syntax
-        `*, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 đơn đầu vẽ ngay, phần còn lại của trang về sau.
+         "Tải thêm" cùng truy vấn thì không vẽ lại 20 đơn đầu (danh sách không co lại). */
+      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from])
+      const taiThem = khoaTaiRef.current === khoa
+      khoaTaiRef.current = khoa
+      const chon = `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name), creator:users!sales_orders_created_by_fkey(full_name)`
+      // eslint-disable-next-line no-restricted-syntax
+      const chonDuPhong = `*, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`
+      const res = await taiHaiNhip<SalesOrder, ResilientResult<SalesOrder>>(
+        (from, to, dem) => selectResilient<SalesOrder>((sel) => build(sel, from, to, dem), chon, chonDuPhong),
+        pg.from,
+        pg.to,
+        (dau) => {
+          if (cancelled) return
+          setOrders(dau.data)
+          setLoadError(null)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        },
+        { boQuaDau: taiThem }
       )
       // Điều hướng nhanh làm request bị huỷ. Đó không phải lỗi — ghi
       // mảng rỗng đè lên danh sách đang hiện, kèm một thẻ đỏ
@@ -694,6 +712,8 @@ export default function OrdersPage() {
       setOrders(ordersData)
       setLoadError(res.error)
       pg.setTotal(res.count ?? 0)
+      // Danh sách đã đủ để xem — không bắt người dùng chờ phần công nợ / hoá đơn bên dưới.
+      setLoading(false)
 
       // Load receivables + invoices CHỈ cho orders đang hiển thị trên page.
       const ids = ordersData.map((o) => o.id)

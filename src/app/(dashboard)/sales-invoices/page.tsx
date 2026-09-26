@@ -23,6 +23,7 @@
 
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
+import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_HOA_DON } from "@/lib/search/list-filter-fields"
@@ -325,6 +326,8 @@ export default function SalesInvoicesPage() {
    *   Mỗi phép giữ một số thứ tự; kết quả của lượt không còn mới nhất bị bỏ.
    */
   const luotRef = useRef({ ds: 0, tong: 0, dem: 0 })
+  /** Truy vấn lần tải trước — trùng (trừ `pg.to`) nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
+  const khoaTaiRef = useRef<{ af: unknown; st: unknown; from: number } | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -333,28 +336,53 @@ export default function SalesInvoicesPage() {
     if (!searchReady) return
     const luot = ++luotRef.current.ds
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
-    let q = supabase
-      .from("sales_invoices")
-      .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, { count: "exact" })
-      .order("invoice_date", { ascending: false })
-      .order("created_at", { ascending: false })
-    q = locTrangThai(q, status)
-    q = applyFilters(q as never) as typeof q
-
-    const { data, error, count } = await q.range(pg.from, pg.to)
+    const taoQ = (dem: boolean) => {
+      let q = supabase
+        .from("sales_invoices")
+        .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, dem ? { count: "exact" } : undefined)
+        .order("invoice_date", { ascending: false })
+        .order("created_at", { ascending: false })
+      q = locTrangThai(q, status)
+      q = applyFilters(q as never) as typeof q
+      return q
+    }
+    /* ⚠ Cột tiền là SỐ CÒN LẠI sau hàng trả — khớp công nợ (mig 192). Nhịp đầu cũng trừ xong
+       rồi mới vẽ: không bao giờ hiện tiền hoá đơn chưa trừ hàng trả. */
+    const truTra = async (tho: InvoiceRow[]) => {
+      const tra = await traTheoHoaDon(supabase, tho.map((r) => r.id)).catch((e) => {
+        console.error("[sales-invoices] không đọc được hàng trả:", e)
+        return new Map<string, number>()
+      })
+      return tho.map((r) => {
+        const t = tra.get(r.id) ?? 0
+        return t ? { ...r, tong_hoa_don: r.total, tra_hang: t, total: Number(r.total || 0) - t } : r
+      })
+    }
+    /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 hoá đơn đầu vẽ ngay, phần còn lại về sau. "Tải thêm"
+       cùng truy vấn thì không vẽ lại nhịp đầu. */
+    const k = khoaTaiRef.current
+    const taiThem = !!k && k.af === applyFilters && k.st === status && k.from === pg.from
+    khoaTaiRef.current = { af: applyFilters, st: status, from: pg.from }
+    let daVeDu = false
+    const { data, error, count } = await taiHaiNhip<InvoiceRow, { data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>(
+      (from, to, dem) => taoQ(dem).range(from, to) as unknown as PromiseLike<{ data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>,
+      pg.from,
+      pg.to,
+      (dau) => {
+        void truTra(dau.data ?? []).then((list) => {
+          if (daVeDu || luot !== luotRef.current.ds) return
+          setRows(list)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        })
+      },
+      { boQuaDau: taiThem }
+    )
     if (luot !== luotRef.current.ds) return
     if (error) console.error("[sales-invoices] truy vấn lỗi:", error.message)
-    const tho = ((data as unknown) as InvoiceRow[]) || []
-    /* ⚠ Cột tiền là SỐ CÒN LẠI sau hàng trả — khớp công nợ (mig 192). */
-    const tra = await traTheoHoaDon(supabase, tho.map((r) => r.id)).catch((e) => {
-      console.error("[sales-invoices] không đọc được hàng trả:", e)
-      return new Map<string, number>()
-    })
+    const list = await truTra(((data as unknown) as InvoiceRow[]) || [])
     if (luot !== luotRef.current.ds) return
-    const list = tho.map((r) => {
-      const t = tra.get(r.id) ?? 0
-      return t ? { ...r, tong_hoa_don: r.total, tra_hang: t, total: Number(r.total || 0) - t } : r
-    })
+    daVeDu = true
     setRows(list)
     pg.setTotal(count ?? 0)
     setLoading(false)

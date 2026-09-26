@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
@@ -63,6 +64,8 @@ export default function NotificationsPage() {
 
   const [items, setItems] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all")
   const [unreadCount, setUnreadCount] = useState(0)
@@ -90,16 +93,24 @@ export default function NotificationsPage() {
   const fetchAll = useCallback(async () => {
     if (!authUser?.id) return
     setLoading(true)
-    let q = supabase
-      .from("notifications")
-      .select("id, type, title, body, link_url, is_read, created_at", { count: "exact" })
-      .eq("user_id", authUser.id)
-      .order("created_at", { ascending: false })
-      .range(pg.from, pg.to)
-    if (typeFilter !== "all") q = q.eq("type", typeFilter)
-    if (readFilter === "unread") q = q.eq("is_read", false)
-    if (readFilter === "read") q = q.eq("is_read", true)
-    const { data, count , error: qErr } = await q
+    /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
+    const taoQ = (from: number, to: number, dem: boolean) => {
+      let q = supabase
+        .from("notifications")
+        .select("id, type, title, body, link_url, is_read, created_at", dem ? { count: "exact" } : undefined)
+        .eq("user_id", authUser.id)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+      if (typeFilter !== "all") q = q.eq("type", typeFilter)
+      if (readFilter === "unread") q = q.eq("is_read", false)
+      if (readFilter === "read") q = q.eq("is_read", true)
+      return q as unknown as PromiseLike<{ data: Notification[] | null; count: number | null; error: { message: string } | null }>
+    }
+    const { data, count , error: qErr } = await taiHaiNhip(taoQ, pg.from, pg.to, (dau) => {
+      setItems(dau.data ?? [])
+      pg.setTotal(dau.count ?? 0)
+      setLoading(false)
+    }, { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) })
     if (qErr) console.error("[notifications] truy vấn lỗi:", qErr.message)
     setItems((data as Notification[]) || [])
     pg.setTotal(count ?? 0)

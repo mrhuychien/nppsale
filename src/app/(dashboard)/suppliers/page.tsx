@@ -3,13 +3,14 @@
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_NHA_CUNG_CAP } from "@/lib/search/list-filter-fields"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -49,6 +50,8 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -107,12 +110,12 @@ export default function SuppliersPage() {
       setLoading(true)
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
-      const build = (select: string) => {
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("suppliers")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           .order("name")
-          .range(pg.from, pg.to)
+          .range(from, to)
         if (debouncedSearch) {
           q = q.or(dieuKienTim("suppliers", ["name", "code"], debouncedSearch))
         }
@@ -122,11 +125,19 @@ export default function SuppliersPage() {
         if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
         return q
       }
-      const res = await selectResilient<Supplier>(
-        build,
+      const res = await taiHaiNhip<Supplier, ResilientResult<Supplier>>(
+        (from, to, dem) => selectResilient<Supplier>((sel) => build(sel, from, to, dem),
         "id, code, name, category, contact_name, phone, address, is_verified, is_active",
         // eslint-disable-next-line no-restricted-syntax
-        "*"
+        "*"),
+        pg.from,
+        pg.to,
+        (dau) => {
+          setSuppliers(dau.data)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        },
+        { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) }
       )
       setSuppliers(res.data)
       setLoadError(res.error)

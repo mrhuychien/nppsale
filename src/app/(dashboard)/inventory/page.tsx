@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { LEGACY_V2_HREFS } from "@/lib/nav/nav-permission"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { xemDuocGiaVon } from "@/lib/permissions"
@@ -87,6 +88,8 @@ export default function InventoryPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [tab, setTab] = useState("current")
   const [search, setSearch] = useState("")
   const [brandFilter, setBrandFilter] = useState<string>("all")
@@ -186,16 +189,16 @@ export default function InventoryPage() {
       /* ⚠ CHỜ LƯỢT TRA MÃ SẢN PHẨM — xem `useListSearch`. */
       if (!listSearch.ready) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.
-      const build = (select: string) => {
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("batches")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           .gt("qty_on_hand", 0)
           .order("expires_at")
           // ⚠ Mốc phụ `id`: hàng chục lô cùng hạn dùng (hoặc cùng NULL) —
           // thiếu nó thì một lô hiện ở cả trang 1 lẫn trang 2, lô khác mất.
           .order("id")
-          .range(pg.from, pg.to)
+          .range(from, to)
         /**
          * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
          *   Bản cũ chỉ `ilike("batch_code")` trên máy chủ rồi lọc thêm
@@ -214,11 +217,19 @@ export default function InventoryPage() {
         return q
       }
       const prod = brandFilter !== "all" ? "product:products!inner(*)" : "product:products(*)"
-      const res = await selectResilient<BatchWithProduct>(
-        build,
+      const res = await taiHaiNhip<BatchWithProduct, ResilientResult<BatchWithProduct>>(
+        (from, to, dem) => selectResilient<BatchWithProduct>((sel) => build(sel, from, to, dem),
         `id, batch_code, qty_on_hand, expires_at, manufactured_at, location, ${prod}`,
         // eslint-disable-next-line no-restricted-syntax
-        `*, ${prod}`
+        `*, ${prod}`),
+        pg.from,
+        pg.to,
+        (dau) => {
+          if (cancelled) return; setBatches(dau.data)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        },
+        { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) }
       )
       if (cancelled) return
       /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc cả ô tìm lẫn

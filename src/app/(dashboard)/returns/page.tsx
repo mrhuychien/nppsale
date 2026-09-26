@@ -4,7 +4,8 @@ import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG } from "@/lib/search/list-filter-fields"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { createClient } from "@/lib/supabase/client"
@@ -98,6 +99,8 @@ export default function ReturnsPage() {
   /** Số phiếu TH- (mig 193), đọc riêng — sổ chưa có cột thì chỉ mất số. */
   const [maPhieu, setMaPhieu] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
+  /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
+  const khoaTaiRef = useRef<string | null>(null)
   const [reasonFilter, setReasonFilter] = useState("all")
   /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
   const [sellerFilter, setSellerFilter] = useState("all")
@@ -233,25 +236,36 @@ export default function ReturnsPage() {
       setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
       if (!searchReady) return
-      let q = supabase
-        .from("returns")
-        .select(
-          "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
-          { count: "exact" }
-        )
-        /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
-        .order("return_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(pg.from, pg.to)
-      /**
-       * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
-       *   Bản cũ đọc một trang rồi `raw.filter(...)` ở trình duyệt —
-       *   gõ tên khách của một phiếu ở trang 3 là ra rỗng, và
-       *   `pg.setTotal(count)` vẫn ghi tổng của phép đếm CHƯA lọc, nên
-       *   phân trang hứa 8 trang trong khi chỉ có vài dòng hiện ra.
-       */
-      q = apDungLoc(q)
-      const { data, count , error: qErr } = await q
+      const taoQ = (from: number, to: number, dem: boolean) => {
+        const q = supabase
+          .from("returns")
+          .select(
+            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+            dem ? { count: "exact" } : undefined
+          )
+          /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
+          .order("return_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(from, to)
+        /**
+         * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
+         *   Bản cũ đọc một trang rồi `raw.filter(...)` ở trình duyệt —
+         *   gõ tên khách của một phiếu ở trang 3 là ra rỗng, và
+         *   `pg.setTotal(count)` vẫn ghi tổng của phép đếm CHƯA lọc, nên
+         *   phân trang hứa 8 trang trong khi chỉ có vài dòng hiện ra.
+         */
+        return apDungLoc(q) as unknown as PromiseLike<{ data: Return[] | null; count: number | null; error: { message: string } | null }>
+      }
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. */
+      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from])
+      const taiThem = khoaTaiRef.current === khoa
+      khoaTaiRef.current = khoa
+      const { data, count , error: qErr } = await taiHaiNhip(taoQ, pg.from, pg.to, (dau) => {
+        if (cancelled) return
+        setReturns(dau.data ?? [])
+        pg.setTotal(dau.count ?? 0)
+        setLoading(false)
+      }, { boQuaDau: taiThem })
       if (qErr) console.error("[returns] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc. Lọc hai lần

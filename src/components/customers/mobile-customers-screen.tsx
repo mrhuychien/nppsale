@@ -38,7 +38,8 @@ export interface KhachMobile {
   overdue: boolean
   /** Dòng phụ: chủ quán · tuyến · người phụ trách. */
   meta: string
-  lastOrderDate: string | null
+  /** `undefined` = chưa đọc xong (hiện "…"); `null` = chưa từng đặt. */
+  lastOrderDate: string | null | undefined
   address: string
   phone: string
   tags: NhanKhach[]
@@ -55,6 +56,7 @@ export function noNgan(debt: number | null): string {
 
 /** "Đặt 15 ngày trước" · "Đặt hôm nay" · "Đặt hôm qua" · "Chưa đặt đơn". */
 export function datGanNhat(date: string | null | undefined): string {
+  if (date === undefined) return "…"
   if (!date) return "Chưa đặt đơn"
   const d = daysSinceVN(date)
   if (d <= 0) return "Đặt hôm nay"

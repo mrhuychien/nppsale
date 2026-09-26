@@ -41,6 +41,8 @@ interface CustomerTableProps {
   managers?: Record<string, Manager[]>
   canCollect?: boolean
   visibleColumns: CustomerColumnKey[]
+  /** Đơn / lần ghé gần nhất còn đang đọc — ô hiện "…", KHÔNG hiện "Chưa có" (sai về khách). */
+  dangTaiPhu?: boolean
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (id: string, next: boolean) => void
@@ -58,6 +60,7 @@ export function CustomerTable({
   managers = {},
   canCollect = false,
   visibleColumns,
+  dangTaiPhu = false,
   selectable = false,
   selectedIds,
   onToggleSelect,
@@ -158,7 +161,9 @@ export function CustomerTable({
                   )}
                   {show("lastVisit") && showEnrichment && (
                     <TableCell className="text-xs">
-                      {lastVisit ? (
+                      {dangTaiPhu ? (
+                        <span className="text-muted-foreground">…</span>
+                      ) : lastVisit ? (
                         formatDate(lastVisit.visit_date)
                       ) : (
                         <span className="text-muted-foreground italic">Chưa có</span>
@@ -167,7 +172,9 @@ export function CustomerTable({
                   )}
                   {show("lastOrder") && showEnrichment && (
                     <TableCell className="text-xs">
-                      {lastOrder ? (
+                      {dangTaiPhu ? (
+                        <span className="text-muted-foreground">…</span>
+                      ) : lastOrder ? (
                         <>
                           <div className="font-medium">{formatDate(lastOrder.order_date)}</div>
                           <div className="text-muted-foreground">{formatCurrency(lastOrder.total)}</div>

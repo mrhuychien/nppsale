@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { errorMessage } from "@/lib/errors"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -74,6 +75,8 @@ export default function ReceivablesPage() {
   // lượt đọc độc lập, gộp chung thì lượt này xoá lỗi của lượt kia.
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const pg = usePagination(50)
   const supabase = createClient()
   const router = useRouter()
@@ -119,10 +122,10 @@ export default function ReceivablesPage() {
     async function fetch() {
       setLoading(true)
       // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
-      const build = (select: string) => {
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("receivables")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           // Hạn cũ nhất TRƯỚC = quá hạn nhiều ngày nhất trước. NVBH đi
           // thu cần biết khoản nào gấp nhất, không phải khoản nào mới tạo.
           // nullsFirst: false để khoản KHÔNG đặt hạn xuống cuối — không có
@@ -131,15 +134,23 @@ export default function ReceivablesPage() {
           // ⚠ Mốc phụ `id`: nhiều khoản cùng một hạn — thiếu nó thì ranh
           // giới trang do máy chủ tự quyết, khoản nợ lặp / sót giữa hai trang.
           .order("id")
-          .range(pg.from, pg.to)
+          .range(from, to)
         for (const f of locNC.menhDe) q = q.or(f)
         return q
       }
-      const res = await selectResilient<Receivable>(
-        build,
+      const res = await taiHaiNhip<Receivable, ResilientResult<Receivable>>(
+        (from, to, dem) => selectResilient<Receivable>((sel) => build(sel, from, to, dem),
         "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
         // eslint-disable-next-line no-restricted-syntax
-        "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)"
+        "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)"),
+        pg.from,
+        pg.to,
+        (dau) => {
+          if (cancelled) return; setReceivables(dau.data)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        },
+        { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) }
       )
       // Huỷ request khi điều hướng nhanh — không phải lỗi.
       if (cancelled || res.aborted) return

@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { ilikeDk } from "@/lib/search/list-search"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -62,6 +63,8 @@ export default function InvoicesPage() {
   const router = useRouter()
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [misaFilter, setMisaFilter] = useState("all")
@@ -142,35 +145,43 @@ export default function InvoicesPage() {
     let cancelled = false
     async function fetch() {
       setLoading(true)
-      let q = supabase
-        .from("invoices")
-        .select(
-          // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
-          // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
-          // kế toán không biết phải xử lý gì (NPP-15).
-          "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_invoice_url, misa_lookup_code, misa_error",
-          { count: "exact" }
-        )
-        .order("created_at", { ascending: false })
-        .range(pg.from, pg.to)
-      if (filterActive("search") && debouncedSearch) {
-        q = q.or(["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
-      }
-      for (const f of locNC.menhDe) q = q.or(f)
-      if (filterActive("status") && statusFilter !== "all") {
-        q = q.eq("status", statusFilter)
-      }
-      if (filterActive("misa") && misaFilter !== "all") {
-        if (misaFilter === "signed") q = q.eq("misa_status", "signed")
-        else if (misaFilter === "error") q = q.eq("misa_status", "error")
-        else if (misaFilter === "pending") q = q.or("misa_status.is.null,misa_status.eq.pending")
-        // Không có bộ lọc này thì hoá đơn bị huỷ / bị thay thế / lệch tiền
-        // nằm lẫn trong danh sách và không ai tìm ra chúng.
-        else if (misaFilter === "attention") {
-          q = q.in("misa_status", ["replaced", "cancelled", "amount_mismatch", "waiting_code"])
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
+      const taoQ = (from: number, to: number, dem: boolean) => {
+        let q = supabase
+          .from("invoices")
+          .select(
+            // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
+            // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
+            // kế toán không biết phải xử lý gì (NPP-15).
+            "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_invoice_url, misa_lookup_code, misa_error",
+            dem ? { count: "exact" } : undefined
+          )
+          .order("created_at", { ascending: false })
+          .range(from, to)
+        if (filterActive("search") && debouncedSearch) {
+          q = q.or(["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
         }
+        for (const f of locNC.menhDe) q = q.or(f)
+        if (filterActive("status") && statusFilter !== "all") {
+          q = q.eq("status", statusFilter)
+        }
+        if (filterActive("misa") && misaFilter !== "all") {
+          if (misaFilter === "signed") q = q.eq("misa_status", "signed")
+          else if (misaFilter === "error") q = q.eq("misa_status", "error")
+          else if (misaFilter === "pending") q = q.or("misa_status.is.null,misa_status.eq.pending")
+          // Không có bộ lọc này thì hoá đơn bị huỷ / bị thay thế / lệch tiền
+          // nằm lẫn trong danh sách và không ai tìm ra chúng.
+          else if (misaFilter === "attention") {
+            q = q.in("misa_status", ["replaced", "cancelled", "amount_mismatch", "waiting_code"])
+          }
+        }
+        return q as unknown as PromiseLike<{ data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>
       }
-      const { data, count , error: qErr } = await q
+      const { data, count , error: qErr } = await taiHaiNhip(taoQ, pg.from, pg.to, (dau) => {
+        if (cancelled) return; setInvoices(dau.data ?? [])
+        pg.setTotal(dau.count ?? 0)
+        setLoading(false)
+      }, { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) })
       if (qErr) console.error("[invoices] truy vấn lỗi:", qErr.message)
       if (cancelled) return
       setInvoices((data as InvoiceRow[]) || [])

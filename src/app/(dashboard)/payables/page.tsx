@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -51,6 +52,8 @@ export default function PayablesPage() {
   const [statsTruncated, setStatsTruncated] = useState(false)
   const [allOpen, setAllOpen] = useState<Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>>([])
   const [loading, setLoading] = useState(true)
+  /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
+  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const pg = usePagination(50)
@@ -120,15 +123,15 @@ export default function PayablesPage() {
       if (!searchReady) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
-      const build = (select: string) => {
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("payables")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           .order("due_date")
           // ⚠ Mốc phụ `id`: cả chục khoản cùng hạn, thiếu mốc duy nhất
           //   là một dòng hiện ở hai trang, dòng khác không trang nào.
           .order("id")
-          .range(pg.from, pg.to)
+          .range(from, to)
         /**
          * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
          *   Bản cũ chỉ `ilike("invoice_number")` trên máy chủ rồi lọc
@@ -141,11 +144,19 @@ export default function PayablesPage() {
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         return q
       }
-      const res = await selectResilient<Payable>(
-        build,
+      const res = await taiHaiNhip<Payable, ResilientResult<Payable>>(
+        (from, to, dem) => selectResilient<Payable>((sel) => build(sel, from, to, dem),
         "id, invoice_number, amount, paid, due_date, status, supplier:suppliers(name, code)",
         // eslint-disable-next-line no-restricted-syntax
-        "*, supplier:suppliers(name, code)"
+        "*, supplier:suppliers(name, code)"),
+        pg.from,
+        pg.to,
+        (dau) => {
+          if (cancelled) return; setPayables(dau.data)
+          pg.setTotal(dau.count ?? 0)
+          setLoading(false)
+        },
+        { boQuaDau: laTaiThem(khoaTaiRef, pg.from, pg.to) }
       )
       if (cancelled) return
       setPayables(res.data)

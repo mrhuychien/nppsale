@@ -3,7 +3,7 @@
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_KHACH_HANG } from "@/lib/search/list-filter-fields"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -11,7 +11,8 @@ import { buildManagers, managersSummary, type Manager } from "@/lib/customers/ma
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { selectResilient } from "@/lib/supabase/resilient"
+import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
+import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -145,6 +146,10 @@ export default function CustomersPage() {
   const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Đã đọc xong đơn / lần ghé gần nhất của trang chưa — chưa thì ô hiện "…", không "Chưa có". */
+  const [daDocPhu, setDaDocPhu] = useState(false)
+  /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
+  const khoaTaiRef = useRef<string | null>(null)
   const [search, setSearch] = useState("")
   const [quick, setQuick] = useState<QuickFilter>("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -336,13 +341,13 @@ export default function CustomersPage() {
        */
       const idSlice = quickIds ? quickIds.slice(pg.from, pg.to + 1) : null
 
-      const build = (select: string) => {
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("customers")
-          .select(select, { count: "exact" })
+          .select(select, dem ? { count: "exact" } : undefined)
           .order("store_name")
         if (idSlice) q = q.in("id", idSlice)
-        else q = q.range(pg.from, pg.to)
+        else q = q.range(from, to)
         if (debouncedSearch) {
           /* Tìm cả theo ĐỊA CHỈ (chủ nhà 26/09/2026) — `tim_kd` cũng có địa chỉ từ mig 203. */
           q = q.or(dieuKienTim("customers", COT_TIM_KHACH, debouncedSearch))
@@ -353,18 +358,38 @@ export default function CustomersPage() {
         if (channelFilter !== "all") q = q.eq("channel", channelFilter)
         return q
       }
-      const res = await selectResilient<Customer>(
-        build,
-        "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)",
-        // eslint-disable-next-line no-restricted-syntax
-        "*, group:customer_groups(*)"
-      )
+      const chon = "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)"
+      // eslint-disable-next-line no-restricted-syntax
+      const chonDuPhong = "*, group:customer_groups(*)"
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 khách đầu vẽ ngay, phần còn lại về sau. Thẻ lọc
+         nhanh (lát mã, `idSlice`) hỏi một lượt như cũ. "Tải thêm" cùng truy vấn thì không vẽ lại. */
+      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick, pg.from])
+      const taiThem = khoaTaiRef.current === khoa
+      khoaTaiRef.current = khoa
+      setDaDocPhu(false)
+      const res = idSlice
+        ? await selectResilient<Customer>((sel) => build(sel), chon, chonDuPhong)
+        : await taiHaiNhip<Customer, ResilientResult<Customer>>(
+            (from, to, dem) => selectResilient<Customer>((sel) => build(sel, from, to, dem), chon, chonDuPhong),
+            pg.from,
+            pg.to,
+            (dau) => {
+              if (cancelled) return
+              setCustomers(dau.data)
+              setLoadError(null)
+              pg.setTotal(quickIds ? quickIds.length : dau.count ?? 0)
+              setLoading(false)
+            },
+            { boQuaDau: taiThem }
+          )
       // Huỷ request khi điều hướng nhanh — không phải lỗi, và không
       // được ghi mảng rỗng đè lên danh sách đang hiện.
       if (cancelled || res.aborted) return
       const list = res.data
       setCustomers(list)
       setLoadError(res.error)
+      // Danh sách đã đủ để xem; đơn / lần ghé gần nhất về sau (ô hiện "…" chứ không "Chưa có").
+      setLoading(false)
       // Với thẻ lọc nhanh, tổng là độ dài danh sách mã — `count` trả về
       // chỉ đếm trong lát cắt vừa gửi đi.
       pg.setTotal(quickIds ? quickIds.length : res.count ?? 0)
@@ -479,6 +504,7 @@ export default function CustomersPage() {
       }
       setManagersMap(mgrMap)
 
+      setDaDocPhu(true)
       setLoading(false)
     }
     fetchData()
@@ -659,7 +685,7 @@ export default function CustomersPage() {
       debt: debts ? debts[c.id] || 0 : null,
       overdue,
       meta,
-      lastOrderDate: lastOrder?.order_date ?? null,
+      lastOrderDate: daDocPhu ? lastOrder?.order_date ?? null : undefined,
       address: diaChiNgan(c),
       phone: (c.phone ?? "").trim(),
       tags,
@@ -910,6 +936,7 @@ export default function CustomersPage() {
               debtsUnknown={debts === null}
               lastOrders={lastOrders}
               lastVisits={lastVisits}
+              dangTaiPhu={!daDocPhu}
               managers={managersMap}
               canCollect={!!user && hasPermission(user.role, "receivables", "create")}
               visibleColumns={visibleColumns}

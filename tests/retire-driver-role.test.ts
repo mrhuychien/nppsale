@@ -198,7 +198,7 @@ describe("Khoá tài khoản phải THẬT SỰ khoá", () => {
   /** Chặn ở màn đăng nhập thì câu giải thích nằm đúng chỗ người đang nhìn. */
   it("màn đăng nhập chặn TRƯỚC khi chuyển trang", () => {
     const i = LOGIN.indexOf('me?.is_active === false')
-    const j = LOGIN.indexOf('router.push("/orders")')
+    const j = LOGIN.indexOf("router.push(trangSauDangNhap(vaiTro))")
     expect(i, "chưa kiểm is_active ở màn đăng nhập").toBeGreaterThan(0)
     expect(i, "kiểm SAU khi đã chuyển trang thì người dùng thấy màn nháy rồi bị ném ra").toBeLessThan(j)
   })

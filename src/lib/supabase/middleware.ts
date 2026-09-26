@@ -124,7 +124,7 @@ export async function updateSession(request: NextRequest) {
       if (profileErr) console.error("[supabase/middleware] truy vấn lỗi:", profileErr.message)
       if (profile && !duocQuaCongSettings(profile.role)) {
         const url = request.nextUrl.clone()
-        url.pathname = "/dashboard"
+        url.pathname = "/home" // nhân viên không có Cài đặt / Nhân sự → Trang chủ (26/09/2026)
         return NextResponse.redirect(url)
       }
     } catch {
@@ -143,7 +143,7 @@ export async function updateSession(request: NextRequest) {
       if (profileErr) console.error("[supabase/middleware] truy vấn lỗi:", profileErr.message)
       if (profile && !["owner", "manager", "accountant"].includes(profile.role)) {
         const url = request.nextUrl.clone()
-        url.pathname = "/dashboard"
+        url.pathname = "/home" // nhân viên không có Cài đặt / Nhân sự → Trang chủ (26/09/2026)
         return NextResponse.redirect(url)
       }
     } catch {

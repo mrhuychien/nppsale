@@ -127,7 +127,10 @@ export function useEntityLock(
   useEffect(() => {
     if (!enabled || !opts.entityId) return
     const supabase = supabaseRef.current
-    const channelName = `entity_locks:${opts.entityType}:${opts.entityId}`
+    /* ⚠ Mỗi lần gắn một tên kênh riêng (như chuông thông báo): mở lại màn nhanh khi kênh cũ chưa
+       rời xong thì `channel(tên cũ)` trả lại kênh đang join → `.on()` ném "cannot add
+       postgres_changes callbacks after subscribe()" và sập cả màn. */
+    const channelName = `entity_locks:${opts.entityType}:${opts.entityId}:${Math.random().toString(36).slice(2, 10)}`
     const channel = supabase
       .channel(channelName)
       .on(

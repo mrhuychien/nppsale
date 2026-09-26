@@ -1,5 +1,6 @@
 "use client"
 
+import { trangSauDangNhap } from "@/lib/nav/trang-dau"
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -82,12 +83,14 @@ function LoginForm() {
        * NULL nghĩa là chưa ai khoá.
        */
       const uid = signed?.user?.id
+      let vaiTro: string | null = null
       if (uid) {
         const { data: me } = await supabase
           .from("users")
-          .select("is_active")
+          .select("is_active, role")
           .eq("id", uid)
           .maybeSingle()
+        vaiTro = (me?.role as string | undefined) ?? null
         if (me?.is_active === false) {
           await supabase.auth.signOut()
           setError("Tài khoản đã bị khoá. Liên hệ chủ nhà phân phối để mở lại.")
@@ -95,7 +98,8 @@ function LoginForm() {
         }
       }
 
-      router.push("/orders")
+      // Nhân viên về Trang chủ, khối văn phòng về Đơn hàng (chủ nhà 26/09/2026).
+      router.push(trangSauDangNhap(vaiTro))
       router.refresh()
     } catch {
       setError("Có lỗi xảy ra. Vui lòng thử lại.")

@@ -35,7 +35,11 @@ export function useRoleGuard(module: Module) {
 
   useEffect(() => {
     if (!loading && user && !hasAccess) {
-      router.replace("/")
+      /* ⚠ VỀ /home, KHÔNG VỀ "/". "/" đẩy khối văn phòng sang /dashboard; ai không vào được
+         /dashboard mà bị đẩy về "/" là quay vòng /dashboard ↔ "/" tới khi trình duyệt chặn
+         ("history.replaceState() more than 100 times per 10 seconds" — chủ nhà 26/09/2026,
+         màn trắng ở /dashboard). /home ai cũng vào được (`always`). */
+      router.replace("/home")
     }
   }, [user, loading, hasAccess, router])
 

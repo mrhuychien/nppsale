@@ -9,7 +9,9 @@ import { dangNhap } from "./helpers"
 test("xem nhanh đơn → Sửa đơn mở POS sửa đơn ở tab mới, tab cũ đứng yên", async ({ page, context }) => {
   await dangNhap(page)
   await page.goto("/orders")
-  await page.getByText("DH-0001").first().click()
+  // ⚠ Chỉ phần tử ĐANG HIỆN: màn đơn điện thoại (ẩn trên máy tính) cũng có chữ "DH-0001" và
+  //   dựng xong trước bảng máy tính — `.first()` trần bấm nhầm vào nó rồi chờ tới hết giờ.
+  await page.getByText("DH-0001").locator("visible=true").first().click()
   const [tab] = await Promise.all([
     context.waitForEvent("page"),
     page.getByText("Sửa đơn", { exact: true }).first().click(),

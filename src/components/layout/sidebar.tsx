@@ -135,6 +135,19 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    /* Báo cáo tổng hợp — 6 màn mới, chạy song song báo cáo cũ (chủ nhà 26/09/2026). */
+    label: "Báo cáo tổng hợp",
+    icon: LayoutDashboard,
+    items: [
+      { label: "Tổng quan", href: "/bao-cao", icon: LayoutDashboard },
+      { label: "Bán hàng", href: "/bao-cao/ban-hang", icon: Receipt },
+      { label: "Cuối ngày", href: "/bao-cao/cuoi-ngay", icon: FileBarChart2 },
+      { label: "Kho", href: "/bao-cao/kho", icon: Boxes },
+      { label: "Công nợ", href: "/bao-cao/cong-no", icon: CreditCard },
+      { label: "Tài chính", href: "/bao-cao/tai-chinh", icon: Wallet },
+    ],
+  },
+  {
     label: "Phân tích",
     icon: TrendingUp,
     items: [

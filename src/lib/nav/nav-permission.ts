@@ -171,6 +171,14 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/analytics/customers/overview": { module: "reports", feature: "analytics.customers" },
   "/analytics/performance/receivables": { module: "reports", feature: "analytics.performance" },
 
+  // Báo cáo tổng hợp — 6 màn mới, chạy song song báo cáo cũ (chủ nhà 26/09/2026).
+  "/bao-cao": { module: "reports", feature: "reports.dashboard" },
+  "/bao-cao/ban-hang": { module: "reports", feature: "reports.sales" },
+  "/bao-cao/cuoi-ngay": { module: "reports", feature: "reports.end_of_day" },
+  "/bao-cao/kho": { module: "reports", feature: "reports.inventory" },
+  "/bao-cao/cong-no": { module: "receivables", feature: "receivables" },
+  "/bao-cao/tai-chinh": { module: "reports", feature: "reports.finance" },
+
   // Báo cáo
   /* ⚠ Trang gộp /reports có tab Kho / Tài chính / Nhân sự — số liệu TOÀN NPP như Tổng quan, nên
      đi cùng khoá `reports.dashboard`. NVBH (chủ nhà 26/09/2026) vào thẳng /reports/sales. */

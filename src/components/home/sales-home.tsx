@@ -16,7 +16,7 @@ import { errorMessage } from "@/lib/errors"
 import { cn, formatCurrency } from "@/lib/utils"
 import {
   KY_TRANG_CHU, khoangKy, ngayDauCanDoc, mucTieuKy, doanhSoKy, theoKhach, theoKenh, tienGon,
-  loiNhacMucTieu, nhanNgay, congNgay, ngayTuyen, nhanTuyen, type KyTrangChu, type HoaDonTC, type TraTC,
+  loiNhacMucTieu, nhanNgay, congNgay, traCuaToi, ngayTuyen, nhanTuyen, type KyTrangChu, type HoaDonTC, type TraTC,
 } from "@/lib/home/sales-home"
 
 export interface OChucNang { label: string; href: string; icon: LucideIcon; color: string }
@@ -67,9 +67,11 @@ export function SalesHome({
             sb.from("sales_invoices").select("id, customer_id, invoice_date, total", { count: "exact" })
               .eq("sales_user_id", userId).eq("status", "posted")
               .gte("invoice_date", dau).lte("invoice_date", cuoi).order("id").range(f, t)),
-          fetchAllForAggregate<TraTC>((f, t) =>
-            sb.from("returns").select("customer_id, revenue_date, credit_note_amount", { count: "exact" })
-              .eq("sales_user_id", userId).gte("revenue_date", dau).lte("revenue_date", cuoi).order("id").range(f, t)),
+          /* ⚠ KHÔNG lọc `sales_user_id` ở câu hỏi: phiếu tự sinh cũ có thể chưa ghi người (sổ
+             chưa chạy mig 194). RLS (mig 198) chỉ trả phiếu thuộc về mình; `traCuaToi` chọn tiếp. */
+          fetchAllForAggregate<TraTC & { sales_user_id: string | null }>((f, t) =>
+            sb.from("returns").select("customer_id, revenue_date, credit_note_amount, sales_user_id", { count: "exact" })
+              .gte("revenue_date", dau).lte("revenue_date", cuoi).order("id").range(f, t)),
           fetchAllForAggregate<{ order_date: string }>((f, t) =>
             sb.from("sales_orders").select("order_date", { count: "exact" })
               .eq("sales_user_id", userId).neq("status", "cancelled")
@@ -139,7 +141,7 @@ export function SalesHome({
 
         setDl({
           hd: hdR.rows.map((h) => ({ ...h, total: Number(h.total || 0) })),
-          tra: traR.error ? [] : traR.rows,
+          tra: traR.error ? [] : traCuaToi(traR.rows, userId),
           don: donR.rows,
           tham: thamR.rows,
           nhap: {

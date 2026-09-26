@@ -317,4 +317,18 @@ SELECT 36, 'Mig 197 (khoá bảng nhân sự với NVBH)',
                       AND position('user_role()' IN qual) = 0)
        THEN 'CHƯA — NVBH gọi API vẫn đọc được cấu hình lương / thưởng / chấm công'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 37. Mig 198 — NVBH đọc được phiếu trả thuộc về mình (trang chủ / báo cáo trừ hàng trả)
+SELECT 37, 'Mig 198 (NVBH thấy phiếu trả tự sinh của HĐ mình)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_policies
+                    WHERE schemaname = 'public' AND tablename = 'returns' AND policyname = 'Sales see own returns'
+                      AND position('sales_user_id' IN qual) > 0)
+       THEN 'OK — đã vá'
+       ELSE 'CHƯA — doanh số NVBH (trang chủ, báo cáo) chưa trừ phiếu trả tự sinh' END, ''
+UNION ALL
+-- 38. Mig 199 — công nợ theo khách không kẹp 0 (khớp theo nhân viên)
+SELECT 38, 'Mig 199 (Công nợ theo KH khớp Công nợ theo NV)',
+  CASE WHEN position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_customer()'::regprocedure)) > 0
+       THEN 'CHƯA — tổng công nợ theo khách cao hơn theo nhân viên (dư có bị kẹp 0)'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

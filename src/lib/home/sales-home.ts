@@ -81,6 +81,18 @@ export function mucTieuKy(mucTieuThang: number, ky: KyTrangChu, homNay: string):
 export interface HoaDonTC { id: string; customer_id: string | null; invoice_date: string; total: number }
 export interface TraTC { customer_id: string | null; revenue_date: string; credit_note_amount: number }
 
+/**
+ * Phiếu trả tính cho NVBH đang xem.
+ *
+ * ⚠ CHỦ NHÀ 26/09/2026: "doanh thu của nhân viên chưa trừ hàng trả lại". Phiếu đứng tên
+ *   mình thì trừ; phiếu CHƯA ghi người (phiếu tự sinh trước mig 194) mà RLS vẫn cho mình
+ *   đọc — tức gắn HĐ / đơn của mình hoặc mình lập — cũng trừ. Phiếu đứng tên người khác
+ *   thì không.
+ */
+export function traCuaToi<T extends { sales_user_id: string | null }>(rows: readonly T[], uid: string): T[] {
+  return rows.filter((r) => !r.sales_user_id || r.sales_user_id === uid)
+}
+
 const trongKy = (ngay: string, kk: { from: string; to: string }) => ngay >= kk.from && ngay <= kk.to
 
 /** Doanh số thuần của kỳ: Σ HĐ − Σ hàng trả (có thể âm nếu trả nhiều hơn bán). */

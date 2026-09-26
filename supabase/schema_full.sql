@@ -35335,3 +35335,141 @@ WHERE schemaname = 'public'
   AND cmd = 'SELECT'
 ORDER BY 1;
 
+
+-- ####################################################################
+-- # 198_nvbh_doc_phieu_tra_cua_minh.sql
+-- ####################################################################
+
+-- ====================================================================
+-- NVBH ĐỌC ĐƯỢC PHIẾU TRẢ THUỘC VỀ MÌNH (không chỉ phiếu mình tự lập)
+--
+-- VÌ SAO — chủ nhà 26/09/2026: "fix trong màn trang chủ của nhân viên bán hàng, doanh thu
+--   của nhân viên chưa trừ hàng trả lại".
+--   Chính sách đọc từ mig 002: NVBH chỉ thấy phiếu trả `requested_by = mình`. Phiếu trả TỰ
+--   SINH lúc xuất hóa đơn (kho / kế toán bấm), phiếu lập ở POS, phiếu NPP lập hộ… đứng tên
+--   NVBH, trừ vào doanh số và công nợ của NVBH, nhưng NVBH đọc không thấy → trang chủ, báo
+--   cáo bán hàng, chi tiết khách của NVBH ra doanh số CHƯA trừ hàng trả (lệch công nợ).
+--   Luật mới: phiếu mình lập, HOẶC phiếu đứng tên mình, HOẶC gắn hóa đơn / đơn của mình.
+--   Dòng phiếu trả (`return_lines`) đọc theo phiếu nên tự mở theo.
+-- ====================================================================
+
+DROP POLICY IF EXISTS "Sales see own returns" ON public.returns;
+CREATE POLICY "Sales see own returns" ON public.returns
+  FOR SELECT TO authenticated
+  USING (
+    org_id = public.user_org_id()
+    AND public.user_role() = 'sales'
+    AND (
+      requested_by = (SELECT auth.uid())
+      OR sales_user_id = (SELECT auth.uid())
+      OR EXISTS (SELECT 1 FROM public.sales_invoices si
+                 WHERE si.id = returns.invoice_id AND si.sales_user_id = (SELECT auth.uid()))
+      OR EXISTS (SELECT 1 FROM public.sales_orders so
+                 WHERE so.id = returns.order_id AND so.sales_user_id = (SELECT auth.uid()))
+    )
+  );
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'NVBH đọc phiếu trả đứng tên mình' AS hang_muc,
+       CASE WHEN position('sales_user_id' IN regexp_replace(qual, '\s+', ' ', 'g')) > 0
+            THEN 'có' ELSE 'CHƯA' END AS trang_thai
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'returns' AND policyname = 'Sales see own returns';
+
+
+-- ####################################################################
+-- # 199_cong_no_theo_khach_bo_kep_0.sql
+-- ####################################################################
+
+-- ====================================================================
+-- CÔNG NỢ THEO KHÁCH HÀNG: BỎ KẸP 0 — KHỚP CÔNG NỢ THEO NHÂN VIÊN
+--
+-- VÌ SAO — chủ nhà 26/09/2026: "sao các con số doanh thu/công nợ của 3 màn này không khớp
+--   nhau ? đặc biệt công nợ theo khách hàng và công nợ theo nhân viên không khớp nhau ?"
+--   (Tổng công nợ theo KH 650.123.000đ, theo NV 643.795.000đ.)
+--   `receivables_by_customer` (mig 121) vẫn kẹp TỪNG dòng về 0 (`GREATEST(0, amount − paid)`)
+--   — dòng âm (hàng trả vượt tiền HĐ, phiếu trả tự lập không gắn HĐ) bị tính là 0, nên
+--   tổng theo khách CAO hơn tổng theo nhân viên đúng bằng phần dư có của khách. Mig 195 đã
+--   bỏ kẹp cho `receivables_by_rep` / `receivables_summary`; hàm này còn sót.
+--   Luật công nợ âm chủ nhà chốt 24/09/2026 (mig 186): "không được kẹp về 0".
+-- ⚠ Không SECURITY DEFINER (RLS + lọc org_id của người gọi) — như bản 121.
+-- ====================================================================
+
+DROP FUNCTION IF EXISTS public.receivables_by_customer();
+CREATE FUNCTION public.receivables_by_customer()
+RETURNS TABLE (
+  customer_id    uuid,
+  store_name     text,
+  phone          text,
+  rep_name       text,
+  total_debt     numeric,
+  total_paid     numeric,
+  remaining      numeric,
+  overdue_amount numeric,
+  credit_limit   numeric
+)
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  WITH r AS (
+    SELECT
+      rc.customer_id,
+      COALESCE(rc.amount, 0) AS amount,
+      COALESCE(rc.paid, 0)   AS paid,
+      -- ⚠ (mig 199) KHÔNG KẸP 0 — dòng âm là dư có của khách (mig 186/191), trừ vào nợ
+      --   của CHÍNH khách đó. Cùng luật `receivables_by_rep` (mig 195), `loadDebtByCustomer`.
+      COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,
+      rc.status,
+      rc.sales_user_id
+    FROM receivables rc
+    WHERE rc.org_id = public.user_org_id()
+      AND rc.status <> 'paid'
+  ),
+  agg AS (
+    SELECT
+      r.customer_id,
+      SUM(r.amount)     AS total_debt,
+      SUM(r.paid)       AS total_paid,
+      SUM(r.remaining)  AS remaining,
+      GREATEST(0, COALESCE(SUM(r.remaining) FILTER (WHERE r.status = 'overdue'), 0)) AS overdue_amount,
+      -- Lấy một sales_user_id bất kỳ làm phương án dự phòng cho rep_name.
+      MIN(r.sales_user_id::text)::uuid AS any_sales_user_id
+    FROM r
+    GROUP BY r.customer_id
+  )
+  SELECT
+    agg.customer_id,
+    COALESCE(c.store_name, '-'),
+    COALESCE(c.phone, '-'),
+    COALESCE(pa.full_name, su.full_name, '-'),
+    agg.total_debt,
+    agg.total_paid,
+    agg.remaining,
+    agg.overdue_amount,
+    COALESCE(c.credit_limit, 0)
+  FROM agg
+  LEFT JOIN customers c ON c.id = agg.customer_id
+  LEFT JOIN LATERAL (
+    SELECT u.full_name
+    FROM customer_assignments ca
+    JOIN users u ON u.id = ca.user_id
+    WHERE ca.customer_id = agg.customer_id AND ca.role = 'primary'
+    LIMIT 1
+  ) pa ON true
+  LEFT JOIN users su ON su.id = agg.any_sales_user_id
+  ORDER BY agg.remaining DESC;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.receivables_by_customer() TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Công nợ theo KH bỏ kẹp 0' AS hang_muc,
+       CASE WHEN position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_customer()'::regprocedure)) = 0
+            THEN 'có' ELSE 'CHƯA' END AS trang_thai,
+       -- Phần dư có mà màn theo khách trước đây bỏ qua (= chênh lệch hai màn công nợ cũ).
+       (SELECT COALESCE(sum(GREATEST(0, amount - COALESCE(paid, 0))) - sum(amount - COALESCE(paid, 0)), 0)
+          FROM receivables WHERE status <> 'paid') AS phan_du_co_truoc_day_bi_bo;
+

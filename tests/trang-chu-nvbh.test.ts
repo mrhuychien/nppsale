@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
   khoangKy, ngayDauCanDoc, mucTieuKy, doanhSoKy, theoKhach, theoKenh, tienGon, loiNhacMucTieu,
-  nhanNgay, nhanTuyen, ngayTuyen,
+  nhanNgay, nhanTuyen, ngayTuyen, traCuaToi,
 } from "@/lib/home/sales-home"
 
 /**
@@ -42,6 +42,10 @@ describe("kỳ trên trang chủ NVBH", () => {
 })
 
 describe("doanh số của tôi = hóa đơn − hàng trả", () => {
+  it("phiếu trả tính cho mình: đứng tên mình hoặc chưa ghi người; không tính của người khác", () => {
+    const rows = [{ sales_user_id: "me" }, { sales_user_id: null }, { sales_user_id: "khac" }]
+    expect(traCuaToi(rows, "me")).toEqual([{ sales_user_id: "me" }, { sales_user_id: null }])
+  })
   const hd = [
     { id: "a", customer_id: "k1", invoice_date: "2026-09-26", total: 1_000_000 },
     { id: "b", customer_id: "k2", invoice_date: "2026-09-10", total: 500_000 },
@@ -63,6 +67,10 @@ describe("doanh số của tôi = hóa đơn − hàng trả", () => {
     expect(src).toContain('.from("sales_invoices").select("id, customer_id, invoice_date, total"')
     expect(src).toContain('.eq("status", "posted")')
     expect(src).toContain('.gte("revenue_date", dau)')
+    /* ⚠ Chủ nhà 26/09/2026: "doanh thu của nhân viên chưa trừ hàng trả lại" — không lọc người
+       ở câu hỏi (phiếu tự sinh cũ chưa ghi người), lọc bằng `traCuaToi`. */
+    expect(src).toContain("traCuaToi(traR.rows, userId)")
+    expect(src).not.toMatch(/from\("returns"\)[^\n]*\n[^\n]*\.eq\("sales_user_id", userId\)/)
     expect(src).toContain("doanhSoKy(dl.hd, dl.tra, kk)")
     expect(src).toContain('sb.rpc("my_sales_target")')
     expect(readFileSync(resolve(__dirname, "../src/app/(dashboard)/home/page.tsx"), "utf-8")).toContain("<SalesHome")

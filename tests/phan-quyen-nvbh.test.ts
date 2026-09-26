@@ -141,3 +141,35 @@ describe("mig 197 — bảng nhân sự khoá với NVBH", () => {
     expect(m).toContain("NOTIFY pgrst, 'reload schema';")
   })
 })
+
+describe("mig 198 — NVBH đọc phiếu trả thuộc về mình", () => {
+  /* Chủ nhà 26/09/2026: "doanh thu của nhân viên chưa trừ hàng trả lại" — NVBH chỉ đọc được
+     phiếu mình tự lập, phiếu tự sinh lúc xuất HĐ (kho / kế toán bấm) không thấy nên không trừ.
+     Kịch bản chạy thật trên Postgres: NVBH thấy phiếu tự sinh của HĐ mình; chính sách cũ thấy 0. */
+  const m = doc("supabase/migrations/198_nvbh_doc_phieu_tra_cua_minh.sql")
+  it("mình lập, đứng tên mình, hoặc gắn HĐ / đơn của mình", () => {
+    expect(m).toContain("requested_by = (SELECT auth.uid())")
+    expect(m).toContain("OR sales_user_id = (SELECT auth.uid())")
+    expect(m).toMatch(/sales_invoices si\s+WHERE si\.id = returns\.invoice_id AND si\.sales_user_id = \(SELECT auth\.uid\(\)\)/)
+    expect(m).toMatch(/sales_orders so\s+WHERE so\.id = returns\.order_id AND so\.sales_user_id = \(SELECT auth\.uid\(\)\)/)
+    expect(doc("scripts/sql/kham-so-that.sql")).toContain("Mig 198")
+  })
+})
+
+describe("mig 199 — công nợ theo khách khớp công nợ theo nhân viên", () => {
+  /* Chủ nhà 26/09/2026: "đặc biệt công nợ theo khách hàng và công nợ theo nhân viên không khớp
+     nhau?" — theo KH 650.123.000đ, theo NV 643.795.000đ. Kịch bản Postgres: nợ 100.000 + dư
+     có −30.000 → theo KH = theo NV = tổng = 70.000; bản 121 (kẹp 0) ra 100.000. */
+  const m = doc("supabase/migrations/199_cong_no_theo_khach_bo_kep_0.sql")
+  const than = m.slice(m.indexOf("CREATE FUNCTION public.receivables_by_customer()"), m.indexOf("$$;", m.indexOf("CREATE FUNCTION public.receivables_by_customer()")))
+  it("không kẹp từng dòng về 0, không SECURITY DEFINER", () => {
+    expect(than).toContain("COALESCE(rc.amount, 0) - COALESCE(rc.paid, 0) AS remaining,")
+    expect(than).not.toContain("GREATEST(0, COALESCE(rc.amount")
+    expect(m.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n")).not.toMatch(/SECURITY\s+DEFINER/)
+    expect(doc("scripts/sql/kham-so-that.sql")).toContain("Mig 199")
+  })
+  it("màn Công nợ theo KH: khách dư có không đếm là đang nợ", () => {
+    expect(doc("src/app/(dashboard)/receivables/by-customer/page.tsx")).toContain("rows.filter((r) => r.remaining > 0).length")
+  })
+})
+

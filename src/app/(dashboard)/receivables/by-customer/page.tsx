@@ -122,7 +122,9 @@ export default function ReceivablesByCustomerPage() {
   const totalOutstanding = rows.reduce((s, r) => s + r.remaining, 0)
   const totalInTerm = rows.reduce((s, r) => s + (r.remaining - r.overdueAmount), 0)
   const totalOverdue = rows.reduce((s, r) => s + r.overdueAmount, 0)
-  const customersWithDebt = rows.length
+  /* ⚠ Mig 199: khách DƯ CÓ (còn lại < 0) vẫn có dòng — trừ vào tổng — nhưng không phải
+     "đang nợ" (chủ nhà 26/09/2026: công nợ theo KH phải khớp công nợ theo NV). */
+  const customersWithDebt = rows.filter((r) => r.remaining > 0).length
 
   if (authLoading || loading) return <Skeleton className="h-96" />
 
@@ -266,7 +268,10 @@ export default function ReceivablesByCustomerPage() {
                         <TableCell>{row.repName}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.totalPaid)}</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
+                        <TableCell className="text-right font-bold">
+                          {formatCurrency(row.remaining)}
+                          {row.remaining < 0 && <span className="ml-1 text-[10px] font-medium text-muted-foreground">dư có</span>}
+                        </TableCell>
                         <TableCell className="text-right">
                           {row.overdueAmount > 0 ? (
                             <span className="text-destructive font-semibold">{formatCurrency(row.overdueAmount)}</span>

@@ -242,9 +242,11 @@ describe("M2.2 — /orders", () => {
      * cùng ghi một giá trị là hai chỗ để trôi khỏi nhau — nay chỉ còn
      * `StatusChips`, và nó KHÔNG bị giấu trên điện thoại.
      */
-    expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(1)
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+    expect(ORDERS_CODE.match(/tabKeys\.map\(/g)?.length).toBe(2)
     expect(ORDERS_CODE).not.toContain("statusChips")
     expect(ORDERS_CODE.match(/<StatusChips/g)?.length).toBe(1)
+    expect(ORDERS_CODE).toContain("activeTab={effectiveStatus}")
     expect(ORDERS_CODE).not.toContain('"hidden lg:grid"')
   })
 
@@ -289,24 +291,12 @@ describe("M2.2 — /orders", () => {
    * ⚠ Chỗ xoá được ~51 vùng chạm 16px: bỏ checkbox trên từng thẻ, thay
    * bằng chế độ chọn.
    */
-  it("không còn checkbox trên thẻ mobile", () => {
-    // Neo bằng MÃ THẬT, không bằng chú thích: `strip()` đã bỏ chú thích
-    // nên neo vào đó cho ra lát cắt rỗng và test luôn xanh.
-    const i = ORDERS_CODE.indexOf('<div className="lg:hidden space-y-3">')
-    expect(i).toBeGreaterThan(0)
-    const j = ORDERS_CODE.indexOf("<LoadMore", i)
-    expect(j).toBeGreaterThan(i)
-    const block = ORDERS_CODE.slice(i, j)
-    expect(block).not.toContain("<Checkbox")
-    expect(block).toContain("selectMode")
-  })
-
-  it("chế độ chọn: tắt thì mở đơn, bật thì chọn", () => {
-    // Danh sách theo mẫu mới nằm ở MobileOrderList; hàng là Link khi tắt
-    // chọn, là button khi bật — xem tests/orders-mobile-template.
-    expect(ORDERS_CODE).toContain("selectMode={selectMode}")
-    expect(ORDERS_CODE).toContain("onToggle={toggleOne}")
-    expect(ORDERS_CODE).toContain("onEnterSelect=")
+  /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+  it("điện thoại: thẻ đơn không checkbox, cả thẻ là một liên kết mở đơn", () => {
+    const M = read("src/components/orders/mobile-orders-screen.tsx")
+    expect(M).not.toContain("<Checkbox")
+    expect(M).toContain('href={`/orders/${o.id}`} className="absolute inset-0"')
+    expect(ORDERS_CODE).toContain("<MobileOrdersScreen")
   })
 
   /**
@@ -321,9 +311,9 @@ describe("M2.2 — /orders", () => {
     expect(DETAIL.slice(i, i + 700)).toContain('order.status === "completed"')
   })
 
-  it("phân trang desktop ẩn trên mobile, thay bằng LoadMore", () => {
+  it("phân trang desktop ẩn trên mobile; điện thoại tải thêm từng 20 đơn", () => {
     expect(ORDERS_CODE).toMatch(/hidden lg:block[\s\S]{0,120}?<DataPagination/)
-    expect(ORDERS_CODE).toContain("<LoadMore pg={pg} shown={filtered.length} />")
+    expect(ORDERS_CODE).toContain("onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_DON)}")
   })
 
   /** Bộ lọc nâng cao dùng CHUNG cho thẻ desktop và sheet mobile. */

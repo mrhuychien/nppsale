@@ -85,12 +85,13 @@ test("đơn hàng — điện thoại: các ô theo trường nằm trong tấm 
   const page = await ctx.newPage()
   await dangNhap(page)
   await page.goto("/orders")
-  await expect(page.getByText("2 đơn hàng").locator("visible=true")).toHaveCount(1)
-  await page.getByRole("button", { name: /Bộ lọc|Lọc/ }).locator("visible=true").first().click()
+  const man = page.getByTestId("don-mobile")
+  await expect(man.getByText("Đã hiển thị 2 / 2 đơn")).toBeVisible()
+  await man.getByRole("button", { name: "Bộ lọc" }).click()
   await page.getByRole("textbox", { name: "Theo mã, tên hàng", exact: true }).locator("visible=true").fill("Mì")
   await page.keyboard.press("Escape")
   // Tháng này: DH-0001 (Sữa) và DH-0002 (Mì) → còn 1 đơn.
-  await expect(page.getByText("1 đơn hàng").locator("visible=true")).toHaveCount(1)
+  await expect(man.getByText("Đã hiển thị 1 / 1 đơn")).toBeVisible()
   await ctx.close()
 })
 

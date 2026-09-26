@@ -34,7 +34,7 @@ test("xem nhanh đơn / hóa đơn / phiếu trả hiện đủ SĐT và địa 
 
     await page.goto("/orders")
     await chonKy(page, "Tất cả")
-    await page.getByText("Tạp hoá Cô Ba").first().click()
+    await page.getByText("Tạp hoá Cô Ba").locator("visible=true").first().click()
     await kiemNgan(page)
     await page.keyboard.press("Escape")
 

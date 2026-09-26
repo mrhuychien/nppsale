@@ -85,9 +85,10 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
   it("chỉ còn MỘT chỗ vẽ tab, dựng từ một danh sách duy nhất", () => {
     expect(ORDERS, "hàng chip trạng thái đã quay lại").not.toContain("const statusChips = (")
     expect(ORDERS.match(/const tabKeys: readonly string\[\] =/g)?.length).toBe(1)
-    expect(ORDERS.match(/tabKeys\.map\(/g)?.length).toBe(1)
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+    expect(ORDERS.match(/tabKeys\.map\(/g)?.length).toBe(2) // máy tính + điện thoại, cùng `tabKeys`
     expect(ORDERS.match(/<StatusChips/g)?.length).toBe(1)
-    expect(ORDERS.match(/count: statusCounts\[k\] \?\? 0/g)?.length).toBe(1)
+    expect(ORDERS.match(/count: statusCounts\[k\] \?\? 0/g)?.length).toBe(2)
   })
 
   /**

@@ -81,8 +81,12 @@ export function NotificationBell() {
   // changes made from other tabs/devices. Replaces the previous 60s poll.
   useEffect(() => {
     if (!authUser?.id) return
+    /* ⚠ MỖI CHUÔNG MỘT KÊNH. Màn có đầu trang riêng (danh sách đơn điện thoại, trang chủ NVBH)
+       gắn thêm một chuông trong khi app bar (đang ẩn bằng CSS) vẫn gắn chuông của nó — hai lần
+       đăng ký cùng tên kênh là supabase ném "cannot add postgres_changes callbacks … after
+       subscribe()" và cả màn trắng (26/09/2026). */
     const channel = supabase
-      .channel(`notifications-${authUser.id}`)
+      .channel(`notifications-${authUser.id}-${Math.random().toString(36).slice(2, 10)}`)
       .on(
         "postgres_changes",
         {

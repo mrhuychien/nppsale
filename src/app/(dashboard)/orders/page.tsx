@@ -31,8 +31,7 @@ import { MoneyInput } from "@/components/ui/money-input"
 import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
-import { MobileOrderList } from "@/components/orders/mobile-order-list"
-import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { MobileOrdersScreen, BUOC_TAI_DON } from "@/components/orders/mobile-orders-screen"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
 import { useFieldSearch } from "@/hooks/use-field-search"
@@ -40,8 +39,8 @@ import { TRUONG_DON_HANG } from "@/lib/search/doc-fields"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { openInNewTab } from "@/components/ui/new-tab-link"
 import {
-  periodFrom, nextPeriod, summariseDocLines,
-  type ListPeriod, type DocLineSummary,
+  periodFrom, nextPeriod,
+  type ListPeriod,
   kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
@@ -58,7 +57,6 @@ import {
 } from "@/lib/orders/post-invoice"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useOrderSync } from "@/hooks/use-order-sync"
-import { LoadMore } from "@/components/ui/load-more"
 import {
   ORDER_COLUMNS,
   DEFAULT_ORDER_COLUMNS,
@@ -218,6 +216,13 @@ const ORDER_TABS = [
  */
 const DEFAULT_ORDER_TAB = "all"
 
+/** "Đồng Thị Hiền" → "ĐH". */
+function viTatTen(ten: string | null | undefined): string {
+  const w = (ten ?? "").trim().split(/\s+/).filter(Boolean)
+  if (w.length === 0) return "U"
+  return ((w[0][0] ?? "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase()
+}
+
 export default function OrdersPage() {
   const { user, loading: authLoading } = useRoleGuard("orders")
   // Đơn tạo ngoại tuyến còn nằm trong hộp chờ — mẫu thiết kế đặt băng báo
@@ -268,15 +273,11 @@ export default function OrdersPage() {
   const [period, setPeriod] = useState<ListPeriod>("month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
   /** Mặt hàng đại diện + số dòng của từng đơn đang hiện. */
-  const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được — xem `DocListSummary`. */
   const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
 
   // Sheet lọc trên mobile (thay ô tìm + "Bộ lọc nâng cao" + FilterPicker).
   const [filterSheet, setFilterSheet] = useState(false)
-  // Chế độ chọn nhiều: bật rồi thì CHẠM CẢ THẺ là chọn, không cần checkbox
-  // 16px trên mỗi thẻ — riêng màn này đo được 107 vùng chạm dưới 44px.
-  const [selectMode, setSelectMode] = useState(false)
   // Banner phạm vi dữ liệu: thông tin một lần, nhớ bằng localStorage.
   // Khởi tạo `false` rồi bật trong effect — đọc localStorage ngay lúc
   // render đầu làm HTML máy chủ khác HTML máy khách (lỗi hydrate #418).
@@ -322,7 +323,11 @@ export default function OrdersPage() {
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
-  const pg = usePagination(50)
+  /* ⚠ Chủ nhà 26/09/2026: "Load 20 đơn hàng 1 lần thôi cho nhanh" (điện thoại). Máy tính giữ
+     50/trang. Đọc khổ màn lúc tạo state — không nhảy 20 → 50 mà tải hai lần. */
+  const pg = usePagination(
+    typeof window !== "undefined" && window.matchMedia?.("(min-width: 1024px)").matches ? 50 : BUOC_TAI_DON
+  )
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -775,10 +780,6 @@ export default function OrdersPage() {
       for (const id of ids) m[id] = 0
       for (const r of res.rows) m[r.order_id] = (m[r.order_id] || 0) + 1
       setLineCountByOrder((prev) => ({ ...prev, ...m }))
-      setLineSummary((prev) => ({
-        ...prev,
-        ...summariseDocLines(res.rows.map((r) => ({ ...r, doc_id: r.order_id }))),
-      }))
     })()
     return () => {
       cancelled = true
@@ -1350,6 +1351,7 @@ export default function OrdersPage() {
         nằm ở chân trang. Giữ nguyên ở máy tính vì bảng máy tính không gom
         theo ngày — ở đó dòng này là nơi DUY NHẤT nói ra tiền hàng hôm nay.
       */}
+      <div className="hidden lg:block">
       <PageHeader
         title={isSales ? "Đơn của tôi" : "Đơn hàng"}
         descriptionDesktopOnly
@@ -1382,9 +1384,10 @@ export default function OrdersPage() {
           </Button>
         )}
       </PageHeader>
+      </div>
 
       {(isSales || isDriver) && showScopeHint && (
-        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+        <div className="hidden lg:flex rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
           <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
           <span>
             {isSales
@@ -1423,6 +1426,7 @@ export default function OrdersPage() {
           `partially_invoiced` không có ô nào — đơn xuất thiếu vì thế
           biến mất khỏi mọi tab. Hàng cuộn ngang thì không có trần.
       */}
+      <div className="hidden lg:block">
       <StatusChips
         multi
         active={effectiveStatus}
@@ -1435,6 +1439,11 @@ export default function OrdersPage() {
         }))}
       />
 
+      </div>
+
+      {/* Sheet bộ lọc vẫn dùng ở điện thoại (nút lọc trên thẻ tổng tiền mở nó); thanh tìm của
+          nó ẩn — ô tìm nằm ở đầu trang xanh. */}
+      <div className="hidden">
       <MobileFilterBar
         value={search}
         onChange={setSearch}
@@ -1456,6 +1465,7 @@ export default function OrdersPage() {
           {advancedFilterFields}
         </div>
       </MobileFilterBar>
+      </div>
 
       {/* ⚠ MÁY TÍNH — theo mẫu thiết kế "Đơn hàng": một thẻ trắng gồm thanh
           công cụ (tìm · tuyến · NVBH · khoảng ngày · xoá lọc), dải chọn
@@ -1535,7 +1545,7 @@ export default function OrdersPage() {
         </Card>
       )}
 
-        {/* Khối thống kê (máy tính) — điện thoại có `DocListSummary` bên dưới. */}
+        {/* Khối thống kê (máy tính) — điện thoại có thẻ tổng tiền của `MobileOrdersScreen`. */}
         <DocListTotals
           desktopOnly
           countText={`${pg.total} đơn hàng`}
@@ -1602,115 +1612,67 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Điện thoại: khung xương / trạng thái rỗng / danh sách nhóm theo
-          ngày. Máy tính có thẻ bảng riêng ở trên với thanh công cụ của nó. */}
-      <div className="lg:hidden">
-      {/* Dải tóm tắt theo mẫu: viên thuốc khoảng thời gian · bộ lọc ·
-          "Tổng tiền hàng" với tổng của CẢ bộ lọc. */}
-      <DocListSummary
+      {/* ⚠ ĐIỆN THOẠI — theo mẫu chủ nhà 26/09/2026 (`MobileOrdersScreen`). NVBH xem thì không
+          hiện tên nhân viên trên thẻ đơn.
+          ⚠ ĐỨNG CUỐI TRONG DOM: trên điện thoại mọi khối phía trên đều ẩn nên nó vẫn lên đầu; ở
+          máy tính nó ẩn và không chen trước bảng (tìm chữ `.first()` bắt nhầm phần tử ẩn). */}
+      <MobileOrdersScreen
+        title={isSales ? "Đơn của tôi" : "Đơn hàng"}
+        userInitials={viTatTen(authUser?.full_name)}
+        search={search}
+        onSearch={setSearch}
+        tabs={tabKeys.map((k) => ({
+          key: k,
+          label: k === "all" ? "Tất cả" : STATUS_CHIP_LABEL[k as (typeof COUNTED_STATUSES)[number]],
+          count: statusCounts[k] ?? 0,
+        }))}
+        activeTab={effectiveStatus}
+        onPickTab={(k) => setStatusFilter(k)}
         period={period}
         onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
         onOpenFilter={() => setFilterSheet(true)}
         filtersActive={activeFilterCount > 0 || period !== "month"}
-        onClearFilters={() => {
-          clearAdvancedFilters()
-          setPeriod("month")
-        }}
-        countText={`${pg.total} đơn hàng`}
         total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
-      />
-      {bulkBar}
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        /**
-         * ⚠ RỖNG VÌ LỌC TRƯỢT ≠ RỖNG VÌ CHƯA CÓ ĐƠN NÀO. Trạng thái và ô
-         * tìm được lọc PHÍA MÁY CHỦ, nên tìm trượt cũng làm `orders` rỗng
-         * y hệt tổ chức chưa có đơn nào — và màn bảo người dùng "Tạo đơn
-         * hàng đầu tiên" trong khi họ chỉ đang gõ nhầm một mã đơn. Đang
-         * có tab hay bộ lọc nào bật thì phải nói ra điều đó.
-         */
-        <EmptyState
-          icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />}
-          title={
-            loadError
-              ? "Không tải được dữ liệu"
-              : narrowed
-                ? "Không có đơn hàng phù hợp"
-                : "Chưa có đơn hàng"
-          }
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : narrowed
-                ? searching
-                  ? `Không tìm thấy đơn nào khớp “${search.trim()}”.`
-                  : "Thử đổi tab hoặc điều chỉnh bộ lọc."
-                : isDriver
-                  ? "Bạn chưa được gán chuyến giao hàng nào. Đơn hàng chỉ hiện sau khi kho lập phiếu giao và gán bạn làm tài xế."
-                  : isSales
-                    ? "Bạn chưa tạo đơn nào và chưa được phân công khách hàng nào. Nhờ quản lý phân công khách hàng, hoặc tạo đơn đầu tiên."
-                    : "Tạo đơn hàng đầu tiên"
-          }
-        />
-      ) : (
-        <>
-
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
-            {/* Chế độ chọn thay cho checkbox trên từng thẻ. Tắt thì chạm
-                hàng = mở đơn; bật thì chạm hàng = chọn. Nhấn giữ 500ms trên
-                một hàng cũng bật. Đây là chỗ xoá được ~51 vùng chạm 16px. */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant={selectMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setSelectMode((v) => !v)
-                  if (selectMode) setSelectedIds(new Set())
-                }}
-              >
-                {selectMode ? `Xong (${selectedIds.size})` : "Chọn"}
-              </Button>
-              {selectMode && (
-                <Button variant="ghost" size="sm" onClick={toggleAll}>
-                  {allSelected ? "Bỏ chọn tất cả" : `Chọn tất cả (${filtered.length})`}
-                </Button>
-              )}
+        count={pg.total}
+        orders={filtered}
+        showSalesName={!isSales}
+        loading={loading}
+        loaded={pg.from + filtered.length}
+        onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_DON)}
+        notice={
+          outboxCount > 0 ? (
+            <div className="flex items-center gap-2.5 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-bold text-[#7a4b00]">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-[#fdb022]" />
+              {outboxCount} đơn chờ đẩy lên khi có mạng
             </div>
-
-            {outboxCount > 0 && (
-              <div className="flex items-center gap-2.5 rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-bold text-[#7a4b00]">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-[#fdb022]" />
-                {outboxCount} đơn chờ đẩy lên khi có mạng
-              </div>
-            )}
-
-            {/* ⚠ Theo mẫu thiết kế "Đơn của tôi": nhóm theo ngày, mỗi đơn
-                một hàng có vạch màu trạng thái. Cả hàng là một vùng chạm —
-                không nút "Sửa" / "Xuất hoá đơn" trên từng hàng nữa; hai việc
-                đó nằm ở màn chi tiết, nơi có đủ ngữ cảnh để làm. */}
-            <MobileOrderList
-              orders={filtered}
-              lineSummary={lineSummary}
-              showSalesName={!isSales}
-              selectMode={selectMode}
-              selectedIds={selectedIds}
-              onToggle={toggleOne}
-              onEnterSelect={(id) => {
-                setSelectMode(true)
-                toggleOne(id)
-              }}
-            />
-            <LoadMore pg={pg} shown={filtered.length} />
-          </div>
-        </>
-      )}
-      </div>
+          ) : null
+        }
+        empty={
+          <EmptyState
+            icon={<ShoppingCart className="h-8 w-8 text-muted-foreground" />}
+            title={
+              loadError
+                ? "Không tải được dữ liệu"
+                : narrowed
+                  ? "Không có đơn hàng phù hợp"
+                  : "Chưa có đơn hàng"
+            }
+            description={
+              loadError
+                ? "Xem thông báo lỗi phía trên."
+                : narrowed
+                  ? searching
+                    ? `Không tìm thấy đơn nào khớp “${search.trim()}”.`
+                    : "Thử đổi tab hoặc điều chỉnh bộ lọc."
+                  : isDriver
+                    ? "Bạn chưa được gán chuyến giao hàng nào. Đơn hàng chỉ hiện sau khi kho lập phiếu giao và gán bạn làm tài xế."
+                    : isSales
+                      ? "Bạn chưa tạo đơn nào và chưa được phân công khách hàng nào. Nhờ quản lý phân công khách hàng, hoặc tạo đơn đầu tiên."
+                      : "Tạo đơn hàng đầu tiên"
+            }
+          />
+        }
+      />
 
       <OrderDrawer
         order={drawerOrder}

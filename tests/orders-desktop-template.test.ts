@@ -109,7 +109,8 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
 
   it("dải chọn nhiều là một JSX dùng cho cả hai khổ màn, in tổng tiền đã chọn", () => {
     expect(PAGE).toContain("const bulkBar = selectedIds.size > 0 && (() => {")
-    expect(PAGE.match(/\{bulkBar\}/g)?.length).toBe(2)
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+    expect(PAGE.match(/\{bulkBar\}/g)?.length).toBe(1) // chọn nhiều chỉ còn ở máy tính
     expect(PAGE).toContain("Đã chọn {selectedIds.size} đơn ·")
   })
 })

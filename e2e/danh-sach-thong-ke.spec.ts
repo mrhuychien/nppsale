@@ -37,9 +37,12 @@ test("đơn hàng — điện thoại: khối tóm tắt theo viên thuốc", as
   const page = await ctx.newPage()
   await dangNhap(page)
   await page.goto("/orders")
-  // Mặc định "Tháng này": hai đơn tháng này.
-  await expect(page.getByText("2 đơn hàng").locator("visible=true")).toHaveCount(1)
-  await expect(page.getByText("3.000.000đ").locator("visible=true").first()).toBeVisible()
+  // Mặc định "Tháng này": hai đơn tháng này. (Mẫu điện thoại 26/09/2026: số đơn + tổng tiền
+  // trên thẻ trắng dưới đầu trang xanh.)
+  const man = page.getByTestId("don-mobile")
+  await expect(man.getByText("Tổng tiền hàng ·")).toBeVisible()
+  await expect(man.getByTestId("tong-tien-don")).toHaveText("3.000.000đ")
+  await expect(man.getByText("Đã hiển thị 2 / 2 đơn")).toBeVisible()
   await ctx.close()
 })
 

@@ -340,4 +340,10 @@ SELECT 39, 'Mig 200 (phiếu trả hoàn thành gắn HĐ; không trừ hai lầ
        WHEN EXISTS (SELECT 1 FROM returns WHERE status = 'completed' AND invoice_id IS NULL AND order_id IS NOT NULL)
        THEN 'LỆCH — còn phiếu hoàn thành theo đơn chưa gắn HĐ, xem nhóm 7 của kiem-phieu-tra.sql'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 40. Mig 201 — nhân viên xem phiếu lương của mình
+SELECT 40, 'Mig 201 (Phiếu lương của tôi)',
+  CASE WHEN to_regprocedure('public.my_payslips()') IS NULL
+       THEN 'CHƯA — màn Phiếu lương của tôi báo lỗi'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

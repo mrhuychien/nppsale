@@ -157,11 +157,10 @@ describe("Dòng thời gian dựng từ dữ liệu THẬT, không bịa giờ",
 })
 
 describe("Danh sách đơn mobile theo mẫu", () => {
-  it("dùng MobileOrderList, không còn MobileRecordCard, giữ chế độ chọn", () => {
-    expect(LIST).toContain("<MobileOrderList")
+  /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+  it("dùng MobileOrdersScreen theo mẫu; NVBH xem thì không hiện tên nhân viên", () => {
+    expect(LIST).toContain("<MobileOrdersScreen")
     expect(LIST).not.toContain("MobileRecordCard")
-    expect(LIST).toContain("onToggle={toggleOne}")
-    expect(LIST).toContain("onEnterSelect={(id) => {")
     expect(LIST).toContain("showSalesName={!isSales}")
   })
 
@@ -274,7 +273,8 @@ describe("Chi tiết đơn mobile theo mẫu", () => {
 
   it("app bar chuẩn ẩn trên điện thoại cho route chi tiết đơn, desktop vẫn có", () => {
     expect(hidesMobileAppBar("/orders/abc-123")).toBe(true)
-    expect(hidesMobileAppBar("/orders")).toBe(false)
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Viết lại màn danh sách đơn hàng trên mobile theo mẫu … Load 20 đơn hàng 1 lần … Khi nhân viên xem thì danh sách không cần hiện tên nhân viên nữa". Điện thoại dùng `MobileOrdersScreen` (tab riêng trong thẻ trắng, không chế độ chọn); `StatusChips` chỉ còn ở máy tính. */
+    expect(hidesMobileAppBar("/orders")).toBe(true) // danh sách có đầu trang xanh riêng
     expect(hidesMobileAppBar("/orders/abc/edit")).toBe(false)
     expect(hidesMobileAppBar("/sell/cart")).toBe(false)
     expect(SHELL).toContain('className={hidesMobileAppBar(pathname) ? "hidden lg:flex" : undefined}')

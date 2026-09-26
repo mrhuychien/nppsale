@@ -48,6 +48,6 @@ export function showsBottomNav(pathname: string): boolean {
  * tránh. Desktop vẫn có app bar: ở đó bố cục hai cột cần nó.
  */
 export function hidesMobileAppBar(pathname: string): boolean {
-  /* "/orders": danh sách đơn trên điện thoại có đầu trang xanh riêng (mẫu 26/09/2026). */
-  return pathname === "/orders" || /^\/orders\/[^/]+$/.test(pathname)
+  /* "/orders", "/customers": danh sách trên điện thoại có đầu trang xanh riêng (mẫu 26/09/2026). */
+  return pathname === "/orders" || pathname === "/customers" || /^\/orders\/[^/]+$/.test(pathname)
 }

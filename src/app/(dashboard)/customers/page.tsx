@@ -8,7 +8,6 @@ import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
-import { LoadMore } from "@/components/ui/load-more"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -22,7 +21,14 @@ import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CustomerTable } from "@/components/customers/customer-table"
-import { CustomerListRow, type CustomerRowTag } from "@/components/customers/customer-list-row"
+import {
+  MobileCustomersScreen,
+  BUOC_TAI_KHACH,
+  diaChiNgan,
+  type KhachMobile,
+  type NhanKhach,
+  type SapXepKhach,
+} from "@/components/customers/mobile-customers-screen"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -38,14 +44,9 @@ import { daysOverdueOf } from "@/lib/utils"
 import {
   customerInitial,
   daysSinceVN,
-  debtText,
-  lastOrderText,
-  groupByInitial,
-  rowAccent,
   todayVN,
   COLD_DAYS,
   QUICK_FILTER_LABEL,
-  QUICK_FILTER_GROUP,
   type QuickFilter,
 } from "@/lib/customers/list-view"
 import type { Customer, Receivable, SalesOrder } from "@/types"
@@ -153,7 +154,18 @@ export default function CustomersPage() {
   const [totalCustomers, setTotalCustomers] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
-  const pg = usePagination(50)
+  /* Điện thoại tải 20 khách mỗi lần ("Tải thêm 20" — mẫu 26/09/2026); máy tính giữ trang 50. */
+  const pg = usePagination(
+    typeof window !== "undefined" && window.matchMedia?.("(min-width: 1024px)").matches ? 50 : BUOC_TAI_KHACH
+  )
+  /** Cách sắp của danh sách "Tất cả" trên điện thoại. */
+  const [sapXep, setSapXep] = useState<SapXepKhach>("name")
+  /** "T7" / "CN" — tuyến của hôm nay, tính ở trình duyệt để không lệch lúc hydrate. */
+  const [thuHomNay, setThuHomNay] = useState("")
+  useEffect(() => {
+    const d = new Date(`${todayVN()}T12:00:00`).getDay()
+    setThuHomNay(d === 0 ? "CN" : `T${d + 1}`)
+  }, [])
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("customers", LOC_KHACH_HANG)
   useEffect(() => {
@@ -276,14 +288,23 @@ export default function CustomersPage() {
   // Reset page khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, statusFilter, channelFilter, salesUserFilter, quick, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, statusFilter, channelFilter, salesUserFilter, quick, sapXep, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Danh sách mã khách mà thẻ lọc nhanh giới hạn vào. `null` = không giới hạn. */
+  /**
+   * ⚠ "NỢ NHIỀU NHẤT" SẮP TRÊN TOÀN BỘ NỢ ĐÃ ĐỌC (`debts` kéo đủ mọi phiếu), không sắp trong
+   *   trang đang tải — sắp 20 dòng đầu theo tên rồi xếp lại theo nợ là bỏ sót người nợ nhiều ở
+   *   trang sau. Chỉ gồm khách CÒN NỢ; đang gõ tìm thì về thứ tự tên.
+   */
+  const noNhieuNhat = quick === "all" && sapXep === "debt" && !debouncedSearch && debts !== null
   const quickIds = useMemo<string[] | null>(() => {
     if (quick === "today") return Array.from(todayStops.keys())
     if (quick === "overdue") return overdueIds
+    if (noNhieuNhat && debts) {
+      return Object.keys(debts).filter((id) => debts[id] > 0).sort((a, b) => debts[b] - debts[a])
+    }
     return null
-  }, [quick, todayStops, overdueIds])
+  }, [quick, todayStops, overdueIds, noNhieuNhat, debts])
 
   // List query — paginate + filter server-side.
   useEffect(() => {
@@ -508,33 +529,18 @@ export default function CustomersPage() {
   const routeMode = quick === "today" && !debouncedSearch
 
   const ordered = useMemo(() => {
-    if (!routeMode) return filtered
-    return filtered
-      .slice()
-      .sort((a, b) => (todayStops.get(a.id) ?? 0) - (todayStops.get(b.id) ?? 0))
-  }, [filtered, routeMode, todayStops])
-
-  /** Nhóm hiển thị trên điện thoại. */
-  const groups = useMemo(() => {
     if (routeMode) {
-      const un = ordered.filter((c) => !visitedToday.has(c.id))
-      const vi = ordered.filter((c) => visitedToday.has(c.id))
-      return [
-        ...(un.length ? [{ label: "Chưa ghé", items: un }] : []),
-        ...(vi.length ? [{ label: "Đã ghé", items: vi }] : []),
-      ]
+      return filtered
+        .slice()
+        .sort((a, b) => (todayStops.get(a.id) ?? 0) - (todayStops.get(b.id) ?? 0))
     }
-    if (quick === "all" && !debouncedSearch) return groupByInitial(ordered)
-    if (!ordered.length) return []
-    return [
-      {
-        label: debouncedSearch
-          ? `Kết quả · “${debouncedSearch}”`
-          : QUICK_FILTER_GROUP[quick],
-        items: ordered,
-      },
-    ]
-  }, [ordered, routeMode, quick, debouncedSearch, visitedToday])
+    // Lát mã đã sắp theo nợ / nợ quá hạn, nhưng máy chủ trả theo tên — xếp lại theo lát mã.
+    if (quickIds && quick !== "today") {
+      const thu = new Map(quickIds.map((id, i) => [id, i]))
+      return filtered.slice().sort((a, b) => (thu.get(a.id) ?? 0) - (thu.get(b.id) ?? 0))
+    }
+    return filtered
+  }, [filtered, routeMode, todayStops, quickIds, quick])
 
   const visitedOnRoute = Array.from(todayStops.keys()).filter((id) => visitedToday.has(id)).length
   const routeTotal = todayStops.size
@@ -612,69 +618,117 @@ export default function CustomersPage() {
   const hasDeskFilter =
     statusFilter !== "all" || channelFilter !== "all" || salesUserFilter !== "all"
 
-  /** Dựng một dòng khách cho danh sách điện thoại. */
-  const renderRow = (c: Customer, index: number) => {
-    const debt = debts ? debts[c.id] || 0 : null
+  /** Tên tuyến theo mã kênh của khách ("Tuyến T7"). */
+  const tenTuyen = (code: string | null | undefined): string | null => {
+    if (!code) return null
+    const r = routes.find((x) => x.code === code)
+    const ten = (r?.name || code).trim()
+    return /^tuyến/i.test(ten) ? ten : `Tuyến ${ten}`
+  }
+
+  /** Dựng một thẻ khách cho màn điện thoại. */
+  const khachMobile = (c: Customer): KhachMobile => {
     const overdue = overdueIds.includes(c.id)
     const stop = todayStops.get(c.id)
     const visited = visitedToday.has(c.id)
     const lastOrder = lastOrders[c.id]
     const coldDays = lastOrder ? daysSinceVN(lastOrder.order_date) : null
-    const accent = rowAccent({
-      visitedToday: visited,
-      routeMode,
-      overdue,
-      onTodayRoute: stop !== undefined,
-      coldDays,
-    })
-    const tags: CustomerRowTag[] = []
-    if (overdue) tags.push({ label: "Quá hạn", tone: "danger" })
+    const tags: NhanKhach[] = []
+    if (overdue) tags.push({ label: "Nợ quá hạn", tone: "danger" })
     if (coldDays !== null && coldDays >= COLD_DAYS) tags.push({ label: "Ngủ đông", tone: "warning" })
     /**
-     * ⚠ NGOÀI CHẾ ĐỘ ĐI TUYẾN VẪN PHẢI THẤY "ĐÃ GHÉ HÔM NAY". Trong chế
-     *   độ đi tuyến dấu ✓ ở ô tròn đã nói điều đó; ở các thẻ lọc khác
-     *   không có ô tròn dạng ✓, nên không còn dấu hiệu nào — và nhân
-     *   viên ghé lại một cửa hàng vừa ghé sáng nay.
+     * ⚠ NGOÀI CHẾ ĐỘ ĐI TUYẾN VẪN PHẢI THẤY "ĐÃ GHÉ HÔM NAY". Trong chế độ đi tuyến dấu ✓ ở
+     *   ô tròn đã nói điều đó; ở các thẻ lọc khác thì không — và nhân viên ghé lại một cửa
+     *   hàng vừa ghé sáng nay.
      */
     if (!routeMode && visited) tags.push({ label: "Đã ghé hôm nay", tone: "success" })
     /**
-     * ⚠ "AI PHỤ TRÁCH" PHẢI CÒN TRÊN ĐIỆN THOẠI. Bảng máy tính có cột
-     *   riêng cho nó; dòng điện thoại chỉ có một dòng phụ, nên nó phải
-     *   chen vào đây. Bỏ đi là quản lý mở danh sách trên điện thoại và
-     *   không còn cách nào biết điểm bán lạ này của ai.
+     * ⚠ "AI PHỤ TRÁCH" PHẢI CÒN TRÊN ĐIỆN THOẠI (với quản lý). Bảng máy tính có cột riêng; thẻ
+     *   điện thoại chỉ có một dòng phụ, nên nó chen vào đây. NVBH xem khách của chính mình
+     *   nên bỏ đi cho gọn.
      */
-    const meta = [c.ward, c.owner_name, managersSummary(managersMap[c.id] || [])]
+    const meta = [c.owner_name, tenTuyen(c.channel), isSales ? null : managersSummary(managersMap[c.id] || [])]
       .filter(Boolean)
       .join(" · ")
-    return (
-      <CustomerListRow
-        key={c.id}
-        href={`/customers/${c.id}`}
-        accent={accent}
-        avatar={
-          routeMode && visited
-            ? "✓"
-            : routeMode && stop !== undefined
-              ? String(stop)
-              : customerInitial(c.store_name)
-        }
-        name={c.store_name}
-        meta={meta || "—"}
-        tags={tags}
-        rightTop={debt === null ? "—" : debtText(debt)}
-        rightTopTone={
-          debt === null ? "muted" : overdue ? "danger" : debt > 0 ? "default" : "muted"
-        }
-        rightBottom={
-          debt === null ? "chưa đọc được nợ" : lastOrderText(lastOrder?.order_date ?? null)
-        }
-        divider={index > 0}
-      />
-    )
+    return {
+      id: c.id,
+      name: c.store_name,
+      avatar: routeMode && visited ? "✓" : routeMode && stop !== undefined ? String(stop) : customerInitial(c.store_name),
+      debt: debts ? debts[c.id] || 0 : null,
+      overdue,
+      meta,
+      lastOrderDate: lastOrder?.order_date ?? null,
+      address: diaChiNgan(c),
+      phone: (c.phone ?? "").trim(),
+      tags,
+      visited: routeMode && visited,
+    }
   }
+
+  const emptyState = (
+    <EmptyState
+      icon={<Users className="h-8 w-8 text-muted-foreground" />}
+      title={
+        loadError
+          ? "Không tải được dữ liệu"
+          : quick === "today"
+            ? "Hôm nay chưa có điểm nào trong tuyến"
+            : quick === "overdue"
+              ? "Không có khách nợ quá hạn"
+              : noNhieuNhat
+                ? "Không có khách nào còn nợ"
+                : totalCustomers === 0
+                  ? "Chưa có khách hàng"
+                  : "Không có khách hàng phù hợp"
+      }
+      description={
+        loadError
+          ? "Xem thông báo lỗi phía trên."
+          : quick === "today"
+            ? "Vào Tuyến hôm nay để xếp điểm cần ghé, hoặc bấm Tất cả để xem toàn bộ khách."
+            : quick === "overdue"
+              ? "Chưa có khoản nợ nào quá hạn thanh toán."
+              : noNhieuNhat
+                ? "Bấm “Nợ nhiều nhất” để về thứ tự tên."
+                : totalCustomers === 0
+                  ? user?.role === "sales"
+                    ? "Bạn chưa được phân công khách hàng nào. Vào Thêm KH để tìm và nhận khách có sẵn về danh sách của mình, hoặc nhờ quản lý phân công."
+                    : user?.role === "warehouse" || user?.role === "driver"
+                      ? "Vai trò của bạn chỉ xem được khách hàng gắn với công việc được giao. Liên hệ quản lý hoặc kế toán nếu cần tra cứu khách hàng."
+                      : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
+                  : "Thử điều chỉnh bộ lọc"
+      }
+    />
+  )
+
+  /* ⚠ CÔNG NỢ ĐỌC THIẾU / LỖI TẢI THÌ NÓI TRƯỚC KHI NGƯỜI TA ĐỌC CON SỐ — cả hai màn. */
+  const canhBao = (
+    <>
+      {debtWarning && (
+        <div className="rounded-xl border border-warning/40 bg-[#fff4ed] px-4 py-3 text-sm text-[#b54708]">
+          <p className="font-semibold">Công nợ trong danh sách chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{debtWarning}</p>
+        </div>
+      )}
+      {loadError && !loading && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách khách hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+    </>
+  )
+
+  const chuVietTat = (() => {
+    const w = (authUser?.full_name ?? "").trim().split(/\s+/).filter(Boolean)
+    if (w.length === 0) return "U"
+    return ((w[0][0] ?? "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase()
+  })()
 
   return (
     <div className="space-y-4">
+      {/* Máy tính: đầu trang, ô tìm, thẻ lọc, bảng. Điện thoại: `MobileCustomersScreen` ở cuối. */}
+      <div className="hidden lg:block">
       <PageHeader
         title={isSales ? "Khách hàng của tôi" : "Khách hàng"}
         description={`${totalCustomers} khách hàng`}
@@ -695,16 +749,17 @@ export default function CustomersPage() {
           </>
         )}
       </PageHeader>
+      </div>
 
       {isSales && (
-        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+        <div className="hidden lg:flex rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant items-center gap-2">
           <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
           <span>Bạn chỉ thấy KH được phân công cho bạn. Liên hệ Quản lý nếu cần phân công thêm.</span>
         </div>
       )}
 
-      {/* Ô tìm — một ô duy nhất cho cả điện thoại lẫn máy tính. */}
-      <div className="relative">
+      {/* Ô tìm — máy tính (điện thoại có ô tìm trong đầu trang xanh, cùng một `search`). */}
+      <div className="relative hidden lg:block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
@@ -726,7 +781,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Thẻ lọc nhanh — cuộn ngang, luôn hiện số đếm để biết có đáng bấm. */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div className="-mx-1 hidden gap-2 overflow-x-auto px-1 pb-1 lg:flex">
         {QUICK_FILTERS.map((k) => {
           const on = quick === k
           return (
@@ -755,7 +810,7 @@ export default function CustomersPage() {
 
       {/* Thanh tuyến hôm nay — chỉ hiện khi đang xem tuyến. */}
       {routeMode && (
-        <div className="flex items-center gap-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
+        <div className="hidden lg:flex items-center gap-3 rounded-xl border border-outline-variant/60 bg-surface-container-lowest p-3 shadow-card">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-on-surface">Tuyến hôm nay</p>
             <p className="mt-0.5 truncate text-xs font-medium text-on-surface-variant">
@@ -839,80 +894,14 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Bộ lọc chi tiết — điện thoại, gấp vào một hàng chọn. */}
-      <div className="grid grid-cols-2 gap-2 lg:hidden">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-10"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Mọi trạng thái</SelectItem>
-            <SelectItem value="active">Đang hoạt động</SelectItem>
-            <SelectItem value="suspended">Tạm ngưng</SelectItem>
-            <SelectItem value="locked">Đã khoá</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="h-10"><SelectValue placeholder="Tuyến" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Mọi tuyến</SelectItem>
-            {routes.map((r) => (
-              <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* ⚠ CÔNG NỢ ĐỌC THIẾU THÌ NÓI TRƯỚC KHI NGƯỜI TA ĐỌC CON SỐ. */}
-      {debtWarning && (
-        <div className="rounded-xl border border-warning/40 bg-[#fff4ed] px-4 py-3 text-sm text-[#b54708]">
-          <p className="font-semibold">Công nợ trong danh sách chưa đầy đủ</p>
-          <p className="mt-0.5 break-words">{debtWarning}</p>
-        </div>
-      )}
-
-      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
-      {loadError && !loading && (
-        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
-          <p className="font-semibold">Không tải được danh sách khách hàng</p>
-          <p className="mt-0.5 break-words">{loadError}</p>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-      ) : ordered.length === 0 ? (
-        <EmptyState
-          icon={<Users className="h-8 w-8 text-muted-foreground" />}
-          title={
-            loadError
-              ? "Không tải được dữ liệu"
-              : quick === "today"
-                ? "Hôm nay chưa có điểm nào trong tuyến"
-                : quick === "overdue"
-                  ? "Không có khách nợ quá hạn"
-                  : totalCustomers === 0
-                    ? "Chưa có khách hàng"
-                    : "Không có khách hàng phù hợp"
-          }
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : quick === "today"
-                ? "Vào Tuyến hôm nay để xếp điểm cần ghé, hoặc bấm Tất cả để xem toàn bộ khách."
-                : quick === "overdue"
-                  ? "Chưa có khoản nợ nào quá hạn thanh toán."
-                  : totalCustomers === 0
-                    ? user?.role === "sales"
-                      ? "Bạn chưa được phân công khách hàng nào. Vào Thêm KH để tìm và nhận khách có sẵn về danh sách của mình, hoặc nhờ quản lý phân công."
-                      : user?.role === "warehouse" || user?.role === "driver"
-                        ? "Vai trò của bạn chỉ xem được khách hàng gắn với công việc được giao. Liên hệ quản lý hoặc kế toán nếu cần tra cứu khách hàng."
-                        : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
-                    : "Thử điều chỉnh bộ lọc"
-          }
-        />
-      ) : (
-        <>
-          {/* Máy tính: bảng đầy đủ, có chọn nhiều và đổi cột. */}
-          <div className="hidden lg:block">
+      <div className="hidden space-y-4 lg:block">
+        {canhBao}
+        {loading ? (
+          <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+        ) : ordered.length === 0 ? (
+          emptyState
+        ) : (
+          <div>
             <CustomerTable
               customers={ordered}
               debts={debts || {}}
@@ -931,32 +920,53 @@ export default function CustomersPage() {
             />
             <DataPagination pg={pg} shownCount={ordered.length} />
           </div>
-
-          {/* Điện thoại: dòng gọn, gộp theo nhóm. */}
-          <div className="space-y-4 lg:hidden">
-            {groups.map((g) => (
-              <div key={g.label} className="overflow-hidden rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card">
-                <div className="flex items-baseline justify-between gap-2 border-b border-outline-variant/40 bg-surface-container-low px-4 py-2">
-                  <span className="truncate text-[12px] font-bold uppercase tracking-wider text-on-surface-variant">
-                    {g.label}
-                  </span>
-                  <span className="shrink-0 text-[11px] font-semibold text-on-surface-variant tabular-data">
-                    {g.items.length} khách
-                  </span>
-                </div>
-                {g.items.map((c, i) => renderRow(c, i))}
-              </div>
-            ))}
-            <LoadMore pg={pg} shown={ordered.length} />
-          </div>
-        </>
-      )}
+        )}
+      </div>
 
       <BulkActionsBar
         count={selectedIds.size}
         onClear={clearSelection}
         actions={bulkActions}
         entityLabel="khách hàng"
+      />
+
+      {/* Điện thoại — theo mẫu chủ nhà gửi 26/09/2026. Đặt CUỐI để các phép tìm `.first()` của
+          màn máy tính không vớ phải phần tử đang ẩn. */}
+      <MobileCustomersScreen
+        title={isSales ? "Khách hàng của tôi" : "Khách hàng"}
+        subtitle={[
+          isSales ? "KH được phân công" : `${totalCustomers} khách hàng`,
+          thuHomNay ? `Tuyến ${thuHomNay} hôm nay` : null,
+        ].filter(Boolean).join(" · ")}
+        userInitials={chuVietTat}
+        search={search}
+        onSearch={setSearch}
+        stats={[
+          { key: "today", label: "Cần ghé", count: quickCount("today"), tone: "primary" },
+          { key: "overdue", label: QUICK_FILTER_LABEL.overdue, count: quickCount("overdue"), tone: "danger" },
+          { key: "all", label: QUICK_FILTER_LABEL.all, count: quickCount("all"), tone: "default" },
+        ]}
+        quick={quick}
+        onPickQuick={setQuick}
+        statusFilter={statusFilter}
+        onStatus={setStatusFilter}
+        channelFilter={channelFilter}
+        onChannel={setChannelFilter}
+        routes={routes}
+        route={{ visited: visitedOnRoute, total: routeTotal }}
+        canCreate={!!user && hasPermission(user.role, "customers", "create")}
+        listLabel={
+          debouncedSearch ? "Kết quả" : quick === "all" ? (noNhieuNhat ? "Còn nợ" : "Tất cả") : QUICK_FILTER_LABEL[quick]
+        }
+        count={pg.total}
+        sort={quick === "all" && !debouncedSearch && debts !== null ? sapXep : null}
+        onToggleSort={() => setSapXep((v) => (v === "debt" ? "name" : "debt"))}
+        items={ordered.map(khachMobile)}
+        loading={loading}
+        empty={emptyState}
+        loaded={pg.from + ordered.length}
+        onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_KHACH)}
+        notice={canhBao}
       />
 
       <CustomerImportDialog

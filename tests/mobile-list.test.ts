@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { isAbortError } from "@/lib/supabase/resilient"
 import { SEARCH_FIELD_PROPS } from "../src/lib/ui/search-field"
+import { noNgan } from "../src/components/customers/mobile-customers-screen"
 
 /**
  * Pack M2 — khuôn danh sách chung cho mobile.
@@ -61,7 +62,7 @@ const ORDERS_CODE = strip(ORDERS)
 const RESILIENT = read("src/lib/supabase/resilient.ts")
 const CUSTOMERS = strip(read("src/app/(dashboard)/customers/page.tsx"))
 const CUSTOMER_DETAIL = strip(read("src/app/(dashboard)/customers/[id]/page.tsx"))
-const CUSTOMER_ROW = strip(read("src/components/customers/customer-list-row.tsx"))
+const MOBILE_KH = strip(read("src/components/customers/mobile-customers-screen.tsx"))
 const RECEIVABLES = strip(read("src/app/(dashboard)/receivables/page.tsx"))
 const DELIVERIES = strip(read("src/app/(dashboard)/deliveries/page.tsx"))
 
@@ -412,12 +413,11 @@ describe("M2.3 — /customers", () => {
    * cả danh sách đỏ rực và màu đỏ hết nghĩa; mẫu chỉ đỏ ở khách QUÁ HẠN.
    */
   it("công nợ ở cột phải của dòng, chỉ đỏ khi quá hạn", () => {
-    expect(CUSTOMERS).toContain("rightTop={debt === null ? \"—\" : debtText(debt)}")
-    const at = CUSTOMERS.indexOf("rightTopTone={")
-    expect(at, "dòng khách phải truyền rightTopTone").toBeGreaterThan(0)
-    const tone = CUSTOMERS.slice(at, CUSTOMERS.indexOf("}", CUSTOMERS.indexOf("\"muted\"", at)))
-    expect(tone).toContain('overdue ? "danger"')
-    expect(tone).toContain('debt > 0 ? "default"')
+    // Mẫu 26/09/2026: thẻ khách ở `MobileCustomersScreen`.
+    expect(MOBILE_KH).toContain("{noNgan(k.debt)}")
+    expect(MOBILE_KH).toContain(
+      'k.debt === null || k.debt <= 0 ? "text-muted-foreground" : k.overdue ? "text-destructive" : "text-foreground"'
+    )
   })
 
   /**
@@ -426,7 +426,8 @@ describe("M2.3 — /customers", () => {
    * sai cho một câu hỏi chưa có đáp án.
    */
   it("không đọc được công nợ thì nói chưa đọc được, không nói không nợ", () => {
-    expect(CUSTOMERS).toContain("chưa đọc được nợ")
+    expect(CUSTOMERS).toContain("debt: debts ? debts[c.id] || 0 : null")
+    expect(noNgan(null)).toBe("—")
     expect(CUSTOMERS).toContain("setDebts(null)")
     // ⚠ Kể cả lúc CHƯA đọc xong: khởi tạo bằng `{}` là cả màn hiện
     //   "Không nợ" trong vài trăm mili-giây đầu.
@@ -449,23 +450,26 @@ describe("M2.3 — /customers", () => {
   })
 
   /**
-   * ⚠ CẢ DÒNG LÀ MỘT VÙNG CHẠM. Bản thẻ cũ rải năm nút trên mỗi thẻ và
-   * người dùng bấm trượt sang nút bên cạnh; dòng mới không được có nút
-   * con nào bên trong vùng chạm.
+   * ⚠ CẢ THẺ LÀ MỘT VÙNG CHẠM (mở chi tiết khách). Mẫu 26/09/2026 có SĐT bấm gọi ngay trên
+   *   thẻ — nó nằm TRÊN lớp liên kết phủ (`relative`), không lồng trong `<Link>` (thẻ `<a>`
+   *   lồng nhau là HTML hỏng), và không có nút nào khác trong thẻ.
    */
-  it("dòng khách không có nút con nào bên trong vùng chạm", () => {
-    expect(CUSTOMER_ROW).not.toContain("<button")
-    expect(CUSTOMER_ROW).not.toContain("<a href")
+  it("thẻ khách: một liên kết phủ, SĐT nằm ngoài liên kết", () => {
+    const the = MOBILE_KH.slice(MOBILE_KH.indexOf('data-testid="the-khach"'), MOBILE_KH.indexOf('<div className="pb-2 text-center">'))
+    expect(the).toMatch(/<Link href=\{`\/customers\/\$\{k\.id\}`\} className="absolute inset-0"[^>]*\/>/)
+    expect(the).toContain('<a href={`tel:${k.phone.replace(/\\s+/g, "")}`} className="relative')
+    expect(the).not.toContain("<button")
   })
 
-  it("có ô tìm, thẻ lọc nhanh và LoadMore", () => {
+  it("có ô tìm, thẻ lọc nhanh và Tải thêm 20", () => {
     expect(CUSTOMERS).toContain("QUICK_FILTER_LABEL[k]")
-    expect(CUSTOMERS).toContain("<LoadMore")
+    expect(CUSTOMERS).toContain("onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_KHACH)}")
+    expect(MOBILE_KH).toContain("`Tải thêm ${BUOC_TAI_KHACH}`")
     expect(CUSTOMERS).toContain("if (cancelled || res.aborted) return")
-    // Phân trang dạng nút số chỉ dành cho máy tính; điện thoại dùng LoadMore.
+    // Phân trang dạng nút số chỉ dành cho máy tính; điện thoại dùng "Tải thêm".
     const deskOnly = CUSTOMERS.slice(
-      CUSTOMERS.indexOf('<div className="hidden lg:block">'),
-      CUSTOMERS.indexOf("{/* Điện thoại: dòng gọn")
+      CUSTOMERS.indexOf('<div className="hidden space-y-4 lg:block">'),
+      CUSTOMERS.indexOf("<MobileCustomersScreen")
     )
     expect(deskOnly).toContain("<DataPagination")
   })

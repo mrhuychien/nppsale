@@ -1,14 +1,14 @@
 /**
  * BÁO CÁO TỔNG HỢP — 6 màn thay cho 26 màn báo cáo / phân tích (chủ nhà 26/09/2026: "Đồng ý 6
  * màn … Tạm thời dựng Menu mới bên cạnh các báo cáo cũ. Menu Báo cáo tổng hợp").
- * Spec: thietke/bao-cao-tong-hop-spec.md. Trong lúc chờ thiết kế, mỗi màn là một cổng dẫn tới
- * các báo cáo cũ đang trả lời cùng câu hỏi.
+ * Spec: thietke/bao-cao-tong-hop-spec.md; màn dựng theo thiết kế 26/09/2026 (`components/bao-cao`).
+ * `cu` = báo cáo cũ trả lời cùng câu hỏi — để đối chiếu, và để biết gỡ gì khi màn mới đã ổn.
  */
 export interface ManBaoCao {
   href: string
   label: string
   cauHoi: string
-  /** Báo cáo cũ trả lời cùng câu hỏi (dùng tạm). */
+  /** Báo cáo cũ trả lời cùng câu hỏi. */
   cu: ReadonlyArray<{ href: string; label: string }>
 }
 

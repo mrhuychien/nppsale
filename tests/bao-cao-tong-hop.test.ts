@@ -21,7 +21,9 @@ describe("menu Báo cáo tổng hợp", () => {
       expect(sb, m.href).toContain(`href: "${m.href}"`)
       const f = `src/app/(dashboard)${m.href}/page.tsx`
       expect(existsSync(resolve(__dirname, "..", f)), f).toBe(true)
-      expect(doc(f)).toContain(`<BaoCaoTam href="${m.href}"`)
+      // Màn thật theo thiết kế 26/09/2026 (không còn cổng tạm).
+      const man = { "/bao-cao": "ManTongQuan", "/bao-cao/ban-hang": "ManBanHang", "/bao-cao/cuoi-ngay": "ManCuoiNgay", "/bao-cao/kho": "ManKho", "/bao-cao/cong-no": "ManCongNo", "/bao-cao/tai-chinh": "ManTaiChinh" }[m.href]
+      expect(doc(f)).toContain(`<${man} />`)
       // Báo cáo cũ dẫn tới đều là đường dẫn đã khai quyền (không dẫn vào ngõ cụt).
       for (const c of m.cu) expect(NAV_PERMISSION[c.href] ?? CUA_VAO[c.href], c.href).toBeDefined()
     }
@@ -38,9 +40,8 @@ describe("menu Báo cáo tổng hợp", () => {
     expect(thay("warehouse")).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho"])
     expect(thay("sales")).toEqual(["Bán hàng", "Công nợ"])
     expect(duocVaoTrang("sales", "/bao-cao/tai-chinh", "reports")).toBe(false)
-    // Cổng tạm dẫn tới báo cáo cũ theo luật cửa vào — thủ kho vẫn thấy Báo cáo tồn kho (CUA_VAO).
-    expect(duocVaoTrang("warehouse", "/reports/inventory", "reports")).toBe(true)
-    expect(doc("src/components/reports/bao-cao-tam.tsx")).toContain('duocVaoTrang(user?.role, c.href, "reports")')
+    // Menu ☰ trong màn (điện thoại) lọc theo cùng luật cửa vào.
+    expect(doc("src/components/bao-cao/khung.tsx")).toContain('duocVaoTrang(role, m.href, "reports")')
   })
   it("spec nằm trong repo", () => {
     const s = doc("thietke/bao-cao-tong-hop-spec.md")

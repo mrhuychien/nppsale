@@ -49,5 +49,12 @@ export function showsBottomNav(pathname: string): boolean {
  */
 export function hidesMobileAppBar(pathname: string): boolean {
   /* "/orders", "/customers": danh sách trên điện thoại có đầu trang xanh riêng (mẫu 26/09/2026). */
-  return pathname === "/orders" || pathname === "/customers" || /^\/orders\/[^/]+$/.test(pathname)
+  /* "/bao-cao/*": Báo cáo tổng hợp có đầu trang xanh + ☰ menu 6 màn riêng (thiết kế 26/09/2026). */
+  return (
+    pathname === "/orders" ||
+    pathname === "/customers" ||
+    /^\/orders\/[^/]+$/.test(pathname) ||
+    pathname === "/bao-cao" ||
+    pathname.startsWith("/bao-cao/")
+  )
 }

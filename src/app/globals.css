@@ -133,6 +133,7 @@
 .print-driver-list-only { display: none; }
 .print-receipt-tt200-only { display: none; }
 .print-payslip-only { display: none; }
+.print-cuoi-ngay-only { display: none; }
 
 @media print {
   aside, header, nav, .no-print { display: none !important; }
@@ -152,6 +153,10 @@
   /* T-16 — per-user payslip print mode. */
   html[data-print-mode="payslip"] .print-only { display: none !important; }
   html[data-print-mode="payslip"] .print-payslip-only { display: block !important; }
+  /* Báo cáo tổng hợp › Cuối ngày — tờ A5 thay cho màn hình. */
+  html[data-print-mode="cuoi-ngay"] .print-only,
+  html[data-print-mode="cuoi-ngay"] [data-testid="bao-cao-tong-hop"] { display: none !important; }
+  html[data-print-mode="cuoi-ngay"] .print-cuoi-ngay-only { display: block !important; }
 }
 
 /*

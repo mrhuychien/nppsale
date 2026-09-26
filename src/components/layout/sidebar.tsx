@@ -1,5 +1,6 @@
 "use client"
 
+import { mucDangMo } from "@/lib/nav/muc-dang-mo"
 import { useState, useEffect } from "react"
 import Link from "@/components/ui/link"
 import { usePathname } from "next/navigation"
@@ -271,8 +272,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
               </p>
               <div className="grid grid-cols-3 gap-1.5">
                 {group.items.map((item) => {
-                  const isActive =
-                    pathname === item.href || pathname.startsWith(item.href + "/")
+                  const isActive = mucDangMo(pathname, group.items.map((i) => i.href)) === item.href
                   return (
                     <MenuTile
                       key={item.href}
@@ -397,7 +397,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
                 {isExpanded && (
                   <div className="ml-3 pl-3 border-l border-outline-variant/40 space-y-0.5 mb-1.5">
                     {group.items.map((item) => {
-                      const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+                      const isActive = mucDangMo(pathname, group.items.map((i) => i.href)) === item.href
                       return (
                         <SidebarLink
                           key={item.href}

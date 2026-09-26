@@ -1,7 +1,13 @@
 "use client"
 
-import { BaoCaoTam } from "@/components/reports/bao-cao-tam"
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ManBanHang } from "@/components/bao-cao/man-ban-hang"
 
 export default function Page() {
-  return <BaoCaoTam href="/bao-cao/ban-hang" module="reports" />
+  return (
+    <Suspense fallback={<Skeleton className="h-64" />}>
+      <ManBanHang />
+    </Suspense>
+  )
 }

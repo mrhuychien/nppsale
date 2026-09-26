@@ -193,6 +193,8 @@ export interface InvoiceLineRow {
   quantity: number
   unit_price: number
   line_total: number
+  /** Dòng hàng đổi (trả hàng ngay trên hoá đơn) — không phải hàng bán. */
+  is_exchange?: boolean | null
 }
 
 /** Trạng thái hóa đơn được tính doanh thu — như `is_revenue_invoice_status`. */
@@ -262,7 +264,7 @@ export async function fetchInvoiceLines(
     (lo, from, to) =>
       supabase
         .from("sales_invoice_lines")
-        .select("id, invoice_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total", {
+        .select("id, invoice_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total, is_exchange", {
           count: "exact",
         })
         .in("invoice_id", lo)

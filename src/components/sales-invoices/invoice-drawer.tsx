@@ -151,7 +151,6 @@ export function InvoiceDrawer({
           }
           setNotes(
             noteBlocksOf([
-              { label: "Ghi chú đơn hàng", text: r.order?.notes },
               { label: "Ghi chú hóa đơn", text: r.notes },
             ])
           )

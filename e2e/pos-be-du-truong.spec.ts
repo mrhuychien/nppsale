@@ -36,7 +36,7 @@ async function donDep() {
 }
 const ban = (p: Page) => p.getByRole("button", { name: /Xuất hàng & lập HĐ/ })
 
-test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đơn đi đủ sang hóa đơn", async ({ page }) => {
+test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn đi đủ sang hóa đơn; ghi chú đơn KHÔNG chép sang", async ({ page }) => {
   await donCoGiam()
   try {
     await dangNhap(page)
@@ -57,9 +57,10 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
     await expect(page.getByTestId("chi-tiet-dong")).toBeVisible()
     await page.getByLabel("Giảm giá dòng 1", { exact: true }).fill("10.000")
     await expect(page.getByTestId("dong-hoa-don").first()).toContainText("190.000")
-    // Giảm giá cả đơn của đơn đi sang (30.000), ghi chú đơn vào ô ghi chú hóa đơn.
+    // Giảm giá cả đơn của đơn đi sang (30.000).
     await expect(page.getByLabel("Giảm giá đơn", { exact: true })).toHaveValue("30.000")
-    await expect(page.getByLabel("Ghi chú hóa đơn")).toHaveValue("Giao trước 8h")
+    /* ⚠ Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+    await expect(page.getByLabel("Ghi chú hóa đơn")).toHaveValue("")
 
     await ban(page).click()
     await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
@@ -72,7 +73,7 @@ test("xuất hàng: ghi chú dòng, thuế dòng, giảm giá đơn, ghi chú đ
       unit_price: 95000, line_discount: 10000,
     })
     expect(p.discount, "giảm giá đơn không sang hóa đơn").toBe(30000)
-    expect(p.notes).toBe("Giao trước 8h")
+    expect(p.notes ?? "").not.toBe("Giao trước 8h")
   } finally {
     await donDep()
   }

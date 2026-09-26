@@ -304,7 +304,6 @@ export default function SalesInvoicePrintPage() {
            *   bỏ bớt một.
            */
           notes={[
-            { label: "Ghi chú đơn hàng", text: inv.order?.notes },
             { label: "Ghi chú hóa đơn", text: inv.notes },
           ]}
           total={Number(inv.total) || 0}

@@ -433,9 +433,10 @@ describe("khối đầu đơn ở màn Xuất hàng", () => {
    * lần sửa này; gộp nhầm là mất luôn khối ghi chú chủ nhà chốt trước đó
    * ("phần Xuất hàng cũng phải có ghi chú đầy đủ cho NPP duyệt").
    */
-  it("ghi chú chung của đơn vẫn được vẽ", () => {
-    expect(EDITOR).toContain('const orderNotes = (head?.notes ?? "").trim() || null')
-    expect(EDITOR).toMatch(/\{orderNotes && \([\s\S]{0,400}Ghi chú đơn hàng/)
+  /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+  it("không còn khối ghi chú đơn hàng", () => {
+    expect(EDITOR).not.toContain("orderNotes")
+    expect(EDITOR).not.toContain("Ghi chú đơn hàng")
   })
 })
 

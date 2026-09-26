@@ -443,11 +443,7 @@ export function OrderDrawer({
               )}
               <ReturnSummary returns={returns} />
 
-              {order.notes && (
-                <div className="rounded-xl bg-surface-container-low px-3 py-2.5 text-[13px] font-semibold leading-snug text-on-surface-variant">
-                  Ghi chú: <span className="text-on-surface">{order.notes}</span>
-                </div>
-              )}
+              {/* Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */}
             </div>
 
             <div className="flex gap-2 border-t border-outline-variant/40 px-5 pb-5 pt-3">

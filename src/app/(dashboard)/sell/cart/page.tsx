@@ -724,17 +724,7 @@ export default function SellCartPage() {
               <span className="text-[11.5px] text-muted-foreground">Doanh số và hoa hồng tính cho người được chọn.</span>
             </div>
           )}
-          <div className="flex flex-col gap-1.5 p-3">
-            <span className="text-[14px] font-semibold">Ghi chú</span>
-            <textarea
-              value={cart.notes}
-              onChange={(e) => cart.setNotes(e.target.value)}
-              aria-label="Ghi chú đơn"
-              placeholder="VD: giao trước 10h, để hàng sau quầy"
-              rows={2}
-              className="w-full resize-none rounded-[10px] border border-border px-2.5 py-2 text-[14px] outline-none"
-            />
-          </div>
+          {/* Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng" — ghi chú ở từng dòng hàng. */}
         </div>
       </div>
 

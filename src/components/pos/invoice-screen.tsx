@@ -142,7 +142,6 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [khach, setKhach] = useState<PosPartner | null>(null)
   const [nguoi, setNguoi] = useState<{ taoId: string | null; ganId: string | null }>({ taoId: null, ganId: null })
   const [dieuKhoan, setDieuKhoan] = useState<string | null>(null)
-  const [ghiChuDon, setGhiChuDon] = useState<string | null>(null)
   const [ghiChu, setGhiChu] = useState("")
   const [ngay, setNgay] = useState(homNay)
 
@@ -327,11 +326,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         if (!don) throw new Error("Không tìm thấy đơn hàng, hoặc bạn không có quyền xem nó.")
         setOrderCode(don.order_code)
         if (!invoiceId) setDieuKhoan(don.payment_terms)
-        setGhiChuDon((don.notes ?? "").trim() || null)
+        /* ⚠ Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng" — ghi
+           chú đơn không còn chép sang hóa đơn, không còn dải báo. */
         if (!invoiceId) {
-          /* ⚠ GHI CHÚ ĐƠN ĐI SANG HÓA ĐƠN (24/09/2026) — trước chỉ hiện một dải
-             báo, tờ hóa đơn ghi rỗng. */
-          setGhiChu((don.notes ?? "").trim())
           /* ⚠ GIẢM GIÁ ĐƠN còn lại cho tờ này. Đọc các tờ khác hỏng thì KHÔNG đoán
              — để 0 và nói ra, người xuất tự gõ. */
           if (hdKhac.error) {
@@ -774,8 +771,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             <span className="n text-[11px] opacity-70">({khoa.code})</span>
           </DocBanner>
         )}
-        {/* Xuất hàng: ghi chú đơn đã chép vào ô ghi chú hóa đơn. Sửa: nhắc nếu lệch. */}
-        {sua && ghiChuDon && ghiChuDon !== ghiChu.trim() && <DocBanner>Ghi chú đơn: {ghiChuDon}</DocBanner>}
+
 
         <LineTableFrame
           header={

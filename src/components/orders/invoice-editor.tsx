@@ -116,7 +116,6 @@ export function InvoiceEditor({
    * mãi mãi cho những người không có quyền xem đơn.
    */
   const [headLoaded, setHeadLoaded] = useState(false)
-  const orderNotes = (head?.notes ?? "").trim() || null
   const [loadError, setLoadError] = useState<string | null>(null)
 
   /**
@@ -976,14 +975,7 @@ export function InvoiceEditor({
           {/* ⚠ GHI CHÚ CỦA ĐƠN ĐỨNG RIÊNG VÀ ĐỨNG TRƯỚC. Đây là lời người
               bán dặn, thứ NPP phải đọc TRƯỚC khi quyết định xuất bao
               nhiêu — không phải thứ để trộn vào ô nhập bên dưới. */}
-          {orderNotes && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">
-              <p className="text-xs uppercase tracking-wider text-amber-700">Ghi chú đơn hàng</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-amber-900 [overflow-wrap:anywhere]">
-                {orderNotes}
-              </p>
-            </div>
-          )}
+          {/* Chủ nhà 26/09/2026: bỏ ghi chú đơn hàng — chỉ dùng ghi chú dòng. */}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

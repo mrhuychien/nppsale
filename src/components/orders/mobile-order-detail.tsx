@@ -233,8 +233,8 @@ export function MobileOrderDetail({
             label="Ngày giao"
             value={order.expected_delivery ? formatDate(order.expected_delivery) : "Chưa hẹn"}
           />
-          {showSalesName && <InfoRow label="NVBH" value={order.sales_user?.full_name ?? "—"} />}
-          <InfoRow label="Ghi chú" value={order.notes || "—"} last />
+          {/* Chủ nhà 26/09/2026: bỏ ghi chú đơn hàng — chỉ dùng ghi chú dòng. */}
+          {showSalesName && <InfoRow label="NVBH" value={order.sales_user?.full_name ?? "—"} last />}
         </Card>
 
         {/* Dòng thời gian */}

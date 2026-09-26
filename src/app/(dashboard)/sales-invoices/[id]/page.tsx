@@ -513,7 +513,6 @@ export default function SalesInvoiceDetailPage() {
               ĐƠN là lời người xuất kho dặn lúc giao. Gộp làm một là mất
               mất ai nói câu nào. Trùng chữ thì chỉ hiện khối đầu. */}
           {[
-            { label: "Ghi chú đơn hàng", text: (inv.order?.notes ?? "").trim() },
             { label: "Ghi chú hóa đơn", text: (inv.notes ?? "").trim() },
           ]
             .filter((n, i, all) => n.text !== "" && all.findIndex((x) => x.text === n.text) === i)

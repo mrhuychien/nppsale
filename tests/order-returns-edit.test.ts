@@ -788,10 +788,11 @@ describe("chi tiết đơn hàng — ba chỗ còn lệch mẫu", () => {
   })
 
   /** ⚠ Thẻ "Ghi chú: Không có" chiếm chỗ của thứ người đọc đang tìm. */
-  it("ghi chú là thẻ riêng và chỉ vẽ khi có chữ", () => {
-    expect(page).toContain("{order.notes && (")
-    expect(page).toContain('title="Ghi chú"')
-    expect(page).toContain("whitespace-pre-wrap")
+  /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+  it("không còn thẻ / ô ghi chú đơn hàng", () => {
+    expect(page).not.toContain("{order.notes && (")
+    expect(page).not.toContain('title="Ghi chú"')
+    expect(page).not.toContain("value={editForm.notes}")
   })
 
   /**

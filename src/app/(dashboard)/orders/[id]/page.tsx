@@ -2029,14 +2029,7 @@ export default function OrderDetailPage() {
           ⚠ `whitespace-pre-wrap`: ghi chú giao hàng hay xuống dòng ("gọi
             trước 15 phút"), gộp thành một đoạn là mất ý.
         */}
-        {order.notes && (
-          <DetailCard
-            title="Ghi chú"
-            bodyClassName="whitespace-pre-wrap px-4 py-3.5 text-sm"
-          >
-            {order.notes}
-          </DetailCard>
-        )}
+        {/* Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */}
         </div>
 
         {/* Right column - customer + actions + edit */}
@@ -2134,7 +2127,7 @@ export default function OrderDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Thanh toán &amp; giao hàng</CardTitle>
               {/* Cùng luật với nút sửa dòng: sửa được ở màn làm đơn thì sang đó. */}
-              {canEdit && !editMode && (
+              {canEdit && (fullEdit || isSellEditable(order.status)) && !editMode && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -2176,10 +2169,7 @@ export default function OrderDetailPage() {
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ngày giao dự kiến</Label>
                     <p className="font-semibold">{order.expected_delivery ? formatDate(order.expected_delivery) : "-"}</p>
                   </div>
-                  <div>
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú</Label>
-                    <p className="whitespace-pre-wrap">{order.notes || <span className="text-muted-foreground">Không có</span>}</p>
-                  </div>
+
                 </>
               ) : (
                 <>
@@ -2207,20 +2197,7 @@ export default function OrderDetailPage() {
                       </div>
                     </>
                   )}
-                  {!fullEdit && (
-                    <div className="rounded-lg bg-[#fff4ed] p-3 text-xs text-[#b54708]">
-                      Đơn đã rời khỏi tay bạn — chỉ sửa được ghi chú. Các trường khác chỉ mở khi
-                      đơn còn là nháp hoặc phiếu tạm.
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Ghi chú</Label>
-                    <Textarea
-                      value={editForm.notes}
-                      onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                      rows={3}
-                    />
-                  </div>
+
                   <Button onClick={handleSaveEdit} disabled={actionLoading} className="w-full">
                     {actionLoading ? "Đang lưu..." : "Lưu thay đổi"}
                   </Button>

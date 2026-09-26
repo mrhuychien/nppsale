@@ -342,31 +342,14 @@ describe("Màn soạn hóa đơn (toàn trang)", () => {
    * thứ khác nhau; chép sang là tờ hóa đơn in hai lần cùng một câu với
    * hai nhãn khác nhau.
    */
-  it("hiện ghi chú chung của đơn, và KHÔNG chép vào ô nhập", () => {
+  /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+  it("không còn khối ghi chú đơn hàng, và KHÔNG chép ghi chú đơn vào ô ghi chú hóa đơn", () => {
     expect(EDITOR).toContain('.from("sales_orders")')
-    /**
-     * ⚠ GHI CHÚ LẤY TỪ CỘT `notes` CỦA ĐƠN, không phải từ một state nào
-     * khác. Từ 20/09/2026 nó đi chung câu đọc đầu đơn (cùng tên khách,
-     * ngày đặt, hình thức trả) — nên chốt phải bám vào phép rút ra, thứ
-     * còn lại sau khi cách nạp đổi.
-     */
-    expect(EDITOR).toContain('const orderNotes = (head?.notes ?? "").trim() || null')
-    expect(EDITOR).toContain("notes, order_date, payment_terms,")
-    /**
-     * ⚠ KIỂM CẢ ĐIỀU KIỆN LẪN THÂN. Chỉ tìm chữ "Ghi chú đơn hàng" thì
-     * đổi điều kiện thành `{false && (` vẫn xanh — khối còn nguyên trong
-     * file mà màn hình không hiện gì.
-     */
-    const flat = EDITOR.replace(/\s+/g, " ")
-    expect(flat).toContain(
-      '{orderNotes && ( <div className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">'
-    )
-    expect(flat).toContain("{orderNotes} </p>")
-    expect(EDITOR, "đang chép ghi chú đơn sang ô ghi chú hóa đơn").not.toContain(
-      "setNotes(orderNotes"
-    )
-    // Và phải đứng TRƯỚC ô nhập — NPP đọc rồi mới ghi.
-    expect(EDITOR.indexOf("Ghi chú đơn hàng")).toBeLessThan(EDITOR.indexOf('htmlFor="inv-note"'))
+    expect(EDITOR).not.toContain("Ghi chú đơn hàng")
+    expect(EDITOR).not.toContain("setNotes(orderNotes")
+    const POS = readFileSync(resolve(__dirname, "..", "src/components/pos/invoice-screen.tsx"), "utf-8")
+    expect(POS, "POS xuất hàng còn chép ghi chú đơn sang hóa đơn").not.toContain("setGhiChu((don.notes")
+    expect(POS).not.toContain("Ghi chú đơn:")
   })
 
   /**

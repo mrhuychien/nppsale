@@ -267,7 +267,8 @@ export default function OrderPrintPage() {
            *   tờ giấy — tức là in ra cho đủ chứ không cho ai đọc. Người
            *   nhận hàng cần đọc được "giao trước 8h".
            */
-          notes={[{ label: "Ghi chú đơn hàng", text: order.notes }]}
+          /* Chủ nhà 26/09/2026: bỏ ghi chú đơn hàng — chỉ dùng ghi chú dòng. */
+          notes={[]}
           total={tienHang}
           invoiceDiscount={giamDon}
           returnCredit={traHang}

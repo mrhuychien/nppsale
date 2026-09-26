@@ -162,7 +162,8 @@ describe("ghi chú chung trong xem nhanh hóa đơn", () => {
   it("bỏ khối rỗng và khử trùng bằng cùng hàm với bản in", () => {
     expect(INV_DRAWER).toContain('from "@/components/printing/sales-invoice"')
     expect(INV_DRAWER).toContain("noteBlocksOf([")
-    expect(INV_DRAWER).toContain('{ label: "Ghi chú đơn hàng", text: r.order?.notes }')
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+    expect(INV_DRAWER).not.toContain('"Ghi chú đơn hàng"')
     expect(INV_DRAWER).toContain('{ label: "Ghi chú hóa đơn", text: r.notes }')
   })
 

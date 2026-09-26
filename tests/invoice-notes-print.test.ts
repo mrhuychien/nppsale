@@ -137,11 +137,11 @@ describe("ghi chú chung của đơn", () => {
   it.each([
     ["bản in hóa đơn", "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx"],
     ["trang chi tiết hóa đơn", "src/app/(dashboard)/sales-invoices/[id]/page.tsx"],
-  ])("%s: hai khối, ghi rõ của đơn và của hóa đơn", (_l, rel) => {
+  ])("%s: chỉ còn ghi chú hóa đơn (bỏ ghi chú đơn hàng)", (_l, rel) => {
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
     const src = read(rel)
-    expect(src).toContain('"Ghi chú đơn hàng"')
+    expect(src).not.toContain('"Ghi chú đơn hàng"')
     expect(src).toContain('"Ghi chú hóa đơn"')
-    expect(src.indexOf('"Ghi chú đơn hàng"')).toBeLessThan(src.indexOf('"Ghi chú hóa đơn"'))
   })
 
   /**
@@ -149,8 +149,10 @@ describe("ghi chú chung của đơn", () => {
    * ghép nó vào cuối câu cảnh báo ở cỡ chữ NHỎ NHẤT tờ giấy — tức là in
    * ra cho đủ chứ không cho ai đọc.
    */
-  it("bản in đơn hàng không còn giấu ghi chú vào chân trang", () => {
-    expect(ORD_PRINT).toContain('notes={[{ label: "Ghi chú đơn hàng", text: order.notes }]}')
+  it("bản in đơn hàng không in ghi chú đơn (cả khối lẫn chân trang)", () => {
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng". */
+    expect(ORD_PRINT).toContain("notes={[]}")
+    expect(ORD_PRINT).not.toContain('"Ghi chú đơn hàng"')
     const i = ORD_PRINT.indexOf("footerNote={")
     expect(i).toBeGreaterThan(0)
     expect(ORD_PRINT.slice(i, i + 400)).not.toContain("order.notes")

@@ -25,9 +25,23 @@ describe("status-multi", () => {
     // Bật lại đủ mọi chip → về Tất cả.
     expect(bamTrangThai(v, "cancelled", THU_TU)).toBe("all")
     expect(bamTrangThai(v, "all", THU_TU)).toBe("all")
-    // Tắt chip cuối cùng → Tất cả.
-    expect(bamTrangThai("completed", "completed", THU_TU)).toBe("all")
+    /* ⚠ LẬT 26/09/2026 — chủ nhà: "ấn thêm 1 lần vào tất cả thì bỏ chọn tất cả các trạng
+       thái". Tắt chip cuối cùng cũng là bỏ chọn hết (không còn tự về Tất cả). */
+    expect(bamTrangThai("completed", "completed", THU_TU)).toBe("none")
     expect(bamTrangThai("completed", "submitted", THU_TU)).toBe("submitted,completed")
+  })
+  it("bấm Tất cả lần 1 chọn hết, lần 2 bỏ chọn hết; từ bỏ-hết bấm chip là chọn mình chip đó", () => {
+    expect(bamTrangThai("submitted", "all", THU_TU)).toBe("all")
+    expect(bamTrangThai("all", "all", THU_TU)).toBe("none")
+    expect(bamTrangThai("none", "all", THU_TU)).toBe("all")
+    expect(bamTrangThai("none", "completed", THU_TU)).toBe("completed")
+    for (const k of ["all", ...THU_TU]) expect(dangChon("none", k), k).toBe(false)
+    expect(dangChon("all", "all")).toBe(true)
+    // Bỏ chọn hết = danh sách rỗng (lọc theo trạng thái không tồn tại), không phải "không lọc".
+    const ds = trangThaiCuaChon("none", { completed: ["completed", "closed"] })
+    expect(ds).not.toBeNull()
+    expect(ds!.some((x) => THU_TU.includes(x))).toBe(false)
+    expect(tachTrangThai("none")).toEqual([])
   })
   it("đường dẫn sâu một trạng thái cũ vẫn chạy (?status=draft)", () => {
     expect(tachTrangThai("draft")).toEqual(["draft"])

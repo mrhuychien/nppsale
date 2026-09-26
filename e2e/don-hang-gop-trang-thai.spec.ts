@@ -18,8 +18,9 @@ test("đơn hàng: không còn chip Xuất một phần; đơn xuất một ph�
   await expect(page.locator('[data-status-chip="partially_invoiced"]')).toHaveCount(0)
   await expect(page.getByText("Xuất một phần")).toHaveCount(0)
   const chip = (k: string) => page.locator(`[data-status-chip="${k}"]`).first()
-  // Từ Tất cả: tắt Phiếu tạm và Đã huỷ → chỉ còn Hoàn thành.
-  await chip("all").click()
+  // Đang Tất cả (bấm thêm "Tất cả" là bỏ chọn hết — chủ nhà 26/09/2026): tắt Phiếu tạm và
+  // Đã huỷ → chỉ còn Hoàn thành.
+  await expect(chip("all")).toHaveAttribute("aria-pressed", "true")
   await chip("submitted").click()
   await chip("cancelled").click()
   const dong = page.getByRole("row").filter({ has: page.getByRole("link", { name: "DH-0003", exact: true }) })

@@ -16,7 +16,9 @@ test("đơn hàng: chọn Phiếu tạm + Hoàn thành cùng lúc = mọi thứ 
 
   /* ⚠ Chủ nhà 25/09/2026: "Khi ấn vào tất cả thì chọn hết các trạng thái luôn" — từ Tất
      cả bấm một chip là TẮT nó; nên bấm "Đã huỷ" = Phiếu tạm + Hoàn thành (mọi thứ trừ huỷ). */
-  await chip("all").click()
+  // Đang "Tất cả" (sáng hết) — bấm thêm lần nữa là bỏ chọn hết (chủ nhà 26/09/2026), nên
+  // không bấm; bấm "Đã huỷ" tắt riêng nó.
+  await expect(chip("all")).toHaveAttribute("aria-pressed", "true")
   await expect(chip("submitted")).toHaveAttribute("aria-pressed", "true")
   await chip("cancelled").click()
   await expect(chip("cancelled")).toHaveAttribute("aria-pressed", "false")
@@ -39,6 +41,15 @@ test("đơn hàng: chọn Phiếu tạm + Hoàn thành cùng lúc = mọi thứ 
   await expect(chip("submitted")).toHaveAttribute("aria-pressed", "true")
   await expect(chip("cancelled")).toHaveAttribute("aria-pressed", "true")
   await expect(dong("DH-0004")).toHaveCount(1)
+
+  /* ⚠ Chủ nhà 26/09/2026: "ấn thêm 1 lần vào tất cả thì bỏ chọn tất cả các trạng thái". */
+  await chip("all").click()
+  for (const k of ["all", "submitted", "completed", "cancelled"]) await expect(chip(k)).toHaveAttribute("aria-pressed", "false")
+  await expect(dong("DH-0001")).toHaveCount(0)
+  await expect(dong("DH-0004")).toHaveCount(0)
+  await chip("completed").click() // từ bỏ-hết bấm một chip = chỉ chip đó
+  await expect(dong("DH-0002")).toHaveCount(1)
+  await expect(dong("DH-0001")).toHaveCount(0)
 })
 
 test("phiếu trả: bấm chọn nhiều trạng thái", async ({ page }) => {

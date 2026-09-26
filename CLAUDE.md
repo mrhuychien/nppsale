@@ -98,7 +98,10 @@ Chủ nhà chốt 25/09/2026 (mig 191).
 - Nhắc chủ nhà các migration cần chạy trên Supabase sau mỗi đợt.
 
 ## 4. Trước mỗi commit
-`npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · `npx playwright test` (đủ bộ).
+`npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa
+(`npx playwright test e2e/<tệp>.spec.ts`).
+- **Full e2e (`npx playwright test` đủ bộ) chỉ chạy khi chủ nhà chỉ định** (chủ nhà 26/09/2026: *"full
+  e2e sẽ do tao chỉ định"*). Không tự chạy đủ bộ, kể cả trước khi push lên main.
 - Mỗi sửa lỗi có test; thử phá (mutation) để chắc test bắt được lỗi.
 - Không thêm thư viện mới.
 

@@ -92,3 +92,14 @@ test("điện thoại: ô tìm khách tìm được theo địa chỉ", async ({
   await expect(man.getByTestId("the-khach")).toHaveCount(1)
   await expect(man.getByTestId("the-khach").first()).toContainText("Đại lý Minh")
 })
+
+test.describe("máy tính", () => {
+  test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false })
+  test("bảng khách hàng có cột Địa chỉ và Phường/xã", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/customers")
+    await expect(page.locator("th", { hasText: "Địa chỉ" })).toBeVisible()
+    await expect(page.locator("th", { hasText: "Phường/xã" })).toBeVisible()
+    await expect(page.getByRole("row").filter({ hasText: "Đại lý Minh" }).locator("visible=true").first()).toContainText("2 Trần Phú")
+  })
+})

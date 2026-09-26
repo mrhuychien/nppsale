@@ -3,6 +3,9 @@ import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 export const CUSTOMER_COLUMNS = [
   { key: "owner", label: "Chủ cửa hàng" },
   { key: "phone", label: "SĐT" },
+  /* Chủ nhà 26/09/2026: "cột hiển thị thêm địa chỉ, phường". */
+  { key: "address", label: "Địa chỉ" },
+  { key: "ward", label: "Phường/xã" },
   { key: "channel", label: "Tuyến/Kênh" },
   { key: "managers", label: "Phụ trách" },
   { key: "lastVisit", label: "Ghé thăm" },
@@ -16,6 +19,8 @@ export type CustomerColumnKey = (typeof CUSTOMER_COLUMNS)[number]["key"]
 export const DEFAULT_CUSTOMER_COLUMNS: CustomerColumnKey[] = [
   "owner",
   "phone",
+  "address",
+  "ward",
   "channel",
   "managers",
   "lastVisit",

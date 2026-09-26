@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { selectResilient } from "@/lib/supabase/resilient"

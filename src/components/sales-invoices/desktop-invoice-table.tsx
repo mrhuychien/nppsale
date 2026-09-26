@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { ArrowDown, ArrowUp, Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"

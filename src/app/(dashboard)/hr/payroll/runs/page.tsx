@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"

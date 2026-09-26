@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Search, UserPlus, CheckCircle2, MapPin, Phone, User as UserIcon } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { errorMessage } from "@/lib/errors"
 
 interface DupeRow {

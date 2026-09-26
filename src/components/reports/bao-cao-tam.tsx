@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { ArrowRight, PencilRuler } from "lucide-react"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"

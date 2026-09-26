@@ -2,7 +2,7 @@
 
 import { UserMenu } from "@/components/layout/user-menu"
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import {
   Plus, ChevronRight, MapPin, CreditCard, Pencil, Warehouse, Check, Search, type LucideIcon,
 } from "lucide-react"

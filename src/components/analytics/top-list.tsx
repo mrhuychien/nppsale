@@ -1,4 +1,4 @@
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { ArrowUpDown } from "lucide-react"
 import { cn, formatCurrency } from "@/lib/utils"
 

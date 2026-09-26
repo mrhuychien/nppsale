@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"

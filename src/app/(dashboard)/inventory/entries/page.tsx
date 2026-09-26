@@ -41,7 +41,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
   CheckCircle2, CircleX,
 } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { StockEntry } from "@/types"
 import {
   STOCK_ENTRY_COLUMNS,

@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { Supplier, StockEntry } from "@/types"
 import { errorMessage } from "@/lib/errors"
 

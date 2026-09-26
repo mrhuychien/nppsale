@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"

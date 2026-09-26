@@ -1,5 +1,8 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"],
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
   "rules": {
     "no-restricted-syntax": [
       "warn",
@@ -11,6 +14,27 @@
         "selector": "CallExpression[callee.property.name='select'][arguments.0.type='Literal'][arguments.0.value=/^\\*,/]",
         "message": "Tránh .select('*, joined:...') — chỉ liệt kê cột cần (vẫn join được)."
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "next/link",
+            "message": "Dùng `import Link from \"@/components/ui/link\"` — tắt tải trước mặc định (26/09/2026: danh sách trên máy tính chậm vì mỗi dòng tự tải trước trang chi tiết)."
+          }
+        ]
+      }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/ui/link.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }

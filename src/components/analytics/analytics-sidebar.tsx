@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { useState } from "react"
 import {
   TrendingUp,

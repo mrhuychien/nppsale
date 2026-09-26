@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import {

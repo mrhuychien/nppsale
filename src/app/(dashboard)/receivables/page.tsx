@@ -34,7 +34,7 @@ import {
 } from "@/lib/utils"
 import {
   HandCoins, CreditCard, Eye, FileText } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { Receivable } from "@/types"
 import {
   remainingOf, creditOf,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
 import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"

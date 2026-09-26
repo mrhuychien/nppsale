@@ -6,7 +6,7 @@ import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregat
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { tongChungTu } from "@/lib/orders/list-summary"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"

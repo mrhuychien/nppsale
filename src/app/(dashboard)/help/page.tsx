@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { useAuth } from "@/hooks/use-auth"
 import { PageHeader } from "@/components/ui/page-header"
 import { ROLE_LABELS } from "@/lib/constants"

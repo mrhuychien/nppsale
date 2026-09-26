@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { Loader2, PackageCheck, Pencil, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"

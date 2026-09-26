@@ -21,7 +21,7 @@
  * một đằng, sổ ghi một nẻo.
  */
 
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { returnReasonLabel } from "@/lib/sell/returns"

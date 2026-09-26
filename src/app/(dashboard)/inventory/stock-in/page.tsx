@@ -32,7 +32,7 @@ import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import {
   Dialog,
   DialogContent,

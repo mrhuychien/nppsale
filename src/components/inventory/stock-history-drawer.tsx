@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import {
   Sheet,

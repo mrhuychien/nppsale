@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { ChevronLeft, ChevronRight, Phone } from "lucide-react"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_TERMS } from "@/lib/constants"

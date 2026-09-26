@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"

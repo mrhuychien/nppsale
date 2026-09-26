@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Users, Building2, CheckCircle2, ShieldCheck } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 
 export default function SettingsPage() {
   const { loading } = useRoleGuard("settings")

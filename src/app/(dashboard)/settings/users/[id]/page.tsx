@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { PageHeader } from "@/components/ui/page-header"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"

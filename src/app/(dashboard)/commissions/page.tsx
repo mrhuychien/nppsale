@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
 import { Award, CheckCircle2, Target, Wallet } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { CommissionWallet } from "@/types"
 
 function initials(name: string | undefined): string {

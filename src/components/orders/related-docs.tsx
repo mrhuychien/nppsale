@@ -22,7 +22,7 @@
 
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"

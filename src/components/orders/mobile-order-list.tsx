@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { Check } from "lucide-react"
 import { cn, formatCurrency } from "@/lib/utils"
 import { groupOrdersByDay, orderTone, vnTime } from "@/lib/orders/status-tone"

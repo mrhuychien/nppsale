@@ -12,7 +12,7 @@
 
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { useParams } from "next/navigation"
 import {
   ArrowRight, FileText, Pencil, Printer, Receipt, Undo2, XCircle,

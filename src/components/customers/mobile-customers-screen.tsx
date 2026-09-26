@@ -11,7 +11,7 @@
  */
 
 import { UserMenu } from "@/components/layout/user-menu"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { Search, MapPin, Plus, X } from "lucide-react"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"

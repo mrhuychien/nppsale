@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CalendarCheck, Calculator, Settings2, Trophy, Users } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 
 const HR_LINKS = [
   {

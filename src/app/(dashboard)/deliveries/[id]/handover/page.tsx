@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { LEGACY_FLOW_WRITES_LOCKED, LEGACY_LOCK_HINT } from "@/lib/nav/legacy-flow"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"

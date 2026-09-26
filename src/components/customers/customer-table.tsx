@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -92,6 +92,8 @@ export function CustomerTable({
               <TableHead>Cửa hàng</TableHead>
               {show("owner") && <TableHead>Chủ cửa hàng</TableHead>}
               {show("phone") && <TableHead>SĐT</TableHead>}
+              {show("address") && <TableHead>Địa chỉ</TableHead>}
+              {show("ward") && <TableHead>Phường/xã</TableHead>}
               {show("channel") && <TableHead>Tuyến</TableHead>}
               {show("managers") && <TableHead>Phụ trách</TableHead>}
               {show("lastVisit") && showEnrichment && <TableHead>Ghé thăm</TableHead>}
@@ -134,6 +136,16 @@ export function CustomerTable({
                   </TableCell>
                   {show("owner") && <TableCell>{c.owner_name}</TableCell>}
                   {show("phone") && <TableCell>{c.phone}</TableCell>}
+                  {show("address") && (
+                    <TableCell className="max-w-[260px] truncate" title={c.address || undefined}>
+                      {c.address || <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  )}
+                  {show("ward") && (
+                    <TableCell className="whitespace-nowrap">
+                      {c.ward || <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  )}
                   {show("channel") && (
                     <TableCell>
                       {c.channel && <Badge variant="outline">{c.channel}</Badge>}

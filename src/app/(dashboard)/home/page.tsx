@@ -3,7 +3,7 @@
 import { UserMenu } from "@/components/layout/user-menu"
 import { vnDateKey } from "@/lib/orders/status-tone"
 import { useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"

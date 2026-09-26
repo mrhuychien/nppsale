@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { ArrowDown, ArrowUp, CheckCircle2, Eye, FileText } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"

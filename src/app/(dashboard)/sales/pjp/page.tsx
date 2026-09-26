@@ -23,7 +23,7 @@ import {
   XCircle,
   Navigation,
 } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { errorMessage } from "@/lib/errors"

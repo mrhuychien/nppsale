@@ -2,7 +2,7 @@
 
 import { Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { Check, CloudOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 

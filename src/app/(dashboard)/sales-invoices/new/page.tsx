@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"

@@ -30,7 +30,7 @@ import { formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel }
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
 import { Factory, Plus, Search } from "lucide-react"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { Payable, PayableStatus } from "@/types"
 
 type StatusFilter = "all" | "open" | "partial" | "overdue" | "paid"

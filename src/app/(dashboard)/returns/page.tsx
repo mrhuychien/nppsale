@@ -53,7 +53,7 @@ import { TRUONG_TRA_HANG } from "@/lib/search/doc-fields"
 import { RETURN_REASONS } from "@/lib/constants"
 import { RotateCcw, PieChart, Info, Plus, Check } from "lucide-react"
 import { bamTrangThai, dangChon, trangThaiCuaChon } from "@/lib/list/status-multi"
-import Link from "next/link"
+import Link from "@/components/ui/link"
 import type { Return } from "@/types"
 import { ReturnDrawer } from "@/components/returns/return-drawer"
 

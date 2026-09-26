@@ -152,7 +152,7 @@ export function MobileCustomersScreen({
             type="search"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="Tên cửa hàng, chủ quán, SĐT"
+            placeholder="Tên cửa hàng, chủ quán, SĐT, địa chỉ"
             aria-label="Tìm khách hàng"
             className="w-full bg-transparent text-[15px] text-primary-foreground outline-none placeholder:text-primary-foreground/70 [&::-webkit-search-cancel-button]:hidden"
           />

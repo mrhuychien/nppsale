@@ -56,6 +56,7 @@ import {
   CUSTOMER_FILTERS,
   DEFAULT_CUSTOMER_FILTERS,
   type CustomerFilterKey,
+  COT_TIM_KHACH,
 } from "./list-config"
 
 interface LastOrderInfo {
@@ -343,7 +344,8 @@ export default function CustomersPage() {
         if (idSlice) q = q.in("id", idSlice)
         else q = q.range(pg.from, pg.to)
         if (debouncedSearch) {
-          q = q.or(dieuKienTim("customers", ["store_name", "owner_name", "phone"], debouncedSearch))
+          /* Tìm cả theo ĐỊA CHỈ (chủ nhà 26/09/2026) — `tim_kd` cũng có địa chỉ từ mig 203. */
+          q = q.or(dieuKienTim("customers", COT_TIM_KHACH, debouncedSearch))
         }
         /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
         for (const f of locNC.menhDe) q = q.or(f)
@@ -764,7 +766,7 @@ export default function CustomersPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tên cửa hàng, chủ quán, SĐT…"
+          placeholder="Tên cửa hàng, chủ quán, SĐT, địa chỉ…"
           {...SEARCH_FIELD_PROPS}
           className={`pl-10 pr-10 ${HIDE_NATIVE_CLEAR}`}
         />

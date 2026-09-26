@@ -30,7 +30,7 @@ test("điện thoại: khách hàng theo mẫu — đầu xanh, ba ô lọc, th�
     const man = page.getByTestId("kh-mobile")
     await expect(man.getByRole("heading", { name: "Khách hàng" })).toBeVisible()
     await expect(man.getByText(/khách hàng · Tuyến (T\d|CN) hôm nay/)).toBeVisible()
-    await expect(man.getByPlaceholder("Tên cửa hàng, chủ quán, SĐT")).toBeVisible()
+    await expect(man.getByPlaceholder("Tên cửa hàng, chủ quán, SĐT, địa chỉ")).toBeVisible()
     await expect(man.locator('[data-o-khach="overdue"]')).toContainText("1")
     await expect(man.getByText("Tuyến hôm nay")).toBeVisible()
     await expect(man.getByRole("link", { name: "Thêm KH" })).toHaveAttribute("href", "/customers/new")
@@ -81,4 +81,14 @@ test("điện thoại: NVBH — tiêu đề Khách hàng của tôi, không hi�
   } finally {
     await api(`users?id=eq.${OWNER}`, "PATCH", { role: "owner" })
   }
+})
+
+test("điện thoại: ô tìm khách tìm được theo địa chỉ", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/customers")
+  const man = page.getByTestId("kh-mobile")
+  await expect(man.getByTestId("the-khach")).toHaveCount(2)
+  await man.getByPlaceholder("Tên cửa hàng, chủ quán, SĐT, địa chỉ").fill("Trần Phú")
+  await expect(man.getByTestId("the-khach")).toHaveCount(1)
+  await expect(man.getByTestId("the-khach").first()).toContainText("Đại lý Minh")
 })

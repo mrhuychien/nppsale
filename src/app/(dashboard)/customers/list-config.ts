@@ -35,3 +35,9 @@ export const CUSTOMER_FILTERS = [
 export type CustomerFilterKey = (typeof CUSTOMER_FILTERS)[number]["key"]
 
 export const DEFAULT_CUSTOMER_FILTERS: CustomerFilterKey[] = ["search"]
+
+/**
+ * Cột ô tìm khách hỏi máy chủ (kèm `tim_kd` bỏ dấu). Chủ nhà 26/09/2026: "thêm cả địa chỉ" —
+ * `tim_kd` cũng có địa chỉ / phường / quận / tỉnh từ mig 203.
+ */
+export const COT_TIM_KHACH = ["store_name", "owner_name", "phone", "address", "ward", "district", "province"]

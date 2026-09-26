@@ -353,4 +353,11 @@ SELECT 41, 'Mig 202 (NVBH chỉ còn bán hàng)',
                       AND module = 'receivables' AND action = 'create')
        THEN 'CHƯA — NVBH còn lập phiếu thu / ô quyền cũ'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 42. Mig 203 — tìm khách theo cả địa chỉ (tim_kd có địa chỉ)
+SELECT 42, 'Mig 203 (Tìm khách theo địa chỉ)',
+  CASE WHEN EXISTS (SELECT 1 FROM customers WHERE COALESCE(address, '') <> ''
+                      AND tim_kd NOT LIKE '%' || public.khong_dau(address) || '%')
+       THEN 'CHƯA — gõ địa chỉ không dấu không ra khách'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

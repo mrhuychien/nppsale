@@ -351,3 +351,26 @@ export function congLoiNhuanTheoNgay(input: {
     })
     .sort((a, b) => a.date.localeCompare(b.date))
 }
+
+/**
+ * Cấp NHÂN VIÊN lấy TIỀN CHỨNG TỪ thay cho tiền cộng dòng.
+ *
+ * ⚠ CHỦ NHÀ 26/09/2026: "sao doanh thu thuần trong báo cáo bán hàng vẫn lệch so với công nợ".
+ *   Cộng dòng (Σ `line_total` HĐ − Σ `line_total` dòng trả) bỏ mất giảm giá cả đơn, VAT, làm
+ *   tròn của hóa đơn, và chênh giữa dòng trả với `credit_note_amount` của phiếu. Công nợ thì
+ *   là `sales_invoices.total − credit_note_amount`. Không lọc hàng hóa → dòng nhân viên dùng
+ *   đúng hai số ấy (khớp công nợ); mặt hàng bên trong vẫn cộng dòng. Có lọc hàng hóa thì tiền
+ *   chứng từ không tách được theo hàng → giữ cộng dòng.
+ */
+export function chotTienChungTu<T extends HangBanNhanVien>(
+  rows: readonly T[],
+  tienHoaDon: ReadonlyMap<string, number>,
+  tienTra: ReadonlyMap<string, number>
+): T[] {
+  return rows.map((r) => {
+    const revenue = tienHoaDon.get(r.id) ?? 0
+    const returnValue = tienTra.get(r.id) ?? 0
+    return { ...r, revenue, returnValue, diff: revenue - r.listed, netRevenue: revenue - returnValue }
+  })
+}
+

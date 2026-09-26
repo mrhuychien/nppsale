@@ -28,7 +28,7 @@ import {
   type StockEntryLineRow,
 } from "@/lib/analytics/sales"
 import {
-  congHangBanNhanVien,
+  congHangBanNhanVien, chotTienChungTu,
   congLoiNhuanNhanVien,
   nhanVienPhieuTra,
   type HangBanNhanVien,
@@ -750,11 +750,26 @@ export default function EmployeesReportPage() {
      */
     const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line }))
 
-    return congHangBanNhanVien({ ban, tra, sanPham: productMap }).map((r) => {
+    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap })
+    /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — xem `chotTienChungTu`. */
+    const coLocHang = productFilter.length > 0 || categoryFilter.length > 0 || brandFilter.length > 0
+    if (!coLocHang) {
+      const tienHd = new Map<string, number>()
+      for (const o of invoices) {
+        if (!matchSearchUser(o.sales_user_id) || !customerPasses(o.customer_id)) continue
+        tienHd.set(o.sales_user_id, (tienHd.get(o.sales_user_id) ?? 0) + Number(o.total || 0))
+      }
+      const tienTra = new Map<string, number>()
+      for (const { uid, r } of returnsTheoNv) {
+        tienTra.set(uid, (tienTra.get(uid) ?? 0) + Number(r.credit_note_amount || 0))
+      }
+      rows = chotTienChungTu(rows, tienHd, tienTra)
+    }
+    return rows.map((r) => {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returnLinesTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses])
+  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
 
   const handleExport = () => {
     if (variant === "sales") {

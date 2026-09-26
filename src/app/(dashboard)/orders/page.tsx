@@ -15,7 +15,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { useAuth } from "@/hooks/use-auth"
@@ -256,7 +256,7 @@ export default function OrdersPage() {
   >({})
   const [loading, setLoading] = useState(true)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
-  const khoaTaiRef = useRef<string | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [misaLoadingId, setMisaLoadingId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -326,11 +326,8 @@ export default function OrdersPage() {
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
-  /* ⚠ Chủ nhà 26/09/2026: "Load 20 đơn hàng 1 lần thôi cho nhanh" (điện thoại). Máy tính giữ
-     50/trang. Đọc khổ màn lúc tạo state — không nhảy 20 → 50 mà tải hai lần. */
-  const pg = usePagination(
-    typeof window !== "undefined" && window.matchMedia?.("(min-width: 1024px)").matches ? 50 : BUOC_TAI_DON
-  )
+  /* Chủ nhà 26/09/2026: 20 đơn một lần — điện thoại "Tải thêm 20", máy tính 20/trang. */
+  const pg = usePagination(BUOC_TAI_DON)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -663,7 +660,10 @@ export default function OrdersPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchOrders() {
-      setLoading(true)
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 đơn đầu vẽ ngay, phần còn lại của trang về sau.
+         "Tải thêm" / đổi sang trang dài hơn cùng truy vấn: giữ danh sách đang hiện, không vẽ lại. */
+      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from])
+      if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ KHÁCH. Giữ nguyên trạng thái "đang nạp" chứ
          không vẽ ra một danh sách thiếu rồi tự sửa. */
       if (!searchReady) return
@@ -682,11 +682,7 @@ export default function OrdersPage() {
       // ⚠ `!inner` CHỈ khi đang lọc tuyến. Bật luôn thì đơn nào chưa gắn
       // khách sẽ biến mất khỏi danh sách mà không ai biết vì sao.
       const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
-      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 đơn đầu vẽ ngay, phần còn lại của trang về sau.
-         "Tải thêm" cùng truy vấn thì không vẽ lại 20 đơn đầu (danh sách không co lại). */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from])
-      const taiThem = khoaTaiRef.current === khoa
-      khoaTaiRef.current = khoa
+      const taiThem = laTaiThem(khoaTaiRef, khoa, pg.to)
       const chon = `id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name), creator:users!sales_orders_created_by_fkey(full_name)`
       // eslint-disable-next-line no-restricted-syntax
       const chonDuPhong = `*, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name)`

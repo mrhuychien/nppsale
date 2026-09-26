@@ -7,7 +7,7 @@ import { useState, useCallback } from "react"
  * range/count. Tách khỏi UI để mọi page dùng pattern chung.
  *
  * Cách dùng:
- *   const pg = usePagination(50)
+ *   const pg = usePagination()
  *   const { data, count } = await supabase
  *     .from("...")
  *     .select("...", { count: "exact" })
@@ -16,7 +16,10 @@ import { useState, useCallback } from "react"
  *
  * Khi filter/search đổi → gọi pg.reset() để về trang 1.
  */
-export function usePagination(initialPageSize = 50) {
+/** Chủ nhà 26/09/2026: "để mặc định load 20 đơn thì phải để mặc định 20 đơn 1 trang". */
+export const MAC_DINH_MOI_TRANG = 20
+
+export function usePagination(initialPageSize = MAC_DINH_MOI_TRANG) {
   const [page, setPageRaw] = useState(1)
   const [pageSize, setPageSizeRaw] = useState(initialPageSize)
   const [total, setTotal] = useState(0)

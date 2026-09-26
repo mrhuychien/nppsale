@@ -161,7 +161,7 @@ export default function DeliveriesPage() {
   const [statusCounts, setStatusCounts] = useState<Record<DerivedStatus, number>>({
     pending: 0, in_transit: 0, delivered: 0, settled: 0, cancelled: 0,
   })
-  const pg = usePagination(50)
+  const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)

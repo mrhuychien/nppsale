@@ -10,7 +10,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -54,7 +54,7 @@ export default function ProductsPage() {
   const [usedFallback, setUsedFallback] = useState(false)
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
@@ -64,7 +64,7 @@ export default function ProductsPage() {
   const [allCategories, setAllCategories] = useState<string[]>([])
   const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [importOpen, setImportOpen] = useState(false)
-  const pg = usePagination(50)
+  const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("products", LOC_SAN_PHAM)
   useEffect(() => {
@@ -120,7 +120,8 @@ export default function ProductsPage() {
   }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
-    setLoading(true)
+    // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+    if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
     // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự
     // thử lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error
     // để hiển thị nguyên nhân cho người dùng.

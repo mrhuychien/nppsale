@@ -10,7 +10,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
@@ -51,7 +51,7 @@ export default function SuppliersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -60,7 +60,7 @@ export default function SuppliersPage() {
   const [allCategories, setAllCategories] = useState<string[]>([])
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
-  const pg = usePagination(50)
+  const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("suppliers", LOC_NHA_CUNG_CAP)
   useEffect(() => {
@@ -107,7 +107,8 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     async function fetchData() {
-      setLoading(true)
+      // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+      if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {

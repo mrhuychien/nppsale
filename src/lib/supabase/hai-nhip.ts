@@ -50,13 +50,20 @@ export async function taiHaiNhip<T, R extends KetQuaNhip<T>>(
   return { ...dau, data: [...(dau.data ?? []), ...(sau.data ?? [])] }
 }
 
+/** Khoá của lần tải trước: truy vấn nào (`khoa`) và tải tới dòng nào (`to`). */
+export type KhoaTai = { khoa: unknown; to: number } | null
+
+const giongKhoa = (a: unknown, b: unknown) =>
+  Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => x === b[i]) : a === b
+
 /**
- * Lần tải này có phải "Tải thêm" của đúng truy vấn trước không: cùng vị trí đầu, trang dài hơn.
- * (Đổi bộ lọc thì trang về đầu và độ dài giữ nguyên → không phải tải thêm → nhịp đầu được vẽ.)
- * Ghi lại vị trí lần này vào `ref`.
+ * Lần tải này có phải "Tải thêm" của đúng truy vấn trước không: cùng khoá (bộ lọc + vị trí đầu),
+ * trang dài hơn. Khi đó danh sách đang hiện được GIỮ NGUYÊN trong lúc chờ (không trắng màn, không
+ * co về 20 dòng). Đổi bộ lọc / tải lại cùng độ dài → không phải tải thêm.
+ * `ghi = false`: chỉ xem, không ghi lần này vào `ref` (dùng ở đầu hàm, trước khi bật "đang nạp").
  */
-export function laTaiThem(ref: { current: { from: number; to: number } | null }, from: number, to: number): boolean {
+export function laTaiThem(ref: { current: KhoaTai }, khoa: unknown, to: number, ghi = true): boolean {
   const truoc = ref.current
-  ref.current = { from, to }
-  return !!truoc && truoc.from === from && to > truoc.to
+  if (ghi) ref.current = { khoa, to }
+  return !!truoc && giongKhoa(truoc.khoa, khoa) && to > truoc.to
 }

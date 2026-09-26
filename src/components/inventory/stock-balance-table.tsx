@@ -100,7 +100,7 @@ export function StockBalanceTable() {
   // Lỗi/thiếu dữ liệu của chính bảng này — phải hiện ra, vì một bảng
   // thiếu dòng trông y hệt một bảng đủ dòng.
   const [loadError, setLoadError] = useState<string | null>(null)
-  const pg = usePagination(50)
+  const pg = usePagination()
 
   useEffect(() => {
     if (!user?.org_id) return

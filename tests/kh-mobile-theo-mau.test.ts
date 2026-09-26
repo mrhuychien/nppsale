@@ -34,9 +34,9 @@ describe("thẻ khách theo mẫu", () => {
 })
 
 describe("màn /customers trên điện thoại", () => {
-  it("tải 20 khách mỗi lần; máy tính giữ trang 50", () => {
+  it("tải 20 khách mỗi lần; máy tính cũng 20/trang", () => {
     expect(BUOC_TAI_KHACH).toBe(20)
-    expect(PAGE).toMatch(/matches \? 50 : BUOC_TAI_KHACH/)
+    expect(PAGE).toContain("usePagination(BUOC_TAI_KHACH)")
   })
   it("Nợ nhiều nhất sắp trên TOÀN BỘ nợ đã đọc (lát mã), rồi xếp lại theo lát mã", () => {
     expect(PAGE).toContain("Object.keys(debts).filter((id) => debts[id] > 0).sort((a, b) => debts[b] - debts[a])")

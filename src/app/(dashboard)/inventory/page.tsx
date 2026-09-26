@@ -7,7 +7,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { xemDuocGiaVon } from "@/lib/permissions"
@@ -89,7 +89,7 @@ export default function InventoryPage() {
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [tab, setTab] = useState("current")
   const [search, setSearch] = useState("")
   const [brandFilter, setBrandFilter] = useState<string>("all")
@@ -100,7 +100,7 @@ export default function InventoryPage() {
   // console thôi thì người dùng chỉ thấy ba số 0 trông như thật.
   const [statsError, setStatsError] = useState<string | null>(null)
   const [statsTruncated, setStatsTruncated] = useState(false)
-  const pg = usePagination(50)
+  const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -185,7 +185,8 @@ export default function InventoryPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchBatchesList() {
-      setLoading(true)
+      // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+      if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ SẢN PHẨM — xem `useListSearch`. */
       if (!listSearch.ready) return
       // selectResilient: DB thiếu cột thì tự thử lại với '*' thay vì rỗng im lặng.

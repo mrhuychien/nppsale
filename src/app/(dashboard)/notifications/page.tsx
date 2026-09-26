@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState, useRef } from "react"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter } from "next/navigation"
@@ -65,11 +65,11 @@ export default function NotificationsPage() {
   const [items, setItems] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("all")
   const [unreadCount, setUnreadCount] = useState(0)
-  const pg = usePagination(50)
+  const pg = usePagination()
 
   // Count unread riêng — không phụ thuộc filter/page.
   const loadUnreadCount = useCallback(async () => {
@@ -92,7 +92,8 @@ export default function NotificationsPage() {
 
   const fetchAll = useCallback(async () => {
     if (!authUser?.id) return
-    setLoading(true)
+    // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+    if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
     /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
     const taoQ = (from: number, to: number, dem: boolean) => {
       let q = supabase

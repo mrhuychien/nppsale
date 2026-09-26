@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { ilikeDk } from "@/lib/search/list-search"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -64,13 +64,13 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [misaFilter, setMisaFilter] = useState("all")
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0 })
   const [misaCompanyId, setMisaCompanyId] = useState<string | null>(null)
-  const pg = usePagination(50)
+  const pg = usePagination()
   const supabase = createClient()
 
   const {
@@ -144,7 +144,8 @@ export default function InvoicesPage() {
     if (!locNC.ready) return
     let cancelled = false
     async function fetch() {
-      setLoading(true)
+      // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+      if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
       const taoQ = (from: number, to: number, dem: boolean) => {
         let q = supabase

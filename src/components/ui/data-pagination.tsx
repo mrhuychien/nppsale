@@ -24,7 +24,7 @@ export function DataPagination({
   pg,
   shownCount,
   showSizeSelector = true,
-  sizes = [25, 50, 100, 200],
+  sizes = [20, 50, 100, 200],
 }: DataPaginationProps) {
   if (pg.total === 0) return null
   const startIndex = pg.from + 1

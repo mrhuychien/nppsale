@@ -24,10 +24,10 @@ describe("danh sách đơn điện thoại theo mẫu", () => {
     expect(diaChiKhach({ address: "12 Lê Lợi, Hải Phòng", province: "Hải Phòng" })).toBe("12 Lê Lợi, Hải Phòng")
     expect(diaChiKhach(null)).toBe("")
   })
-  it("tải 20 đơn một lần trên điện thoại, máy tính giữ 50", () => {
+  it("tải 20 đơn một lần — điện thoại lẫn máy tính (20/trang)", () => {
     expect(BUOC_TAI_DON).toBe(20)
     const p = readFileSync(resolve(__dirname, "../src/app/(dashboard)/orders/page.tsx"), "utf-8")
-    expect(p).toContain('window.matchMedia?.("(min-width: 1024px)").matches ? 50 : BUOC_TAI_DON')
+    expect(p).toContain("usePagination(BUOC_TAI_DON)")
     expect(p).toContain("showSalesName={!isSales}")
   })
 })

@@ -61,10 +61,45 @@ describe("taiHaiNhip", () => {
 describe("laTaiThem", () => {
   it("cùng đầu, dài hơn = tải thêm; lần đầu / đổi trang / cùng độ dài = không", async () => {
     const { laTaiThem } = await import("../src/lib/supabase/hai-nhip")
-    const ref = { current: null as { from: number; to: number } | null }
+    const ref = { current: null as import("../src/lib/supabase/hai-nhip").KhoaTai }
     expect(laTaiThem(ref, 0, 19)).toBe(false)
     expect(laTaiThem(ref, 0, 39)).toBe(true)
     expect(laTaiThem(ref, 0, 39)).toBe(false) // đổi bộ lọc, giữ độ dài
     expect(laTaiThem(ref, 50, 99)).toBe(false) // sang trang 2
+  })
+  it("khoá mảng so từng phần tử; xem trước (ghi = false) không đổi ref", async () => {
+    const { laTaiThem } = await import("../src/lib/supabase/hai-nhip")
+    const loc = () => {}
+    const ref = { current: null as import("../src/lib/supabase/hai-nhip").KhoaTai }
+    laTaiThem(ref, [loc, "all", 0], 19)
+    expect(laTaiThem(ref, [loc, "all", 0], 49, false)).toBe(true)
+    expect(ref.current?.to).toBe(19)
+    expect(laTaiThem(ref, [loc, "posted", 0], 49, false)).toBe(false) // đổi bộ lọc
+    expect(laTaiThem(ref, [() => {}, "all", 0], 49, false)).toBe(false)
+    expect(laTaiThem(ref, [loc, "all", 0], 49)).toBe(true)
+    expect(ref.current?.to).toBe(49)
+  })
+})
+
+describe("mặc định 20 dòng một trang (chủ nhà 26/09/2026)", () => {
+  it("usePagination mặc định 20, bộ chọn có 20/trang, không màn nào ép 50", async () => {
+    const { readFileSync, readdirSync, statSync } = await import("node:fs")
+    const { resolve, join } = await import("node:path")
+    const { MAC_DINH_MOI_TRANG } = await import("@/hooks/use-pagination")
+    expect(MAC_DINH_MOI_TRANG).toBe(20)
+    const hook = readFileSync(resolve(__dirname, "../src/hooks/use-pagination.ts"), "utf-8")
+    expect(hook).toContain("usePagination(initialPageSize = MAC_DINH_MOI_TRANG)")
+    const phanTrang = readFileSync(resolve(__dirname, "../src/components/ui/data-pagination.tsx"), "utf-8")
+    expect(phanTrang).toContain("sizes = [20, 50, 100, 200]")
+    const ep: string[] = []
+    const quet = (d: string) => {
+      for (const f of readdirSync(d)) {
+        const p = join(d, f)
+        if (statSync(p).isDirectory()) quet(p)
+        else if (/\.tsx?$/.test(f) && /usePagination\(\s*(?!\)|BUOC_TAI_)[^)]/.test(readFileSync(p, "utf-8"))) ep.push(p)
+      }
+    }
+    quet(resolve(__dirname, "../src"))
+    expect(ep.filter((p) => !p.endsWith("use-pagination.ts"))).toEqual([])
   })
 })

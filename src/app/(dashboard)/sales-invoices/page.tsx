@@ -23,7 +23,7 @@
 
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
-import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_HOA_DON } from "@/lib/search/list-filter-fields"
@@ -119,7 +119,7 @@ export default function SalesInvoicesPage() {
   const { loading: authLoading } = useRoleGuard("orders")
   const { user } = useAuth()
   const supabase = createClient()
-  const pg = usePagination(50)
+  const pg = usePagination()
 
   const {
     columns: visibleColumns,
@@ -327,10 +327,10 @@ export default function SalesInvoicesPage() {
    */
   const luotRef = useRef({ ds: 0, tong: 0, dem: 0 })
   /** Truy vấn lần tải trước — trùng (trừ `pg.to`) nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
-  const khoaTaiRef = useRef<{ af: unknown; st: unknown; from: number } | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
+    if (!laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to, false)) setLoading(true)
     /* ⚠ CHỜ LƯỢT TRA MÃ. Giữ "đang nạp" chứ không vẽ một danh sách
        thiếu rồi tự sửa vài trăm mili giây sau. */
     if (!searchReady) return
@@ -360,9 +360,7 @@ export default function SalesInvoicesPage() {
     }
     /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 hoá đơn đầu vẽ ngay, phần còn lại về sau. "Tải thêm"
        cùng truy vấn thì không vẽ lại nhịp đầu. */
-    const k = khoaTaiRef.current
-    const taiThem = !!k && k.af === applyFilters && k.st === status && k.from === pg.from
-    khoaTaiRef.current = { af: applyFilters, st: status, from: pg.from }
+    const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to)
     let daVeDu = false
     const { data, error, count } = await taiHaiNhip<InvoiceRow, { data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>(
       (from, to, dem) => taoQ(dem).range(from, to) as unknown as PromiseLike<{ data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>,

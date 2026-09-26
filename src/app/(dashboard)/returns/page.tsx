@@ -5,7 +5,7 @@ import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useRef, useState } from "react"
-import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { createClient } from "@/lib/supabase/client"
@@ -100,7 +100,7 @@ export default function ReturnsPage() {
   const [maPhieu, setMaPhieu] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
-  const khoaTaiRef = useRef<string | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [reasonFilter, setReasonFilter] = useState("all")
   /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
   const [sellerFilter, setSellerFilter] = useState("all")
@@ -118,7 +118,7 @@ export default function ReturnsPage() {
   const [search, setSearch] = useState("")
   const [totalCount, setTotalCount] = useState(0)
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
-  const pg = usePagination(50)
+  const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -233,7 +233,10 @@ export default function ReturnsPage() {
   useEffect(() => {
     let cancelled = false
     async function fetch() {
-      setLoading(true)
+      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. Tải thêm
+         cùng truy vấn: giữ danh sách đang hiện. */
+      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from])
+      if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
       if (!searchReady) return
       const taoQ = (from: number, to: number, dem: boolean) => {
@@ -256,10 +259,7 @@ export default function ReturnsPage() {
          */
         return apDungLoc(q) as unknown as PromiseLike<{ data: Return[] | null; count: number | null; error: { message: string } | null }>
       }
-      /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from])
-      const taiThem = khoaTaiRef.current === khoa
-      khoaTaiRef.current = khoa
+      const taiThem = laTaiThem(khoaTaiRef, khoa, pg.to)
       const { data, count , error: qErr } = await taiHaiNhip(taoQ, pg.from, pg.to, (dau) => {
         if (cancelled) return
         setReturns(dau.data ?? [])

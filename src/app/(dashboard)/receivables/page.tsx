@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip, laTaiThem } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { errorMessage } from "@/lib/errors"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -76,8 +76,8 @@ export default function ReceivablesPage() {
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
-  const khoaTaiRef = useRef<{ from: number; to: number } | null>(null)
-  const pg = usePagination(50)
+  const khoaTaiRef = useRef<KhoaTai>(null)
+  const pg = usePagination()
   const supabase = createClient()
   const router = useRouter()
   const {
@@ -120,7 +120,8 @@ export default function ReceivablesPage() {
     if (!locNC.ready) return
     let cancelled = false
     async function fetch() {
-      setLoading(true)
+      // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
+      if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase

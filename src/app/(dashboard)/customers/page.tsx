@@ -12,7 +12,7 @@ import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
-import { taiHaiNhip } from "@/lib/supabase/hai-nhip"
+import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -149,7 +149,7 @@ export default function CustomersPage() {
   /** Đã đọc xong đơn / lần ghé gần nhất của trang chưa — chưa thì ô hiện "…", không "Chưa có". */
   const [daDocPhu, setDaDocPhu] = useState(false)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
-  const khoaTaiRef = useRef<string | null>(null)
+  const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
   const [quick, setQuick] = useState<QuickFilter>("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -160,10 +160,8 @@ export default function CustomersPage() {
   const [totalCustomers, setTotalCustomers] = useState(0)
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
-  /* Điện thoại tải 20 khách mỗi lần ("Tải thêm 20" — mẫu 26/09/2026); máy tính giữ trang 50. */
-  const pg = usePagination(
-    typeof window !== "undefined" && window.matchMedia?.("(min-width: 1024px)").matches ? 50 : BUOC_TAI_KHACH
-  )
+  /* 20 khách một lần — điện thoại "Tải thêm 20", máy tính 20/trang (chủ nhà 26/09/2026). */
+  const pg = usePagination(BUOC_TAI_KHACH)
   /** Cách sắp của danh sách "Tất cả" trên điện thoại. */
   const [sapXep, setSapXep] = useState<SapXepKhach>("name")
   /** "T7" / "CN" — tuyến của hôm nay, tính ở trình duyệt để không lệch lúc hydrate. */
@@ -316,7 +314,8 @@ export default function CustomersPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
-      setLoading(true)
+      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick, pg.from])
+      if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /**
        * ⚠ THẺ LỌC RỖNG THÌ DỪNG, ĐỪNG GỬI `in.()`. Một `.in("id", [])`
        * hoá thành `id=in.()` — PostgREST coi là lỗi cú pháp và trả về
@@ -363,9 +362,7 @@ export default function CustomersPage() {
       const chonDuPhong = "*, group:customer_groups(*)"
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 khách đầu vẽ ngay, phần còn lại về sau. Thẻ lọc
          nhanh (lát mã, `idSlice`) hỏi một lượt như cũ. "Tải thêm" cùng truy vấn thì không vẽ lại. */
-      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick, pg.from])
-      const taiThem = khoaTaiRef.current === khoa
-      khoaTaiRef.current = khoa
+      const taiThem = laTaiThem(khoaTaiRef, khoa, pg.to)
       setDaDocPhu(false)
       const res = idSlice
         ? await selectResilient<Customer>((sel) => build(sel), chon, chonDuPhong)

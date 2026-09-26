@@ -76,7 +76,7 @@ export default function PurchaseInvoicesLookupPage() {
   const [search, setSearch] = useState("")
   const [debtFilter, setDebtFilter] = useState(() => searchParams.get("debt") || "all")
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_COLS)
-  const pg = usePagination(50)
+  const pg = usePagination()
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("purchasing-invoices", LOC_PHIEU_NHAP_MUA)
   const [debouncedSearch, setDebouncedSearch] = useState("")

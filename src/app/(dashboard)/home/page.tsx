@@ -1,12 +1,12 @@
 "use client"
 
+import { UserMenu } from "@/components/layout/user-menu"
 import { vnDateKey } from "@/lib/orders/status-tone"
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { newOrderHref } from "@/lib/nav/new-order"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
-import { useOrg } from "@/hooks/use-org"
 import { canSeeHref, filterByPermission } from "@/lib/nav/nav-permission"
 import { SetupBanner } from "@/components/setup/setup-banner"
 import { SalesHome } from "@/components/home/sales-home"
@@ -30,7 +30,6 @@ import {
   Settings,
   ShieldCheck,
   HelpCircle,
-  LogOut,
   Search,
   Navigation,
   PieChart,
@@ -42,14 +41,6 @@ import {
   type LucideIcon, PackageSearch,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { cn, formatCurrency, VN_TZ } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { getDailyQuote, QUOTE_CATEGORY_LABEL } from "@/lib/sales-quotes"
@@ -171,11 +162,9 @@ interface SalesSnapshot {
 }
 
 export default function HomeLauncherPage() {
-  const { user, signOut, loading: authLoading } = useAuth()
-  const { org } = useOrg()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [search, setSearch] = useState("")
-  const orgName = org?.name ?? null
   const [snapshot, setSnapshot] = useState<SalesSnapshot | null>(null)
   /** NVBH bấm kính lúp trên trang chủ mới → hiện lại màn tìm tính năng cũ. */
   const [timKiem, setTimKiem] = useState(false)
@@ -373,46 +362,9 @@ export default function HomeLauncherPage() {
           </kbd>
         </form>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground transition-transform hover:scale-105">
-              {userInitials}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>
-              <div className="font-semibold">{user?.full_name || "Người dùng"}</div>
-              <div className="text-xs font-normal text-muted-foreground">
-                {user?.role ?? "—"}
-                {orgName ? ` · ${orgName}` : ""}
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/dashboard")}>
-              <BarChart3 className="mr-2 h-4 w-4" />
-              <span>Tổng quan</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Cài đặt</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/help")}>
-              <HelpCircle className="mr-2 h-4 w-4" />
-              <span>Trợ giúp</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await signOut()
-                router.push("/login")
-              }}
-              className="text-destructive focus:text-destructive"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Đăng xuất</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <UserMenu className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground transition-transform hover:scale-105">
+          {userInitials}
+        </UserMenu>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">

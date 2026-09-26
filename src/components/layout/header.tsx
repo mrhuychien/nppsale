@@ -1,20 +1,17 @@
 "use client"
 
+import { UserMenu } from "@/components/layout/user-menu"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { OfflineIndicator } from "@/components/offline/offline-indicator"
 import { MobileSearchOverlay } from "@/components/layout/mobile-search-overlay"
 import { usePageTitle } from "@/components/layout/page-title-context"
 import { ROLE_LABELS } from "@/lib/constants"
-import { ArrowLeft, LogOut, Menu, Search } from "lucide-react"
+import { ArrowLeft, Menu, Search } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 
 interface HeaderProps {
@@ -69,17 +66,12 @@ const PAGE_TITLES: Record<string, string> = {
 }
 
 export function Header({ onMenuClick, className }: HeaderProps) {
-  const { user, signOut } = useAuth()
+  const { user } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const { title: pushedTitle, backHref } = usePageTitle()
   const [quickSearch, setQuickSearch] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
-
-  const handleSignOut = async () => {
-    await signOut()
-    router.push("/login")
-  }
 
   // Enter → tìm mã đơn hàng trong /orders (trang orders đọc ?q=).
   const handleQuickSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -177,14 +169,9 @@ export function Header({ onMenuClick, className }: HeaderProps) {
 
         <div className="hidden sm:block h-6 w-px bg-outline-variant/60 mx-1"></div>
 
-        {/* User Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label="Tài khoản"
-              className="flex h-11 items-center gap-2 rounded-lg pl-1 pr-1.5 transition-colors hover:bg-surface-container-low lg:h-auto lg:pr-3 lg:py-1"
-            >
-              <Avatar className="h-8 w-8 border border-outline-variant/60">
+        {/* Menu người dùng dùng chung (chủ nhà 26/09/2026). */}
+        <UserMenu className="flex h-11 items-center gap-2 rounded-lg pl-1 pr-1.5 transition-colors hover:bg-surface-container-low lg:h-auto lg:pr-3 lg:py-1">
+          <Avatar className="h-8 w-8 border border-outline-variant/60">
                 <AvatarFallback className="text-xs bg-primary text-on-primary font-semibold">
                   {initials}
                 </AvatarFallback>
@@ -195,22 +182,7 @@ export function Header({ onMenuClick, className }: HeaderProps) {
                   {user?.role ? ROLE_LABELS[user.role] : ""}
                 </p>
               </div>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <p className="font-semibold text-on-surface">{user?.full_name}</p>
-              <p className="text-xs font-normal text-on-surface-variant mt-0.5">
-                {user?.role ? ROLE_LABELS[user.role] : ""}
-              </p>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-error">
-              <LogOut className="mr-2 h-4 w-4" />
-              Đăng xuất
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </UserMenu>
       </div>
     </header>
     <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />

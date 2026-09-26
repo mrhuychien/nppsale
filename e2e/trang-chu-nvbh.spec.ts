@@ -25,7 +25,7 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
   try {
     await page.goto("/home")
     const trang = page.getByTestId("trang-chu-nvbh")
-    await expect(trang.getByRole("heading", { name: /^Chào / })).toBeVisible()
+    await expect(trang.getByRole("button", { name: "Tài khoản" })).toContainText(/Chào /)
     await expect(trang.getByRole("tab", { name: "Tháng" })).toHaveAttribute("aria-selected", "true")
     await trang.getByRole("tab", { name: "Hôm nay" }).click()
     await expect(trang.getByRole("tab", { name: "Hôm nay" })).toHaveAttribute("aria-selected", "true")

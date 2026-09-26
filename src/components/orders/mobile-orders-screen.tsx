@@ -10,6 +10,7 @@
  * trạng thái, địa chỉ, SĐT) → "Tải thêm 20 đơn".
  */
 
+import { UserMenu } from "@/components/layout/user-menu"
 import Link from "next/link"
 import { Search, MapPin, Phone, SlidersHorizontal } from "lucide-react"
 import { NotificationBell } from "@/components/layout/notification-bell"
@@ -116,13 +117,7 @@ export function MobileOrdersScreen({
           <div className="rounded-xl bg-primary-foreground/15 [&_button]:text-primary-foreground">
             <NotificationBell />
           </div>
-          <Link
-            href="/home"
-            aria-label="Trang chủ"
-            className="grid h-10 w-10 place-items-center rounded-full bg-primary-foreground text-sm font-black text-primary"
-          >
-            {userInitials}
-          </Link>
+          <UserMenu className="grid h-10 w-10 place-items-center rounded-full bg-primary-foreground text-sm font-black text-primary">{userInitials}</UserMenu>
         </div>
         <label className="mt-3 flex h-11 items-center gap-2 rounded-xl bg-primary-foreground/15 px-3">
           <Search className="h-4 w-4 shrink-0 opacity-80" />

@@ -1,5 +1,6 @@
 "use client"
 
+import { UserMenu } from "@/components/layout/user-menu"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
@@ -216,11 +217,14 @@ export function SalesHome({
     <div className="min-h-screen bg-background pb-nav lg:pb-0" data-testid="trang-chu-nvbh">
       <div className="bg-primary px-4 pb-16 pt-4 text-primary-foreground">
         <div className="mx-auto flex max-w-xl items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-foreground text-sm font-black text-primary">{viet}</div>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-extrabold leading-tight">Chào {ten}</h1>
-            <p className="truncate text-xs opacity-90">{homNay ? `${nhanNgay(homNay)} · Tuyến ${nhanTuyen(homNay)}` : " "}</p>
-          </div>
+          {/* Bấm ảnh đại diện / tên → menu người dùng (chủ nhà 26/09/2026). */}
+          <UserMenu className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-foreground text-sm font-black text-primary">{viet}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-lg font-extrabold leading-tight">Chào {ten}</span>
+              <span className="block truncate text-xs opacity-90">{homNay ? `${nhanNgay(homNay)} · Tuyến ${nhanTuyen(homNay)}` : " "}</span>
+            </span>
+          </UserMenu>
           <button type="button" onClick={onSearch} aria-label="Tìm tính năng"
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-foreground/15">
             <Search className="h-5 w-5" />

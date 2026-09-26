@@ -331,4 +331,13 @@ SELECT 38, 'Mig 199 (Công nợ theo KH khớp Công nợ theo NV)',
   CASE WHEN position('GREATEST(0, COALESCE(rc.amount' IN pg_get_functiondef('public.receivables_by_customer()'::regprocedure)) > 0
        THEN 'CHƯA — tổng công nợ theo khách cao hơn theo nhân viên (dư có bị kẹp 0)'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 39. Mig 200 — phiếu trả hoàn thành phải gắn HĐ; phiếu cấn ở phiếu thu kiểu cũ không trừ hai lần
+SELECT 39, 'Mig 200 (phiếu trả hoàn thành gắn HĐ; không trừ hai lần)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_phieu_tra_hoan_thanh_gan_hd')
+            OR position('applied_receipt_id IS NULL' IN pg_get_functiondef('public._wf2b_recompute_receivable(uuid)'::regprocedure)) = 0
+       THEN 'CHƯA — phiếu trả theo đơn chưa xuất HĐ vẫn hoàn thành được; phiếu cấn ở phiếu thu cũ bị trừ hai lần'
+       WHEN EXISTS (SELECT 1 FROM returns WHERE status = 'completed' AND invoice_id IS NULL AND order_id IS NOT NULL)
+       THEN 'LỆCH — còn phiếu hoàn thành theo đơn chưa gắn HĐ, xem nhóm 7 của kiem-phieu-tra.sql'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

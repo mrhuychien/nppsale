@@ -18,6 +18,8 @@ WITH tru AS (
   WHERE r.invoice_id IS NOT NULL
     AND ((r.credit_with_invoice AND r.status IN ('submitted', 'completed'))
          OR (NOT COALESCE(r.credit_with_invoice, false) AND r.status = 'completed'))
+    -- (mig 200) phiếu đã cấn ở phiếu thu kiểu cũ: khoản có nằm trong tiền đã thu
+    AND r.applied_receipt_id IS NULL
   GROUP BY r.invoice_id
 )
 SELECT * FROM (
@@ -105,6 +107,33 @@ JOIN sales_invoices si ON si.id = t.invoice_id AND si.status = 'posted'
 LEFT JOIN receivables rc ON rc.invoice_id = si.id
 LEFT JOIN customers c ON c.id = si.customer_id
 WHERE rc.id IS NULL OR abs(rc.amount - (si.total - t.credits)) > 0.5
+
+UNION ALL
+-- 7. (mig 200) Phiếu hoàn thành gắn ĐƠN mà chưa gắn HĐ — chủ nhà 26/09/2026: "phiếu trả hoàn
+--    thành phải gắn với 1 hóa đơn đã xuất chứ ko gắn với đơn hàng"
+SELECT 7, 'Phiếu hoàn thành theo ĐƠN, chưa gắn HĐ',
+  COALESCE(r.return_code, r.id::text), c.store_name, r.credit_note_amount,
+  'Đơn ' || COALESCE(so.order_code, '?') || ' có '
+    || (SELECT count(*) FROM sales_invoices si WHERE si.order_id = r.order_id AND si.status = 'posted')::text
+    || ' HĐ đã ghi sổ — kho đã nhập nhưng công nợ không trừ',
+  'Đơn 1 HĐ: chạy mig 200 tự gắn. 0 hoặc nhiều HĐ: gắn tay vào đúng HĐ (hoặc huỷ phiếu)'
+FROM returns r
+LEFT JOIN sales_orders so ON so.id = r.order_id
+LEFT JOIN customers c ON c.id = r.customer_id
+WHERE r.status = 'completed' AND r.invoice_id IS NULL AND r.order_id IS NOT NULL
+
+UNION ALL
+-- 8. (mig 200) Phiếu đã cấn trừ ở phiếu thu theo CÁCH CŨ — để đối chiếu
+SELECT 8, 'Phiếu cấn ở phiếu thu kiểu cũ',
+  COALESCE(r.return_code, r.id::text), c.store_name, r.credit_note_amount,
+  CASE WHEN r.invoice_id IS NOT NULL
+       THEN 'Gắn HĐ ' || COALESCE(si.invoice_code, '?') || ' — trước mig 200 bị trừ HAI LẦN (vào HĐ và ở phiếu thu)'
+       ELSE 'Phiếu độc lập — khoản có nằm ở phiếu thu, đúng' END,
+  CASE WHEN r.invoice_id IS NOT NULL THEN 'Chạy mig 200 (HĐ tính lại, chỉ trừ một lần ở phiếu thu)' ELSE 'Không cần làm gì' END
+FROM returns r
+LEFT JOIN sales_invoices si ON si.id = r.invoice_id
+LEFT JOIN customers c ON c.id = r.customer_id
+WHERE r.applied_receipt_id IS NOT NULL
 
 ) x
 ORDER BY nhom, chung_tu;

@@ -20,7 +20,9 @@ const ROW = read("src/components/ui/doc-list-row.tsx")
 const SUMMARY = read("src/components/ui/doc-list-summary.tsx")
 const ORDERS = read("src/app/(dashboard)/orders/page.tsx")
 const INVOICES = read("src/app/(dashboard)/sales-invoices/page.tsx")
-const MOBILE_INV = read("src/components/sales-invoices/mobile-invoice-list.tsx")
+/* Hoá đơn bán trên điện thoại dùng CHUNG màn của Đơn hàng (chủ nhà 27/09/2026: "theo mẫu danh sách
+   Đơn hàng") — luật huy hiệu nằm ở `huyHieuHoaDon`. */
+const STATUS_TONE = read("src/lib/orders/status-tone.ts")
 const MOBILE_ORD = read("src/components/orders/mobile-order-list.tsx")
 const INV_TABLE = read("src/components/sales-invoices/desktop-invoice-table.tsx")
 const ORD_TABLE = read("src/components/orders/desktop-order-table.tsx")
@@ -70,7 +72,8 @@ describe("khuôn hàng dùng chung", () => {
 
   it("cả hai danh sách đều dùng khuôn này", () => {
     expect(MOBILE_ORD).toContain('from "@/components/ui/doc-list-row"')
-    expect(MOBILE_INV).toContain('from "@/components/ui/doc-list-row"')
+    expect(INVOICES).toContain("<MobileOrdersScreen")
+    expect(INVOICES).toContain('testId="hd-mobile"')
   })
 })
 
@@ -197,10 +200,10 @@ describe("màu hóa đơn", () => {
    * cũng đeo thì mắt không bắt được dòng ĐÃ HUỶ.
    */
   it("hóa đơn đã ghi sổ không đeo huy hiệu, trừ bản lập lại / đã bị thay", () => {
-    expect(MOBILE_INV).toContain('if (r.status !== "posted") return tone')
-    expect(MOBILE_INV).toContain('if (r.replaced_by) return')
-    expect(MOBILE_INV).toContain('if (r.replaced_from) return')
-    expect(MOBILE_INV).toContain("return null")
+    expect(STATUS_TONE).toContain('if (r.status !== "posted") return tone')
+    expect(STATUS_TONE).toContain('if (r.replaced_by) return')
+    expect(STATUS_TONE).toContain('if (r.replaced_from) return')
+    expect(INVOICES).toContain("huyHieuHoaDon(")
   })
 })
 

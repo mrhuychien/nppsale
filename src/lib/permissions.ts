@@ -268,6 +268,27 @@ export function setPermissionsCache(map: PermissionsCache | null) {
   runtimeCache = map
 }
 
+/**
+ * ⚠ BẢNG QUYỀN ĐÃ NẠP CHƯA — cho chốt cửa vào (`useRoleGuard`) chờ trước khi đá người dùng ra.
+ *   Không chờ thì ai được CẤP THÊM quyền ở Phân quyền mà tải lại trang / mở thẳng liên kết là bị
+ *   đẩy về /home: chốt quyết theo quyền mặc định trong lúc bảng quyền thật còn đang về (e2e
+ *   27/09/2026, NVBH được bật "Trả hàng").
+ */
+let quyenDaNap = false
+const ngheQuyen = new Set<() => void>()
+export function baoQuyenDaNap(v: boolean) {
+  if (quyenDaNap === v) return
+  quyenDaNap = v
+  ngheQuyen.forEach((f) => f())
+}
+export const layQuyenDaNap = () => quyenDaNap
+export function ngheQuyenDaNap(f: () => void): () => void {
+  ngheQuyen.add(f)
+  return () => {
+    ngheQuyen.delete(f)
+  }
+}
+
 export function getPermissionsCache(): PermissionsCache {
   return runtimeCache ?? buildCacheFromMap(DEFAULT_PERMISSION_MAP)
 }

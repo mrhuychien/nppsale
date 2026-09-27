@@ -113,10 +113,23 @@ test("điện thoại: phiếu tự lập ở Nháp — hoàn thành hoặc hu�
 
 test("điện thoại: NVBH — tiêu đề 'Trả hàng của tôi'; thiếu quyền duyệt thì không có nút Hoàn thành", async ({ page }) => {
   await api("returns?id=eq.r-mb-1", "PATCH", { status: "submitted" })
+  /* Mẫu quyền NVBH (26/09/2026) KHÔNG có "Trả hàng" — chủ NPP bật quyền XEM ở Phân quyền thì NVBH
+     mới vào được màn này; bài này bật đúng như thế. */
+  await api("role_permissions", "POST", [{ id: "rp-tra-nvbh", org_id: ORG, role: "sales", module: "returns", action: "read", allowed: true }])
   await dangNhap(page)
   await doiVai("sales")
   try {
+    /* Bảng quyền phải đi mạng (không có sẵn trong bộ nhớ phiên) — đúng lúc chốt cửa vào dễ quyết
+       sớm theo quyền mặc định và đá NVBH về /home. */
+    await page.evaluate(() => sessionStorage.clear())
+    await page.route("**/rest/v1/role_permissions**", async (r) => {
+      await new Promise((ok) => setTimeout(ok, 1500)) // mạng chậm
+      await r.continue()
+    })
     await page.goto("/returns")
+    // Đợi qua lúc bảng quyền về (1,5 giây) — chốt quyết sớm thì đã đá sang /home trong lúc này.
+    await page.waitForTimeout(2500)
+    expect(page.url()).toContain("/returns")
     const man = page.getByTestId("tra-mobile")
     await expect(man.getByRole("heading", { name: "Trả hàng của tôi" })).toBeVisible()
     await expect(man.getByTestId("the-cho-xu-ly").getByRole("button", { name: "Xử lý ngay" })).toBeVisible()
@@ -128,5 +141,6 @@ test("điện thoại: NVBH — tiêu đề 'Trả hàng của tôi'; thiếu qu
     await expect(ngan).toContainText("Quản lý hoặc thủ kho sẽ chọn kho nhận")
   } finally {
     await doiVai("owner")
+    await api("role_permissions?id=eq.rp-tra-nvbh", "DELETE", {})
   }
 })

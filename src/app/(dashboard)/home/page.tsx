@@ -138,6 +138,8 @@ const TILES: Tile[] = [
  */
 const TILES_NVBH: Tile[] = [
   { label: "Báo cáo tổng hợp", href: "/bao-cao/ban-hang", icon: BarChart3, color: "blue" },
+  /* Chủ nhà 27/09/2026: "Phần chức năng của nhân viên bán hàng thêm phần Hoá đơn bán". */
+  { label: "Hoá đơn bán", href: "/sales-invoices", icon: Receipt, color: "green" },
 ]
 
 /**
@@ -153,7 +155,7 @@ const BO_KHOI_NVBH = [
 const TAM_KHOA_NVBH = ["/commissions", "/promotions"]
 
 /** Thứ tự ô "Chức năng" trên trang chủ NVBH theo mẫu; ô còn lại theo sau. */
-const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/bao-cao/ban-hang", "/luong-cua-toi", "/promotions", "/commissions"]
+const THU_TU_NVBH = ["/sell", "/orders", "/sales-invoices", "/customers", "/bao-cao/ban-hang", "/luong-cua-toi", "/promotions", "/commissions"]
 function oChucNangNvbh(tiles: Tile[]) {
   const hang = (t: Tile) => {
     const i = THU_TU_NVBH.indexOf(t.href)

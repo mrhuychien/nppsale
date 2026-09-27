@@ -65,8 +65,10 @@ import {
   type InvoiceSortKey,
 } from "@/components/sales-invoices/desktop-invoice-table"
 import { InvoiceDrawer } from "@/components/sales-invoices/invoice-drawer"
-import { MobileInvoiceList } from "@/components/sales-invoices/mobile-invoice-list"
-import { DocListSummary } from "@/components/ui/doc-list-summary"
+import { MobileOrdersScreen, BUOC_TAI_DON } from "@/components/orders/mobile-orders-screen"
+import { huyHieuHoaDon } from "@/lib/orders/status-tone"
+import { viTatTen } from "@/lib/returns/mobile-list"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
 import { useFieldSearch } from "@/hooks/use-field-search"
@@ -74,8 +76,8 @@ import { TRUONG_HOA_DON } from "@/lib/search/doc-fields"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import {
-  periodFrom, nextPeriod, summariseDocLines,
-  type ListPeriod, type DocLineSummary,
+  periodFrom, nextPeriod,
+  type ListPeriod,
   kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { formatCurrency } from "@/lib/utils"
@@ -147,8 +149,6 @@ export default function SalesInvoicesPage() {
    */
   const [period, setPeriod] = useState<ListPeriod>("month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
-  /** Mặt hàng đại diện của từng hóa đơn đang hiện. */
-  const [lineSummary, setLineSummary] = useState<Record<string, DocLineSummary>>()
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được. */
   const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -199,8 +199,16 @@ export default function SalesInvoicesPage() {
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
 
   const isSales = user?.role === "sales"
-
+  /* Khổ màn: `false` = điện thoại (màn theo mẫu Đơn hàng, 27/09/2026), `null` = chưa biết. */
+  const laMay = useKhoMay()
+  /**
+   * ⚠ DANH MỤC CHO Ô LỌC (khách · NV · tuyến) CHỈ NẠP KHI CẦN (chủ nhà 27/09/2026: "check xem có
+   *   API nhiều ko và tối ưu"). Máy tính: có thanh lọc ngay nên nạp luôn. Điện thoại: chỉ khi mở
+   *   tấm lọc — đa số lần mở danh sách không lọc gì, mà danh sách khách kéo theo trang (nhiều lượt).
+   */
+  const canDanhMuc = laMay === true || filterSheet || !!drawerId
   useEffect(() => {
+    if (!canDanhMuc) return
     let cancelled = false
     ;(async () => {
       const [customersRes, usersRes, routesRes] = await Promise.all([
@@ -224,7 +232,10 @@ export default function SalesInvoicesPage() {
                 .order("id")
                 .range(from, to)
           ), coLoi),
-        nhoNen("nen:nhan-vien-ban", () => supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"), coLoi),
+        /* NVBH không có ô lọc NV — khỏi đọc. */
+        isSales
+          ? Promise.resolve({ data: [], error: null })
+          : nhoNen("nen:nhan-vien-ban", () => supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"), coLoi),
         nhoNen("nen:tuyen", () => supabase.from("sales_routes").select("code, name").eq("is_active", true).order("sort_order"), coLoi),
       ])
       if (cancelled) return
@@ -241,7 +252,7 @@ export default function SalesInvoicesPage() {
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [canDanhMuc, isSales])
 
   /**
    * Bộ lọc DÙNG CHUNG cho danh sách và cho phép đếm.
@@ -274,7 +285,8 @@ export default function SalesInvoicesPage() {
   const [truongTim, setTruongTim] = useState<Record<string, string>>({})
   const [truongTimTre, setTruongTimTre] = useState<Record<string, string>>({})
   useEffect(() => {
-    const t = setTimeout(() => setTruongTimTre(truongTim), 350)
+    /* Cùng nội dung thì giữ nguyên đối tượng — đối tượng mới là bộ lọc "đổi" → đọc lại cả ba câu. */
+    const t = setTimeout(() => setTruongTimTre((cu) => (JSON.stringify(cu) === JSON.stringify(truongTim) ? cu : truongTim)), 350)
     return () => clearTimeout(t)
   }, [truongTim])
   const fieldSearch = useFieldSearch(supabase, user?.org_id, TRUONG_HOA_DON, truongTimTre)
@@ -340,6 +352,7 @@ export default function SalesInvoicesPage() {
        thiếu rồi tự sửa vài trăm mili giây sau. */
     if (!searchReady) return
     const luot = ++luotRef.current.ds
+    const truoc = khoaTaiRef.current
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     const taoQ = (dem: boolean) => {
       let q = supabase
@@ -353,19 +366,45 @@ export default function SalesInvoicesPage() {
     }
     /* ⚠ Cột tiền là SỐ CÒN LẠI sau hàng trả — khớp công nợ (mig 192). Nhịp đầu cũng trừ xong
        rồi mới vẽ: không bao giờ hiện tiền hoá đơn chưa trừ hàng trả. */
+    /* Hàng trả đã đọc ở nhịp 1 thì nhịp 2 không đọc lại (mỗi lần đọc là một lượt gọi). */
+    const daDoc = new Map<string, number>()
     const truTra = async (tho: InvoiceRow[]) => {
-      const tra = await traTheoHoaDon(supabase, tho.map((r) => r.id)).catch((e) => {
-        console.error("[sales-invoices] không đọc được hàng trả:", e)
-        return new Map<string, number>()
-      })
+      const can = tho.map((r) => r.id).filter((id) => !daDoc.has(id))
+      if (can.length) {
+        const tra = await traTheoHoaDon(supabase, can).catch((e) => {
+          console.error("[sales-invoices] không đọc được hàng trả:", e)
+          return new Map<string, number>()
+        })
+        for (const id of can) daDoc.set(id, tra.get(id) ?? 0)
+      }
       return tho.map((r) => {
-        const t = tra.get(r.id) ?? 0
+        const t = daDoc.get(r.id) ?? 0
         return t ? { ...r, tong_hoa_don: r.total, tra_hang: t, total: Number(r.total || 0) - t } : r
       })
     }
     /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 hoá đơn đầu vẽ ngay, phần còn lại về sau. "Tải thêm"
        cùng truy vấn thì không vẽ lại nhịp đầu. */
     const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to)
+    /**
+     * ⚠ "TẢI THÊM" CHỈ ĐỌC PHẦN MỚI (tối ưu lượt gọi 27/09/2026). Bản cũ đọc lại cả 0…40 khi đã có
+     *   0…20 — mỗi lần bấm là đọc lại mọi dòng đang hiện, kèm hàng trả của chúng.
+     */
+    if (taiThem && truoc) {
+      const { data: moi, error: loiMoi } = (await taoQ(false).range(truoc.to + 1, pg.to)) as unknown as {
+        data: InvoiceRow[] | null
+        error: { message: string } | null
+      }
+      if (luot !== luotRef.current.ds) return
+      if (loiMoi) console.error("[sales-invoices] tải thêm lỗi:", loiMoi.message)
+      const them = await truTra(moi ?? [])
+      if (luot !== luotRef.current.ds) return
+      setRows((cu) => {
+        const co = new Set(cu.map((r) => r.id))
+        return [...cu, ...them.filter((r) => !co.has(r.id))]
+      })
+      setLoading(false)
+      return
+    }
     let daVeDu = false
     const { data, error, count } = await taiHaiNhip<InvoiceRow, { data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>(
       (from, to, dem) => taoQ(dem).range(from, to) as unknown as PromiseLike<{ data: InvoiceRow[] | null; count: number | null; error: { message: string } | null }>,
@@ -390,38 +429,6 @@ export default function SalesInvoicesPage() {
     pg.setTotal(count ?? 0)
     setLoading(false)
 
-    /**
-     * Mặt hàng đại diện của từng hóa đơn đang hiện — dòng thứ ba của thẻ
-     * điện thoại.
-     *
-     * ⚠ CHỈ CHO TRANG ĐANG HIỆN, và phân trang: 50 hóa đơn × vài chục
-     *   dòng có thể vượt trần 1.000 của PostgREST.
-     * ⚠ ĐỌC HỎNG THÌ ĐỂ NGUYÊN `undefined`, đừng ghi `{}` — `{}` làm mọi
-     *   thẻ in "0 mặt hàng", câu trả lời sai cho một câu chưa đọc được.
-     */
-    const ids = list.map((r) => r.id)
-    if (ids.length > 0) {
-      const lineRes = await fetchAllForAggregate<{
-        invoice_id: string
-        unit_name: string | null
-        quantity: number | string | null
-        line_total: number | string | null
-        product?: { name?: string | null } | null
-      }>((from, to) =>
-        supabase
-          .from("sales_invoice_lines")
-          .select("invoice_id, unit_name, quantity, line_total, product:products(name)", { count: "exact" })
-          .in("invoice_id", ids)
-          .range(from, to)
-      )
-      if (lineRes.error) console.warn("[sales-invoices] không đọc được dòng hàng:", lineRes.error)
-      else {
-        setLineSummary((prev) => ({
-          ...prev,
-          ...summariseDocLines(lineRes.rows.map((r) => ({ ...r, doc_id: r.invoice_id }))),
-        }))
-      }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, applyFilters, searchReady, pg.from, pg.to])
 
@@ -657,6 +664,7 @@ export default function SalesInvoicesPage() {
         dõi; để nó chiếm một dải ngang trên mọi lần mở danh sách bằng
         điện thoại là lấy mất chỗ của chính những hóa đơn nó đang nói tới.
       */}
+      <div className="hidden space-y-4 lg:block">
       <PageHeader
         title="Hóa đơn bán"
         descriptionDesktopOnly
@@ -678,13 +686,14 @@ export default function SalesInvoicesPage() {
           accent: t.accent,
         }))}
       />
+      </div>
 
       {/*
         ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
           lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
       */}
       {searchTruncated && !loading && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+        <div className="hidden rounded-xl lg:block border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
           <p className="font-semibold">Kết quả tìm đang thiếu</p>
           <p className="mt-0.5">
             Có hơn {MATCH_CAP} điểm bán hoặc đơn hàng khớp &ldquo;{debouncedSearch}&rdquo; —
@@ -693,6 +702,9 @@ export default function SalesInvoicesPage() {
         </div>
       )}
 
+      {/* Tấm lọc vẫn dùng ở điện thoại (nút lọc trên thẻ tổng tiền mở nó); thanh tìm của nó ẩn — ô
+          tìm nằm ở đầu trang xanh (cùng cách màn Đơn hàng). */}
+      <div className="hidden">
       <MobileFilterBar
         value={search}
         onChange={setSearch}
@@ -714,6 +726,7 @@ export default function SalesInvoicesPage() {
           {advancedFilterFields}
         </div>
       </MobileFilterBar>
+      </div>
 
       {/* ⚠ MÁY TÍNH — một thẻ gồm thanh công cụ, lưới, phân trang. Cùng
           khuôn với màn "Đơn hàng"; đổi ở đây thì đổi cả bên kia. */}
@@ -776,7 +789,7 @@ export default function SalesInvoicesPage() {
           </Card>
         )}
 
-        {/* Khối thống kê (máy tính) — điện thoại có `DocListSummary` bên dưới. */}
+        {/* Khối thống kê (máy tính) — điện thoại có thẻ tổng tiền của `MobileOrdersScreen`. */}
         <DocListTotals
           desktopOnly
           label="Tổng tiền (đã trừ hàng trả)"
@@ -806,39 +819,57 @@ export default function SalesInvoicesPage() {
         </div>
       </div>
 
-      {/* ---------------- Điện thoại: danh sách theo mẫu ---------------- */}
-      <div className="space-y-3 lg:hidden">
-        {/* Dải tóm tắt: viên thuốc khoảng thời gian · bộ lọc · tổng tiền
-            của CẢ bộ lọc (không phải của trang đang hiện). */}
-        <DocListSummary
-          period={period}
-          onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
-          onOpenFilter={() => setFilterSheet(true)}
-          filtersActive={activeFilterCount > 0 || period !== "month"}
-          onClearFilters={() => {
-            clearAdvanced()
-            setPeriod("month")
-          }}
-          countText={`${pg.total} hóa đơn`}
-          total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
-        />
-
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
-        ) : filtered.length === 0 ? (
-          <div className="rounded-xl border bg-card p-6">{empty}</div>
-        ) : (
-          <>
-            <MobileInvoiceList
-              invoices={filtered}
-              lineSummary={lineSummary}
-              showSalesName={!isSales}
-              onOpen={setDrawerId}
-            />
-            <DataPagination pg={pg} />
-          </>
-        )}
-      </div>
+      {/* ⚠ ĐIỆN THOẠI — theo mẫu danh sách Đơn hàng (chủ nhà 27/09/2026: "Viết lại giao diện danh sách
+          hoá đơn bán trên mobile theo mẫu danh sách Đơn hàng"). Bấm thẻ mở ngăn xem nhanh. */}
+      <MobileOrdersScreen
+        testId="hd-mobile"
+        cardTestId="the-hd"
+        title={isSales ? "Hoá đơn của tôi" : "Hoá đơn bán"}
+        userInitials={viTatTen(user?.full_name)}
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder="Tìm số HĐ, mã đơn, tên KH"
+        searchLabel="Tìm hoá đơn"
+        unit="hoá đơn"
+        countLabel="hoá đơn"
+        toneOf={(o) => {
+          const r = filtered.find((x) => x.id === o.id)
+          return huyHieuHoaDon(r ?? { status: o.status })
+        }}
+        tabs={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0 }))}
+        activeTab={status}
+        onPickTab={(k) => setStatus(k)}
+        period={period}
+        onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
+        onOpenFilter={() => setFilterSheet(true)}
+        filtersActive={activeFilterCount > 0 || period !== "month"}
+        total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
+        count={pg.total}
+        orders={filtered.map((r) => ({
+          id: r.id,
+          order_code: r.invoice_code,
+          order_date: r.invoice_date,
+          created_at: r.created_at,
+          status: r.status,
+          total: Number(r.total) || 0,
+          customer: r.customer,
+          sales_user: r.sales_user,
+        }))}
+        showSalesName={!isSales}
+        loading={loading}
+        loaded={pg.from + filtered.length}
+        onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_DON)}
+        onOpen={setDrawerId}
+        notice={
+          searchTruncated && !loading ? (
+            <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+              <p className="font-semibold">Kết quả tìm đang thiếu</p>
+              <p className="mt-0.5">Có hơn {MATCH_CAP} điểm bán hoặc đơn hàng khớp &ldquo;{debouncedSearch}&rdquo;. Gõ thêm cho hẹp lại.</p>
+            </div>
+          ) : null
+        }
+        empty={<div className="rounded-2xl border bg-card p-6">{empty}</div>}
+      />
 
       <InvoiceDrawer
         invoice={drawerInvoice}

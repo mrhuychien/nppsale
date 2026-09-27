@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import {
+  baoQuyenDaNap,
   rowsToCache,
   setPermissionsCache,
   setUserOverrides,
@@ -53,6 +54,7 @@ export function PermissionsLoader() {
       // No session — clear any stale cache from a previous user.
       setPermissionsCache(null)
       setUserOverrides(null)
+      baoQuyenDaNap(false)
       return
     }
 
@@ -67,6 +69,7 @@ export function PermissionsLoader() {
         )
       )
       setUserOverrides(ov)
+      baoQuyenDaNap(true)
     }
 
     /* ⚠ NHỚ 5 PHÚT THEO PHIÊN TRÌNH DUYỆT (chủ nhà 27/09/2026 — log Supabase vượt gói: bảng quyền
@@ -99,6 +102,8 @@ export function PermissionsLoader() {
           // defaults silently — the app keeps working with the static map.
           console.warn("[PermissionsLoader] load failed, using defaults:", error.message)
           setPermissionsCache(null)
+          // Đọc hỏng = dùng mặc định; vẫn báo "đã nạp" để chốt cửa vào không chờ mãi.
+          baoQuyenDaNap(true)
           return
         }
         const rows = (data as DbRow[]) || []
@@ -135,6 +140,7 @@ export function PermissionsLoader() {
         console.warn("[PermissionsLoader] unexpected error:", err)
         setPermissionsCache(null)
         setUserOverrides(null)
+        baoQuyenDaNap(true)
       }
     }
 

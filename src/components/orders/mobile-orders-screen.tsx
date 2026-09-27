@@ -16,7 +16,7 @@ import { Search, MapPin, Phone, SlidersHorizontal } from "lucide-react"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, formatCurrency } from "@/lib/utils"
-import { groupOrdersByDay, orderTone, vnTime } from "@/lib/orders/status-tone"
+import { groupOrdersByDay, orderTone, vnTime, type OrderTone } from "@/lib/orders/status-tone"
 import { LIST_PERIOD_LABEL, type ListPeriod } from "@/lib/orders/list-summary"
 
 export const BUOC_TAI_DON = 20
@@ -80,6 +80,14 @@ export function MobileOrdersScreen({
   loaded,
   onLoadMore,
   notice,
+  testId = "don-mobile",
+  cardTestId = "the-don",
+  searchPlaceholder = "Tìm mã đơn, tên KH, SĐT",
+  searchLabel = "Tìm đơn hàng",
+  unit = "đơn",
+  countLabel = "đơn hàng",
+  toneOf = (o: DonMobile) => orderTone(o.status),
+  onOpen,
 }: {
   title: string
   userInitials: string
@@ -105,12 +113,26 @@ export function MobileOrdersScreen({
   loaded: number
   onLoadMore: () => void
   notice?: React.ReactNode
+  /* Dùng chung cho HOÁ ĐƠN BÁN (chủ nhà 27/09/2026: "Viết lại giao diện danh sách hoá đơn bán
+     trên mobile theo mẫu danh sách Đơn hàng") — cùng khuôn, khác nhãn / màu / cách mở. */
+  testId?: string
+  cardTestId?: string
+  searchPlaceholder?: string
+  searchLabel?: string
+  /** "đơn" / "hoá đơn" — "Tải thêm 20 …", "N … · tiền". */
+  unit?: string
+  /** Chữ dưới số đếm trên thẻ tổng. */
+  countLabel?: string
+  /** Huy hiệu của thẻ; `null` = không đeo (hoá đơn đã xuất bình thường). */
+  toneOf?: (o: DonMobile) => OrderTone | null
+  /** Có thì bấm thẻ mở ngăn xem nhanh; không thì sang trang chi tiết đơn. */
+  onOpen?: (id: string) => void
 }) {
   const groups = groupOrdersByDay(orders)
   const conNua = loaded < count
 
   return (
-    <div className="-mx-4 !-mt-4 lg:hidden" data-testid="don-mobile">
+    <div className="-mx-4 !-mt-4 lg:hidden" data-testid={testId}>
       <div className="bg-primary px-4 pb-14 pt-4 text-primary-foreground">
         <div className="flex items-center gap-2">
           <h1 className="flex-1 truncate text-xl font-extrabold">{title}</h1>
@@ -125,8 +147,8 @@ export function MobileOrdersScreen({
             type="search"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="Tìm mã đơn, tên KH, SĐT"
-            aria-label="Tìm đơn hàng"
+            placeholder={searchPlaceholder}
+            aria-label={searchLabel}
             className="w-full bg-transparent text-[15px] text-primary-foreground outline-none placeholder:text-primary-foreground/70"
           />
         </label>
@@ -177,7 +199,7 @@ export function MobileOrdersScreen({
             </div>
             <div className="shrink-0 text-right">
               <p className="text-2xl font-black text-primary tabular-nums">{count}</p>
-              <p className="text-xs text-muted-foreground">đơn hàng</p>
+              <p className="text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>
         </section>
@@ -197,17 +219,21 @@ export function MobileOrdersScreen({
                 <div className="mb-2 flex items-baseline justify-between px-1">
                   <h2 className="text-base font-bold">{g.label}</h2>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {g.items.length} đơn · {formatCurrency(g.total)}
+                    {g.items.length} {unit} · {formatCurrency(g.total)}
                   </span>
                 </div>
                 <div className="divide-y overflow-hidden rounded-2xl border bg-card shadow-sm">
                   {g.items.map((o) => {
-                    const tone = orderTone(o.status)
+                    const tone = toneOf(o)
                     const diaChi = diaChiKhach(o.customer)
                     const sdt = (o.customer?.phone ?? "").trim()
                     return (
-                      <div key={o.id} className="relative px-4 py-3" data-testid="the-don">
-                        <Link href={`/orders/${o.id}`} className="absolute inset-0" aria-label={`Mở đơn ${o.order_code}`} />
+                      <div key={o.id} className="relative px-4 py-3" data-testid={cardTestId}>
+                        {onOpen ? (
+                          <button type="button" onClick={() => onOpen(o.id)} className="absolute inset-0" aria-label={`Mở ${unit} ${o.order_code}`} />
+                        ) : (
+                          <Link href={`/orders/${o.id}`} className="absolute inset-0" aria-label={`Mở đơn ${o.order_code}`} />
+                        )}
                         <div className="pointer-events-none relative">
                           <div className="flex items-start justify-between gap-2">
                             <p className="min-w-0 truncate text-[15px] font-bold">{o.customer?.store_name || "Khách lẻ"}</p>
@@ -215,9 +241,11 @@ export function MobileOrdersScreen({
                           </div>
                           <div className="mt-0.5 flex items-center justify-between gap-2">
                             <p className="min-w-0 truncate text-[12.5px] text-muted-foreground">{dongPhuDon(o, showSalesName)}</p>
-                            <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: tone.bg, color: tone.fg }}>
-                              {tone.label}
-                            </span>
+                            {tone && (
+                              <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: tone.bg, color: tone.fg }}>
+                                {tone.label}
+                              </span>
+                            )}
                           </div>
                           {diaChi && (
                             <p className="mt-1.5 flex gap-1.5 text-[13px] leading-snug">
@@ -248,11 +276,11 @@ export function MobileOrdersScreen({
                   disabled={loading}
                   className="h-11 w-full rounded-xl border bg-card text-sm font-semibold text-primary shadow-sm disabled:opacity-60"
                 >
-                  {loading ? "Đang tải…" : `Tải thêm ${BUOC_TAI_DON} đơn`}
+                  {loading ? "Đang tải…" : `Tải thêm ${BUOC_TAI_DON} ${unit}`}
                 </button>
               )}
               <p className="mt-2 text-xs text-muted-foreground tabular-nums">
-                Đã hiển thị {Math.min(loaded, count)} / {count} đơn
+                Đã hiển thị {Math.min(loaded, count)} / {count} {unit}
               </p>
             </div>
           </>

@@ -272,3 +272,22 @@ export function buildOrderTimeline(
   }
   return steps
 }
+
+/**
+ * Huy hiệu của một thẻ HOÁ ĐƠN BÁN trên danh sách điện thoại.
+ *
+ * ⚠ HÓA ĐƠN ĐÃ GHI SỔ KHÔNG CẦN HUY HIỆU. `posted` là trạng thái bình thường của gần như mọi
+ *   dòng; đeo huy hiệu xanh cho tất cả thì huy hiệu hết nghĩa và mắt không bắt được dòng ĐÃ HUỶ.
+ * ⚠ NHƯNG BẢN LẬP LẠI / ĐÃ BỊ THAY THÌ PHẢI NÓI — hai dấu ấy đổi hẳn nghĩa của tờ giấy.
+ */
+export function huyHieuHoaDon(r: {
+  status: string
+  replaced_from?: string | null
+  replaced_by?: string | null
+}): OrderTone | null {
+  const tone = invoiceTone(r.status)
+  if (r.status !== "posted") return tone
+  if (r.replaced_by) return { ...tone, label: "Đã bị thay", bg: "#eef1f5", fg: "#565a67" }
+  if (r.replaced_from) return { ...tone, label: "Lập lại", bg: "#e3edfb", fg: "#1d4ed8" }
+  return null
+}

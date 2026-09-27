@@ -49,7 +49,10 @@ export function useFieldSearch(
           if (chu) khop[`${t.key}#tron`] = await Promise.all(t.chuoi.map((c) => maTheoChuoi(sb, c.buoc, chu, orgId)))
         })
       )
-      if (!huy) setKq({ key, khop, timKd })
+      /* ⚠ KẾT QUẢ Y HỆT THÌ GIỮ NGUYÊN ĐỐI TƯỢNG (log e2e 27/09/2026): `orgId` nạp xong làm hiệu ứng
+         chạy lại với cùng ô trống; ghi đối tượng mới là mọi danh sách dùng hook này thấy bộ lọc
+         "đổi" và đọc lại cả danh sách + tổng + đếm một lần thừa. */
+      if (!huy) setKq((cu) => (cu.key === key && JSON.stringify([cu.khop, cu.timKd]) === JSON.stringify([khop, timKd]) ? cu : { key, khop, timKd }))
     })()
     return () => { huy = true }
   }, [key, orgId]) // eslint-disable-line react-hooks/exhaustive-deps

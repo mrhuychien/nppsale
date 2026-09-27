@@ -503,7 +503,8 @@ describe("Danh sách hóa đơn bán", () => {
 
   /** ⚠ Điện thoại phải có danh sách riêng — lưới 930px không vừa màn. */
   it("điện thoại có danh sách thẻ riêng", () => {
-    expect(CODE).toContain('className="space-y-3 lg:hidden"')
+    /* Theo mẫu danh sách Đơn hàng (chủ nhà 27/09/2026) — chung `MobileOrdersScreen`. */
+    expect(CODE).toContain("<MobileOrdersScreen")
   })
 
 

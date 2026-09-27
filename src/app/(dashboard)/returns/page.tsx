@@ -131,6 +131,9 @@ export default function ReturnsPage() {
      lập chờ bấm Hoàn thành nằm ở Nháp — hàng đợi việc phải gồm cả hai. */
   /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
   const [statusFilter, setStatusFilter] = useLuuTrangThai("returns", MAC_DINH_TRANG_THAI)
+  /* Điện thoại chọn MỘT tab (mẫu mở ở "Chờ xử lý"); lựa chọn nhiều chip của máy tính → coi là Chờ
+     xử lý. Tính NGAY ở đây (không qua effect) — không thì lượt đọc đầu theo bộ cũ rồi đọc lại. */
+  const ttHieuLuc = laDienThoai && !TAB_TRA_MOBILE.some((t) => t.key === statusFilter) ? "submitted" : statusFilter
   const [search, setSearch] = useState("")
   const [totalCount, setTotalCount] = useState(0)
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
@@ -197,7 +200,7 @@ export default function ReturnsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
@@ -231,7 +234,7 @@ export default function ReturnsPage() {
     /* Điện thoại luôn có ô lý do (mẫu 27/09/2026) — không theo bộ chọn ô lọc của máy tính. */
     if ((filterActive("reason") || laDienThoai) && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
     /* ⚠ CHỌN NHIỀU TRẠNG THÁI (chủ nhà 25/09/2026) — xem `status-multi.ts`. */
-    const ttChon = boTrangThai ? null : trangThaiCuaChon(statusFilter)
+    const ttChon = boTrangThai ? null : trangThaiCuaChon(ttHieuLuc)
     if (ttChon) x = ttChon.length === 1 ? x.eq("status", ttChon[0]) : x.in("status", ttChon)
     if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
     else if (filterActive("seller") && sellerFilter !== "all") x = x.eq("sales_user_id", sellerFilter)
@@ -256,7 +259,7 @@ export default function ReturnsPage() {
     async function fetch() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. Tải thêm
          cùng truy vấn: giữ danh sách đang hiện. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from, laMay, taiLai])
+      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, pg.from, laMay, taiLai])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. Chờ cả biết khổ màn (lọc lý do khác nhau). */
       if (!searchReady) return
@@ -265,7 +268,7 @@ export default function ReturnsPage() {
         const q = supabase
           .from("returns")
           .select(
-            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, invoice_id, order_id, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, invoice_id, order_id, destination_zone, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
             dem ? { count: "exact" } : undefined
           )
           /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
@@ -281,7 +284,24 @@ export default function ReturnsPage() {
          */
         return apDungLoc(q) as unknown as PromiseLike<{ data: Return[] | null; count: number | null; error: { message: string } | null }>
       }
+      const truoc = khoaTaiRef.current
       const taiThem = laTaiThem(khoaTaiRef, khoa, pg.to)
+      /* ⚠ "TẢI THÊM" CHỈ ĐỌC PHẦN MỚI (tối ưu lượt gọi 27/09/2026) — không đọc lại các phiếu đang hiện. */
+      if (taiThem && truoc) {
+        const { data: moi, error: loiMoi } = await taoQ(truoc.to + 1, pg.to, false)
+        if (cancelled) return
+        if (loiMoi) console.error("[returns] tải thêm lỗi:", loiMoi.message)
+        const them = (moi as unknown as Return[]) || []
+        setReturns((cu) => {
+          const co = new Set(cu.map((r) => r.id))
+          return [...cu, ...them.filter((r) => !co.has(r.id))]
+        })
+        docMaPhieuTra(supabase, them.map((r) => r.id)).then((m) => {
+          if (!cancelled) setMaPhieu((cu) => new Map([...Array.from(cu), ...Array.from(m)]))
+        })
+        setLoading(false)
+        return
+      }
       const { data, count , error: qErr } = await taiHaiNhip(taoQ, pg.from, pg.to, (dau) => {
         if (cancelled) return
         setReturns(dau.data ?? [])
@@ -301,7 +321,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -327,7 +347,7 @@ export default function ReturnsPage() {
             .range(from, to)
         )
         // Tab "Tất cả": phiếu đã huỷ không vào tổng khoản có.
-        return statusFilter === "all" ? q.neq("status", "cancelled") : q
+        return ttHieuLuc === "all" ? q.neq("status", "cancelled") : q
       })
       if (cancelled) return
       if (res.error || res.truncated) {
@@ -338,7 +358,7 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ĐIỆN THOẠI — SỐ TRÊN TỪNG TAB (mẫu 27/09/2026), cùng bộ lọc tìm / lý do nhưng BỎ trạng thái.
@@ -401,10 +421,6 @@ export default function ReturnsPage() {
     return () => { huy = true }
   }, [laDienThoai, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Điện thoại chọn MỘT tab (mẫu mở ở "Chờ xử lý"); lựa chọn nhiều chip của máy tính → về Chờ xử lý. */
-  useEffect(() => {
-    if (laDienThoai && !TAB_TRA_MOBILE.some((t) => t.key === statusFilter)) setStatusFilter("submitted")
-  }, [laDienThoai, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -442,7 +458,7 @@ export default function ReturnsPage() {
             label: t.label,
             count: demTab ? (t.key === "all" ? tongDem(demTab) : demTab[t.key] ?? 0) : null,
           }))}
-          isTabOn={(k) => statusFilter === k}
+          isTabOn={(k) => ttHieuLuc === k}
           onPickTab={(k) => setStatusFilter(k)}
           search={search}
           onSearch={setSearch}
@@ -459,6 +475,8 @@ export default function ReturnsPage() {
       )}
       <MobileReturnSheet
         returnId={nganMo}
+        row={nganMo ? (filtered.find((r) => r.id === nganMo) as never) ?? null : null}
+        code={nganMo ? maPhieu.get(nganMo) ?? null : null}
         canApprove={!!authUser && hasPermission(authUser.role, "returns", "approve")}
         onClose={() => setNganMo(null)}
         onDone={(thongBao) => {

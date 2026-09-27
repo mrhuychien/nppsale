@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "./use-auth"
-import { type Module } from "@/lib/permissions"
+import { type Module, layQuyenDaNap, ngheQuyenDaNap } from "@/lib/permissions"
 import { duocVaoTrang } from "@/lib/nav/nav-permission"
 
 /**
@@ -32,16 +32,27 @@ export function useRoleGuard(module: Module) {
    *   "ai vào được trang nào" trả lời được bằng một lời gọi.
    */
   const hasAccess = duocVaoTrang(user?.role, pathname, module)
+  /* ⚠ CHỜ BẢNG QUYỀN NẠP XONG rồi mới đá ra — xem `baoQuyenDaNap`. Loader hỏng không báo thì
+     sau 4 giây quyết theo quyền đang có (không treo màn chờ mãi). */
+  const daNap = useSyncExternalStore(ngheQuyenDaNap, layQuyenDaNap, () => false)
+  const [hetCho, setHetCho] = useState(false)
+  useEffect(() => {
+    if (daNap || hasAccess) return
+    const t = setTimeout(() => setHetCho(true), 4000)
+    return () => clearTimeout(t)
+  }, [daNap, hasAccess])
+  const quyenChac = daNap || hetCho
 
   useEffect(() => {
-    if (!loading && user && !hasAccess) {
+    if (!loading && user && !hasAccess && quyenChac) {
       /* ⚠ VỀ /home, KHÔNG VỀ "/". "/" đẩy khối văn phòng sang /dashboard; ai không vào được
          /dashboard mà bị đẩy về "/" là quay vòng /dashboard ↔ "/" tới khi trình duyệt chặn
          ("history.replaceState() more than 100 times per 10 seconds" — chủ nhà 26/09/2026,
          màn trắng ở /dashboard). /home ai cũng vào được (`always`). */
       router.replace("/home")
     }
-  }, [user, loading, hasAccess, router])
+  }, [user, loading, hasAccess, quyenChac, router])
 
-  return { user, loading, hasAccess }
+  /* Chưa chắc quyền mà đang thiếu quyền → coi như còn nạp (màn hiện khung chờ, không lộ nội dung). */
+  return { user, loading: loading || (!hasAccess && !quyenChac), hasAccess }
 }

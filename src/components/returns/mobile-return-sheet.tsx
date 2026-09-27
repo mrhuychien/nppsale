@@ -33,6 +33,7 @@ interface PhieuNgan {
   reason: string | null
   credit_note_amount: number | null
   created_at: string
+  return_date?: string | null
   destination_zone?: string | null
   customer?: { store_name?: string | null } | null
   seller?: { full_name?: string | null } | null
@@ -41,7 +42,7 @@ interface PhieuNgan {
 }
 
 const COT =
-  "id, status, credit_with_invoice, invoice_id, order_id, reason, credit_note_amount, created_at, destination_zone, " +
+  "id, status, credit_with_invoice, invoice_id, order_id, reason, credit_note_amount, created_at, return_date, destination_zone, " +
   "customer:customers(store_name), seller:users!returns_sales_user_id_fkey(full_name), " +
   "order:sales_orders(order_code), invoice:sales_invoices(invoice_code)"
 
@@ -49,11 +50,20 @@ const tenKho = (z: string | null | undefined) => RETURN_ZONES.find((k) => k.valu
 
 export function MobileReturnSheet({
   returnId,
+  row,
+  code,
   canApprove,
   onClose,
   onDone,
 }: {
   returnId: string | null
+  /**
+   * Dòng đã có sẵn ở danh sách (vừa tải) — có thì ngăn KHÔNG đọc lại (tối ưu lượt gọi 27/09/2026).
+   * Không có (vd "Xử lý ngay" mở phiếu chưa nằm trong trang đang xem) thì ngăn tự đọc MỘT lượt.
+   */
+  row?: PhieuNgan | null
+  /** Số TH- của phiếu nếu danh sách đã đọc. */
+  code?: string | null
   /** `returns.approve` — đúng quyền `complete_return` / `cancel_return` kiểm. */
   canApprove: boolean
   onClose: () => void
@@ -77,14 +87,20 @@ export function MobileReturnSheet({
     setDangHuy(false)
     setLyDoHuy("")
     if (!returnId) return
+    if (row && row.id === returnId) {
+      setR(row)
+      setKho(khoGoiY(row.reason))
+      setNgay(row.return_date ?? null)
+      setMa(code ?? null)
+      return
+    }
     let huy = false
     ;(async () => {
       const sb = createClient()
-      /* `return_date` (mig 188) đọc riêng — sổ chưa có cột thì không hỏng cả ngăn. */
-      const [{ data, error }, n, m] = await Promise.all([
+      /* `return_date` (mig 188) — danh sách cũng đọc thẳng cột này nên gộp một câu. */
+      const [{ data, error }, m] = await Promise.all([
         sb.from("returns").select(COT).eq("id", returnId).maybeSingle(),
-        sb.from("returns").select("return_date").eq("id", returnId).maybeSingle(),
-        docMaPhieuTra(sb, [returnId]),
+        code ? Promise.resolve(new Map([[returnId, code]])) : docMaPhieuTra(sb, [returnId]),
       ])
       if (huy) return
       if (error) return setLoi(errorMessage(error))
@@ -92,12 +108,13 @@ export function MobileReturnSheet({
       const p = data as unknown as PhieuNgan
       setR(p)
       setKho(khoGoiY(p.reason))
-      setNgay(((n.data as unknown) as { return_date?: string | null } | null)?.return_date ?? null)
+      setNgay(p.return_date ?? null)
       setMa(m.get(returnId) ?? null)
     })()
     return () => {
       huy = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returnId])
 
   const hd = r ? hanhDongPhieuTra(r) : null

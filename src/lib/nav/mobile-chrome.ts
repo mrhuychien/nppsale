@@ -53,6 +53,8 @@ export function hidesMobileAppBar(pathname: string): boolean {
   return (
     pathname === "/orders" ||
     pathname === "/customers" ||
+    /* "/returns": danh sách trả hàng trên điện thoại theo mẫu 27/09/2026 — đầu trang xanh riêng. */
+    pathname === "/returns" ||
     /^\/orders\/[^/]+$/.test(pathname) ||
     pathname === "/bao-cao" ||
     pathname.startsWith("/bao-cao/")

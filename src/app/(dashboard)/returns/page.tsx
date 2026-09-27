@@ -57,6 +57,13 @@ import { bamTrangThai, dangChon, trangThaiCuaChon } from "@/lib/list/status-mult
 import Link from "@/components/ui/link"
 import type { Return } from "@/types"
 import { ReturnDrawer } from "@/components/returns/return-drawer"
+import { MobileReturnsScreen, BUOC_TAI_TRA } from "@/components/returns/mobile-returns-screen"
+import { MobileReturnSheet } from "@/components/returns/mobile-return-sheet"
+import { TAB_TRA_MOBILE, viTatTen } from "@/lib/returns/mobile-list"
+import { useKhoMay } from "@/hooks/use-is-desktop"
+import { hasPermission } from "@/lib/permissions"
+import { useToast } from "@/hooks/use-toast"
+import { docDemNhom, tongDem, type DemNhom } from "@/lib/list/dem-nhom"
 
 /** Nhân viên được tính khoản trừ của phiếu (`sales_user_id`). */
 const tenNV = (r: Return) => (r as Return & { seller?: { full_name?: string | null } | null }).seller?.full_name ?? null
@@ -93,6 +100,15 @@ export default function ReturnsPage() {
   const { loading: authLoading } = useRoleGuard("returns")
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
+  /* Khổ màn: `false` = điện thoại (màn theo mẫu 27/09/2026), `null` = chưa biết — số riêng của
+     mỗi khổ chỉ đọc khi đã biết khổ. */
+  const laMay = useKhoMay()
+  const laDienThoai = laMay === false
+  const { toast } = useToast()
+  /** Phiếu đang mở ở ngăn điện thoại. */
+  const [nganMo, setNganMo] = useState<string | null>(null)
+  /** Tăng sau khi hoàn thành / huỷ ở ngăn → đọc lại danh sách, số trên tab, thẻ Chờ xử lý. */
+  const [taiLai, setTaiLai] = useState(0)
   const [returns, setReturns] = useState<Return[]>([])
   /** Phiếu đang mở ở ngăn xem nhanh — `null` là đóng (chủ nhà 25/09/2026). */
   const [xemNhanh, setXemNhanh] = useState<string | null>(null)
@@ -145,6 +161,8 @@ export default function ReturnsPage() {
 
   // Stats: count theo reason (mount 1 lần, toàn tổng).
   useEffect(() => {
+    /* Màn máy tính mới có ô "Phân loại lý do" và số tổng ở đầu trang. */
+    if (laMay !== true) return
     async function loadStats() {
       const { count: totalC, error: totalErr } = await supabase
         .from("returns")
@@ -165,7 +183,7 @@ export default function ReturnsPage() {
       setReasonCounts(counts)
     }
     loadStats()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxReasonCount = Math.max(1, ...Object.values(reasonCounts))
 
@@ -205,14 +223,15 @@ export default function ReturnsPage() {
    * hai con số cạnh nhau không khớp nhau.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any; in: (c: string, v: string[]) => any; is: (c: string, v: null) => any }>(q: Q): Q => {
+  const apDungLoc = <Q extends { or: (f: string) => any; eq: (c: string, v: string) => any; in: (c: string, v: string[]) => any; is: (c: string, v: null) => any }>(q: Q, boTrangThai = false): Q => {
     let x = q
     if (listSearch.filter) x = x.or(listSearch.filter)
     for (const f of fieldSearch.filters) x = x.or(f)
     for (const f of locNC.menhDe) x = x.or(f)
-    if (filterActive("reason") && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
+    /* Điện thoại luôn có ô lý do (mẫu 27/09/2026) — không theo bộ chọn ô lọc của máy tính. */
+    if ((filterActive("reason") || laDienThoai) && reasonFilter !== "all") x = x.eq("reason", reasonFilter)
     /* ⚠ CHỌN NHIỀU TRẠNG THÁI (chủ nhà 25/09/2026) — xem `status-multi.ts`. */
-    const ttChon = trangThaiCuaChon(statusFilter)
+    const ttChon = boTrangThai ? null : trangThaiCuaChon(statusFilter)
     if (ttChon) x = ttChon.length === 1 ? x.eq("status", ttChon[0]) : x.in("status", ttChon)
     if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
     else if (filterActive("seller") && sellerFilter !== "all") x = x.eq("sales_user_id", sellerFilter)
@@ -221,6 +240,7 @@ export default function ReturnsPage() {
 
   /* Danh sách NV để lọc — cùng tập người `assign_doc_seller` nhận (mig 178). */
   useEffect(() => {
+    if (laMay !== true || authUser?.role === "sales") return
     let huy = false
     supabase.from("users").select("id, full_name").in("role", ["sales", "manager", "owner"]).order("full_name")
       .then(({ data, error }) => {
@@ -229,22 +249,23 @@ export default function ReturnsPage() {
         setNhanVien((data as Array<{ id: string; full_name: string | null }>) ?? [])
       })
     return () => { huy = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [laMay, authUser?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false
     async function fetch() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. Tải thêm
          cùng truy vấn: giữ danh sách đang hiện. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from])
+      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, pg.from, laMay, taiLai])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
-      /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
+      /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. Chờ cả biết khổ màn (lọc lý do khác nhau). */
       if (!searchReady) return
+      if (laMay === null) return
       const taoQ = (from: number, to: number, dem: boolean) => {
         const q = supabase
           .from("returns")
           .select(
-            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, invoice_id, order_id, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
             dem ? { count: "exact" } : undefined
           )
           /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
@@ -280,7 +301,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -292,7 +313,8 @@ export default function ReturnsPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!searchReady) return
+      /* Ô "Tổng tiền trả hàng" chỉ có ở máy tính. */
+      if (!searchReady || laMay !== true) return
       setTongKhoanCo(null)
       const res = await fetchAllForAggregate<{ credit_note_amount: number | string | null }>((from, to) => {
         // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
@@ -316,7 +338,73 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, statusFilter, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ĐIỆN THOẠI — SỐ TRÊN TỪNG TAB (mẫu 27/09/2026), cùng bộ lọc tìm / lý do nhưng BỎ trạng thái.
+   * Một lượt `select=status,count()` (mig 206); máy chủ chưa gom nhóm được thì đếm từng trạng thái.
+   */
+  const [demTab, setDemTab] = useState<DemNhom | null>(null)
+  useEffect(() => {
+    if (!laDienThoai || !searchReady) return
+    let huy = false
+    ;(async () => {
+      setDemTab(null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const qDem = supabase.from("returns").select("status, count()" as string) as any
+      const nhom = docDemNhom(await apDungLoc(qDem, true))
+      let d = nhom
+      if (!d) {
+        const cu: DemNhom = {}
+        await Promise.all(
+          TAB_TRA_MOBILE.filter((t) => t.key !== "all").map(async (t) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const qHead = supabase.from("returns").select("id", { count: "exact", head: true }) as any
+            const { count } = (await apDungLoc(qHead, true).eq("status", t.key)) as { count: number | null }
+            cu[t.key] = count ?? 0
+          })
+        )
+        d = cu
+      }
+      if (!huy) setDemTab(d)
+    })()
+    return () => { huy = true }
+  }, [laDienThoai, searchReady, debouncedSearch, listSearch, reasonFilter, fieldSearch.key, locNC.key, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ĐIỆN THOẠI — THẺ "CHỜ XỬ LÝ · N PHIẾU" + tổng tiền: mọi phiếu đang chờ (không theo tab / ô
+   * tìm — đó là việc phải làm). Phiếu đầu tiên là chỗ "Xử lý ngay" mở ra.
+   */
+  const [choXuLy, setChoXuLy] = useState<{ count: number; total: number; dau: string | null } | null>(null)
+  useEffect(() => {
+    if (!laDienThoai) return
+    let huy = false
+    ;(async () => {
+      const res = await fetchAllForAggregate<{ id: string; credit_note_amount: number | string | null }>((from, to) =>
+        // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
+        supabase
+          .from("returns")
+          .select("id, credit_note_amount", { count: "exact" })
+          .eq("status", "submitted")
+          .order("return_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      )
+      if (huy) return
+      if (res.error) console.warn("[returns] không đọc được phiếu chờ xử lý:", res.error)
+      setChoXuLy({
+        count: res.rows.length,
+        total: res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0),
+        dau: res.rows[0]?.id ?? null,
+      })
+    })()
+    return () => { huy = true }
+  }, [laDienThoai, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Điện thoại chọn MỘT tab (mẫu mở ở "Chờ xử lý"); lựa chọn nhiều chip của máy tính → về Chờ xử lý. */
+  useEffect(() => {
+    if (laDienThoai && !TAB_TRA_MOBILE.some((t) => t.key === statusFilter)) setStatusFilter("submitted")
+  }, [laDienThoai, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
@@ -327,8 +415,60 @@ export default function ReturnsPage() {
     RETURN_REASONS.find((r) => r.value === reason)?.label || reason || "—"
 
 
+  /* Thông báo tra mã chạm trần — chung cho cả hai khổ. */
+  const canhBaoTran = (listSearch.truncated || fieldSearch.truncated) && !loading && (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
+      <p className="font-semibold">Kết quả tìm đang thiếu</p>
+      <p className="mt-0.5">
+        Có hơn {MATCH_CAP} mục khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới chưa
+        đủ. Gõ thêm cho hẹp lại.
+      </p>
+    </div>
+  )
+  const soPhieuTong = demTab ? tongDem(demTab) : null
+
   return (
     <div className="space-y-4">
+      {/* ⚠ ĐIỆN THOẠI — theo mẫu chủ nhà 27/09/2026 (`MobileReturnsScreen`); máy tính giữ bảng. */}
+      {laDienThoai && (
+        <MobileReturnsScreen
+          title={isSales ? "Trả hàng của tôi" : "Trả hàng"}
+          subtitle={[soPhieuTong === null ? null : `${soPhieuTong} phiếu`, authUser?.full_name].filter(Boolean).join(" · ") || " "}
+          userInitials={viTatTen(authUser?.full_name)}
+          pending={choXuLy}
+          onOpenFirstPending={() => choXuLy?.dau && setNganMo(choXuLy.dau)}
+          tabs={TAB_TRA_MOBILE.map((t) => ({
+            key: t.key,
+            label: t.label,
+            count: demTab ? (t.key === "all" ? tongDem(demTab) : demTab[t.key] ?? 0) : null,
+          }))}
+          isTabOn={(k) => statusFilter === k}
+          onPickTab={(k) => setStatusFilter(k)}
+          search={search}
+          onSearch={setSearch}
+          reason={reasonFilter}
+          onReason={setReasonFilter}
+          rows={filtered}
+          codes={maPhieu}
+          loading={loading}
+          count={pg.total}
+          onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_TRA)}
+          onOpen={setNganMo}
+          notice={canhBaoTran}
+        />
+      )}
+      <MobileReturnSheet
+        returnId={nganMo}
+        canApprove={!!authUser && hasPermission(authUser.role, "returns", "approve")}
+        onClose={() => setNganMo(null)}
+        onDone={(thongBao) => {
+          setNganMo(null)
+          toast({ title: thongBao })
+          setTaiLai((n) => n + 1)
+        }}
+      />
+
+      <div className="hidden space-y-4 lg:block">
       <PageHeader
         title={isSales ? "Trả hàng của tôi" : "Trả hàng"}
         description={`${totalCount} phiếu trả • Tra cứu thông tin`}
@@ -350,15 +490,7 @@ export default function ReturnsPage() {
         ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
           lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
       */}
-      {(listSearch.truncated || fieldSearch.truncated) && !loading && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
-          <p className="font-semibold">Kết quả tìm đang thiếu</p>
-          <p className="mt-0.5">
-            Có hơn {MATCH_CAP} mục khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới chưa
-            đủ. Gõ thêm cho hẹp lại.
-          </p>
-        </div>
-      )}
+      {canhBaoTran}
 
       {/*
         ⚠ CÂU CŨ Ở ĐÂY LÀ NGUYÊN NHÂN CỦA CẢ MỘT LỚP LỖI. Nó bảo người
@@ -505,8 +637,7 @@ export default function ReturnsPage() {
             />
           ) : (
             <>
-              {/* Desktop table */}
-              <div className="hidden lg:block">
+              <div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -595,83 +726,6 @@ export default function ReturnsPage() {
                 </Table>
               </div>
 
-              {/* Mobile card list */}
-              <div className="lg:hidden space-y-3">
-                {filtered.map((r) => {
-                  const orderCode = (r as Return & { order?: { order_code?: string } }).order?.order_code
-                  const invoiceCode = (r as Return & { invoice?: { invoice_code?: string } })
-                    .invoice?.invoice_code
-                  return (
-                    <div
-                      key={r.id}
-                      className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                      onClick={() => setXemNhanh(r.id)}
-                    >
-                      <div className="p-4">
-                        <div className="flex justify-between items-start gap-3 mb-2">
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              href={`/returns/${r.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="font-mono text-xs font-bold text-primary"
-                            >
-                              {tenPhieuTra(maPhieu.get(r.id))}
-                            </Link>
-                            <h3 className="font-extrabold text-base leading-tight truncate">
-                              {r.customer?.store_name || "—"}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Lý do:{" "}
-                              <span className="font-medium text-foreground">
-                                {getReasonLabel(r.reason)}
-                              </span>
-                            </p>
-                            {orderCode && (
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                Đơn gốc: <span className="font-mono">{orderCode}</span>
-                              </p>
-                            )}
-                            {invoiceCode && (
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                Hóa đơn gốc: <span className="font-mono">{invoiceCode}</span>
-                              </p>
-                            )}
-                            {r.requester?.full_name && (
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                Người tạo: {r.requester.full_name}
-                              </p>
-                            )}
-                            {tenNV(r) && (
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                Tính cho NV: {tenNV(r)}
-                              </p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {formatDate(ngayPhieu(r))}
-                            </p>
-                          </div>
-                          <div className="shrink-0">
-                            <StatusBadge status={r.status} type="return" />
-                            {r.credit_with_invoice && (
-                                <span className="ml-1.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Phiếu tự sinh theo hóa đơn — sửa từ hóa đơn">
-                                  Theo HĐ
-                                </span>
-                              )}
-                          </div>
-                        </div>
-                        {r.credit_note_amount ? (
-                          <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
-                            <span className="text-xs text-muted-foreground">Credit Note</span>
-                            <span className="font-bold text-base">
-                              {formatCurrency(r.credit_note_amount)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
               <DataPagination pg={pg} shownCount={filtered.length} />
             </>
           )}
@@ -714,6 +768,7 @@ export default function ReturnsPage() {
             })}
           </CardContent>
         </Card>
+      </div>
       </div>
       <ReturnDrawer returnId={xemNhanh} onClose={() => setXemNhanh(null)} />
     </div>

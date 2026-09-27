@@ -351,7 +351,7 @@ describe("lỗi lượt đo bắt được ở màn đơn trả", () => {
     // Lọc trạng thái nằm trong `apDungLoc` — MỘT bộ lọc cho cả danh sách lẫn
     // phép cộng tổng khoản có (23/09/2026).
     // Chọn nhiều (25/09/2026) — vẫn lọc ở máy chủ, một hay nhiều trạng thái.
-    expect(RET_LIST).toContain("const ttChon = trangThaiCuaChon(statusFilter)")
+    expect(RET_LIST).toContain("const ttChon = boTrangThai ? null : trangThaiCuaChon(statusFilter)")
     expect(RET_LIST).toMatch(/x = ttChon\.length === 1 \? x\.eq\("status", ttChon\[0\]\) : x\.in\("status", ttChon\)/)
     expect(RET_LIST).toContain("RETURN_TABS.map(")
   })

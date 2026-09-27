@@ -210,7 +210,9 @@ describe("nút Sửa của phiếu trả — một chỗ cho xem nhanh và chi t
   it("danh sách hiện + xếp theo ngày chứng từ (return_date)", () => {
     const L = read("src/app/(dashboard)/returns/page.tsx")
     expect(L).toContain('.order("return_date", { ascending: false, nullsFirst: false })')
-    expect(L.match(/formatDate\(ngayPhieu\(r\)\)/g)?.length).toBe(2)
+    /* Bảng máy tính; điện thoại (mẫu 27/09/2026) nhóm theo `ngayNhomTra` — return_date trước. */
+    expect(L.match(/formatDate\(ngayPhieu\(r\)\)/g)?.length).toBe(1)
+    expect(readFileSync("src/lib/returns/mobile-list.ts", "utf8")).toMatch(/if \(r\.return_date\) return r\.return_date/)
     expect(L).not.toContain("{formatDate(r.created_at)}")
   })
 })

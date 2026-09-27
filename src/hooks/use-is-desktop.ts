@@ -17,3 +17,20 @@ export function useIsDesktop(): boolean {
   }, [])
   return la
 }
+
+/**
+ * Như `useIsDesktop` nhưng `null` khi CHƯA BIẾT (lượt vẽ đầu). Màn nào đọc số riêng cho một khổ
+ * (điện thoại / máy tính) chờ biết khổ rồi mới đọc — không gửi thừa truy vấn của khổ kia.
+ */
+export function useKhoMay(): boolean | null {
+  const [la, setLa] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return setLa(true)
+    const mq = window.matchMedia(DESKTOP_QUERY)
+    const doi = () => setLa(mq.matches)
+    doi()
+    mq.addEventListener("change", doi)
+    return () => mq.removeEventListener("change", doi)
+  }, [])
+  return la
+}

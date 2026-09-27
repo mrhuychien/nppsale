@@ -260,6 +260,19 @@ export const rpc = {
   user_has_permission: () => true,
   /* Mức doanh số chung A / tháng (cài đặt lương, mig 196) — cột Chỉ tiêu của Báo cáo tổng hợp. */
   my_sales_target: () => 3000000,
+  /* Hoàn thành / huỷ phiếu trả (mig 120) — chỉ đổi trạng thái để màn danh sách thấy phiếu chuyển tab. */
+  complete_return: ({ p_return_id, p_zone }, { db }) => {
+    const r = (db.returns || []).find((x) => x.id === p_return_id)
+    if (!r) throw new Error("RETURN_NOT_FOUND")
+    Object.assign(r, { status: "completed", destination_zone: p_zone, completed_at: "2026-09-27T08:00:00Z" })
+    return [{ entry_id: null }]
+  },
+  cancel_return: ({ p_return_id, p_reason }, { db }) => {
+    const r = (db.returns || []).find((x) => x.id === p_return_id)
+    if (!r) throw new Error("RETURN_NOT_FOUND")
+    Object.assign(r, { status: "cancelled", cancel_reason: p_reason })
+    return null
+  },
   /* Phiếu lương của tôi (mig 201) — một kỳ đã chốt. */
   my_payslips: () => [{
     payroll_run_id: "00000000-0000-4000-8000-00000000a701", month: "2026-08-01", locked_at: "2026-09-02T03:00:00Z",

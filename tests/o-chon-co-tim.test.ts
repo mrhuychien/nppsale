@@ -16,6 +16,7 @@ import { NGUONG_O_TIM } from "../src/components/ui/select"
  */
 const BO_NGAN = new Set([
   "RETURN_ZONES", // 2 kho nhận
+  "RETURN_REASONS", // 5 lý do trả — ô "Mọi lý do" của danh sách trả hàng điện thoại (mẫu 27/09/2026)
   "LY_DO",        // trả NCC: 4 lý do (màn phiếu trả khách đã sang CompactSelect)
   "units",        // đơn vị của một mặt hàng: 1–3
   "l.units",

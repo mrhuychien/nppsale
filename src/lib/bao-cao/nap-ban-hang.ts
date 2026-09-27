@@ -25,6 +25,7 @@ import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import type { DanhMucBC, DanhMucVao, DongBan } from "./cong"
 import { goiMotLuot } from "./mot-luot"
+import { nhanLyDoTra } from "@/lib/constants"
 import { quyDoiTuDanhMuc } from "./nap-danh-muc"
 
 export interface HoaDonBC {
@@ -115,7 +116,7 @@ export function dungDongBan(p: {
     const ngay = String(r.created_at).slice(0, 10)
     const tien = Math.abs(Number(r.credit_note_amount || 0))
     const nv = p.nvTra.get(r.id) || ""
-    phieuTra.push({ id: r.id, ma: r.ma || r.id.slice(0, 8), ngay, kh: r.customer_id, nv, tien, lyDo: r.lyDo || "", loai: r.tuSinh ? "Tự sinh" : "Tự lập", hd: r.invoice_id ?? null })
+    phieuTra.push({ id: r.id, ma: r.ma || r.id.slice(0, 8), ngay, kh: r.customer_id, nv, tien, lyDo: nhanLyDoTra(r.lyDo), loai: r.tuSinh ? "Tự sinh" : "Tự lập", hd: r.invoice_id ?? null })
     const ls = (theoTra.get(r.id) || []).map((l) => ({ l, sl: soLuongCoSoDongTra(l, quyDoiTuDanhMuc(dm, l.product_id)) }))
     const gv = p.giaVonTra.get(r.id)
     const base = { ngay, loai: -1 as const, ct: r.id, hd: "", kh: r.customer_id, nv }

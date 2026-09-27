@@ -216,6 +216,15 @@ export const RETURN_REASONS = [
   { value: "refused", label: "Khách từ chối nhận" },
 ] as const
 
+/**
+ * Nhãn tiếng Việt của lý do trả (chủ nhà 27/09/2026: "lý do trả vẫn còn tiếng Anh"). Lý do gõ tay
+ * (chữ tự do) giữ nguyên; mã lạ cũng giữ nguyên thay vì hiện rỗng.
+ */
+export function nhanLyDoTra(v: string | null | undefined): string {
+  if (!v) return ""
+  return RETURN_REASONS.find((r) => r.value === v)?.label ?? v
+}
+
 export const PROMOTION_TYPES = [
   { value: "trade_discount", label: "Chiết khấu thương mại" },
   { value: "buy_x_get_y", label: "Mua X tặng Y" },

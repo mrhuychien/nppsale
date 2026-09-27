@@ -15,6 +15,7 @@ import { ngayDu } from "@/lib/bao-cao/ky"
 import { nhanTrangThaiDon } from "@/lib/bao-cao/nap-don-dat"
 import { errorMessage } from "@/lib/errors"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
+import { nhanLyDoTra } from "@/lib/constants"
 
 export type LoaiChungTu = "hd" | "don" | "tra" | "thu" | "chi"
 
@@ -109,7 +110,7 @@ async function napNoiDung(ct: ChungTuMo): Promise<NoiDung> {
         meta: [
           ["Ngày trừ doanh số", ngay(r.revenue_date)],
           ["Hoá đơn gốc", ten(r.invoice, "invoice_code")],
-          ["Lý do", String(r.reason || "—")],
+          ["Lý do", nhanLyDoTra(r.reason as string | null) || "—"],
           ["Loại", r.credit_with_invoice ? "Tự sinh (theo hoá đơn)" : "Tự lập"],
         ],
         dong: dongHang(ls.filter((l) => !l.is_exchange)),

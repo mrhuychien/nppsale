@@ -33,6 +33,11 @@ BEGIN
   v_src := pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure);
   IF position('(mig 182)' IN v_src) > 0 THEN
     RAISE NOTICE '--- 182: assign_doc_seller đã kéo phiếu trả, bỏ qua ---';
+  /* ⚠ MIG 194 ĐÃ VIẾT LẠI HÀM NÀY (chủ nhà 27/09/2026 chạy lại 182 thì hỏng "không thấy đúng MỘT
+     chỗ cập nhật công nợ"): từ 194, đổi người ở hóa đơn thì dòng nợ + phiếu trả gắn HĐ đi theo
+     qua trigger `trg_hoa_don_doi_nguoi` — việc của phần này đã xong theo cách khác. Bỏ qua. */
+  ELSIF position('trg_hoa_don_doi_nguoi' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 182: assign_doc_seller đã được mig 194 thay (trigger trg_hoa_don_doi_nguoi), bỏ qua ---';
   ELSE
     IF (length(v_src) - length(replace(v_src, v_neo, ''))) / length(v_neo) <> 1 THEN
       RAISE EXCEPTION '182: không thấy đúng MỘT chỗ cập nhật công nợ trong assign_doc_seller' USING ERRCODE = 'P0001';

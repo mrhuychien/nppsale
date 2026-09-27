@@ -203,8 +203,10 @@ SELECT 21, 'Mig 181 (sửa hàng trả đổi quy cách, giá theo hệ số)',
 UNION ALL
 -- 22. Mig 182 — người được gán của hóa đơn kéo theo phiếu trả, giữ qua lập lại
 SELECT 22, 'Mig 182 (gán HĐ kéo theo phiếu trả; lập lại giữ người)',
+  -- Mig 194 viết lại assign_doc_seller: phần "phiếu trả đi theo HĐ" nay do trigger trg_hoa_don_doi_nguoi.
   CASE WHEN position('(mig 182)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
-            AND position('(mig 182)' IN pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure)) > 0
+            AND (position('(mig 182)' IN pg_get_functiondef('public.assign_doc_seller(text, uuid, uuid)'::regprocedure)) > 0
+                 OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_hoa_don_doi_nguoi'))
        THEN 'OK — đã vá' ELSE 'CHƯA — gán lại HĐ thì phiếu trả vẫn đứng tên người cũ' END, ''
 UNION ALL
 -- 23. Mig 183 — hóa đơn / phiếu trả bê đủ trường từ đơn

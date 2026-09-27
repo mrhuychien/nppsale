@@ -78,3 +78,25 @@ describe("đếm chip trạng thái một lượt (mig 206)", () => {
     expect(sql).toContain("NOTIFY pgrst, 'reload config';")
   })
 })
+
+describe("mig 207 — dọn cảnh báo bảo mật Supabase", () => {
+  const sql = readFileSync("supabase/migrations/207_don_canh_bao_bao_mat.sql", "utf8")
+  it("thu EXECUTE của anon trên mọi hàm SECURITY DEFINER, trừ hàm tra email lúc đăng nhập", () => {
+    expect(sql).toContain("REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon")
+    expect(sql).toMatch(/IF f\.proname = 'lookup_email_by_identifier' THEN\s+CONTINUE;/)
+    // Ai đang gọi được thì cấp lại đích danh — không làm hỏng RPC của app.
+    expect(sql).toMatch(/ELSIF duoc_goi THEN\s+EXECUTE format\('GRANT EXECUTE ON FUNCTION %s TO authenticated'/)
+    expect(sql).toMatch(/IF f\.tra_ve = 'trigger' THEN\s+EXECUTE format\('REVOKE EXECUTE ON FUNCTION %s FROM authenticated'/)
+  })
+  it("màn đăng nhập vẫn gọi hàm tra email (được chừa ra)", () => {
+    expect(readFileSync("src/app/login/page.tsx", "utf8")).toContain('"lookup_email_by_identifier"')
+  })
+  it("bỏ policy SELECT rộng của kho ảnh; app không liệt kê / xoá file (chỉ tải lên + URL công khai)", () => {
+    for (const p of ["customer_photos_select", "pod_photos_select", "visit_photos_select"]) expect(sql).toContain(`DROP POLICY IF EXISTS "${p}" ON storage.objects`)
+    for (const f of ["src/components/deliveries/pod-capture-sheet.tsx", "src/components/customers/visit-checkin-dialog.tsx", "src/components/customers/customer-photo-capture.tsx"]) {
+      const s = readFileSync(f, "utf8")
+      expect(s, f).toContain("upsert: false")
+      expect(s, f).not.toMatch(/\.list\(|\.download\(|\.remove\(\[/)
+    }
+  })
+})

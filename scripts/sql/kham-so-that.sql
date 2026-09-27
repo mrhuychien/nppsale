@@ -398,4 +398,15 @@ SELECT 45, 'Mig 206 (Đếm theo nhóm — bớt log Supabase)',
                            AND 'pgrst.db_aggregates_enabled=true' = ANY (s.setconfig))
        THEN 'CHƯA — chip trạng thái vẫn đếm từng lượt (nhiều log)'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 46. Mig 207 — dọn cảnh báo bảo mật (anon không gọi được hàm SECURITY DEFINER, search_path, kho ảnh)
+SELECT 46, 'Mig 207 (Dọn cảnh báo bảo mật Supabase)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                     WHERE n.nspname = 'public' AND p.prosecdef AND p.proname <> 'lookup_email_by_identifier'
+                       AND has_function_privilege('anon', p.oid, 'EXECUTE'))
+       THEN 'CHƯA — còn hàm SECURITY DEFINER gọi được khi chưa đăng nhập'
+       WHEN EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage'
+                     AND policyname IN ('customer_photos_select', 'pod_photos_select', 'visit_photos_select'))
+       THEN 'CHƯA — kho ảnh công khai còn liệt kê được mọi file'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

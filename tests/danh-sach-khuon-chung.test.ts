@@ -188,6 +188,7 @@ const DA_VE_KHUON: Array<{
   { duong: "inventory/batches", mobileFilter: true, statusChips: true },
   // Danh sách người dùng: chưa có trường lọc nâng cao nào được khai báo cho bảng `users`.
   { duong: "settings/users", mobileFilter: true, statusChips: true, khongLocNangCao: true },
+  { duong: "commissions/policies", mobileFilter: true, statusChips: true, khongLocNangCao: true },
   // Công nợ: điện thoại giữ dải tuổi nợ + thẻ có nút "Thu tiền" (NVBH đi thu).
   { duong: "receivables" },
 ]

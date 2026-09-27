@@ -39,6 +39,11 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
     // Chủ nhà 27/09/2026: Báo cáo → Báo cáo tổng hợp; bỏ Công nợ KH; Hoa hồng / Khuyến mãi tạm khoá.
     await expect(trang.getByRole("link", { name: "Báo cáo tổng hợp" })).toHaveAttribute("href", "/bao-cao/ban-hang")
     await expect(trang.getByRole("link", { name: "Công nợ KH" })).toHaveCount(0)
+    // Chủ nhà 27/09/2026: thêm Hoá đơn bán; mẫu NVBH được xem Trả hàng (mig 208).
+    await expect(trang.getByRole("link", { name: "Hoá đơn bán" })).toHaveAttribute("href", "/sales-invoices")
+    await expect(trang.getByRole("link", { name: "Trả hàng", exact: true })).toHaveAttribute("href", "/returns")
+    // Lưới hiện 8 ô đầu — ô tạm khoá nằm sau, mở "Tất cả" để thấy.
+    await trang.getByRole("button", { name: /^Tất cả \(\d+\)$/ }).click()
     for (const o of ["Hoa hồng", "Khuyến mãi"]) {
       await expect(trang.getByRole("link", { name: o })).toHaveCount(0)
       await expect(trang.getByTestId("o-tam-khoa").filter({ hasText: o })).toHaveAttribute("aria-disabled", "true")

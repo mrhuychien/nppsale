@@ -471,6 +471,7 @@ export default function ReturnsPage() {
           onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_TRA)}
           onOpen={setNganMo}
           notice={canhBaoTran}
+          canCreate={!!authUser && hasPermission(authUser.role, "returns", "create")}
         />
       )}
       <MobileReturnSheet
@@ -497,11 +498,14 @@ export default function ReturnsPage() {
             thứ VỪA trừ công nợ VỪA nhập kho (khách trả hàng ngoài chuyến
             giao); không có nút thì việc ấy không làm được trong phần mềm.
         */}
-        <Button asChild>
-          <Link href="/returns/new">
-            <Plus className="mr-2 h-4 w-4" /> Tạo phiếu trả
-          </Link>
-        </Button>
+        {/* Mẫu NVBH chỉ XEM trả hàng (mig 208) — không có quyền tạo thì không hiện nút dẫn vào cửa bị chặn. */}
+        {!!authUser && hasPermission(authUser.role, "returns", "create") && (
+          <Button asChild>
+            <Link href="/returns/new">
+              <Plus className="mr-2 h-4 w-4" /> Tạo phiếu trả
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
       {/*

@@ -411,4 +411,13 @@ SELECT 46, 'Mig 207 (Dọn cảnh báo bảo mật Supabase)',
                      AND policyname IN ('customer_photos_select', 'pod_photos_select', 'visit_photos_select'))
        THEN 'CHƯA — kho ảnh công khai còn liệt kê được mọi file'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 47. Mig 208 — NVBH được xem trả hàng (mẫu quyền, chủ nhà 27/09/2026)
+SELECT 47, 'Mig 208 (NVBH xem trả hàng)',
+  CASE WHEN EXISTS (SELECT 1 FROM organizations o
+                     WHERE NOT EXISTS (SELECT 1 FROM role_permissions rp
+                                        WHERE rp.org_id = o.id AND rp.role = 'sales'
+                                          AND rp.module = 'returns' AND rp.action = 'read' AND rp.allowed))
+       THEN 'CHƯA — NVBH chưa vào được màn Trả hàng của tôi'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

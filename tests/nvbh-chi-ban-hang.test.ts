@@ -16,8 +16,8 @@ afterEach(() => { setPermissionsCache(null); setUserOverrides(null) })
 describe("NVBH chỉ còn module bán hàng", () => {
   it("menu của NVBH: đúng bán hàng + công nợ + báo cáo bán hàng + phiếu lương", () => {
     for (const h of ["/sell", "/orders", "/customers", "/sales/visits", "/promotions", "/commissions",
-      "/receivables", "/reports/sales", "/luong-cua-toi"]) expect(canSeeHref("sales", h), h).toBe(true)
-    for (const h of ["/inventory", "/products", "/returns", "/finance/cash-receipts", "/receivables/collect",
+      "/receivables", "/reports/sales", "/luong-cua-toi", "/returns"]) expect(canSeeHref("sales", h), h).toBe(true)
+    for (const h of ["/inventory", "/products", "/returns/new", "/finance/cash-receipts", "/receivables/collect",
       "/reports/orders", "/reports/products", "/reports/customers", "/invoices", "/hr", "/settings"]) {
       expect(canSeeHref("sales", h), h).toBe(false)
     }
@@ -36,8 +36,10 @@ describe("NVBH chỉ còn module bán hàng", () => {
   it("mẫu NVBH đúng bộ được giữ", () => {
     expect(Object.keys(MAU_QUYEN_NVBH).sort()).toEqual([
       "commissions", "customers", "customers.visits", "orders", "promotions",
-      "receivables", "receivables.by_customer", "reports.sales",
+      "receivables", "receivables.by_customer", "reports.sales", "returns",
     ])
+    /* Chủ nhà 27/09/2026: "Mở quyền xem trả hàng vào mẫu" — CHỈ xem. */
+    expect(MAU_QUYEN_NVBH.returns).toEqual(["read"])
     expect(MAU_QUYEN_NVBH.receivables).toEqual(["read"])
   })
   it("Phiếu lương của tôi: mọi vai đều thấy, có ở ngăn kéo + trang chủ", () => {

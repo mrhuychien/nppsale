@@ -155,7 +155,7 @@ const BO_KHOI_NVBH = [
 const TAM_KHOA_NVBH = ["/commissions", "/promotions"]
 
 /** Thứ tự ô "Chức năng" trên trang chủ NVBH theo mẫu; ô còn lại theo sau. */
-const THU_TU_NVBH = ["/sell", "/orders", "/sales-invoices", "/customers", "/bao-cao/ban-hang", "/luong-cua-toi", "/promotions", "/commissions"]
+const THU_TU_NVBH = ["/sell", "/orders", "/sales-invoices", "/returns", "/customers", "/bao-cao/ban-hang", "/luong-cua-toi", "/promotions", "/commissions"]
 function oChucNangNvbh(tiles: Tile[]) {
   const hang = (t: Tile) => {
     const i = THU_TU_NVBH.indexOf(t.href)

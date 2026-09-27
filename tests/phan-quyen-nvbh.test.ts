@@ -38,7 +38,7 @@ const CAM_NVBH: Array<[string, Module]> = [
   /* Chủ nhà 26/09/2026: NVBH chỉ còn module bán hàng + công nợ / báo cáo bán hàng / phiếu lương. */
   ["/inventory", "inventory"],
   ["/products", "products"],
-  ["/returns", "returns"],
+  /* Chủ nhà 27/09/2026: NVBH được XEM trả hàng (mig 208) — tạo phiếu độc lập thì vẫn không. */
   ["/returns/new", "returns"],
   ["/finance/cash-receipts", "receivables"],
   ["/finance/cash-receipts/new", "receivables"],
@@ -52,6 +52,7 @@ const DUOC_NVBH: Array<[string, Module]> = [
   ["/customers/new", "customers"], ["/reports/sales", "reports"], ["/receivables", "receivables"],
   ["/receivables/by-customer", "receivables"], ["/luong-cua-toi", "orders"], ["/notifications", "orders"],
   ["/promotions", "promotions"], ["/sales/visits", "customers"], ["/commissions", "commissions"],
+  ["/returns", "returns"],
 ]
 
 describe("NVBH — cổng vào trang (mặc định)", () => {

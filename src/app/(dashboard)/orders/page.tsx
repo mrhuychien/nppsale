@@ -35,6 +35,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { MobileOrdersScreen, BUOC_TAI_DON } from "@/components/orders/mobile-orders-screen"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
 import { useFieldSearch } from "@/hooks/use-field-search"
@@ -324,6 +325,14 @@ export default function OrdersPage() {
    */
   /** "N đơn hôm nay · tổng" cho dòng mô tả đầu trang — null = chưa đọc được. */
   const [todaySummary, setTodaySummary] = useState<{ count: number; total: number } | null>(null)
+  /**
+   * ⚠ KHỔ MÀN — đọc theo khổ (chủ nhà 27/09/2026: "Màn Đơn hàng cũng còn đọc thừa vài lượt (đọc
+   *   danh mục lọc và dòng hàng ngay lúc mở)"). Điện thoại: thẻ đơn không dùng công nợ / hoá đơn
+   *   MISA / số mặt hàng, dòng "N đơn hôm nay" chỉ ở đầu trang máy tính; danh mục lọc + số đơn
+   *   theo tuyến chỉ cần khi mở tấm lọc. `null` = chưa biết khổ → chưa đọc phần riêng của khổ nào.
+   */
+  const laMay = useKhoMay()
+  const canDanhMuc = laMay === true || filterSheet
   const [amountMin, setAmountMin] = useState("")
   const [amountMax, setAmountMax] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -365,8 +374,9 @@ export default function OrdersPage() {
     if (q !== null) setSearch(q)
   }, [searchParams, setStatusFilter])
 
-  // Load metadata (customers, users) + counts theo status — 1 lần khi mount.
+  // Danh mục lọc (khách, NV, tuyến) + số đơn theo tuyến — 1 lần, khi cần (xem `canDanhMuc`).
   useEffect(() => {
+    if (!canDanhMuc) return
     /**
      * Số đơn ĐÃ DUYỆT theo tuyến — gợi ý cho bộ lọc tuyến ("tuyến nào đang
      * có hàng chờ ra xe"). Đơn đã duyệt chưa giao thường vài trăm, nên kéo
@@ -395,6 +405,8 @@ export default function OrdersPage() {
       setRouteCounts(m)
     }
     void loadRouteCounts()
+    /* Dòng "N đơn hôm nay" chỉ ở đầu trang máy tính. */
+    if (laMay === true) void loadTodaySummary()
 
     /**
      * "N đơn hôm nay · tổng tiền" — dòng mô tả đầu trang theo mẫu. Đếm
@@ -419,7 +431,6 @@ export default function OrdersPage() {
         total: res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0),
       })
     }
-    void loadTodaySummary()
 
     async function loadMeta() {
       const [customersRes, usersRes, routesRes] = await Promise.all([
@@ -443,7 +454,10 @@ export default function OrdersPage() {
                 .order("id")
                 .range(from, to)
           ), coLoi),
-        nhoNen("nen:nhan-vien-ban", () => supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"), coLoi),
+        /* NVBH không có ô lọc NV — khỏi đọc. */
+        isSales
+          ? Promise.resolve({ data: [], error: null })
+          : nhoNen("nen:nhan-vien-ban", () => supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"), coLoi),
         nhoNen("nen:tuyen", () => supabase.from("sales_routes").select("code, name").eq("is_active", true).order("sort_order"), coLoi),
       ])
       const qErr2 = ([customersRes, usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)
@@ -459,7 +473,7 @@ export default function OrdersPage() {
 
     }
     loadMeta()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canDanhMuc]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Bộ lọc DÙNG CHUNG cho danh sách và cho phép đếm.
@@ -725,9 +739,18 @@ export default function OrdersPage() {
       pg.setTotal(res.count ?? 0)
       // Danh sách đã đủ để xem — không bắt người dùng chờ phần công nợ / hoá đơn bên dưới.
       setLoading(false)
+    }
+    fetchOrders()
+    return () => { cancelled = true }
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
-      // Load receivables + invoices CHỈ cho orders đang hiển thị trên page.
-      const ids = ordersData.map((o) => o.id)
+  /* Công nợ + hoá đơn MISA của các đơn đang hiện — CHỈ bảng máy tính dùng (cột công nợ, nút xuất
+     HĐ điện tử). Điện thoại không đọc. */
+  useEffect(() => {
+    if (laMay !== true) return
+    let cancelled = false
+    ;(async () => {
+      const ids = orders.map((o) => o.id)
       if (ids.length > 0) {
         const [recvRes, invRes] = await Promise.all([
           supabase
@@ -753,11 +776,9 @@ export default function OrdersPage() {
         setReceivablesByOrder({})
         setInvoiceMap({})
       }
-      setLoading(false)
-    }
-    fetchOrders()
+    })()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orders, laMay]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try {
@@ -785,7 +806,8 @@ export default function OrdersPage() {
    *   hàng" cho mọi đơn — câu trả lời sai cho một câu chưa đọc được.
    */
   useEffect(() => {
-    if (orders.length === 0) return
+    /* Cột "SL MH" chỉ ở bảng máy tính — thẻ điện thoại không hiện số mặt hàng. */
+    if (laMay !== true || orders.length === 0) return
     let cancelled = false
     const ids = orders.map((o) => o.id)
     ;(async () => {
@@ -815,7 +837,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [orders]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orders, laMay]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Tổng tiền của CẢ bộ lọc, cho dải tóm tắt trên điện thoại.

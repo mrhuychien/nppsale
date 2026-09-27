@@ -155,7 +155,9 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
     deliveries: [],
     promotions: ["read"],
     invoices: [],
-    returns: [],
+    /* Chủ nhà 27/09/2026: "Mở quyền xem trả hàng vào mẫu" — XEM phiếu trả của mình (màn "Trả
+       hàng của tôi"); hoàn thành / huỷ vẫn cần `returns.approve`. Mig 208. */
+    returns: ["read"],
     reports: ["read"],
     settings: [],
   },

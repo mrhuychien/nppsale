@@ -53,6 +53,7 @@ export function MobileReturnsScreen({
   onLoadMore,
   onOpen,
   notice,
+  canCreate = true,
 }: {
   title: string
   subtitle: string
@@ -75,6 +76,8 @@ export function MobileReturnsScreen({
   onLoadMore: () => void
   onOpen: (id: string) => void
   notice?: React.ReactNode
+  /** Có quyền tạo phiếu trả (`returns.create`) — mẫu NVBH chỉ XEM thì không hiện nút tạo. */
+  canCreate?: boolean
 }) {
   const groups = nhomTraTheoNgay(rows)
   const conNua = rows.length < count
@@ -124,6 +127,7 @@ export function MobileReturnsScreen({
           )}
         </section>
 
+        {canCreate && (
         <Link
           href="/returns/new"
           className="flex h-14 items-center gap-3 rounded-2xl bg-primary px-4 text-primary-foreground shadow-sm active:scale-[0.99]"
@@ -132,6 +136,7 @@ export function MobileReturnsScreen({
           <span className="text-base font-semibold">Tạo phiếu trả</span>
           <ChevronRight className="ml-auto h-5 w-5" />
         </Link>
+        )}
 
         <div className="-mx-3.5 flex gap-2 overflow-x-auto px-3.5 [scrollbar-width:none]" role="tablist" aria-label="Trạng thái phiếu trả">
           {tabs.map((t) => {

@@ -51,6 +51,14 @@ describe("bớt lượt gọi", () => {
     expect(s).toMatch(/taoQ\(false\)\.range\(truoc\.to \+ 1, pg\.to\)/)
     expect(s).toMatch(/filter\(\(id\) => !daDoc\.has\(id\)\)/)
   })
+  it("đơn hàng: danh mục lọc khi cần; công nợ / hoá đơn MISA / dòng hàng / dòng hôm nay chỉ máy tính", () => {
+    const s = src("src/app/(dashboard)/orders/page.tsx")
+    expect(s).toMatch(/const canDanhMuc = laMay === true \|\| filterSheet/)
+    expect(s).toMatch(/if \(!canDanhMuc\) return/)
+    expect(s).toMatch(/if \(laMay === true\) void loadTodaySummary\(\)/)
+    expect(s).toMatch(/if \(laMay !== true\) return\s+let cancelled = false\s+;\(async \(\) => \{\s+const ids = orders/)
+    expect(s).toMatch(/if \(laMay !== true \|\| orders\.length === 0\) return/)
+  })
   it("trả hàng: ngăn dùng dòng đã tải; tải thêm chỉ phần mới; tab điện thoại tính ngay (không đọc hai lần)", () => {
     const s = src("src/app/(dashboard)/returns/page.tsx")
     expect(s).toMatch(/row=\{nganMo \? \(filtered\.find/)

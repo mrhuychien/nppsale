@@ -81,6 +81,20 @@ test("ít lượt gọi: hoá đơn điện thoại không đọc danh mục l�
   expect(dem(ds, (x) => x.path === "/rest/v1/customers"), "mở tấm lọc → đọc khách").toBeGreaterThan(0)
   await page.keyboard.press("Escape")
 
+  // Đơn hàng (chủ nhà 27/09/2026: "Xử lý cả màn đơn hàng"): điện thoại không đọc danh mục lọc,
+  // công nợ, hoá đơn MISA, dòng hàng, số đơn theo tuyến.
+  t = (await nhatKy()).length
+  await page.goto("/orders")
+  await expect(page.getByTestId("the-don").first()).toBeVisible()
+  await page.waitForLoadState("networkidle")
+  await page.waitForTimeout(1000)
+  ds = (await nhatKy()).slice(t)
+  for (const bang of ["customers", "sales_routes", "receivables", "invoices", "sales_order_lines"]) {
+    expect(dem(ds, (x) => x.path === `/rest/v1/${bang}`), `đơn hàng: ${bang}`).toBe(0)
+  }
+  expect(dem(ds, (x) => x.path === "/rest/v1/sales_orders" && decodeURIComponent(x.query || "").includes("customers!inner(channel)")), "số đơn theo tuyến").toBe(0)
+  expect(dem(ds, (x) => x.path === "/rest/v1/organizations"), "tổ chức (nhớ trong máy)").toBe(0)
+
   // Trả hàng: mở ngăn một phiếu trong danh sách → không đọc lại phiếu đó.
   await page.goto("/returns")
   const the = page.getByTestId("the-tra").first()

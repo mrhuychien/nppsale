@@ -112,6 +112,8 @@ export const MAU_QUYEN_NVBH: Readonly<Record<string, readonly Action[]>> = {
   receivables: ["read"],
   "receivables.by_customer": ["read"],
   "reports.sales": ["read"],
+  /* Chủ nhà 27/09/2026: "Mở quyền xem trả hàng vào mẫu" (mig 208). */
+  returns: ["read"],
 }
 
 /** Ô của một tính năng theo mẫu NVBH. */

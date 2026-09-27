@@ -11,7 +11,7 @@ import { useMemo, useRef } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao, type MatDao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, HangChon, DangTai, LoiDocSo, ChuaDu, GhiChu, type TheKpi } from "./khoi"
+import { HangKpi, HangChon, DangTai, KhungCho, LoiDocSo, ChuaDu, GhiChu, type TheKpi } from "./khoi"
 import { BieuDoCot } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
@@ -287,6 +287,7 @@ export function ManKho() {
 
   const dao: MatDao[] = [{ label: `Kho · ${XEM[goc]}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
   const loai: LoaiLoc[] = ["prod", "pgroup", "ncc"]
+  const xemTheo = <HangChon nhan="Xem theo" ds={(Object.keys(XEM) as XemGoc[]).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))} />
   return (
     <KhungBaoCao
       href="/bao-cao/kho"
@@ -314,7 +315,11 @@ export function ManKho() {
       }
     >
       {bc.loading || (nap.dangTai && !vm) ? (
-        <DangTai soThe={5} />
+        <KhungCho
+          the={[...(xemGiaVon ? ["Giá trị tồn"] : []), "Mặt hàng còn hàng", "Lô sắp hết hạn", "Mặt hàng tồn thấp", "Hàng chậm bán"]}
+          chon={xemTheo}
+          bang={st.dao.length ? st.dao[st.dao.length - 1].l : XEM[goc]}
+        />
       ) : nap.loi ? (
         <LoiDocSo text={`Đọc tồn kho hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (
@@ -326,7 +331,7 @@ export function ManKho() {
           <GhiChu
             text={`Ngưỡng: sắp hết hạn ≤ ${NGUONG_KHO.hetHan} ngày · tồn thấp khi đủ bán < ${NGUONG_KHO.tonThap} ngày · chậm bán khi ${NGUONG_KHO.khongBan} ngày không bán hoặc cần > ${NGUONG_KHO.banHet} ngày mới bán hết.`}
           />
-          <HangChon nhan="Xem theo" ds={(Object.keys(XEM) as XemGoc[]).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))} />
+          {xemTheo}
           {!st.dao.length && vm.bang}
           {vm.bieuDo}
         </>

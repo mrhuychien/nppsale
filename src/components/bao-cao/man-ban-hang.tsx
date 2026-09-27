@@ -12,7 +12,7 @@ import { useMemo, useRef, useState } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao, type MatDao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, HangChon, CongTacDoan, BangHoPhach, KhoiGap, DangTai, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi } from "./khoi"
+import { HangKpi, HangChon, CongTacDoan, BangHoPhach, KhoiGap, KhungCho, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi } from "./khoi"
 import { BieuDoCot, BieuDoNgang, type CotBD } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
@@ -515,6 +515,8 @@ export function ManBanHang() {
   const loai: LoaiLoc[] = ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "pgroup", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
   const nhanKy = `${tenKy(st.ky)} · ${nhanKhoang(ky.a, ky.b)}`
   const dangDao = st.dao.length > 0
+  const xemTheo = <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />
+  const nhanView = view === "docs" ? (nguon === "inv" ? "Hoá đơn" : "Đơn đặt") : "Theo " + (CHIEU[view as Exclude<Xem, "docs">]?.label || "thời gian").toLowerCase()
 
   return (
     <KhungBaoCao
@@ -558,7 +560,12 @@ export function ManBanHang() {
       </div>
       {nguon === "ord" && <BangHoPhach>Đây là số đơn đặt — không phải doanh thu</BangHoPhach>}
       {bc.loading || (nap.dangTai && !vm) ? (
-        <DangTai soThe={5} />
+        <KhungCho
+          the={nguon === "inv" ? ["Doanh thu thuần", "Hàng trả", ...(xemGiaVon ? ["Lãi gộp"] : []), "Số hoá đơn", "TB / hoá đơn"] : ["Số đơn", "Giá trị đặt", "Đã xuất hoá đơn", "Chưa xuất", "Tỷ lệ xuất"]}
+          chon={xemTheo}
+          bang={nhanView}
+          bieuDo={view === "docs" ? null : view === "time" ? (nguon === "inv" ? "Doanh thu thuần theo thời gian" : "Giá trị đặt theo thời gian") : `Top 10 ${(CHIEU[view as Exclude<Xem, "docs">]?.label || "").toLowerCase()}`}
+        />
       ) : nap.loi ? (
         <LoiDocSo text={`Đọc số bán hàng hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (
@@ -573,7 +580,7 @@ export function ManBanHang() {
             />
           ) : (
             <>
-              <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />
+              {xemTheo}
               {!dangDao && vm.bang}
               {vm.bieuDo}
               {vm.phu}

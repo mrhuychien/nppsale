@@ -102,3 +102,15 @@ describe("giao diện báo cáo (chủ nhà 27/09/2026)", () => {
     }
   })
 })
+
+describe("khung trước, số sau (chủ nhà 27/09/2026)", () => {
+  it("6 màn chờ số bằng KhungCho có sẵn nhãn thẻ — không còn khối xám trơn DangTai toàn màn", () => {
+    for (const f of ["man-ban-hang", "man-kho", "man-cong-no", "man-cuoi-ngay", "man-tong-quan", "man-tai-chinh"]) {
+      const s = src(`src/components/bao-cao/${f}.tsx`)
+      expect(s).toMatch(/<KhungCho[\s\S]*?the=\{/)
+      expect(s).not.toMatch(/<DangTai soThe=\{[1-9]/)
+    }
+    const k = src("src/components/bao-cao/khoi.tsx")
+    expect(k).toMatch(/export function KhungCho/)
+  })
+})

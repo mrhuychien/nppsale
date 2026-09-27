@@ -79,6 +79,26 @@ test("Bán hàng theo nhân viên: cột như báo cáo cũ + chỉ tiêu; khôn
   expect(yBang).toBeLessThan(yKpi)
 })
 
+test("khung trước, số sau: chờ số vẫn thấy nhãn thẻ, nút Xem theo và tiêu đề bảng", async ({ page }) => {
+  await dangNhap(page)
+  let tha: () => void = () => undefined
+  const cho = new Promise<void>((r) => (tha = r))
+  await page.route(/\/rest\/v1\/sales_invoices\?/, async (route) => {
+    await cho
+    await route.continue()
+  })
+  await page.goto(`/bao-cao/ban-hang?${KY}&xem=cust`)
+  const khung = page.getByTestId("bc-dang-tai")
+  await expect(khung.getByTestId("bc-kpi-cho").filter({ hasText: "Doanh thu thuần" })).toBeVisible()
+  await expect(khung.getByTestId("bc-xem-theo").getByRole("button", { name: "Khách" })).toBeVisible()
+  await expect(khung).toContainText("Theo khách")
+  await expect(page.getByTestId("bc-kpi-net")).toHaveCount(0)
+  tha()
+  await page.unroute(/\/rest\/v1\/sales_invoices\?/)
+  await expect(page.getByTestId("bc-kpi-net")).toContainText("1,2 tr")
+  await expect(page.getByTestId("bc-dang-tai")).toHaveCount(0)
+})
+
 test("Bán hàng: nguồn Đơn đặt có băng hổ phách; đổi chế độ xem giữ kỳ", async ({ page }) => {
   await dangNhap(page)
   await page.goto(`/bao-cao/ban-hang?${KY}`)

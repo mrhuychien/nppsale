@@ -11,7 +11,7 @@ import { useMemo, useRef, useState } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao, type MatDao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, HangChon, DangTai, LoiDocSo, ChuaDu, GhiChu, type TheKpi } from "./khoi"
+import { HangKpi, HangChon, DangTai, KhungCho, LoiDocSo, ChuaDu, GhiChu, type TheKpi } from "./khoi"
 import { BieuDoChong } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
@@ -243,6 +243,12 @@ export function ManCongNo() {
   }, [nap.data, dm, JSON.stringify(E), JSON.stringify(st.loc), view, so.data, so.loi, so.dangTai, xemGiaVon, X])
 
   const goc = (st.xem || "customer") as keyof typeof XEM
+  const xemTheo = (
+    <HangChon
+      nhan="Xem theo"
+      ds={(Object.keys(XEM) as (keyof typeof XEM)[]).filter((v) => !(khoaNV && v === "staff")).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))}
+    />
+  )
   const dao: MatDao[] = [{ label: `Công nợ · Theo ${XEM[goc].toLowerCase()}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
   const loai: LoaiLoc[] = ["cust", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "channel", "dstatus"]
   return (
@@ -270,7 +276,7 @@ export function ManCongNo() {
       }
     >
       {bc.loading || (nap.dangTai && !vm) ? (
-        <DangTai soThe={5} />
+        <KhungCho the={["Tổng phải thu", "Quá hạn", "Số khách đang nợ", "Khách vượt hạn mức", "Dư có"]} chon={xemTheo} bang={st.dao.length ? st.dao[st.dao.length - 1].l : `Theo ${XEM[goc].toLowerCase()}`} />
       ) : nap.loi ? (
         <LoiDocSo text={`Đọc công nợ hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (
@@ -280,10 +286,7 @@ export function ManCongNo() {
           {st.dao.length > 0 && vm.bang}
           <HangKpi kpis={vm.kpis} />
           {khoaNV && <GhiChu text="Chỉ hiện khách bạn phụ trách." />}
-          <HangChon
-            nhan="Xem theo"
-            ds={(Object.keys(XEM) as (keyof typeof XEM)[]).filter((v) => !(khoaNV && v === "staff")).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))}
-          />
+          {xemTheo}
           {!st.dao.length && vm.bang}
           {vm.bieuDo}
         </>

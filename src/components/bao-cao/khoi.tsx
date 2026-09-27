@@ -307,6 +307,49 @@ export function DangTai({ soThe = 4 }: { soThe?: number }) {
   )
 }
 
+/**
+ * KHUNG CHỜ SỐ — chủ nhà 27/09/2026: "các phần báo cáo load khung và chữ trước, số liệu load điền
+ * vào sau cho đỡ có cảm giác chậm". Thẻ KPI hiện sẵn nhãn, hàng "Xem theo" bấm được ngay, bảng /
+ * biểu đồ hiện sẵn tiêu đề; chỉ chỗ SỐ là khối xám chờ.
+ */
+export function KhungCho({ the, chon, bang, bieuDo }: { the: string[]; chon?: ReactNode; bang?: string | null; bieuDo?: string | null }) {
+  return (
+    <div className="flex flex-col gap-4" data-testid="bc-dang-tai" aria-busy="true">
+      {the.length > 0 && (
+        <div className={cn("flex gap-2.5", the.length > 4 ? "max-lg:overflow-x-auto max-lg:pb-1" : "max-lg:flex-wrap")}>
+          {the.map((label) => (
+            <div key={label} className="flex min-w-0 flex-col gap-2 rounded-2xl border bg-card p-3.5 pb-3 max-lg:flex-[0_0_calc(50%-5px)] lg:flex-1" data-testid="bc-kpi-cho">
+              <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>
+              <Skeleton className="h-7 w-24 rounded-md" />
+              <Skeleton className="h-3 w-28 rounded" />
+            </div>
+          ))}
+        </div>
+      )}
+      {chon}
+      {bang && (
+        <div className="overflow-hidden rounded-2xl border bg-card">
+          <div className="px-4 py-3.5">
+            <div className="text-[15px] font-bold">{bang}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">Đang tải số liệu…</div>
+          </div>
+          <div className="flex flex-col gap-3 border-t p-3.5">
+            {[70, 92, 84, 60, 88, 76].map((w, i) => (
+              <Skeleton key={i} className="h-[18px] rounded-md" style={{ width: `${w}%` }} />
+            ))}
+          </div>
+        </div>
+      )}
+      {bieuDo && (
+        <div className="rounded-2xl border bg-card p-4">
+          <div className="text-[15px] font-bold">{bieuDo}</div>
+          <Skeleton className="mt-3 h-[180px] rounded-xl lg:h-[220px]" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function KhongCoSo({ text, nut }: { text: string; nut?: { label: string; onClick: () => void } }) {
   return (
     <div className="flex flex-col items-start gap-3 rounded-2xl border bg-card px-5 py-7" data-testid="bc-khong-co-so">

@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation"
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao, type MatDao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, CongTacDoan, DangTai, LoiDocSo, GhiChu, type TheKpi } from "./khoi"
+import { HangKpi, CongTacDoan, KhungCho, LoiDocSo, GhiChu, type TheKpi } from "./khoi"
 import { BieuDoCot } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
@@ -374,7 +374,10 @@ export function ManTaiChinh() {
         )}
       </div>
       {bc.loading || (nap.dangTai && !vm) ? (
-        <DangTai soThe={4} />
+        <KhungCho
+          the={tab === "pl" ? ["Doanh thu thuần", "Lãi gộp", "Chi phí", "Lãi thuần"] : tab === "cash" ? ["Thu từ khách", "Chi ra", "Tồn quỹ cuối kỳ"] : ["Tổng tài sản", "Phải trả NCC", "Vốn chủ"]}
+          bang={st.dao.length ? st.dao[st.dao.length - 1].l : tab === "pl" ? "Kết quả kinh doanh" : tab === "cash" ? "Dòng tiền" : "Tài sản – Nguồn vốn"}
+        />
       ) : nap.loi ? (
         <LoiDocSo text={`Đọc số tài chính hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (

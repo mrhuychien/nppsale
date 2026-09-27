@@ -12,7 +12,7 @@ import { AlertTriangle, CreditCard, ShoppingCart, Warehouse } from "lucide-react
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, KhoiDanhSach, HangSoNhanh, CongTacDoan, DangTai, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type OSoNhanh } from "./khoi"
+import { HangKpi, KhoiDanhSach, HangSoNhanh, CongTacDoan, KhungCho, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type OSoNhanh } from "./khoi"
 import { BieuDoCot } from "./bieu-do"
 import { useNap, layDanhMuc, tenGiaTri } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
@@ -173,7 +173,7 @@ export function ManTongQuan() {
       }
     >
       {bc.loading || (nap.dangTai && !vm) ? (
-        <DangTai soThe={5} />
+        <KhungCho the={["Doanh thu thuần", ...(xemGiaVon ? ["Lãi gộp"] : []), "Số hoá đơn", "Khách mua", "Công nợ phải thu"]} bieuDo="Doanh thu thuần theo thời gian" />
       ) : nap.loi ? (
         <LoiDocSo text={`Đọc số tổng quan hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (

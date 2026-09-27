@@ -10,7 +10,7 @@ import { useMemo, useRef, useState } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
 import { KhungBaoCao, type MatDao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
-import { HangKpi, KhoiDanhSach, DangTai, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type DongKhoi } from "./khoi"
+import { HangKpi, KhoiDanhSach, KhungCho, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type DongKhoi } from "./khoi"
 import { BangBaoCao, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo, type LoaiChungTu } from "./xem-nhanh"
 import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
@@ -225,7 +225,7 @@ export function ManCuoiNgay() {
         }
       >
         {bc.loading || (nap.dangTai && !vm) ? (
-          <DangTai soThe={6} />
+          <KhungCho the={["Đơn tạo", "Hoá đơn đã xuất", "Doanh thu", "Hàng trả", "Doanh thu thuần", ...(xemGiaVon ? ["Lãi gộp"] : [])]} bang={st.dao.length ? st.dao[st.dao.length - 1].l : "Tiền trong ngày"} />
         ) : nap.loi ? (
           <LoiDocSo text={`Đọc số cuối ngày hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
         ) : vm ? (

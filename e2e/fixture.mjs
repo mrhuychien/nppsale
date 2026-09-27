@@ -188,20 +188,7 @@ function invoiceableLines({ p_order_id }, { db }) {
     })
 }
 
-/** `khach_lan_cuoi` giả (mig 204) — đơn / lần ghé gần nhất của từng khách. */
-function khachLanCuoi({ p_ids }, { db }) {
-  return (p_ids ?? []).map((id) => {
-    const o = (db.sales_orders ?? []).filter((x) => x.customer_id === id).sort((a, b) => String(b.order_date).localeCompare(String(a.order_date)) || String(b.id).localeCompare(String(a.id)))[0]
-    const v = (db.visit_logs ?? []).filter((x) => x.customer_id === id).sort((a, b) => String(b.visit_date).localeCompare(String(a.visit_date)))[0]
-    return {
-      customer_id: id, order_code: o?.order_code ?? null, order_date: o?.order_date ?? null, order_total: o?.total ?? null,
-      visit_date: v?.visit_date ?? null, check_in_at: v?.check_in_at ?? null, visit_result: v?.result ?? null, visit_user_name: v?.sales_user?.full_name ?? null,
-    }
-  })
-}
-
 export const rpc = {
-  khach_lan_cuoi: khachLanCuoi,
   get_invoiceable_lines: invoiceableLines,
   post_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f004", invoice_code: "HD-E2E-3", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "partially_invoiced" }],
   assign_doc_seller: () => null,

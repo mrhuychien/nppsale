@@ -8,8 +8,7 @@ export const CUSTOMER_COLUMNS = [
   { key: "ward", label: "Phường/xã" },
   { key: "channel", label: "Tuyến/Kênh" },
   { key: "managers", label: "Phụ trách" },
-  { key: "lastVisit", label: "Ghé thăm" },
-  { key: "lastOrder", label: "Đơn gần nhất" },
+  /* Chủ nhà 27/09/2026: bỏ hai cột "Đơn gần nhất" / "Lần ghé gần nhất" (đọc chậm). */
   { key: "debt", label: "Công nợ" },
   { key: "status", label: "Trạng thái" },
 ] as const satisfies readonly ListViewOption<string>[]
@@ -23,8 +22,6 @@ export const DEFAULT_CUSTOMER_COLUMNS: CustomerColumnKey[] = [
   "ward",
   "channel",
   "managers",
-  "lastVisit",
-  "lastOrder",
   "debt",
   "status",
 ]

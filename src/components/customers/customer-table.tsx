@@ -7,23 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { Eye, Phone, User, Banknote } from "lucide-react"
 import type { Customer } from "@/types"
 import { CustomerManagersCell } from "@/components/customers/customer-managers"
 import type { Manager } from "@/lib/customers/managers"
 import type { CustomerColumnKey } from "@/app/(dashboard)/customers/list-config"
-
-interface LastOrderInfo {
-  order_code: string
-  order_date: string
-  total: number
-}
-
-interface LastVisitInfo {
-  visit_date: string
-  result: string | null
-}
 
 interface CustomerTableProps {
   customers: Customer[]
@@ -35,14 +24,10 @@ interface CustomerTableProps {
    * danh sách ra để xem ai còn nợ.
    */
   debtsUnknown?: boolean
-  lastOrders?: Record<string, LastOrderInfo>
-  lastVisits?: Record<string, LastVisitInfo>
   /** Người phụ trách theo customer_id — xem lib/customers/managers. */
   managers?: Record<string, Manager[]>
   canCollect?: boolean
   visibleColumns: CustomerColumnKey[]
-  /** Đơn / lần ghé gần nhất còn đang đọc — ô hiện "…", KHÔNG hiện "Chưa có" (sai về khách). */
-  dangTaiPhu?: boolean
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (id: string, next: boolean) => void
@@ -55,12 +40,9 @@ export function CustomerTable({
   customers,
   debts = {},
   debtsUnknown = false,
-  lastOrders = {},
-  lastVisits = {},
   managers = {},
   canCollect = false,
   visibleColumns,
-  dangTaiPhu = false,
   selectable = false,
   selectedIds,
   onToggleSelect,
@@ -70,11 +52,7 @@ export function CustomerTable({
 }: CustomerTableProps) {
   const router = useRouter()
   const show = (key: CustomerColumnKey) => visibleColumns.includes(key)
-  const showEnrichment =
-    debtsUnknown ||
-    Object.keys(debts).length > 0 ||
-    Object.keys(lastOrders).length > 0 ||
-    Object.keys(lastVisits).length > 0
+  const showEnrichment = debtsUnknown || Object.keys(debts).length > 0
 
   return (
     <>
@@ -99,8 +77,6 @@ export function CustomerTable({
               {show("ward") && <TableHead>Phường/xã</TableHead>}
               {show("channel") && <TableHead>Tuyến</TableHead>}
               {show("managers") && <TableHead>Phụ trách</TableHead>}
-              {show("lastVisit") && showEnrichment && <TableHead>Ghé thăm</TableHead>}
-              {show("lastOrder") && showEnrichment && <TableHead>Đơn gần nhất</TableHead>}
               {show("debt") && showEnrichment && <TableHead className="text-right">Công nợ</TableHead>}
               {show("status") && <TableHead>Trạng thái</TableHead>}
               <TableHead className="w-12"></TableHead>
@@ -110,8 +86,6 @@ export function CustomerTable({
             {customers.map((c) => {
               const debt = debts[c.id] || 0
               const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
-              const lastOrder = lastOrders[c.id]
-              const lastVisit = lastVisits[c.id]
               const checked = selectedIds?.has(c.id) ?? false
               return (
                 <TableRow
@@ -157,31 +131,6 @@ export function CustomerTable({
                   {show("managers") && (
                     <TableCell className="max-w-[200px]">
                       <CustomerManagersCell managers={managers[c.id] || []} />
-                    </TableCell>
-                  )}
-                  {show("lastVisit") && showEnrichment && (
-                    <TableCell className="text-xs">
-                      {dangTaiPhu ? (
-                        <span className="text-muted-foreground">…</span>
-                      ) : lastVisit ? (
-                        formatDate(lastVisit.visit_date)
-                      ) : (
-                        <span className="text-muted-foreground italic">Chưa có</span>
-                      )}
-                    </TableCell>
-                  )}
-                  {show("lastOrder") && showEnrichment && (
-                    <TableCell className="text-xs">
-                      {dangTaiPhu ? (
-                        <span className="text-muted-foreground">…</span>
-                      ) : lastOrder ? (
-                        <>
-                          <div className="font-medium">{formatDate(lastOrder.order_date)}</div>
-                          <div className="text-muted-foreground">{formatCurrency(lastOrder.total)}</div>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground italic">Chưa có</span>
-                      )}
                     </TableCell>
                   )}
                   {show("debt") && showEnrichment && (
@@ -232,8 +181,6 @@ export function CustomerTable({
         {customers.map((c) => {
           const debt = debts[c.id] || 0
           const isBadDebt = debt > 0 && c.credit_limit > 0 && debt > c.credit_limit
-          const lastOrder = lastOrders[c.id]
-          const lastVisit = lastVisits[c.id]
           const checked = selectedIds?.has(c.id) ?? false
           return (
             <div
@@ -277,26 +224,7 @@ export function CustomerTable({
                   </div>
                 </div>
                 {showEnrichment ? (
-                  <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
-                    <div>
-                      <p className="text-muted-foreground mb-0.5">Ghé thăm</p>
-                      {lastVisit ? (
-                        <p className="font-medium">{formatDate(lastVisit.visit_date)}</p>
-                      ) : (
-                        <p className="text-muted-foreground italic">Chưa có</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-0.5">Đơn gần nhất</p>
-                      {lastOrder ? (
-                        <>
-                          <p className="font-medium">{formatDate(lastOrder.order_date)}</p>
-                          <p className="text-[10px] text-muted-foreground">{formatCurrency(lastOrder.total)}</p>
-                        </>
-                      ) : (
-                        <p className="text-muted-foreground italic">Chưa có</p>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-1 gap-2 pt-2 mt-2 border-t text-xs">
                     <div>
                       <p className="text-muted-foreground mb-0.5">Công nợ</p>
                       {debtsUnknown ? (

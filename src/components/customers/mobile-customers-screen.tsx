@@ -17,7 +17,7 @@ import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { daysSinceVN, shortMoney, type QuickFilter } from "@/lib/customers/list-view"
+import { shortMoney, type QuickFilter } from "@/lib/customers/list-view"
 
 export const BUOC_TAI_KHACH = 20
 
@@ -38,8 +38,6 @@ export interface KhachMobile {
   overdue: boolean
   /** Dòng phụ: chủ quán · tuyến · người phụ trách. */
   meta: string
-  /** `undefined` = chưa đọc xong (hiện "…"); `null` = chưa từng đặt. */
-  lastOrderDate: string | null | undefined
   address: string
   phone: string
   tags: NhanKhach[]
@@ -52,16 +50,6 @@ export function noNgan(debt: number | null): string {
   if (debt > 0) return `Nợ ${shortMoney(debt)}`
   if (debt < 0) return `Dư có ${shortMoney(-debt)}`
   return "Không nợ"
-}
-
-/** "Đặt 15 ngày trước" · "Đặt hôm nay" · "Đặt hôm qua" · "Chưa đặt đơn". */
-export function datGanNhat(date: string | null | undefined): string {
-  if (date === undefined) return "…"
-  if (!date) return "Chưa đặt đơn"
-  const d = daysSinceVN(date)
-  if (d <= 0) return "Đặt hôm nay"
-  if (d === 1) return "Đặt hôm qua"
-  return `Đặt ${d} ngày trước`
 }
 
 /** "Số 199 Hàng Kênh, Cát Dài, Lê Chân" — bỏ phần trống, không lặp, không kèm tỉnh. */
@@ -284,7 +272,6 @@ export function MobileCustomersScreen({
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2 text-[12.5px] text-muted-foreground">
                         <p className="min-w-0 truncate">{k.meta || "—"}</p>
-                        <p className="shrink-0">{datGanNhat(k.lastOrderDate)}</p>
                       </div>
                       {k.address && <p className="mt-1 truncate text-[13px]">{k.address}</p>}
                     </div>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { noNgan, datGanNhat, diaChiNgan, BUOC_TAI_KHACH } from "../src/components/customers/mobile-customers-screen"
+import { noNgan, diaChiNgan, BUOC_TAI_KHACH } from "../src/components/customers/mobile-customers-screen"
 import { hidesMobileAppBar } from "../src/lib/nav/mobile-chrome"
 
 /** ⚠ CHỦ NHÀ 26/09/2026: "Thiết kế lại màn Khách hàng trên mobile theo mẫu". */
@@ -21,10 +21,6 @@ describe("thẻ khách theo mẫu", () => {
     expect(noNgan(null)).toBe("—")
   })
   it("lần đặt gần nhất", () => {
-    expect(datGanNhat(null)).toBe("Chưa đặt đơn")
-    expect(datGanNhat(ngayTruoc(0))).toBe("Đặt hôm nay")
-    expect(datGanNhat(ngayTruoc(1))).toBe("Đặt hôm qua")
-    expect(datGanNhat(ngayTruoc(15))).toBe("Đặt 15 ngày trước")
   })
   it("địa chỉ gọn: bỏ trống, không lặp", () => {
     expect(diaChiNgan({ address: "Số 199 Hàng Kênh", ward: "Cát Dài", district: "Lê Chân" })).toBe("Số 199 Hàng Kênh, Cát Dài, Lê Chân")

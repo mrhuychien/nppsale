@@ -14,7 +14,6 @@ import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
-import { docLanCuoi, type LanCuoi } from "@/lib/customers/lan-cuoi"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -45,13 +44,11 @@ import {
 import { daysOverdueOf } from "@/lib/utils"
 import {
   customerInitial,
-  daysSinceVN,
   todayVN,
-  COLD_DAYS,
   QUICK_FILTER_LABEL,
   type QuickFilter,
 } from "@/lib/customers/list-view"
-import type { Customer, Receivable, SalesOrder } from "@/types"
+import type { Customer, Receivable } from "@/types"
 import {
   CUSTOMER_COLUMNS,
   DEFAULT_CUSTOMER_COLUMNS,
@@ -60,19 +57,6 @@ import {
   type CustomerFilterKey,
   COT_TIM_KHACH,
 } from "./list-config"
-
-interface LastOrderInfo {
-  order_code: string
-  order_date: string
-  total: number
-}
-
-interface LastVisitInfo {
-  visit_date: string
-  check_in_at: string | null
-  result: string | null
-  sales_user_name: string | null
-}
 
 /**
  * ⚠ BA THẺ LỌC NHANH, KHÔNG PHẢI BỐN. Mẫu có thêm "Chưa đặt 30 ngày";
@@ -84,45 +68,6 @@ interface LastVisitInfo {
  * hợp phía database. Xem báo cáo gửi chủ nhà.
  */
 const QUICK_FILTERS: QuickFilter[] = ["today", "overdue", "all"]
-
-/**
- * Dòng MỚI NHẤT của từng khách trong `ids` (đơn gần nhất, lần ghé gần nhất).
- *
- * ⚠ VÌ SAO KHÔNG ĐỌC MỘT LỆNH `.in(ids)` NHƯ TRƯỚC. Lệnh ấy trả MỌI đơn /
- *   lần ghé của cả trang khách, sắp mới → cũ, và PostgREST cắt ở 1.000
- *   dòng TRONG IM LẶNG. Vài khách đặt hàng dày là lấp đầy 1.000 dòng ấy —
- *   khách còn lại hiện ô "Đơn gần nhất" / "Ghé gần nhất" TRỐNG như thể
- *   chưa từng mua, trong khi họ vẫn đang mua đều.
- *
- * CÁCH LÀM: đọc một trang đầu (≤1.000 dòng). Trang ấy chưa đầy → đã thấy
- *   hết, khách nào vắng là thật sự không có. Trang ấy ĐẦY → khách nào
- *   chưa thấy thì hỏi riêng từng người `.limit(1)` (tối đa bằng số khách
- *   trên trang, song song). Kết quả luôn đúng, và thường chỉ tốn 1 lệnh.
- *
- * ⚠ Lỗi thì trả `error` để nơi gọi HIỆN RA, không đổ về "chưa có đơn".
- */
-type TrangMoiNhat = PromiseLike<{ data: unknown; error: { message: string } | null }>
-async function moiNhatTheoKhach<T extends { customer_id: string }>(
-  ids: string[],
-  dung: (lo: string[]) => { range: (a: number, b: number) => TrangMoiNhat; limit: (n: number) => TrangMoiNhat }
-): Promise<{ map: Record<string, T>; error: string | null }> {
-  const map: Record<string, T> = {}
-  const dau = await dung(ids).range(0, 999)
-  if (dau.error) return { map, error: dau.error.message }
-  const rows = (dau.data as T[] | null) || []
-  for (const r of rows) if (r.customer_id && !map[r.customer_id]) map[r.customer_id] = r
-  // Máy chủ trả ít hơn trần → đã thấy hết, không cần hỏi thêm.
-  if (rows.length < 1000) return { map, error: null }
-  const thieu = ids.filter((id) => !map[id])
-  const rieng = await Promise.all(thieu.map((id) => dung([id]).limit(1)))
-  const loi = rieng.find((r) => r.error)?.error
-  if (loi) return { map, error: loi.message }
-  for (const r of rieng) {
-    const row = ((r.data as T[] | null) || [])[0]
-    if (row) map[row.customer_id] = row
-  }
-  return { map, error: null }
-}
 
 export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
@@ -143,12 +88,8 @@ export default function CustomersPage() {
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
   /** Mã khách → số thứ tự điểm dừng trong tuyến hôm nay. */
   const [todayStops, setTodayStops] = useState<Map<string, number>>(new Map())
-  const [lastOrders, setLastOrders] = useState<Record<string, LastOrderInfo>>({})
-  const [lastVisits, setLastVisits] = useState<Record<string, LastVisitInfo>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  /** Đã đọc xong đơn / lần ghé gần nhất của trang chưa — chưa thì ô hiện "…", không "Chưa có". */
-  const [daDocPhu, setDaDocPhu] = useState(false)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
   const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
@@ -329,7 +270,7 @@ export default function CustomersPage() {
         setLoadError(null)
         pg.setTotal(0)
         setDebts((d) => d)
-        setLastOrders({}); setLastVisits({}); setPrimaryRepMap({}); setManagersMap({})
+        setPrimaryRepMap({}); setManagersMap({})
         setLoading(false)
         return
       }
@@ -364,7 +305,6 @@ export default function CustomersPage() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 khách đầu vẽ ngay, phần còn lại về sau. Thẻ lọc
          nhanh (lát mã, `idSlice`) hỏi một lượt như cũ. "Tải thêm" cùng truy vấn thì không vẽ lại. */
       const taiThem = laTaiThem(khoaTaiRef, khoa, pg.to)
-      setDaDocPhu(false)
       const res = idSlice
         ? await selectResilient<Customer>((sel) => build(sel), chon, chonDuPhong)
         : await taiHaiNhip<Customer, ResilientResult<Customer>>(
@@ -395,65 +335,22 @@ export default function CustomersPage() {
       // Load aggregates CHỈ cho khách trên page hiện tại.
       const ids = list.map((c) => c.id)
       if (ids.length === 0) {
-        setLastOrders({}); setLastVisits({}); setPrimaryRepMap({}); setManagersMap({})
+        setPrimaryRepMap({}); setManagersMap({})
         setLoading(false)
         return
       }
-      type LastOrderRow = Pick<SalesOrder, "customer_id" | "order_code" | "order_date" | "total">
-      type LastVisitRow = {
-        customer_id: string
-        visit_date: string
-        check_in_at: string | null
-        result: string | null
-        sales_user?: { full_name?: string } | null
-      }
-      const docCu = () =>
-        Promise.all([
-          moiNhatTheoKhach<LastOrderRow>(ids, (lo) =>
-            supabase
-              .from("sales_orders")
-              .select("customer_id, order_code, order_date, total")
-              .in("customer_id", lo)
-              .order("order_date", { ascending: false })
-              .order("id")
-          ),
-          moiNhatTheoKhach<LastVisitRow>(ids, (lo) =>
-            supabase
-              .from("visit_logs")
-              .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
-              .in("customer_id", lo)
-              .order("visit_date", { ascending: false })
-              .order("check_in_at", { ascending: false })
-              .order("id")
-          ),
-        ])
-      const [lanCuoi, assignsRes] = await Promise.all([
-        /* ⚠ MỘT lượt qua `khach_lan_cuoi` (mig 204); sổ chưa chạy 204 thì về cách đọc cũ. */
-        docLanCuoi((fn, args) => supabase.rpc(fn, args), ids).then(async (r) => {
-          if (r.ket || r.loi) return r
-          const [o, v] = await docCu()
-          const ket: LanCuoi = { don: {}, ghe: {} }
-          for (const [cid, x] of Object.entries(o.map)) ket.don[cid] = { order_code: x.order_code, order_date: x.order_date, total: x.total }
-          for (const [cid, x] of Object.entries(v.map))
-            ket.ghe[cid] = { visit_date: x.visit_date, check_in_at: x.check_in_at, result: x.result, sales_user_name: x.sales_user?.full_name || null }
-          return { ket, loi: o.error ?? v.error }
-        }),
-        // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
-        // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
-        // vẫn chỉ lấy người CHÍNH — xem repMap.
-        supabase
-          .from("customer_assignments")
-          .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
-          .in("customer_id", ids)
-          .eq("status", "active"),
-      ])
+      /* Chủ nhà 27/09/2026: bỏ hai cột "Đơn gần nhất" / "Lần ghé gần nhất" — phần đọc chậm nhất
+         của màn (1.000 dòng đơn + 1.000 dòng ghé thăm, rồi hỏi bù từng khách). */
+      // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
+      // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
+      // vẫn chỉ lấy người CHÍNH — xem repMap.
+      const assignsRes = await supabase
+        .from("customer_assignments")
+        .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
+        .in("customer_id", ids)
+        .eq("status", "active")
       if (assignsRes.error) console.error("[app/customers] truy vấn lỗi:", assignsRes.error.message)
-      // ⚠ Đơn / lần ghé gần nhất đọc hỏng thì NÓI RA — ô trống ở đây đọc
-      //   thành "khách chưa từng mua", một kết luận sai về người thật.
-      if (lanCuoi.loi) setLoadError((prev) => prev ?? `Đơn / lần ghé gần nhất: ${lanCuoi.loi}`)
       if (cancelled) return
-      setLastOrders(lanCuoi.ket?.don ?? {})
-      setLastVisits(lanCuoi.ket?.ghe ?? {})
       type AssignRow = {
         customer_id: string
         user_id: string
@@ -501,7 +398,6 @@ export default function CustomersPage() {
       }
       setManagersMap(mgrMap)
 
-      setDaDocPhu(true)
       setLoading(false)
     }
     fetchData()
@@ -656,11 +552,8 @@ export default function CustomersPage() {
     const overdue = overdueIds.includes(c.id)
     const stop = todayStops.get(c.id)
     const visited = visitedToday.has(c.id)
-    const lastOrder = lastOrders[c.id]
-    const coldDays = lastOrder ? daysSinceVN(lastOrder.order_date) : null
     const tags: NhanKhach[] = []
     if (overdue) tags.push({ label: "Nợ quá hạn", tone: "danger" })
-    if (coldDays !== null && coldDays >= COLD_DAYS) tags.push({ label: "Ngủ đông", tone: "warning" })
     /**
      * ⚠ NGOÀI CHẾ ĐỘ ĐI TUYẾN VẪN PHẢI THẤY "ĐÃ GHÉ HÔM NAY". Trong chế độ đi tuyến dấu ✓ ở
      *   ô tròn đã nói điều đó; ở các thẻ lọc khác thì không — và nhân viên ghé lại một cửa
@@ -682,7 +575,6 @@ export default function CustomersPage() {
       debt: debts ? debts[c.id] || 0 : null,
       overdue,
       meta,
-      lastOrderDate: daDocPhu ? lastOrder?.order_date ?? null : undefined,
       address: diaChiNgan(c),
       phone: (c.phone ?? "").trim(),
       tags,
@@ -931,9 +823,6 @@ export default function CustomersPage() {
               customers={ordered}
               debts={debts || {}}
               debtsUnknown={debts === null}
-              lastOrders={lastOrders}
-              lastVisits={lastVisits}
-              dangTaiPhu={!daDocPhu}
               managers={managersMap}
               canCollect={!!user && hasPermission(user.role, "receivables", "create")}
               visibleColumns={visibleColumns}

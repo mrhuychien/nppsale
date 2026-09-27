@@ -328,54 +328,6 @@ describe("M7 — thẻ đếm đối soát MISA đếm ở database, không dừ
   })
 })
 
-/**
- * `moiNhatTheoKhach` sống trong `customers/page.tsx` (tệp trang Next.js
- * không được export thêm). Chốt dịch ĐÚNG đoạn mã ấy bằng esbuild rồi
- * CHẠY nó — không chép lại, nên sửa ở trang là chốt thấy ngay.
- */
-function layHamMoiNhat() {
-  const src = read("src/app/(dashboard)/customers/page.tsx")
-  const a = src.indexOf("type TrangMoiNhat")
-  const b = src.indexOf("export default function CustomersPage")
-  expect(a, "không tìm thấy moiNhatTheoKhach trong trang khách").toBeGreaterThan(0)
-  const js = transformSync(src.slice(a, b), { loader: "ts" }).code
-  return Function(`${js}; return moiNhatTheoKhach`)() as <T extends { customer_id: string }>(
-    ids: string[],
-    dung: (lo: string[]) => unknown
-  ) => Promise<{ map: Record<string, T>; error: string | null }>
-}
-
-describe("M7 — danh sách khách: đơn / lần ghé gần nhất không trống vì trần 1.000", () => {
-  const moiNhat = layHamMoiNhat()
-
-  it("khách A đặt 1.200 đơn, khách B 1 đơn cũ → B vẫn có 'đơn gần nhất'", async () => {
-    const orders = [
-      ...nRows(1200, (i) => ({ customer_id: "A", order_date: `2026-09-${String((i % 20) + 1).padStart(2, "0")}` })),
-      { id: "zz-b", customer_id: "B", order_date: "2024-01-01" },
-    ]
-    const { client } = fakePostgrest({ sales_orders: orders })
-    const r = await moiNhat<{ customer_id: string; order_date: string }>(["A", "B", "C"], (lo) =>
-      (client.from("sales_orders") as any) // eslint-disable-line @typescript-eslint/no-explicit-any
-        .select("customer_id, order_date")
-        .in("customer_id", lo)
-        .order("order_date", { ascending: false })
-        .order("id")
-    )
-    expect(r.error).toBeNull()
-    expect(r.map.A.order_date).toBe("2026-09-20")
-    expect(r.map.B.order_date).toBe("2024-01-01")
-    expect(r.map.C).toBeUndefined()
-  })
-
-  it("đọc hỏng thì trả `error` để trang hiện ra", async () => {
-    const { client } = fakePostgrest({}, { failOn: () => true })
-    const r = await moiNhat(["A"], (lo) =>
-      (client.from("sales_orders") as any).select("customer_id").in("customer_id", lo).order("id") // eslint-disable-line @typescript-eslint/no-explicit-any
-    )
-    expect(r.error).toMatch(/mạng rớt/)
-  })
-})
-
 describe("Nhỏ — trần tra cứu phụ của ô tìm không làm URL vỡ", () => {
   it("MATCH_CAP ≤ 150 và dùng chung con số với ID_MOI_LO", () => {
     expect(MATCH_CAP).toBeLessThanOrEqual(150)
@@ -422,12 +374,6 @@ describe("M6 / M7 / payables — các trang dùng đường đọc đủ", () =>
     expect(c).toMatch(/fetchAllForAggregate<OrderRow>\(\(from, to\) =>\s*supabase\s*\.from\("sales_orders"\)/)
     expect(c).toMatch(/fetchAllForAggregate<ReceivableRow>\(\(from, to\) =>\s*supabase\s*\.from\("receivables"\)/)
     expect(c).toContain("setStatsTruncated(allOrdersRes.truncated || receivablesRes.truncated)")
-  })
-
-  it("danh sách khách: đơn / lần ghé gần nhất qua moiNhatTheoKhach", () => {
-    const c = code(read("src/app/(dashboard)/customers/page.tsx"))
-    expect(c).toContain("moiNhatTheoKhach<LastOrderRow>(ids")
-    expect(c).toContain("moiNhatTheoKhach<LastVisitRow>(ids")
   })
 
   it("chấm công: đọc đủ mọi trang, báo khi thiếu", () => {

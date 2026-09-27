@@ -50,26 +50,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function fetchProfile(userId: string) {
       try {
-        const { data, error } = await supabase
-          .from("users")
-          .select(
-            "id, org_id, full_name, role, phone, is_active, created_at, allow_price_edit, price_edit_max_increase_pct"
-          )
-          .eq("id", userId)
-          .maybeSingle()
+        /* ⚠ QUYỀN GIẢM GIÁ (mig 185) ĐỌC RIÊNG. Ghép vào câu chính thì DB chưa
+           chạy mig 185 là 42703 và KHÔNG AI đăng nhập được; ở đây hỏng thì chỉ
+           là quyền giảm giá tắt — đúng mặc định.
+           Hai câu chạy SONG SONG (chủ nhà 27/09/2026 "muốn nhanh hơn nữa"): mọi
+           trang đều đợi hồ sơ này, nối đuôi là thêm một vòng mạng mỗi lần mở trang. */
+        const [{ data, error }, gg] = await Promise.all([
+          supabase
+            .from("users")
+            .select(
+              "id, org_id, full_name, role, phone, is_active, created_at, allow_price_edit, price_edit_max_increase_pct"
+            )
+            .eq("id", userId)
+            .maybeSingle(),
+          supabase
+            .from("users")
+            .select("allow_discount, discount_max_type, discount_max_value")
+            .eq("id", userId)
+            .maybeSingle(),
+        ])
         if (error) {
           console.error("[AuthProvider] profile error:", error.code, error.message)
           return null
         }
         if (!data) return null
-        /* ⚠ QUYỀN GIẢM GIÁ (mig 185) ĐỌC RIÊNG. Ghép vào câu trên thì DB chưa
-           chạy mig 185 là 42703 và KHÔNG AI đăng nhập được; ở đây hỏng thì chỉ
-           là quyền giảm giá tắt — đúng mặc định. */
-        const gg = await supabase
-          .from("users")
-          .select("allow_discount, discount_max_type, discount_max_value")
-          .eq("id", userId)
-          .maybeSingle()
         return { ...(data as User), ...(gg.error || !gg.data ? {} : (gg.data as Partial<User>)) }
       } catch (err) {
         console.error("[AuthProvider] profile unexpected error:", err)

@@ -16,6 +16,7 @@ import { vnDateOf } from "@/lib/analytics/sales"
 import { congNgay, soNgay } from "./ky"
 import type { DanhMucBC, DanhMucVao } from "./cong"
 
+import { goiMotLuot } from "./mot-luot"
 type Trang = PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>
 
 export interface PhieuNoTho {
@@ -173,11 +174,17 @@ export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dm
     }, ten)
   const dauThang = X.slice(0, 8) + "01"
   const tuThu = [congNgay(X, -180), dauThang].sort()[0]
-  const [mo, thuTu, gan90] = await Promise.all([
-    docPhieu(null, "đọc công nợ chưa tất toán"),
-    docThu(tuThu, null, "đọc khoản thu"),
-    docPhieu(congNgay(X, -91), "đọc phiếu nợ 90 ngày"),
-  ])
+  // Một lượt qua hàm máy chủ (mig 204); sổ chưa chạy 204 thì ba lượt đọc như cũ.
+  const mot = await goiMotLuot<{ mo: PhieuNoTho[]; thu: KhoanThuTho[]; gan90: PhieuNoTho[] }>(
+    sb, "bao_cao_cong_no", { p_tu_thu: tuThu, p_tu_90: congNgay(X, -91) }, "đọc công nợ"
+  )
+  const [mo, thuTu, gan90] = mot
+    ? [{ rows: mot.mo, truncated: false }, { rows: mot.thu, truncated: false }, { rows: mot.gan90, truncated: false }]
+    : await Promise.all([
+        docPhieu(null, "đọc công nợ chưa tất toán"),
+        docThu(tuThu, null, "đọc khoản thu"),
+        docPhieu(congNgay(X, -91), "đọc phiếu nợ 90 ngày"),
+      ])
   // `tuThu` ≤ X nên mọi khoản thu SAU X đều đã nằm trong lượt đọc này.
   const thuSau = thuTu.rows.filter((t) => vnDateOf(t.collected_at) > X)
   const thieu = mo.truncated || thuTu.truncated || gan90.truncated

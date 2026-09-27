@@ -24,6 +24,7 @@ import { nhanVienPhieuTra, giaTriNiemYetDong } from "@/lib/analytics/hang-ban-nh
 import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import type { DanhMucBC, DanhMucVao, DongBan } from "./cong"
+import { goiMotLuot } from "./mot-luot"
 import { quyDoiTuDanhMuc } from "./nap-danh-muc"
 
 export interface HoaDonBC {
@@ -138,7 +139,65 @@ export function dungDongBan(p: {
   return { dong, hoaDon, phieuTra }
 }
 
-export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dmVao: DanhMucVao): Promise<SoBan> {
+/** Dòng thô của số bán — đọc từng bảng (cách cũ) hoặc một lượt qua hàm máy chủ (mig 204). */
+interface SoBanTho {
+  hd: RevenueInvoiceRow[]
+  dongHd: InvoiceLineRow[]
+  tra: ReturnSummaryRow[]
+  traThem: Map<string, { ma?: string; lyDo: string; tuSinh: boolean }>
+  dongTra: ReturnLineRow[]
+  giaVonCoSo: Map<string, number>
+  giaVonTra: Map<string, { total: number; byProduct: Map<string, number> }>
+  thieu: boolean
+}
+
+interface SoBanMotLuot {
+  hd: (Omit<RevenueInvoiceRow, "sales_user_id"> & { sales_user_id: string | null })[]
+  dong_hd: InvoiceLineRow[]
+  tra: {
+    id: string; status: string; customer_id: string; invoice_id: string | null; credit_note_amount: number | null
+    created_at: string; revenue_date: string | null; sales_user_id: string | null; reason: string | null
+    credit_with_invoice: boolean | null; ma: string | null
+  }[]
+  dong_tra: ReturnLineRow[]
+  gv: { product_id: string; sl: number; tien: number }[]
+  gv_tra: { return_id: string; product_id: string; tien: number }[]
+}
+
+/** Chuyển kết quả hàm máy chủ về đúng dạng dòng mà cách đọc cũ trả ra (cùng phép chuẩn hoá). */
+export function tuMotLuot(x: SoBanMotLuot): SoBanTho {
+  const hd = x.hd.map((r) => ({
+    ...r,
+    total: Number(r.total || 0),
+    subtotal: Number(r.subtotal || 0),
+    vat: Number(r.vat || 0),
+    sales_user_id: r.sales_user_id ?? "",
+  }))
+  // Như fetchReturnsRowsDu: ngày xếp kỳ = ngày trừ doanh số (mig 192).
+  const tra: ReturnSummaryRow[] = x.tra.map((r) => ({
+    id: r.id,
+    status: r.status,
+    customer_id: r.customer_id,
+    credit_note_amount: Number(r.credit_note_amount || 0),
+    created_at: r.revenue_date || r.created_at,
+    sales_user_id: r.sales_user_id ?? null,
+    invoice_id: r.invoice_id ?? null,
+  }))
+  const traThem = new Map(x.tra.map((r) => [r.id, { ma: r.ma || undefined, lyDo: r.reason || "", tuSinh: !!r.credit_with_invoice }]))
+  // Như giaVonBinhQuanCoSo: Σ giá trị / Σ SL cơ sở của phiếu xuất trong kỳ.
+  const giaVonCoSo = new Map(x.gv.map((g) => [g.product_id, Number(g.sl) > 0 ? Number(g.tien) / Number(g.sl) : 0]))
+  const giaVonTra = new Map<string, { total: number; byProduct: Map<string, number> }>()
+  for (const g of x.gv_tra) {
+    const o = giaVonTra.get(g.return_id) ?? { total: 0, byProduct: new Map<string, number>() }
+    o.total += Number(g.tien || 0)
+    o.byProduct.set(g.product_id, (o.byProduct.get(g.product_id) ?? 0) + Number(g.tien || 0))
+    giaVonTra.set(g.return_id, o)
+  }
+  return { hd, dongHd: x.dong_hd, tra, traThem, dongTra: x.dong_tra, giaVonCoSo, giaVonTra, thieu: false }
+}
+
+/** Cách đọc cũ: từng bảng từ trình duyệt (khi sổ chưa chạy mig 204). */
+async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: string): Promise<SoBanTho> {
   const range = { from: a, to: b }
   const [hd, tra, gv] = await Promise.all([
     fetchRevenueInvoicesDu(sb, orgId, range),
@@ -159,21 +218,38 @@ export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: 
     // ⚠ Số phiếu TH- chỉ đọc riêng qua `docMaPhieuTra` (sổ chưa chạy mig 193 thì chỉ mất số).
     docMaPhieuTra(sb, traIds),
   ])
-  const dm = await dmVao
-  const tt = new Map(thongTinTra.map((r) => [r.id, r]))
-  const traCoMa: TraCoMa[] = tra.rows.map((r) => {
-    const x = tt.get(r.id)
-    return { ...r, ma: maTra.get(r.id), lyDo: x?.reason || "", tuSinh: !!x?.credit_with_invoice }
-  })
-  const out = dungDongBan({
-    hoaDon: hd.rows,
+  const traThem = new Map(thongTinTra.map((r) => [r.id, { ma: maTra.get(r.id), lyDo: r.reason || "", tuSinh: !!r.credit_with_invoice }]))
+  for (const id of traIds) if (!traThem.has(id)) traThem.set(id, { ma: maTra.get(id), lyDo: "", tuSinh: false })
+  return {
+    hd: hd.rows,
     dongHd,
-    tra: traCoMa,
+    tra: tra.rows,
+    traThem,
     dongTra,
     giaVonCoSo: giaVonBinhQuanCoSo(gv.lines),
     giaVonTra,
-    nvTra: nhanVienPhieuTra(tra.rows, hd.rows),
+    thieu: hd.truncated || tra.truncated || gv.truncated,
+  }
+}
+
+export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dmVao: DanhMucVao): Promise<SoBan> {
+  // Một lượt qua hàm máy chủ (mig 204); sổ chưa chạy 204 thì đọc từng bảng như cũ.
+  const mot = await goiMotLuot<SoBanMotLuot>(sb, "bao_cao_so_ban", { p_tu: a, p_den: b }, "đọc số bán")
+  const tho = mot ? tuMotLuot(mot) : await docTungBang(sb, orgId, a, b)
+  const dm = await dmVao
+  const traCoMa: TraCoMa[] = tho.tra.map((r) => {
+    const x = tho.traThem.get(r.id)
+    return { ...r, ma: x?.ma, lyDo: x?.lyDo || "", tuSinh: !!x?.tuSinh }
+  })
+  const out = dungDongBan({
+    hoaDon: tho.hd,
+    dongHd: tho.dongHd,
+    tra: traCoMa,
+    dongTra: tho.dongTra,
+    giaVonCoSo: tho.giaVonCoSo,
+    giaVonTra: tho.giaVonTra,
+    nvTra: nhanVienPhieuTra(tho.tra, tho.hd),
     dm,
   })
-  return { ...out, thieu: hd.truncated || tra.truncated || gv.truncated }
+  return { ...out, thieu: tho.thieu }
 }

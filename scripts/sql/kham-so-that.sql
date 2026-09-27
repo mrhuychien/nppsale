@@ -360,4 +360,12 @@ SELECT 42, 'Mig 203 (Tìm khách theo địa chỉ)',
                       AND tim_kd NOT LIKE '%' || public.khong_dau(address) || '%')
        THEN 'CHƯA — gõ địa chỉ không dấu không ra khách'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 43. Mig 204 — báo cáo tổng hợp đọc một lượt ở máy chủ
+SELECT 43, 'Mig 204 (Báo cáo đọc một lượt)',
+  CASE WHEN to_regprocedure('public.bao_cao_so_ban(date, date)') IS NULL
+         OR to_regprocedure('public.bao_cao_cong_no(date, date)') IS NULL
+         OR to_regprocedure('public.bao_cao_ton_kho(date, date)') IS NULL
+       THEN 'CHƯA — báo cáo vẫn chạy nhưng đọc từng bảng (chậm)'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

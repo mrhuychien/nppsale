@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, nhatKy } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 26/09/2026: "Giao diện phần Báo cáo tổng hợp đây … Hãy hoàn thiện nốt đi nhé" —
@@ -97,6 +97,22 @@ test("khung trước, số sau: chờ số vẫn thấy nhãn thẻ, nút Xem th
   await page.unroute(/\/rest\/v1\/sales_invoices\?/)
   await expect(page.getByTestId("bc-kpi-net")).toContainText("1,2 tr")
   await expect(page.getByTestId("bc-dang-tai")).toHaveCount(0)
+})
+
+test("đọc một lượt ở máy chủ (mig 204): Bán hàng / Công nợ / Kho không đọc từng bảng", async ({ page }) => {
+  await dangNhap(page)
+  const truoc = (await nhatKy()).length
+  await page.goto(`/bao-cao/ban-hang?${KY}`)
+  await expect(page.getByTestId("bc-kpi-net")).toContainText("1,2 tr")
+  await page.goto("/bao-cao/kho")
+  await expect(page.getByTestId("bc-kpi-inS")).toBeVisible()
+  await page.goto("/bao-cao/cong-no")
+  await expect(page.getByTestId("bc-kpi-debt")).toBeVisible()
+  const ds = (await nhatKy()).slice(truoc).map((x) => x.path)
+  for (const f of ["bao_cao_so_ban", "bao_cao_ton_kho", "bao_cao_cong_no"]) expect(ds.some((p) => p.includes(`/rpc/${f}`))).toBe(true)
+  for (const bang of ["sales_invoice_lines", "stock_entry_lines", "return_lines", "batches"]) {
+    expect(ds.filter((p) => p.startsWith(`/rest/v1/${bang}`)), bang).toEqual([])
+  }
 })
 
 test("Bán hàng: nguồn Đơn đặt có băng hổ phách; đổi chế độ xem giữ kỳ", async ({ page }) => {

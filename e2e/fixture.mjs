@@ -188,7 +188,72 @@ function invoiceableLines({ p_order_id }, { db }) {
     })
 }
 
+/* ---- Báo cáo đọc một lượt (mig 204) — làm y như ba hàm SQL, để e2e chạy ĐƯỜNG MỚI. ---- */
+const vnMoc = (d, cuoi) => Date.parse(`${d}T${cuoi ? "23:59:59.999" : "00:00:00"}+07:00`)
+const trongNgay = (v, a, b) => typeof v === "string" && v.slice(0, 10) >= a && v.slice(0, 10) <= b
+const slKho = (l) => (l.qty_in_base_uom != null ? Math.abs(Number(l.qty_in_base_uom)) : Math.abs(Number(l.quantity || 0)) * (Number(l.conversion_factor_snapshot) > 0 ? Number(l.conversion_factor_snapshot) : 1))
+const COT_HD = ["id", "invoice_code", "invoice_date", "order_id", "status", "total", "subtotal", "vat", "customer_id", "sales_user_id", "posted_by", "payment_terms"]
+const chon = (r, cot) => Object.fromEntries(cot.map((k) => [k, r[k] ?? null]))
+function baoCaoSoBan({ p_tu, p_den }, { db }) {
+  const hd = (db.sales_invoices || []).filter((i) => i.status === "posted" && trongNgay(i.invoice_date, p_tu, p_den)).map((i) => chon(i, COT_HD))
+  const idHd = new Set(hd.map((h) => h.id))
+  const tra = (db.returns || []).filter((r) => trongNgay(r.revenue_date, p_tu, p_den)).map((r) => ({
+    ...chon(r, ["id", "status", "customer_id", "invoice_id", "credit_note_amount", "created_at", "revenue_date", "sales_user_id", "reason", "credit_with_invoice"]),
+    ma: r.return_code ?? null,
+  }))
+  const idTra = new Set(tra.map((t) => t.id))
+  const xuat = new Set((db.stock_entries || []).filter((e) => e.status === "posted" && e.type === "export" && Date.parse(e.posted_at) >= vnMoc(p_tu) && Date.parse(e.posted_at) <= vnMoc(p_den, true)).map((e) => e.id))
+  const gv = new Map()
+  for (const l of db.stock_entry_lines || []) {
+    if (!xuat.has(l.entry_id)) continue
+    const g = gv.get(l.product_id) || { product_id: l.product_id, sl: 0, tien: 0 }
+    g.sl += slKho(l)
+    g.tien += slKho(l) * Number(l.unit_cost || 0)
+    gv.set(l.product_id, g)
+  }
+  const gvTra = []
+  for (const t of tra) {
+    const e = (db.stock_entries || []).filter((x) => x.type === "import" && x.status === "posted" && x.notes === `Nhập lại từ phiếu trả ${t.id}`).map((x) => x.id)
+    const m = new Map()
+    for (const l of db.stock_entry_lines || []) {
+      if (!e.includes(l.entry_id)) continue
+      const base = Math.abs(l.qty_in_base_uom ?? Number(l.quantity || 0) * (Number(l.conversion_factor_snapshot) || 1))
+      m.set(l.product_id, (m.get(l.product_id) || 0) + base * Number(l.unit_cost || 0))
+    }
+    for (const [product_id, tien] of m) gvTra.push({ return_id: t.id, product_id, tien })
+  }
+  return {
+    hd,
+    dong_hd: (db.sales_invoice_lines || []).filter((l) => idHd.has(l.invoice_id)).map((l) => chon(l, ["id", "invoice_id", "product_id", "unit_name", "conversion_factor", "quantity", "unit_price", "line_total", "is_exchange"])),
+    tra,
+    dong_tra: (db.return_lines || []).filter((l) => idTra.has(l.return_id) && l.is_exchange === false).map((l) => chon(l, ["return_id", "product_id", "unit_name", "quantity", "line_total"])),
+    gv: Array.from(gv.values()),
+    gv_tra: gvTra,
+  }
+}
+function baoCaoCongNo({ p_tu_thu, p_tu_90 }, { db }) {
+  const phieu = (db.receivables || []).map((r) => {
+    const i = (db.sales_invoices || []).find((x) => x.id === r.invoice_id)
+    return { ...chon(r, ["id", "customer_id", "sales_user_id", "invoice_id", "return_id", "amount", "paid", "due_date", "status", "created_at"]), invoice: i ? { invoice_code: i.invoice_code, invoice_date: i.invoice_date } : r.invoice ?? null }
+  })
+  return {
+    mo: phieu.filter((p) => p.status != null && p.status !== "paid"),
+    gan90: phieu.filter((p) => Date.parse(p.created_at) >= vnMoc(p_tu_90)),
+    thu: (db.payments || []).filter((t) => Date.parse(t.collected_at) >= vnMoc(p_tu_thu)).map((t) => ({ ...chon(t, ["id", "amount", "method", "collected_at", "receivable_id"]), receivable: phieu.find((p) => p.id === t.receivable_id) ?? null })),
+  }
+}
+function baoCaoTonKho({ p_tu, p_den }, { db }) {
+  const hd = new Map((db.sales_invoices || []).filter((i) => i.status === "posted" && trongNgay(i.invoice_date, p_tu, p_den)).map((i) => [i.id, i.invoice_date]))
+  return {
+    lo: (db.batches || []).filter((b) => Number(b.qty_on_hand) > 0).map((b) => chon(b, ["id", "product_id", "batch_code", "qty_on_hand", "unit_cost", "expires_at", "created_at"])),
+    dong: (db.sales_invoice_lines || []).filter((l) => hd.has(l.invoice_id)).map((l) => ({ ngay: hd.get(l.invoice_id), ...chon(l, ["invoice_id", "product_id", "unit_name", "conversion_factor", "quantity", "is_exchange"]) })),
+  }
+}
+
 export const rpc = {
+  bao_cao_so_ban: baoCaoSoBan,
+  bao_cao_cong_no: baoCaoCongNo,
+  bao_cao_ton_kho: baoCaoTonKho,
   get_invoiceable_lines: invoiceableLines,
   post_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f004", invoice_code: "HD-E2E-3", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "partially_invoiced" }],
   assign_doc_seller: () => null,

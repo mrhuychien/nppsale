@@ -97,7 +97,9 @@ describe("trang gộp /reports — số toàn NPP", () => {
     const h = doc("src/app/(dashboard)/home/page.tsx")
     expect(h).toMatch(/TILES_NVBH: Tile\[\] = \[\s*\{ label: "Báo cáo tổng hợp", href: "\/bao-cao\/ban-hang"/)
     // Bỏ Công nợ KH + ô Báo cáo cũ; Hoa hồng / Khuyến mãi tạm khoá.
-    expect(h).toContain('const BO_KHOI_NVBH = ["/receivables", "/reports", "/reports/sales"]')
+    for (const x of ["/receivables", "/reports/sales", "/products", "/inventory", "/purchasing/reorder", "/suppliers", "/payables", "/finance/cash-receipts"]) {
+      expect(h.slice(h.indexOf("const BO_KHOI_NVBH"), h.indexOf("const TAM_KHOA_NVBH")), x).toContain(`"${x}"`)
+    }
     expect(h).toContain('const TAM_KHOA_NVBH = ["/commissions", "/promotions"]')
     expect(doc("src/components/home/sales-home.tsx")).toMatch(/if \(t\.tamKhoa\) \{[\s\S]*?aria-disabled="true"/)
     expect(h).toContain("filterByPermission(role, TILES_NVBH)")

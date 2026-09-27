@@ -43,7 +43,7 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
       await expect(trang.getByRole("link", { name: o })).toHaveCount(0)
       await expect(trang.getByTestId("o-tam-khoa").filter({ hasText: o })).toHaveAttribute("aria-disabled", "true")
     }
-    await expect(trang.getByRole("link", { name: "Sản phẩm" })).toHaveCount(0)
+    for (const o of ["Sản phẩm", "Kho hàng", "Đề xuất đặt hàng", "Nhà cung cấp", "Công nợ NCC"]) await expect(trang.getByRole("link", { name: o })).toHaveCount(0)
     await expect(trang.getByRole("link", { name: "Phiếu thu" })).toHaveCount(0)
     await expect(trang.getByText("Tồn kho thấp")).toHaveCount(0)
     // Kính lúp → màn tìm tính năng.

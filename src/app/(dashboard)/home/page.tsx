@@ -140,8 +140,15 @@ const TILES_NVBH: Tile[] = [
   { label: "Báo cáo tổng hợp", href: "/bao-cao/ban-hang", icon: BarChart3, color: "blue" },
 ]
 
-/** Chủ nhà 27/09/2026: bỏ "Công nợ KH"; ô Báo cáo cũ nhường cho Báo cáo tổng hợp. */
-const BO_KHOI_NVBH = ["/receivables", "/reports", "/reports/sales"]
+/**
+ * Chủ nhà 27/09/2026: bỏ "Công nợ KH"; ô Báo cáo cũ nhường cho Báo cáo tổng hợp. Rồi: "Phần chức
+ * năng bỏ phần sản phẩm, kho hàng, đề xuất đặt hàng, nhà cung cấp, công nợ nhà cung cấp, phiếu thu"
+ * — bỏ khỏi LƯỚI trang chủ dù tài khoản có được cấp quyền riêng (quyền không đổi).
+ */
+const BO_KHOI_NVBH = [
+  "/receivables", "/reports", "/reports/sales",
+  "/products", "/inventory", "/purchasing/reorder", "/suppliers", "/payables", "/finance/cash-receipts",
+]
 /** Chủ nhà 27/09/2026: "Nút hoa hồng, khuyến mại tạm thời cho không bấm được". */
 const TAM_KHOA_NVBH = ["/commissions", "/promotions"]
 

@@ -467,11 +467,13 @@ describe("M2.3 — /customers", () => {
     expect(MOBILE_KH).toContain("`Tải thêm ${BUOC_TAI_KHACH}`")
     expect(CUSTOMERS).toContain("if (cancelled || res.aborted) return")
     // Phân trang dạng nút số chỉ dành cho máy tính; điện thoại dùng "Tải thêm".
-    const deskOnly = CUSTOMERS.slice(
-      CUSTOMERS.indexOf('<div className="hidden space-y-4 lg:block">'),
-      CUSTOMERS.indexOf("<MobileCustomersScreen")
-    )
-    expect(deskOnly).toContain("<DataPagination")
+    // Khuôn danh sách chung (27/09/2026): phần máy tính là `DocListLayout` (phân trang số ở
+    // trong thẻ máy tính), `cards={null}` = không dựng phần điện thoại của khuôn.
+    const at = CUSTOMERS.indexOf("<DocListLayout")
+    expect(at).toBeGreaterThan(0)
+    const deskOnly = CUSTOMERS.slice(at, CUSTOMERS.indexOf("<MobileCustomersScreen"))
+    expect(deskOnly).toContain("cards={null}")
+    expect(deskOnly).toContain("pg={pg}")
   })
 })
 

@@ -13,7 +13,8 @@
  */
 
 import { useRouter } from "next/navigation"
-import { formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
 import { groupDocsByDay } from "@/lib/orders/status-tone"
 import { DocListRow, DocListGroupHeader, type DocListBadge } from "@/components/ui/doc-list-row"
 
@@ -37,6 +38,7 @@ export function DocCardList<T extends { id: string }>({
   getTotal,
   unit,
   now,
+  select,
 }: {
   items: T[]
   card: (row: T) => DocCard
@@ -50,6 +52,8 @@ export function DocCardList<T extends { id: string }>({
   /** "phiếu thu" — cho đầu nhóm ngày. */
   unit?: string
   now?: Date
+  /** Chế độ chọn nhiều (thao tác hàng loạt) — ô chọn đứng bên trái thẻ. */
+  select?: { checked: (row: T) => boolean; onChange: (row: T, next: boolean) => void }
 }) {
   const router = useRouter()
   const groups = getDate
@@ -75,7 +79,7 @@ export function DocCardList<T extends { id: string }>({
           )}
           {g.items.map((r, i) => {
             const c = card(r)
-            return (
+            const nut = (
               <button
                 key={r.id}
                 type="button"
@@ -94,6 +98,20 @@ export function DocCardList<T extends { id: string }>({
                   badge={c.badge}
                 />
               </button>
+            )
+            if (!select) return nut
+            /* ⚠ Ô CHỌN NẰM NGOÀI vùng chạm của thẻ (SKILL §2b-2) — bấm ô chọn không mở thẻ. */
+            return (
+              <div key={r.id} className={cn("flex min-w-0 items-stretch", i > 0 && "border-t border-outline-variant/30")}>
+                <label className="tap flex shrink-0 items-center justify-center pl-3">
+                  <Checkbox
+                    checked={select.checked(r)}
+                    onCheckedChange={(v) => select.onChange(r, !!v)}
+                    aria-label={`Chọn ${c.title}`}
+                  />
+                </label>
+                <div className="min-w-0 flex-1 [&>button>span]:border-t-0">{nut}</div>
+              </div>
             )
           })}
         </section>

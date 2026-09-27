@@ -6,7 +6,8 @@ import { LOC_KHACH_HANG } from "@/lib/search/list-filter-fields"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
-import { DataPagination } from "@/components/ui/data-pagination"
+import { StatusChips } from "@/components/ui/status-chips"
+import { DocListLayout } from "@/components/ui/doc-list-layout"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
@@ -675,55 +676,19 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Ô tìm — máy tính (điện thoại có ô tìm trong đầu trang xanh, cùng một `search`). */}
-      <div className="relative hidden lg:block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tên cửa hàng, chủ quán, SĐT, địa chỉ…"
-          {...SEARCH_FIELD_PROPS}
-          className={`pl-10 pr-10 ${HIDE_NATIVE_CLEAR}`}
-        />
-        {search && (
-          <button
-            type="button"
-            aria-label="Xoá ô tìm"
-            onClick={() => setSearch("")}
-            className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-surface-container"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Thẻ lọc nhanh — cuộn ngang, luôn hiện số đếm để biết có đáng bấm. */}
-      <div className="-mx-1 hidden gap-2 overflow-x-auto px-1 pb-1 lg:flex">
-        {QUICK_FILTERS.map((k) => {
-          const on = quick === k
-          return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setQuick(k)}
-              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition-colors ${
-                on
-                  ? "border-on-surface bg-on-surface text-white"
-                  : "border-outline-variant bg-surface-container-lowest text-on-surface-variant"
-              }`}
-            >
-              {QUICK_FILTER_LABEL[k]}
-              <span
-                className={`rounded-full px-1.5 text-[11px] tabular-data ${
-                  on ? "bg-white/20" : "bg-surface-container-low"
-                }`}
-              >
-                {quickCount(k)}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {/* Thẻ lọc nhanh — dải trạng thái chung (`StatusChips`) như đơn / hóa đơn, luôn có số
+          đếm để biết có đáng bấm. Máy tính; điện thoại có dải riêng trong `MobileCustomersScreen`. */}
+      <StatusChips
+        className="hidden lg:flex"
+        active={quick}
+        onPick={(k) => setQuick(k as QuickFilter)}
+        chips={QUICK_FILTERS.map((k) => ({
+          key: k,
+          label: QUICK_FILTER_LABEL[k],
+          count: quickCount(k),
+          accent: k === "overdue" ? "#ef5350" : k === "today" ? "#2563eb" : "#98a2b3",
+        }))}
+      />
 
       {/* Thanh tuyến hôm nay — chỉ hiện khi đang xem tuyến. */}
       {routeMode && (
@@ -750,93 +715,121 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Bộ lọc chi tiết — máy tính. */}
-      <div className="hidden lg:flex flex-wrap items-center gap-2">
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="active">Đang hoạt động</SelectItem>
-              <SelectItem value="suspended">Tạm ngưng</SelectItem>
-              <SelectItem value="locked">Đã khoá</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("channel") && (
-          <Select value={channelFilter} onValueChange={setChannelFilter}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Tuyến" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả tuyến</SelectItem>
-              {routes.map((r) => (
-                <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("sales") && !isSales && (
-          <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả nhân viên</SelectItem>
-              <SelectItem value="_none">Chưa phân công</SelectItem>
-              {salesUsers.map((u) => (
-                <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {hasDeskFilter && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>Bỏ lọc</Button>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_KHACH_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={CUSTOMER_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={CUSTOMER_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/customers/routes">
-              <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <div className="hidden lg:block">{canhBao}</div>
 
-      <div className="hidden space-y-4 lg:block">
-        {canhBao}
-        {loading ? (
-          <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-        ) : ordered.length === 0 ? (
-          emptyState
-        ) : (
-          <div>
-            <CustomerTable
-              customers={ordered}
-              debts={debts || {}}
-              debtsUnknown={debts === null}
-              managers={managersMap}
-              canCollect={!!user && hasPermission(user.role, "receivables", "create")}
-              visibleColumns={visibleColumns}
-              selectable={canEdit}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleOne}
-              onToggleSelectAll={toggleAll}
-              allSelected={allSelected}
-              someSelected={someSelected && !allSelected}
+      {/* ⚠ KHUÔN DANH SÁCH CHUNG — phần MÁY TÍNH (chủ nhà 27/09/2026): một thẻ gồm thanh công
+          cụ · lưới · phân trang, như đơn / hóa đơn. Điện thoại giữ `MobileCustomersScreen`
+          theo mẫu chủ nhà gửi 26/09/2026 (`cards={null}`). */}
+      <DocListLayout
+        toolbar={
+          <>
+            {/* Ô tìm — cùng một `search` với ô trong đầu trang xanh của điện thoại. */}
+            <div className="relative min-w-[260px] max-w-md flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tên cửa hàng, chủ quán, SĐT, địa chỉ…"
+                {...SEARCH_FIELD_PROPS}
+                className={`pl-10 pr-10 ${HIDE_NATIVE_CLEAR}`}
+              />
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Xoá ô tìm"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-surface-container"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {filterActive("status") && (
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger aria-label="Trạng thái" className="h-10 w-40 rounded-xl font-semibold"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả</SelectItem>
+                  <SelectItem value="active">Đang hoạt động</SelectItem>
+                  <SelectItem value="suspended">Tạm ngưng</SelectItem>
+                  <SelectItem value="locked">Đã khoá</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            {filterActive("channel") && (
+              <Select value={channelFilter} onValueChange={setChannelFilter}>
+                <SelectTrigger aria-label="Tuyến" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Tuyến" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả tuyến</SelectItem>
+                  {routes.map((r) => (
+                    <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {filterActive("sales") && !isSales && (
+              <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
+                <SelectTrigger aria-label="Nhân viên" className="h-10 w-48 rounded-xl font-semibold"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả nhân viên</SelectItem>
+                  <SelectItem value="_none">Chưa phân công</SelectItem>
+                  {salesUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {hasDeskFilter && (
+              <Button variant="ghost" size="sm" className="font-extrabold text-primary" onClick={clearFilters}>Bỏ lọc</Button>
+            )}
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_KHACH_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker
+              available={CUSTOMER_FILTERS}
+              value={activeFilters}
+              onChange={setFilters}
+              onReset={resetFilters}
             />
-            <DataPagination pg={pg} shownCount={ordered.length} />
-          </div>
-        )}
-      </div>
+            <ColumnPicker
+              available={CUSTOMER_COLUMNS}
+              value={visibleColumns}
+              onChange={setColumns}
+              onReset={resetColumns}
+            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/customers/routes">
+                <Route className="h-3.5 w-3.5 mr-1.5" /> Tuyến
+              </Link>
+            </Button>
+          </>
+        }
+        /* Danh mục khách, không phải chứng từ — nợ từng khách nằm ở cột Công nợ. */
+        totals={null}
+        loading={loading}
+        isEmpty={ordered.length === 0}
+        empty={emptyState}
+        pg={pg}
+        shownCount={ordered.length}
+        table={
+          <CustomerTable
+            customers={ordered}
+            debts={debts || {}}
+            debtsUnknown={debts === null}
+            managers={managersMap}
+            canCollect={!!user && hasPermission(user.role, "receivables", "create")}
+            visibleColumns={visibleColumns}
+            selectable={canEdit}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleOne}
+            onToggleSelectAll={toggleAll}
+            allSelected={allSelected}
+            someSelected={someSelected && !allSelected}
+          />
+        }
+        cards={null}
+      />
 
       <BulkActionsBar
         count={selectedIds.size}

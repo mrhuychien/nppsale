@@ -3,10 +3,15 @@
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_NHA_CUNG_CAP } from "@/lib/search/list-filter-fields"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
-import { DataPagination } from "@/components/ui/data-pagination"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
@@ -17,13 +22,9 @@ import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
-} from "@/components/ui/table"
 import {
   Select,
   SelectContent,
@@ -35,13 +36,14 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { SupplierImportDialog } from "@/components/suppliers/supplier-import-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Search, Factory, CheckCircle2, Phone, MapPin, Power, PowerOff, Upload } from "lucide-react"
+import { Plus, Factory, CheckCircle2, Power, PowerOff, Upload } from "lucide-react"
 import type { Supplier } from "@/types"
 import {
   SUPPLIER_COLUMNS,
   DEFAULT_SUPPLIER_COLUMNS,
   SUPPLIER_FILTERS,
   DEFAULT_SUPPLIER_FILTERS,
+  type SupplierColumnKey,
   type SupplierFilterKey,
 } from "./list-config"
 
@@ -149,7 +151,6 @@ export default function SuppliersPage() {
   }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
-  const show = (k: (typeof SUPPLIER_COLUMNS)[number]["key"]) => visibleColumns.includes(k)
   const categories = allCategories
 
   // Đã filter server-side toàn bộ — pass-through.
@@ -216,11 +217,107 @@ export default function SuppliersPage() {
       ]
     : []
 
+  /* Số trên dải trạng thái — đếm ở máy chủ, cùng ô tìm + danh mục + lọc nâng cao. */
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let huy = false
+    ;(async () => {
+      const one = async (st: "active" | "inactive" | null) => {
+        let q = supabase.from("suppliers").select("id", { count: "exact", head: true })
+        if (debouncedSearch) q = q.or(dieuKienTim("suppliers", ["name", "code"], debouncedSearch))
+        for (const f of locNC.menhDe) q = q.or(f)
+        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+        if (st) q = q.eq("is_active", st === "active")
+        const { count, error } = await q
+        if (error) console.warn("[app/suppliers] đếm lỗi:", error.message)
+        return count ?? 0
+      }
+      const [active, inactive, all] = await Promise.all([one("active"), one("inactive"), one(null)])
+      if (!huy) setCounts({ active, inactive, all })
+    })()
+    return () => { huy = true }
+  }, [debouncedSearch, locNC.key, categoryFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Supplier> & { k?: SupplierColumnKey }> = [
+      ...(canEdit
+        ? [{
+            key: "select",
+            label: (
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={(v) => toggleAll(!!v)}
+                aria-label="Chọn tất cả"
+              />
+            ),
+            width: "44px",
+            render: (s: Supplier) => (
+              <span onClick={(e) => e.stopPropagation()}>
+                <Checkbox checked={selectedIds.has(s.id)} onCheckedChange={(v) => toggleOne(s.id, !!v)} aria-label={`Chọn ${s.name}`} />
+              </span>
+            ),
+          }]
+        : []),
+      { k: "code", key: "code", label: "Mã NCC", width: "120px", render: (s) => <DocCodeLink href={`/suppliers/${s.id}`}>{s.code}</DocCodeLink> },
+      {
+        key: "name", label: "Tên", width: "minmax(220px,1.5fr)",
+        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        render: (s) => <span className="block truncate text-sm font-bold">{s.name}</span>,
+      },
+      { k: "category", key: "category", label: "Danh mục", width: "150px", render: (s) => <DocCellText muted>{s.category}</DocCellText> },
+      { k: "contact", key: "contact", label: "Liên hệ", width: "160px", render: (s) => <DocCellText muted>{s.contact_name}</DocCellText> },
+      { k: "phone", key: "phone", label: "SĐT", width: "130px", render: (s) => <DocCellText muted>{s.phone}</DocCellText> },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "200px",
+        render: (s) => (
+          <span className="flex items-center gap-1.5">
+            {s.is_verified && (
+              <Badge variant="success" className="gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Đã xác minh
+              </Badge>
+            )}
+            <Badge variant={s.is_active ? "default" : "danger"}>{s.is_active ? "Hoạt động" : "Ngưng"}</Badge>
+          </span>
+        ),
+      },
+      {
+        k: "action", key: "action", label: "Hành động", width: "110px",
+        render: (s) => (
+          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); router.push(`/suppliers/${s.id}`) }}>
+            Chi tiết
+          </Button>
+        ),
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, canEdit, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? suppliers.find((s) => s.id === xemId) ?? null : null
+  const categorySelect = (
+    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+      <SelectTrigger aria-label="Danh mục" className="h-10 w-44 rounded-xl font-semibold">
+        <SelectValue placeholder="Danh mục" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả danh mục</SelectItem>
+        {categories.map((c) => (
+          <SelectItem key={c} value={c}>
+            {c}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Nhà cung cấp" description={`${suppliers.length} nhà cung cấp`}>
+      <PageHeader title="Nhà cung cấp" descriptionDesktopOnly description={`${pg.total} nhà cung cấp`}>
         {user && hasPermission(user.role, "inventory", "create") && (
           <>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -233,61 +330,17 @@ export default function SuppliersPage() {
         )}
       </PageHeader>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm tên, mã NCC..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        )}
-        {filterActive("category") && (
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Danh mục" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả danh mục</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Trạng thái" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="active">Hoạt động</SelectItem>
-              <SelectItem value="inactive">Ngưng</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={SUPPLIER_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={SUPPLIER_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-        </div>
-      </div>
+      {filterActive("status") && (
+        <StatusChips
+          active={statusFilter}
+          onPick={setStatusFilter}
+          chips={[
+            { key: "active", label: "Hoạt động", count: counts.active ?? 0, accent: "#22c55e" },
+            { key: "inactive", label: "Ngưng", count: counts.inactive ?? 0, accent: "#ef5350" },
+            { key: "all", label: "Tất cả", count: counts.all ?? 0, accent: "#181c1e" },
+          ]}
+        />
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (
@@ -297,195 +350,83 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12" />
-          ))}
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm tên, mã NCC..."
+        activeCount={(categoryFilter !== "all" ? 1 : 0) + locNC.soDangAp}
+        onClear={() => { setCategoryFilter("all"); locNC.xoa() }}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
+          <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Factory className="h-8 w-8 text-muted-foreground" />}
-          title={
-            loadError
-              ? "Không tải được dữ liệu"
-              : suppliers.length === 0
-                ? "Chưa có nhà cung cấp"
-                : "Không tìm thấy NCC phù hợp"
-          }
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : suppliers.length === 0
-                ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên"
-                : "Thử điều chỉnh bộ lọc"
-          }
-        />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden lg:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {canEdit && (
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                        onCheckedChange={(v) => toggleAll(!!v)}
-                        aria-label="Chọn tất cả"
-                      />
-                    </TableHead>
-                  )}
-                  {show("code") && <TableHead>Mã NCC</TableHead>}
-                  <TableHead>Tên</TableHead>
-                  {show("category") && <TableHead>Danh mục</TableHead>}
-                  {show("contact") && <TableHead>Liên hệ</TableHead>}
-                  {show("phone") && <TableHead>SĐT</TableHead>}
-                  {show("status") && <TableHead>Trạng thái</TableHead>}
-                  {show("action") && <TableHead>Hành động</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((s) => {
-                  const checked = selectedIds.has(s.id)
-                  return (
-                    <TableRow
-                      key={s.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/suppliers/${s.id}`)}
-                    >
-                      {canEdit && (
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => toggleOne(s.id, !!v)}
-                            aria-label={`Chọn ${s.name}`}
-                          />
-                        </TableCell>
-                      )}
-                      {show("code") && (
-                        <TableCell className="font-mono text-xs font-bold text-primary">
-                          {s.code}
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <div className="font-semibold">{s.name}</div>
-                      </TableCell>
-                      {show("category") && (
-                        <TableCell className="text-muted-foreground">
-                          {s.category || "-"}
-                        </TableCell>
-                      )}
-                      {show("contact") && (
-                        <TableCell className="text-muted-foreground">
-                          {s.contact_name || "-"}
-                        </TableCell>
-                      )}
-                      {show("phone") && (
-                        <TableCell className="text-muted-foreground">
-                          {s.phone || "-"}
-                        </TableCell>
-                      )}
-                      {show("status") && (
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            {s.is_verified && (
-                              <Badge variant="success" className="gap-1">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Đã xác minh
-                              </Badge>
-                            )}
-                            <Badge variant={s.is_active ? "default" : "danger"}>
-                              {s.is_active ? "Hoạt động" : "Ngưng"}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                      )}
-                      {show("action") && (
-                        <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.push(`/suppliers/${s.id}`)
-                            }}
-                          >
-                            Chi tiết
-                          </Button>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+      </MobileFilterBar>
 
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
-            {filtered.map((s) => {
-              const checked = selectedIds.has(s.id)
-              return (
-                <div
-                  key={s.id}
-                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
-                >
-                  <div className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${s.is_active ? "bg-primary" : "bg-danger"}`} />
-                  <div className="p-4 pl-5">
-                    <div className="flex justify-between items-start gap-3 mb-2">
-                      {canEdit && (
-                        <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => toggleOne(s.id, !!v)}
-                            aria-label={`Chọn ${s.name}`}
-                          />
-                        </div>
-                      )}
-                      <div
-                        className="min-w-0 flex-1 cursor-pointer"
-                        onClick={() => router.push(`/suppliers/${s.id}`)}
-                      >
-                        <p className="text-[10px] font-bold text-primary/80 font-mono">{s.code}</p>
-                        <h3 className="font-extrabold text-base leading-tight truncate">{s.name}</h3>
-                        {s.contact_name && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{s.contact_name}</p>
-                        )}
-                        {s.phone && (
-                          <div className="flex items-center gap-1 text-muted-foreground mt-1">
-                            <Phone className="h-3 w-3 shrink-0" />
-                            <p className="text-xs">{s.phone}</p>
-                          </div>
-                        )}
-                        {s.address && (
-                          <div className="flex items-center gap-1 text-muted-foreground mt-1">
-                            <MapPin className="h-3 w-3 shrink-0" />
-                            <p className="text-xs truncate">{s.address}</p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0 flex flex-col items-end gap-1">
-                        {s.is_verified && (
-                          <Badge variant="success" className="gap-1 whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Xác minh
-                          </Badge>
-                        )}
-                        <Badge variant={s.is_active ? "default" : "danger"}>
-                          {s.is_active ? "Hoạt động" : "Ngưng"}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
+      <DocListLayout
+        toolbar={
+          <>
+            {filterActive("search") && <DocListSearch value={search} onChange={setSearch} placeholder="Tìm tên, mã NCC..." />}
+            {filterActive("category") && categorySelect}
+            <XoaLocButton show={!!search || categoryFilter !== "all"} onClick={() => { setSearch(""); setCategoryFilter("all") }} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={SUPPLIER_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={SUPPLIER_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        /* Danh mục, không phải chứng từ — không có tiền để cộng. */
+        totals={null}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<Factory className="h-8 w-8 text-muted-foreground" />}
+            title={loadError ? "Không tải được dữ liệu" : pg.total === 0 && !search ? "Chưa có nhà cung cấp" : "Không tìm thấy NCC phù hợp"}
+            description={loadError ? "Xem thông báo lỗi phía trên." : pg.total === 0 && !search ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên" : "Thử điều chỉnh bộ lọc"}
+          />
+        }
+        pg={pg}
+        shownCount={filtered.length}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(s) => setXemId(s.id)} />}
+        cards={
+          <DocCardList
+            items={filtered}
+            onOpen={(s) => setXemId(s.id)}
+            select={canEdit ? { checked: (s) => selectedIds.has(s.id), onChange: (s, v) => toggleOne(s.id, v) } : undefined}
+            card={(s) => ({
+              accent: s.is_active ? "#2563eb" : "#ef5350",
+              title: s.name,
+              total: s.is_verified ? "Xác minh" : "",
+              meta: [s.code, s.contact_name].filter(Boolean).join(" · "),
+              payment: s.phone ?? "",
+              summary: s.address || undefined,
+              badge: s.is_active ? null : { label: "Ngưng", bg: "#fdecec", fg: "#b00020" },
             })}
-          </div>
-          <DataPagination pg={pg} shownCount={filtered.length} />
-        </>
-      )}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.name ?? "Nhà cung cấp"}
+        subtitle={xem?.code ?? undefined}
+        badge={xem ? <Badge variant={xem.is_active ? "default" : "danger"}>{xem.is_active ? "Hoạt động" : "Ngưng"}</Badge> : null}
+        fields={xem ? [
+          { label: "Danh mục", value: xem.category },
+          { label: "Xác minh", value: xem.is_verified ? "Đã xác minh" : "Chưa" },
+          { label: "Liên hệ", value: xem.contact_name },
+          { label: "SĐT", value: xem.phone },
+          { label: "Địa chỉ", value: xem.address, wide: true },
+        ] : []}
+        detailHref={xem ? `/suppliers/${xem.id}` : undefined}
+      />
 
       <BulkActionsBar
         count={selectedIds.size}

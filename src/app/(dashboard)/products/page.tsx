@@ -6,7 +6,12 @@ import { LOC_SAN_PHAM } from "@/lib/search/list-filter-fields"
 import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
-import { DataPagination } from "@/components/ui/data-pagination"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { Badge } from "@/components/ui/badge"
+import { formatCurrency } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
@@ -16,10 +21,9 @@ import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ProductTable } from "@/components/products/product-table"
+import { ProductTable, ProductCards, giaMacDinh, type ProductRow } from "@/components/products/product-table"
 import { ProductImportDialog } from "@/components/products/product-import-dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -37,7 +41,7 @@ import {
   type BulkAction,
 } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Search, Package, PackageCheck, PackageX, Upload } from "lucide-react"
+import { Plus, Package, PackageCheck, PackageX, Upload } from "lucide-react"
 import type { Product } from "@/types"
 import {
   PRODUCT_COLUMNS,
@@ -236,11 +240,71 @@ export default function ProductsPage() {
       ]
     : []
 
+
+  /* Số trên dải trạng thái — đếm ở máy chủ, cùng mọi bộ lọc khác của danh sách. */
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let huy = false
+    ;(async () => {
+      const one = async (st: string | null) => {
+        let q = supabase.from("products").select("id", { count: "exact", head: true })
+        if (debouncedSearch) q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
+        for (const f of locNC.menhDe) q = q.or(f)
+        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+        if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
+        if (st) q = q.eq("status", st)
+        const { count, error } = await q
+        if (error) console.warn("[app/products] đếm lỗi:", error.message)
+        return count ?? 0
+      }
+      const [active, inactive, all] = await Promise.all([one("active"), one("inactive"), one(null)])
+      if (!huy) setCounts({ active, inactive, all })
+    })()
+    return () => { huy = true }
+  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+
   if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? (products as ProductRow[]).find((p) => p.id === xemId) ?? null : null
+  const categorySelect = (
+    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+      <SelectTrigger aria-label="Danh mục" className="h-10 w-44 rounded-xl font-semibold">
+        <SelectValue placeholder="Danh mục" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả danh mục</SelectItem>
+        {categories.map((c) => (
+          <SelectItem key={c} value={c}>
+            {c}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const supplierSelect = (
+    <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+      <SelectTrigger aria-label="Nhà cung cấp" className="h-10 w-48 rounded-xl font-semibold">
+        <SelectValue placeholder="Nhà cung cấp" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả nhà cung cấp</SelectItem>
+        {allSuppliers.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            {s.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const soLocKhac = (categoryFilter !== "all" ? 1 : 0) + (supplierFilter !== "all" ? 1 : 0)
+  const xoaLocKhac = () => { setCategoryFilter("all"); setSupplierFilter("all") }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Sản phẩm" description={`${pg.total} sản phẩm`}>
+      <PageHeader title="Sản phẩm" descriptionDesktopOnly description={`${pg.total} sản phẩm`}>
         {user && hasPermission(user.role, "products", "create") && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -253,76 +317,17 @@ export default function ProductsPage() {
         )}
       </PageHeader>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm theo tên, SKU, nhãn hàng..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        )}
-        {filterActive("category") && (
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Danh mục" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả danh mục</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("supplier") && (
-          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Nhà cung cấp" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả nhà cung cấp</SelectItem>
-              {allSuppliers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Trạng thái" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="active">Đang bán</SelectItem>
-              <SelectItem value="inactive">Ngừng bán</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={PRODUCT_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={PRODUCT_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-        </div>
-      </div>
+      {filterActive("status") && (
+        <StatusChips
+          active={statusFilter}
+          onPick={setStatusFilter}
+          chips={[
+            { key: "active", label: "Đang bán", count: counts.active ?? 0, accent: "#22c55e" },
+            { key: "inactive", label: "Ngừng bán", count: counts.inactive ?? 0, accent: "#98a2b3" },
+            { key: "all", label: "Tất cả", count: counts.all ?? 0, accent: "#181c1e" },
+          ]}
+        />
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (
@@ -351,36 +356,68 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12" />
-          ))}
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm theo tên, SKU, nhãn hàng..."
+        activeCount={soLocKhac + locNC.soDangAp}
+        onClear={() => { xoaLocKhac(); locNC.xoa() }}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
+          {filterActive("supplier") && <LocNhanhField label="Nhà cung cấp">{supplierSelect}</LocNhanhField>}
+          <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Package className="h-8 w-8 text-muted-foreground" />}
-          title={loadError ? "Không tải được dữ liệu" : "Không có sản phẩm phù hợp"}
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : products.length === 0
-                ? user?.role === "sales"
-                  ? "Bạn chưa được gán nhà cung cấp nào, hoặc chưa có sản phẩm. NV bán hàng chỉ thấy sản phẩm thuộc NCC được gán — liên hệ quản lý để được gán NCC."
-                  : "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
-                : "Thử điều chỉnh bộ lọc"
-          }
-        >
-          {products.length === 0 &&
-            user &&
-            hasPermission(user.role, "products", "create") && (
-              <Button onClick={() => router.push("/products/new")}>
-                <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
-              </Button>
-            )}
-        </EmptyState>
-      ) : (
-        <>
+      </MobileFilterBar>
+
+      <DocListLayout
+        toolbar={
+          <>
+            {filterActive("search") && <DocListSearch value={search} onChange={setSearch} placeholder="Tìm theo tên, SKU, nhãn hàng..." />}
+            {filterActive("category") && categorySelect}
+            {filterActive("supplier") && supplierSelect}
+            <XoaLocButton show={!!search || soLocKhac > 0} onClick={() => { setSearch(""); xoaLocKhac() }} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={PRODUCT_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={PRODUCT_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        /* Danh mục hàng, không phải chứng từ — không có tiền để cộng. */
+        totals={null}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<Package className="h-8 w-8 text-muted-foreground" />}
+            title={loadError ? "Không tải được dữ liệu" : "Không có sản phẩm phù hợp"}
+            description={
+              loadError
+                ? "Xem thông báo lỗi phía trên."
+                : products.length === 0
+                  ? user?.role === "sales"
+                    ? "Bạn chưa được gán nhà cung cấp nào, hoặc chưa có sản phẩm. NV bán hàng chỉ thấy sản phẩm thuộc NCC được gán — liên hệ quản lý để được gán NCC."
+                    : "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
+                  : "Thử điều chỉnh bộ lọc"
+            }
+          >
+            {products.length === 0 &&
+              user &&
+              hasPermission(user.role, "products", "create") && (
+                <Button onClick={() => router.push("/products/new")}>
+                  <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
+                </Button>
+              )}
+          </EmptyState>
+        }
+        pg={pg}
+        shownCount={filtered.length}
+        table={
           <ProductTable
             products={filtered}
             visibleColumns={visibleColumns}
@@ -390,10 +427,37 @@ export default function ProductsPage() {
             onToggleSelectAll={toggleAll}
             allSelected={allSelected}
             someSelected={someSelected && !allSelected}
+            activeId={xemId}
+            onOpen={(p) => setXemId(p.id)}
           />
-          <DataPagination pg={pg} shownCount={filtered.length} />
-        </>
-      )}
+        }
+        cards={
+          <ProductCards
+            products={filtered}
+            selectable={canEdit}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleOne}
+            onOpen={(p) => setXemId(p.id)}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.sku ?? "Sản phẩm"}
+        subtitle={xem?.name}
+        badge={xem ? <Badge variant={xem.status === "active" ? "success" : "secondary"}>{xem.status === "active" ? "Đang bán" : "Ngừng"}</Badge> : null}
+        fields={xem ? [
+          { label: "Tên sản phẩm", value: xem.name, wide: true },
+          { label: "Danh mục", value: xem.category },
+          { label: "Nhà cung cấp", value: xem.supplier?.name },
+          { label: "ĐVT", value: xem.base_unit },
+          { label: "Mã vạch", value: xem.barcode },
+        ] : []}
+        total={xem ? { label: "Giá bán", value: giaMacDinh(xem) > 0 ? formatCurrency(giaMacDinh(xem)) : "-" } : undefined}
+        detailHref={xem ? `/products/${xem.id}` : undefined}
+      />
 
       <BulkActionsBar
         count={selectedIds.size}

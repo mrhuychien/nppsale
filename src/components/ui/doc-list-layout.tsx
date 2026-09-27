@@ -73,8 +73,11 @@ export function DocListLayout({
   empty: ReactNode
   /** Lưới máy tính — `DocTable`. */
   table: ReactNode
-  /** Danh sách thẻ điện thoại — `DocCardList`. */
-  cards: ReactNode
+  /**
+   * Danh sách thẻ điện thoại — `DocCardList`. `null` = màn có màn điện thoại RIÊNG theo mẫu
+   * chủ nhà (đơn hàng, khách hàng) — khuôn chỉ dựng phần máy tính.
+   */
+  cards: ReactNode | null
   pg: UsePaginationReturn
   shownCount?: number
   /** Thay phân trang điện thoại — vd `LoadMore` của màn công nợ (NVBH cuộn để đi thu). */
@@ -119,6 +122,7 @@ export function DocListLayout({
       </div>
 
       {/* ---------------- Điện thoại: dải tóm tắt + thẻ ---------------- */}
+      {cards !== null && (
       <div data-doc-list="mobile" className="space-y-3 lg:hidden">
         {mobileSummary ??
           (totals && (
@@ -136,6 +140,7 @@ export function DocListLayout({
           </>
         )}
       </div>
+      )}
     </>
   )
 }

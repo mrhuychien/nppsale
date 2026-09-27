@@ -1,20 +1,38 @@
 "use client"
 
-import Link from "@/components/ui/link"
-import { useRouter } from "next/navigation"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+/**
+ * DANH SÁCH SẢN PHẨM — lưới máy tính + thẻ điện thoại, theo khuôn danh sách chung
+ * (chủ nhà 27/09/2026: "Làm chung form hiển thị danh sách cho toàn bộ các danh sách theo
+ * form đang dùng cho Đơn hàng, hóa đơn, trả hàng"): `DocTable` + `DocCardList`, bấm dòng mở
+ * xem nhanh, bấm SKU sang chi tiết.
+ */
+
+import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
 import { formatCurrency } from "@/lib/utils"
-import { Eye } from "lucide-react"
 import type { Product, PriceList } from "@/types"
 import type { ProductColumnKey } from "@/app/(dashboard)/products/list-config"
 
+export type ProductRow = Product & {
+  price_lists?: PriceList[]
+  supplier?: { id: string; name: string } | null
+}
+
+/**
+ * Giá bán mặc định — MỘT công thức cho lưới, thẻ điện thoại và ngăn xem nhanh.
+ * ⚠ Bảng giá chung (không nhóm) trước, KHÔNG có thì dự phòng `sell_price`. Trước đây thẻ
+ *   mobile chỉ đọc price_lists: sản phẩm định giá thẳng ở sell_price hiện "-" trên điện
+ *   thoại trong khi máy tính ra giá đúng — nhân viên đứng ở cửa hàng không báo được giá.
+ */
+export function giaMacDinh(product: ProductRow): number {
+  return product.price_lists?.find((p) => !p.group_id)?.price ?? Number(product.sell_price ?? 0)
+}
+
 interface ProductTableProps {
-  products: (Product & {
-    price_lists?: PriceList[]
-    supplier?: { id: string; name: string } | null
-  })[]
+  products: ProductRow[]
   visibleColumns: ProductColumnKey[]
   selectable?: boolean
   selectedIds?: Set<string>
@@ -22,6 +40,8 @@ interface ProductTableProps {
   onToggleSelectAll?: (next: boolean) => void
   allSelected?: boolean
   someSelected?: boolean
+  activeId?: string | null
+  onOpen: (product: ProductRow) => void
 }
 
 export function ProductTable({
@@ -33,155 +53,85 @@ export function ProductTable({
   onToggleSelectAll,
   allSelected = false,
   someSelected = false,
+  activeId,
+  onOpen,
 }: ProductTableProps) {
-  const router = useRouter()
-  const show = (key: ProductColumnKey) => visibleColumns.includes(key)
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<ProductRow> & { k?: ProductColumnKey }> = [
+      ...(selectable
+        ? [{
+            key: "select",
+            label: (
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={(v) => onToggleSelectAll?.(!!v)}
+                aria-label="Chọn tất cả"
+              />
+            ),
+            width: "44px",
+            render: (product: ProductRow) => (
+              <span onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={selectedIds?.has(product.id) ?? false}
+                  onCheckedChange={(v) => onToggleSelect?.(product.id, !!v)}
+                  aria-label={`Chọn ${product.name}`}
+                />
+              </span>
+            ),
+          }]
+        : []),
+      { k: "sku", key: "sku", label: "SKU", width: "130px", render: (p) => <DocCodeLink href={`/products/${p.id}`}>{p.sku}</DocCodeLink> },
+      {
+        key: "name", label: "Tên sản phẩm", width: "minmax(240px,2fr)",
+        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        render: (p) => <span className="block truncate text-sm font-bold" title={p.name}>{p.name}</span>,
+      },
+      { k: "category", key: "category", label: "Danh mục", width: "150px", render: (p) => <DocCellText muted>{p.category}</DocCellText> },
+      { k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "170px", render: (p) => <DocCellText muted>{p.supplier?.name}</DocCellText> },
+      { k: "unit", key: "unit", label: "ĐVT", width: "90px", render: (p) => <DocCellText muted>{p.base_unit}</DocCellText> },
+      {
+        k: "price", key: "price", label: "Giá bán", width: "130px", align: "right",
+        sort: (a, b) => giaMacDinh(a) - giaMacDinh(b),
+        render: (p) => (giaMacDinh(p) > 0 ? formatCurrency(giaMacDinh(p)) : "-"),
+      },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "120px",
+        render: (p) => (
+          <Badge variant={p.status === "active" ? "success" : "secondary"}>{p.status === "active" ? "Đang bán" : "Ngừng"}</Badge>
+        ),
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, selectable, selectedIds, allSelected, someSelected, onToggleSelect, onToggleSelectAll])
 
+  return <DocTable rows={products} columns={columns} activeId={activeId} onOpen={onOpen} />
+}
+
+/** Thẻ điện thoại — bố cục cố định, không phụ thuộc cột đang chọn. */
+export function ProductCards({
+  products,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  onOpen,
+}: Pick<ProductTableProps, "products" | "selectable" | "selectedIds" | "onToggleSelect" | "onOpen">) {
   return (
-    <>
-      {/* Desktop table */}
-      <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30">
-              {selectable && (
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    onCheckedChange={(v) => onToggleSelectAll?.(!!v)}
-                    aria-label="Chọn tất cả"
-                  />
-                </TableHead>
-              )}
-              {show("sku") && <TableHead>SKU</TableHead>}
-              <TableHead>Tên sản phẩm</TableHead>
-              {show("category") && <TableHead>Danh mục</TableHead>}
-              {show("supplier") && <TableHead>Nhà cung cấp</TableHead>}
-              {show("unit") && <TableHead>ĐVT</TableHead>}
-              {show("price") && <TableHead className="text-right">Giá bán</TableHead>}
-              {show("status") && <TableHead>Trạng thái</TableHead>}
-              <TableHead className="w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {products.map((product) => {
-              const defaultPrice = product.price_lists?.find((p) => !p.group_id)?.price ?? Number(product.sell_price ?? 0)
-              const checked = selectedIds?.has(product.id) ?? false
-              return (
-                <TableRow
-                  key={product.id}
-                  className="cursor-pointer hover:bg-muted/40"
-                  onClick={() => router.push(`/products/${product.id}`)}
-                >
-                  {selectable && (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => onToggleSelect?.(product.id, !!v)}
-                        aria-label={`Chọn ${product.name}`}
-                      />
-                    </TableCell>
-                  )}
-                  {show("sku") && (
-                    <TableCell>
-                      <Link
-                        href={`/products/${product.id}`}
-                        className="font-mono text-sm text-primary hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {product.sku}
-                      </Link>
-                    </TableCell>
-                  )}
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  {show("category") && <TableCell>{product.category || "-"}</TableCell>}
-                  {show("supplier") && <TableCell>{product.supplier?.name || "-"}</TableCell>}
-                  {show("unit") && <TableCell>{product.base_unit}</TableCell>}
-                  {show("price") && (
-                    <TableCell className="text-right tabular-nums">
-                      {defaultPrice > 0 ? formatCurrency(defaultPrice) : "-"}
-                    </TableCell>
-                  )}
-                  {show("status") && (
-                    <TableCell>
-                      <Badge variant={product.status === "active" ? "success" : "secondary"}>
-                        {product.status === "active" ? "Đang bán" : "Ngừng"}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Mobile card list — layout cố định, không phụ thuộc visibleColumns */}
-      <div className="lg:hidden space-y-3">
-        {products.map((product) => {
-          // Cùng công thức với bản bảng ở trên (dòng 68). Trước đây thẻ mobile
-          // chỉ đọc price_lists, KHÔNG có dự phòng sell_price — sản phẩm nào
-          // định giá thẳng ở sell_price mà chưa có bảng giá thì trên điện
-          // thoại hiện "-" trong khi trên máy tính vẫn ra giá đúng. Nhân viên
-          // đứng trong cửa hàng không đọc được giá để báo khách.
-          const defaultPrice =
-            product.price_lists?.find((p) => !p.group_id)?.price ??
-            Number(product.sell_price ?? 0)
-          const checked = selectedIds?.has(product.id) ?? false
-          return (
-            <div
-              key={product.id}
-              className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
-            >
-              <div className="p-4">
-                <div className="flex justify-between items-start gap-3 mb-2">
-                  {selectable && (
-                    <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => onToggleSelect?.(product.id, !!v)}
-                        aria-label={`Chọn ${product.name}`}
-                      />
-                    </div>
-                  )}
-                  <div
-                    className="min-w-0 flex-1 cursor-pointer"
-                    onClick={() => router.push(`/products/${product.id}`)}
-                  >
-                    <p className="font-mono text-xs font-bold text-primary">{product.sku}</p>
-                    <h3 className="font-extrabold text-base leading-tight mt-0.5">
-                      {product.name}
-                    </h3>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {product.category && (
-                        <Badge variant="outline" className="text-xs">{product.category}</Badge>
-                      )}
-                      {product.supplier?.name && (
-                        <Badge variant="outline" className="text-xs">{product.supplier.name}</Badge>
-                      )}
-                      <Badge variant="outline" className="text-xs">ĐVT: {product.base_unit}</Badge>
-                    </div>
-                  </div>
-                  <div className="shrink-0">
-                    <Badge variant={product.status === "active" ? "success" : "secondary"}>
-                      {product.status === "active" ? "Đang bán" : "Ngừng"}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
-                  <span className="text-xs text-muted-foreground">Giá bán</span>
-                  <span className="font-bold text-base tabular-nums">
-                    {defaultPrice > 0 ? formatCurrency(defaultPrice) : "-"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </>
+    <DocCardList
+      items={products}
+      onOpen={onOpen}
+      select={selectable ? { checked: (p) => selectedIds?.has(p.id) ?? false, onChange: (p, v) => onToggleSelect?.(p.id, v) } : undefined}
+      card={(p) => {
+        const gia = giaMacDinh(p)
+        return {
+          accent: p.status === "active" ? "#22c55e" : "#98a2b3",
+          title: p.name,
+          total: gia > 0 ? formatCurrency(gia) : "-",
+          meta: [p.sku, `ĐVT: ${p.base_unit}`].filter(Boolean).join(" · "),
+          payment: p.category ?? "",
+          summary: p.supplier?.name || undefined,
+          badge: p.status === "active" ? null : { label: "Ngừng", bg: "#eef1f5", fg: "#565a67" },
+        }
+      }}
+    />
   )
 }

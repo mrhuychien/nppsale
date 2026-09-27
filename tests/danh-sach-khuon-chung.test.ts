@@ -65,6 +65,9 @@ describe("DocListLayout — một thẻ như màn hóa đơn", () => {
     expect(iLuoi).toBeGreaterThan(iTong)
     expect(iTrang).toBeGreaterThan(iLuoi)
   })
+  it("màn có màn điện thoại riêng (cards = null) thì khuôn chỉ dựng phần máy tính", () => {
+    expect(LAYOUT).toContain("{cards !== null && (")
+  })
   it("điện thoại: dải tóm tắt → thẻ → phân trang; rỗng thì EmptyState, không trắng", () => {
     const dt = LAYOUT.slice(LAYOUT.indexOf('data-doc-list="mobile"'))
     expect(dt).toContain("space-y-3 lg:hidden")
@@ -161,7 +164,7 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
  * DANH SÁCH ĐÃ VỀ KHUÔN CHUNG. Thêm màn nào vào khuôn thì thêm vào đây — chốt giữ cho màn ấy
  * không trôi về một bố cục riêng.
  */
-const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: boolean }> = [
+const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: boolean; thanhPhan?: string }> = [
   { duong: "finance/cash-receipts", mobileFilter: true, statusChips: true },
   { duong: "finance/expenses", mobileFilter: true, statusChips: true },
   { duong: "purchasing/receipts", mobileFilter: true, statusChips: true },
@@ -170,13 +173,16 @@ const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: 
   { duong: "purchasing/invoices", mobileFilter: true, statusChips: true },
   { duong: "invoices", mobileFilter: true, statusChips: true },
   { duong: "inventory/entries", mobileFilter: true, statusChips: true },
+  { duong: "suppliers", mobileFilter: true, statusChips: true },
+  { duong: "products", mobileFilter: true, statusChips: true, thanhPhan: "src/components/products/product-table.tsx" },
   // Công nợ: điện thoại giữ dải tuổi nợ + thẻ có nút "Thu tiền" (NVBH đi thu).
   { duong: "receivables" },
 ]
 
 describe("các danh sách đã về khuôn chung", () => {
-  it.each(DA_VE_KHUON)("/$duong", ({ duong, mobileFilter, statusChips }) => {
-    const s = code(read(`src/app/(dashboard)/${duong}/page.tsx`))
+  it.each(DA_VE_KHUON)("/$duong", ({ duong, mobileFilter, statusChips, thanhPhan }) => {
+    // Màn tách lưới ra thành phần riêng (sản phẩm) thì đọc cả thành phần ấy.
+    const s = code(read(`src/app/(dashboard)/${duong}/page.tsx`)) + (thanhPhan ? "\n" + code(read(thanhPhan)) : "")
     expect(s, "không dùng khuôn DocListLayout").toContain("<DocListLayout")
     expect(s, "lưới không theo DocTable").toMatch(/<DocTable rows=\{\w+\} columns=\{columns\}/)
     // Bấm dòng mở xem nhanh.

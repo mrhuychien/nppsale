@@ -137,10 +137,14 @@ describe("MOB-14 — thẻ sản phẩm trên điện thoại phải hiện giá
    * viên đứng trong cửa hàng không đọc được giá để báo khách.
    */
   it("thẻ mobile dùng cùng công thức giá với bản bảng", () => {
-    const n = (
-      PROD_TABLE.match(/price_lists\?\.find\(\(p\) => !p\.group_id\)\?\.price \?\?\s*\n?\s*Number\(product\.sell_price \?\? 0\)/g) || []
-    ).length
-    expect(n, "cả bản bảng lẫn thẻ mobile đều phải có dự phòng sell_price").toBe(2)
+    // Khuôn danh sách chung (27/09/2026): MỘT hàm `giaMacDinh` cho lưới, thẻ và xem nhanh.
+    const fn = PROD_TABLE.slice(PROD_TABLE.indexOf("export function giaMacDinh"))
+    expect(PROD_TABLE.indexOf("export function giaMacDinh")).toBeGreaterThan(0)
+    expect(fn.slice(0, fn.indexOf("\n}\n"))).toMatch(/price_lists\?\.find\(\(p\) => !p\.group_id\)\?\.price \?\? Number\(product\.sell_price \?\? 0\)/)
+    const luoi = PROD_TABLE.slice(PROD_TABLE.indexOf("export function ProductTable"), PROD_TABLE.indexOf("export function ProductCards"))
+    const the = PROD_TABLE.slice(PROD_TABLE.indexOf("export function ProductCards"))
+    expect(luoi, "bản bảng phải dùng công thức chung").toContain("giaMacDinh(p)")
+    expect(the, "thẻ mobile phải dùng công thức chung").toContain("giaMacDinh(p)")
   })
 
   it("không còn đọc .price trên một object có thể là undefined", () => {

@@ -51,3 +51,30 @@ describe("các chỗ đọc trùng đã gộp", () => {
     }
   })
 })
+
+import { docDemNhom, tongDem } from "@/lib/list/dem-nhom"
+
+describe("đếm chip trạng thái một lượt (mig 206)", () => {
+  it("đọc kết quả gom nhóm; tổng = cộng mọi trạng thái", () => {
+    const d = docDemNhom({ data: [{ status: "draft", count: 3 }, { status: "completed", count: 5 }], error: null })
+    expect(d).toEqual({ draft: 3, completed: 5 })
+    expect(tongDem(d!)).toBe(8)
+    expect(docDemNhom({ data: [], error: null })).toEqual({})
+  })
+  it("chưa bật gom nhóm (lỗi, hay trả dòng không có count) → null để đếm kiểu cũ", () => {
+    expect(docDemNhom({ data: null, error: { code: "PGRST123", message: "Use of aggregate functions is not allowed" } })).toBeNull()
+    expect(docDemNhom({ data: [{ status: "draft" }], error: null })).toBeNull()
+  })
+  it("danh sách đơn / hoá đơn thử gom nhóm trước, lùi về đếm từng trạng thái", () => {
+    for (const [f, bang] of [["orders", "sales_orders"], ["sales-invoices", "sales_invoices"]]) {
+      const s = readFileSync(`src/app/(dashboard)/${f}/page.tsx`, "utf8")
+      expect(s).toContain(`supabase.from("${bang}").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()")`)
+      expect(s).toMatch(/if \(nhom\) \{/)
+    }
+  })
+  it("mig 206 bật aggregates của PostgREST, có đường tắt lại", () => {
+    const sql = readFileSync("supabase/migrations/206_dem_theo_nhom.sql", "utf8")
+    expect(sql).toContain("ALTER ROLE authenticator SET pgrst.db_aggregates_enabled = 'true';")
+    expect(sql).toContain("NOTIFY pgrst, 'reload config';")
+  })
+})

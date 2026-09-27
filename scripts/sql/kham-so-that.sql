@@ -390,4 +390,12 @@ SELECT 44, 'Mig 205 (Tìm kiếm chung: từng từ, không dấu, mã viết li
        WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sales_orders_tim_kd_trgm')
        THEN 'CHƯA — thiếu chỉ mục trigram, ô tìm quét cả bảng'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 45. Mig 206 — PostgREST đếm theo nhóm (chip trạng thái đếm một lượt)
+SELECT 45, 'Mig 206 (Đếm theo nhóm — bớt log Supabase)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
+                         WHERE r.rolname = 'authenticator'
+                           AND 'pgrst.db_aggregates_enabled=true' = ANY (s.setconfig))
+       THEN 'CHƯA — chip trạng thái vẫn đếm từng lượt (nhiều log)'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

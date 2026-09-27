@@ -267,7 +267,8 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
      * không ai giải thích được.
      */
     const uses = ORDERS.match(/applyCommonFilters\(/g) ?? []
-    expect(uses.length, "phải gọi ở danh sách, phép đếm và phép cộng tiền").toBe(3)
+    // Bốn: thêm lượt đếm gom nhóm một lượt (mig 206, 27/09/2026) — vẫn đi qua CÙNG hàm lọc.
+    expect(uses.length, "phải gọi ở danh sách, phép đếm (gom nhóm + kiểu cũ) và phép cộng tiền").toBe(4)
   })
 
   /**

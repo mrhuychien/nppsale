@@ -21,6 +21,7 @@
  * nói thẳng điều đó.
  */
 
+import { docDemNhom, tongDem } from "@/lib/list/dem-nhom"
 import { nhoNen, coLoi } from "@/lib/cache/nho-nen"
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
@@ -483,6 +484,17 @@ export default function SalesInvoicesPage() {
     }
     if (!searchReady) return
     const luot = ++luotRef.current.dem
+    /* Một lượt gom nhóm (mig 206) — bật rồi thì khỏi 3 lượt đếm. */
+    const nhom = docDemNhom(
+      await (applyFilters(
+        supabase.from("sales_invoices").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()") as never
+      ) as unknown as PromiseLike<{ data: unknown; error: unknown }>)
+    )
+    if (luot !== luotRef.current.dem) return
+    if (nhom) {
+      setCounts({ posted: nhom.posted ?? 0, cancelled: nhom.cancelled ?? 0, all: tongDem(nhom) })
+      return
+    }
     const [posted, cancelled, all] = await Promise.all([one("posted"), one("cancelled"), one(null)])
     if (luot !== luotRef.current.dem) return
     setCounts({ posted, cancelled, all })

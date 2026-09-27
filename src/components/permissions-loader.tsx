@@ -22,6 +22,7 @@ interface DbRow {
 
 const KHOA_NHO = "npp.quyen.v1|"
 export const NHO_QUYEN_MS = 5 * 60_000
+export const NHO_QUYEN_NVBH_MS = 12 * 60 * 60_000
 
 /** Xoá nhớ quyền (sau khi lưu phân quyền) — lần tải sau đọc lại ngay. */
 export function xoaNhoQuyen(): void {
@@ -44,6 +45,8 @@ export function PermissionsLoader() {
   const { user } = useAuth()
   const orgId = user?.org_id
   const userId = user?.id
+  /* Chủ nhà 27/09/2026: "NVBH là quyền fix" — quyền NVBH không đổi, nhớ suốt phiên (12 giờ). */
+  const hanNho = user?.role === "sales" ? NHO_QUYEN_NVBH_MS : NHO_QUYEN_MS
 
   useEffect(() => {
     if (!orgId) {
@@ -72,7 +75,7 @@ export function PermissionsLoader() {
     try {
       const raw = sessionStorage.getItem(khoa)
       const c = raw ? (JSON.parse(raw) as { at: number; rows: DbRow[]; ov: UserOverrides | null }) : null
-      if (c && Date.now() - c.at < NHO_QUYEN_MS) {
+      if (c && Date.now() - c.at < hanNho) {
         apDung(c.rows, c.ov)
         return
       }
@@ -139,7 +142,7 @@ export function PermissionsLoader() {
     return () => {
       cancelled = true
     }
-  }, [orgId, userId])
+  }, [orgId, userId, hanNho])
 
   return null
 }

@@ -45,3 +45,16 @@ test("mở app rồi đi qua 3 trang: không đọc trùng hồ sơ / thông bá
   expect(dem(sau, (x) => x.path === "/rest/v1/users" && (x.query || "").includes("price_edit_max_increase_pct")), "hồ sơ đọc đúng 1 lần mỗi lần tải").toBe(1)
   expect(dem(sau, (x) => x.path === "/rest/v1/notifications" && x.method === "GET"), "thông báo 1 lần mỗi lần tải").toBeLessThanOrEqual(1)
 })
+
+test("danh sách đơn: chip trạng thái đếm MỘT lượt gom nhóm, không còn 8 lượt HEAD", async ({ page }) => {
+  await dangNhap(page)
+  await page.waitForLoadState("networkidle")
+  await page.waitForTimeout(1000)
+  const t = (await nhatKy()).length
+  await page.reload()
+  await page.waitForLoadState("networkidle")
+  await page.waitForTimeout(1500)
+  const ds = (await nhatKy()).slice(t)
+  expect(dem(ds, (x) => x.method === "HEAD" && x.path === "/rest/v1/sales_orders"), "HEAD đếm").toBe(0)
+  expect(dem(ds, (x) => x.path === "/rest/v1/sales_orders" && decodeURIComponent(x.query || "").includes("count()")), "một lượt gom nhóm").toBe(1)
+})

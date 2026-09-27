@@ -313,6 +313,19 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     out = out.slice(from, to + 1)
     const headers = { "content-range": `${total ? from : "*"}-${total ? from + out.length - 1 : ""}/${total}` }
     if (req.method === "HEAD") return send(res, 200, undefined, headers)
+    /* Đếm theo nhóm `select=status,count()` (mig 206) — gom theo các cột thường trong select. */
+    const sel = url.searchParams.get("select") || ""
+    if (/(^|,)\s*count\(\)/.test(sel)) {
+      const cot = sel.split(",").map((x) => x.trim()).filter((x) => x && !x.includes("(") && !x.includes(":"))
+      const nhom = new Map()
+      for (const r of rows.filter(match)) {
+        const k = JSON.stringify(cot.map((c) => r[c] ?? null))
+        const g = nhom.get(k) || { ...Object.fromEntries(cot.map((c) => [c, r[c] ?? null])), count: 0 }
+        g.count++
+        nhom.set(k, g)
+      }
+      return send(res, 200, Array.from(nhom.values()))
+    }
     if ((req.headers.accept || "").includes("vnd.pgrst.object")) {
       if (out.length !== 1) return send(res, 406, { code: "PGRST116", message: `JSON object requested, ${out.length} rows returned` }, headers)
       return send(res, 200, out[0], headers)

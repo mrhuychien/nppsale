@@ -1,5 +1,6 @@
 "use client"
 
+import { docDemNhom, tongDem } from "@/lib/list/dem-nhom"
 import { nhoNen, coLoi } from "@/lib/cache/nho-nen"
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
@@ -617,6 +618,20 @@ export default function OrdersPage() {
               head: true,
             })
         )
+      /* Một lượt gom nhóm (mig 206) — bật rồi thì khỏi 8 lượt đếm bên dưới. */
+      const nhom = docDemNhom(
+        await applyCommonFilters(
+          supabase.from("sales_orders").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()")
+        )
+      )
+      if (cancelled) return
+      if (nhom) {
+        const counts: Record<string, number> = { all: tongDem(nhom) }
+        for (const st of COUNTED_STATUSES) counts[st] = nhom[st] ?? 0
+        for (const [tab, group] of Object.entries(TAB_STATUSES)) counts[tab] = group.reduce((n, st) => n + (counts[st] ?? 0), 0)
+        setStatusCounts(counts)
+        return
+      }
       const [total, ...resps] = await Promise.all([
         base(),
         /* ⚠ ĐẾM THEO TỪNG TRẠNG THÁI THẬT (`.eq`), rồi mới cộng theo nhóm ở dưới. Đi qua

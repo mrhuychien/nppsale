@@ -277,7 +277,7 @@ describe("Nạp quyền riêng lúc đăng nhập", () => {
 
   /** Đổi người đăng nhập thì nạp lại — không giữ bản của phiên trước. */
   it("nạp lại khi đổi người dùng", () => {
-    expect(LOADER).toContain("}, [orgId, userId])")
+    expect(LOADER).toContain("}, [orgId, userId, hanNho])")
   })
 })
 

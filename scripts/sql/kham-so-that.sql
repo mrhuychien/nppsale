@@ -360,4 +360,10 @@ SELECT 42, 'Mig 203 (Tìm khách theo địa chỉ)',
                       AND tim_kd NOT LIKE '%' || public.khong_dau(address) || '%')
        THEN 'CHƯA — gõ địa chỉ không dấu không ra khách'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 43. Mig 204 — đơn / lần ghé gần nhất của một trang khách trong một lượt
+SELECT 43, 'Mig 204 (Danh sách khách: lần cuối một lượt)',
+  CASE WHEN to_regprocedure('public.khach_lan_cuoi(uuid[])') IS NULL
+       THEN 'CHƯA — danh sách khách đọc đơn / lần ghé gần nhất bằng nhiều lượt (chậm)'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

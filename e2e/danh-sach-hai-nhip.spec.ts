@@ -19,7 +19,8 @@ test("Đơn hàng: mặc định 20 đơn / trang; chọn 50/trang thì phần c
   await api("sales_orders", "POST", ids.map((id, i) => ({
     id, org_id: ORG, order_code: `DH-HN-${String(i + 1).padStart(2, "0")}`, customer_id: KHACH, sales_user_id: OWNER,
     status: "submitted", subtotal: 100_000, vat: 0, total: 100_000, order_date: homNay,
-    created_at: new Date(Date.now() - i * 60_000).toISOString(), payment_terms: "COD",
+    /* Mới hơn mọi đơn mẫu (tạo 08:00 UTC) ở mọi giờ chạy — không thì trước 15h VN chúng chen vào 20 dòng đầu. */
+    created_at: new Date(Date.now() + 86_400_000 - i * 60_000).toISOString(), payment_terms: "COD",
     customer: { store_name: "Tạp hoá Cô Ba" }, sales_user: { full_name: "Chủ NPP" },
   })))
   try {

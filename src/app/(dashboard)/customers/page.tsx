@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docLanCuoi, type LanCuoi } from "@/lib/customers/lan-cuoi"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -406,24 +407,37 @@ export default function CustomersPage() {
         result: string | null
         sales_user?: { full_name?: string } | null
       }
-      const [lastOrdersRes, lastVisitsRes, assignsRes] = await Promise.all([
-        moiNhatTheoKhach<LastOrderRow>(ids, (lo) =>
-          supabase
-            .from("sales_orders")
-            .select("customer_id, order_code, order_date, total")
-            .in("customer_id", lo)
-            .order("order_date", { ascending: false })
-            .order("id")
-        ),
-        moiNhatTheoKhach<LastVisitRow>(ids, (lo) =>
-          supabase
-            .from("visit_logs")
-            .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
-            .in("customer_id", lo)
-            .order("visit_date", { ascending: false })
-            .order("check_in_at", { ascending: false })
-            .order("id")
-        ),
+      const docCu = () =>
+        Promise.all([
+          moiNhatTheoKhach<LastOrderRow>(ids, (lo) =>
+            supabase
+              .from("sales_orders")
+              .select("customer_id, order_code, order_date, total")
+              .in("customer_id", lo)
+              .order("order_date", { ascending: false })
+              .order("id")
+          ),
+          moiNhatTheoKhach<LastVisitRow>(ids, (lo) =>
+            supabase
+              .from("visit_logs")
+              .select("customer_id, visit_date, check_in_at, result, sales_user:users!visit_logs_sales_user_id_fkey(full_name)")
+              .in("customer_id", lo)
+              .order("visit_date", { ascending: false })
+              .order("check_in_at", { ascending: false })
+              .order("id")
+          ),
+        ])
+      const [lanCuoi, assignsRes] = await Promise.all([
+        /* ⚠ MỘT lượt qua `khach_lan_cuoi` (mig 204); sổ chưa chạy 204 thì về cách đọc cũ. */
+        docLanCuoi((fn, args) => supabase.rpc(fn, args), ids).then(async (r) => {
+          if (r.ket || r.loi) return r
+          const [o, v] = await docCu()
+          const ket: LanCuoi = { don: {}, ghe: {} }
+          for (const [cid, x] of Object.entries(o.map)) ket.don[cid] = { order_code: x.order_code, order_date: x.order_date, total: x.total }
+          for (const [cid, x] of Object.entries(v.map))
+            ket.ghe[cid] = { visit_date: x.visit_date, check_in_at: x.check_in_at, result: x.result, sales_user_name: x.sales_user?.full_name || null }
+          return { ket, loi: o.error ?? v.error }
+        }),
         // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
         // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
         // vẫn chỉ lấy người CHÍNH — xem repMap.
@@ -436,24 +450,10 @@ export default function CustomersPage() {
       if (assignsRes.error) console.error("[app/customers] truy vấn lỗi:", assignsRes.error.message)
       // ⚠ Đơn / lần ghé gần nhất đọc hỏng thì NÓI RA — ô trống ở đây đọc
       //   thành "khách chưa từng mua", một kết luận sai về người thật.
-      const aggErr = lastOrdersRes.error ?? lastVisitsRes.error
-      if (aggErr) setLoadError((prev) => prev ?? `Đơn / lần ghé gần nhất: ${aggErr}`)
+      if (lanCuoi.loi) setLoadError((prev) => prev ?? `Đơn / lần ghé gần nhất: ${lanCuoi.loi}`)
       if (cancelled) return
-      const orderMap: Record<string, LastOrderInfo> = {}
-      for (const [cid, o] of Object.entries(lastOrdersRes.map)) {
-        orderMap[cid] = { order_code: o.order_code, order_date: o.order_date, total: o.total }
-      }
-      setLastOrders(orderMap)
-      const visitMap: Record<string, LastVisitInfo> = {}
-      for (const [cid, v] of Object.entries(lastVisitsRes.map)) {
-        visitMap[cid] = {
-          visit_date: v.visit_date,
-          check_in_at: v.check_in_at,
-          result: v.result,
-          sales_user_name: v.sales_user?.full_name || null,
-        }
-      }
-      setLastVisits(visitMap)
+      setLastOrders(lanCuoi.ket?.don ?? {})
+      setLastVisits(lanCuoi.ket?.ghe ?? {})
       type AssignRow = {
         customer_id: string
         user_id: string

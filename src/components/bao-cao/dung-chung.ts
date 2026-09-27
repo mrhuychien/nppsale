@@ -85,12 +85,8 @@ export function luaChonLoc(dm: DanhMucBC | null, k: LoaiLoc): [string, string][]
   switch (k) {
     case "cust":
       return Array.from(dm.khach.entries()).map(([id, c]): [string, string] => [id, c.ten]).sort(theoTen)
-    case "cgroup":
-      return [...Array.from(dm.nhomKhach.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen), [CHUA_CO, CHUA_CO]]
     case "channel":
       return giaTriRieng(Array.from(dm.khach.values()).map((c) => c.kenh))
-    case "province":
-      return giaTriRieng(Array.from(dm.khach.values()).map((c) => c.tinh))
     case "staff":
     case "creator":
       return Array.from(dm.nv.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen)
@@ -98,8 +94,6 @@ export function luaChonLoc(dm: DanhMucBC | null, k: LoaiLoc): [string, string][]
       return Array.from(dm.sp.entries()).map(([id, s]): [string, string] => [id, s.sku ? `${s.ten} · ${s.sku}` : s.ten]).sort(theoTen)
     case "pgroup":
       return giaTriRieng(Array.from(dm.sp.values()).map((s) => s.nhom))
-    case "brand":
-      return giaTriRieng(Array.from(dm.sp.values()).map((s) => s.thuongHieu))
     case "ncc":
       return [...Array.from(dm.ncc.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen), [CHUA_CO, CHUA_CO]]
     case "ostatus":
@@ -123,8 +117,6 @@ export function tenGiaTri(dm: DanhMucBC | null, k: LoaiLoc, v: string): string {
       return (v && dm?.nv.get(v)) || "Chưa gán nhân viên"
     case "prod":
       return (v && dm?.sp.get(v)?.ten) || "Không rõ mặt hàng"
-    case "cgroup":
-      return (v && dm?.nhomKhach.get(v)) || CHUA_CO
     case "ncc":
       return (v && dm?.ncc.get(v)) || CHUA_CO
     default:

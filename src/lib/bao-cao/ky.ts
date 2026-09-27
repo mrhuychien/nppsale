@@ -51,6 +51,17 @@ const dauTuan = (s: string) => congNgay(s, -((thu(s) + 6) % 7))
 const dauThang = (s: string) => s.slice(0, 8) + "01"
 const cuoiThang = (s: string) => congNgay(dauThang(congNgay(dauThang(s), 32)), -1)
 const doDaiThang = (s: string) => soNgay(dauThang(s), cuoiThang(s)) + 1
+
+/**
+ * Chỉ tiêu của kỳ [a, b] từ chỉ tiêu THÁNG (mức doanh số chung A — cài đặt lương): mỗi ngày
+ * trong kỳ góp A / số ngày của tháng chứa nó. Cả tháng 9 = A; 1–15/09 = A/2; 2 tháng = 2A.
+ */
+export function chiTieuKy(A: number, a: string, b: string): number {
+  if (!(A > 0) || b < a) return 0
+  let tong = 0
+  for (let d = a; d <= b; d = congNgay(d, 1)) tong += 1 / doDaiThang(d)
+  return Math.round(A * tong)
+}
 const dauQuy = (s: string) => {
   const m = Number(s.slice(5, 7))
   return `${s.slice(0, 4)}-${String(Math.floor((m - 1) / 3) * 3 + 1).padStart(2, "0")}-01`

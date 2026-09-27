@@ -4,8 +4,8 @@
  * MÀN 2 — BÁN HÀNG (`/bao-cao/ban-hang`). Spec mục 4, thiết kế 26/09/2026.
  * "Bán được gì, cho ai, ai bán, đơn đặt ra sao?"
  * - Nguồn [Hoá đơn] (doanh thu thật) · [Đơn đặt] (số hoạt động — băng hổ phách).
- * - Xem theo: Thời gian · Mặt hàng · Nhóm hàng · Thương hiệu · Khách · Nhóm khách · Kênh · Tỉnh ·
- *   Nhân viên. Bấm dòng / cột / thanh = đào sâu; điểm cuối là chứng từ.
+ * - Xem theo: Thời gian · Mặt hàng · Nhóm hàng · Khách · Kênh · Nhân viên (chủ nhà 27/09/2026 bỏ
+ *   Thương hiệu, Nhóm khách, Tỉnh). Bấm dòng / cột / thanh = đào sâu; điểm cuối là chứng từ.
  * - NVBH: lọc nhân viên khoá vào chính mình, không có chế độ Nhân viên, không có cột lãi.
  */
 import { useMemo, useRef, useState } from "react"
@@ -18,26 +18,24 @@ import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
 import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
-import { kyTheoMa, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, type Ky } from "@/lib/bao-cao/ky"
+import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
+import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, type Ky } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN, type BuocDao } from "@/lib/bao-cao/trang-thai"
-import { congBan, gomBan, congDat, gomDat, quaLoc, hienSoLuong, CHUA_CO, type DanhMucBC, type DongBan, type DongDat, type LoaiLoc, type NhomBan, type NhomDat } from "@/lib/bao-cao/cong"
+import { congBan, gomBan, congDat, gomDat, quaLoc, maChuaCoGiaVon, hienSoLuong, CHUA_CO, type DanhMucBC, type DongBan, type DongDat, type LoaiLoc, type NhomBan, type NhomDat } from "@/lib/bao-cao/cong"
 import { soGon, phanTram, soSanh, duongXuHuong, soDu } from "@/lib/bao-cao/so"
 import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
 import { napDonDat } from "@/lib/bao-cao/nap-don-dat"
 import { loadDebtByCustomer } from "@/lib/sell/debt"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
-type Xem = "time" | "prod" | "pgroup" | "brand" | "cust" | "cgroup" | "channel" | "province" | "staff" | "docs"
+type Xem = "time" | "prod" | "pgroup" | "cust" | "channel" | "staff" | "docs"
 
 const CHIEU: Record<Exclude<Xem, "docs">, { label: string; loc?: LoaiLoc; tiep: Xem }> = {
   time: { label: "Thời gian", tiep: "cust" },
   prod: { label: "Mặt hàng", loc: "prod", tiep: "cust" },
   pgroup: { label: "Nhóm hàng", loc: "pgroup", tiep: "prod" },
-  brand: { label: "Thương hiệu", loc: "brand", tiep: "prod" },
   cust: { label: "Khách", loc: "cust", tiep: "prod" },
-  cgroup: { label: "Nhóm khách", loc: "cgroup", tiep: "cust" },
   channel: { label: "Kênh", loc: "channel", tiep: "cust" },
-  province: { label: "Tỉnh", loc: "province", tiep: "cust" },
   staff: { label: "Nhân viên", loc: "staff", tiep: "cust" },
 }
 const DS_XEM = Object.keys(CHIEU) as Exclude<Xem, "docs">[]
@@ -49,10 +47,7 @@ function khoaChieu(xem: Exclude<Xem, "docs" | "time">, dm: DanhMucBC) {
       case "cust": return l.kh
       case "staff": return l.nv
       case "pgroup": return dm.sp.get(l.sp)?.nhom || CHUA_CO
-      case "brand": return dm.sp.get(l.sp)?.thuongHieu || CHUA_CO
-      case "cgroup": return dm.khach.get(l.kh)?.nhom || CHUA_CO
       case "channel": return dm.khach.get(l.kh)?.kenh || CHUA_CO
-      case "province": return dm.khach.get(l.kh)?.tinh || CHUA_CO
     }
   }
 }
@@ -64,10 +59,9 @@ function tenDong(xem: Exclude<Xem, "docs" | "time">, k: string, dm: DanhMucBC): 
   }
   if (xem === "cust") {
     const c = dm.khach.get(k)
-    return { n: c?.ten || "Khách đã xoá", s: [c?.kenh, c?.tinh].filter(Boolean).join(" · ") }
+    return { n: c?.ten || "Khách đã xoá", s: c?.kenh || "" }
   }
   if (xem === "staff") return { n: dm.nv.get(k) || "Chưa gán nhân viên", s: "" }
-  if (xem === "cgroup") return { n: dm.nhomKhach.get(k) || CHUA_CO, s: "" }
   return { n: k || CHUA_CO, s: "" }
 }
 
@@ -79,6 +73,8 @@ interface DuLieu {
   phieuTra: Awaited<ReturnType<typeof napSoBan>>["phieuTra"]
   don: Awaited<ReturnType<typeof napDonDat>>["don"]
   no: Record<string, number> | null
+  /** Mức doanh số chung A / tháng (cài đặt lương), 0 = chưa đặt. */
+  chiTieuThang: number
   thieu: boolean
 }
 
@@ -88,7 +84,9 @@ export function ManBanHang() {
   const bc = useBaoCao("reports", MAC_DINH_MAN["/bao-cao/ban-hang"])
   const { st, dat, daoThem, veBuoc, doiXem, homNay, khoaNV, xemGiaVon, orgId } = bc
   const nguon = st.nguon
-  const E = hieuLuc(st, st.xem || "time", khoaNV)
+  // Đường dẫn cũ `xem=brand|cgroup|province` (đã bỏ) → về Thời gian.
+  const xemGoc = st.xem in CHIEU ? st.xem : "time"
+  const E = hieuLuc(st, xemGoc, khoaNV)
   const ky: Ky = kyTheoMa(st.ky, homNay, st.ca, st.cb)
   const [a, b] = E.khoang || [ky.a, ky.b]
   const len = soNgay(a, b) + 1
@@ -100,10 +98,17 @@ export function ManBanHang() {
       ? async () => {
           const sb = createClient()
           const { dm, thieu } = await layDanhMuc(orgId)
-          const [sb1, sd, no] = await Promise.all([
+          const [sb1, sd, no, chiTieuThang] = await Promise.all([
             nguon === "inv" ? napSoBan(sb, orgId, tu, b, dm) : null,
             nguon === "ord" ? napDonDat(sb, orgId, tu, b) : null,
             nguon === "inv" ? loadDebtByCustomer().catch(() => null) : null,
+            // Mức doanh số chung A (hr_salary_config) — qua RPC một số (mig 196); lỗi thì ẩn cột chỉ tiêu.
+            nguon === "inv"
+              ? Promise.resolve(sb.rpc("my_sales_target")).then(
+                  (r) => (r.error ? 0 : Number(r.data) || 0),
+                  () => 0
+                )
+              : 0,
           ])
           return {
             dm,
@@ -113,6 +118,7 @@ export function ManBanHang() {
             dat: sd?.dong || [],
             don: sd?.don || new Map(),
             no,
+            chiTieuThang,
             thieu: thieu || !!sb1?.thieu || !!sd?.thieu,
           }
         }
@@ -150,6 +156,7 @@ export function ManBanHang() {
       const prev = cmp && st.soSanh ? d.ban.filter((l) => trong(l, cmp[0], cmp[1]) && qua(l)) : null
       const T = congBan(cur)
       const TP = prev ? congBan(prev) : null
+      const thieuGV = xemGiaVon ? maChuaCoGiaVon(cur, dm) : []
       const theoNgay = (f: (l: DongBan) => number) => {
         const v = new Array(len).fill(0)
         for (const l of cur) v[soNgay(a, l.ngay)] += f(l)
@@ -159,7 +166,7 @@ export function ManBanHang() {
         { id: "net", label: "Doanh thu thuần", value: soGon(T.net), info: GIAI_THICH.net, delta: soSanh(T.net, TP?.net, true), spark: theoNgay((l) => (l.loai > 0 ? l.tien : -l.tien)), onClick: () => doiXem("time") },
         { id: "ret", label: "Hàng trả", value: soGon(T.ret), info: GIAI_THICH.ret, delta: soSanh(T.ret, TP?.ret, false), spark: theoNgay((l) => (l.loai < 0 ? l.tien : 0)), onClick: () => doiXem("time") },
         ...(xemGiaVon
-          ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}`, delta: soSanh(T.gp, TP?.gp, true), spark: theoNgay((l) => l.loai * (l.tien - l.giaVon)), onClick: () => (setBatThem(["gp", "margin"]), doiXem("time")) } satisfies TheKpi]
+          ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}${thieuGV.length ? ` · ${thieuGV.length} mã chưa có giá vốn` : ""}`, tone: thieuGV.length ? "warning" : undefined, delta: soSanh(T.gp, TP?.gp, true), spark: theoNgay((l) => l.loai * (l.tien - l.giaVon)), onClick: () => (setBatThem(["gp", "margin"]), doiXem("time")) } satisfies TheKpi]
           : []),
         { id: "nInv", label: "Số hoá đơn", value: soDu(T.nInv), info: GIAI_THICH.nInv, delta: soSanh(T.nInv, TP?.nInv, true), onClick: () => daoThem({ l: "Hoá đơn", v: "docs" }) },
         { id: "avg", label: "TB / hoá đơn", value: soGon(T.avg), info: GIAI_THICH.avg, delta: soSanh(T.avg, TP?.avg, true), onClick: () => (setBatThem(["avg"]), doiXem("time")) },
@@ -199,8 +206,8 @@ export function ManBanHang() {
         )
       } else {
         const kf = view === "time" ? (l: DongBan) => khoaThoiGian(g, l.ngay) : khoaChieu(view as Exclude<Xem, "docs" | "time">, dm)
-        const m = gomBan(cur, kf)
-        const rong = (): NhomBan => ({ k: "", rev: 0, ret: 0, net: 0, cost: 0, gp: 0, nInv: 0, nCust: 0, avg: 0, nProd: 0, qty: 0, rqty: 0, last: "" })
+        const m = gomBan(cur, kf, dm)
+        const rong = (): NhomBan => ({ k: "", rev: 0, ret: 0, net: 0, cost: 0, gp: 0, nInv: 0, nCust: 0, avg: 0, nProd: 0, qty: 0, rqty: 0, last: "", qtyDv: {}, rqtyDv: {}, listed: 0 })
         const nhom: NhomBC[] =
           view === "time"
             ? dsThoiGian.map((t, i) => ({ ...(m.get(t.k) || rong()), k: t.k, _n: t.label, _sub: t.sub, _s: i, r: t.r }))
@@ -208,7 +215,10 @@ export function ManBanHang() {
                 const n = tenDong(view as Exclude<Xem, "docs" | "time">, x.k, dm)
                 return { ...x, _n: n.n, _sub: n.s }
               })
-        const tong: NhomBC = { _n: "Tổng", ...T, nProd: new Set(cur.filter((l) => l.loai > 0 && l.sp).map((l) => l.sp)).size, qty: 0, rqty: 0, last: "" }
+        const tatCa = gomBan(cur, () => "", dm).get("")
+        const tong: NhomBC = { _n: "Tổng", ...T, nProd: new Set(cur.filter((l) => l.loai > 0 && l.sp).map((l) => l.sp)).size, qty: 0, rqty: 0, last: "", qtyDv: tatCa?.qtyDv || {}, rqtyDv: tatCa?.rqtyDv || {}, listed: tatCa?.listed || 0 }
+        // Chỉ tiêu mỗi nhân viên = mức doanh số chung A (cài đặt lương) quy theo số ngày của kỳ.
+        const chiTieu = d.chiTieuThang ? chiTieuKy(d.chiTieuThang, a, b) : 0
         const M = {
           rev: { k: "rev", label: "Doanh thu", f: "money", v: (x: NhomBC) => x.rev } as CotBang<NhomBC>,
           ret: { k: "ret", label: "Hàng trả", f: "money", v: (x: NhomBC) => x.ret } as CotBang<NhomBC>,
@@ -243,7 +253,6 @@ export function ManBanHang() {
             ]
             break
           case "pgroup":
-          case "brand":
             cot = [M.net, M.share, M.nProd, M.gp, M.margin]
             break
           case "cust":
@@ -259,7 +268,27 @@ export function ManBanHang() {
             ]
             break
           case "staff":
-            cot = [M.net, M.nInv, M.nCust, phu(M.share), phu(M.ret), M.gp]
+            // Như báo cáo cũ "Hàng bán theo nhân viên" (chủ nhà 27/09/2026) + chỉ tiêu từ cài đặt lương.
+            cot = [
+              { k: "slBan", label: "SL bán", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.qtyDv), sub: "" }), coTong: true, wrap: true },
+              { k: "listed", label: "Giá trị niêm yết", f: "money", v: (x) => x.listed },
+              M.rev,
+              { k: "diff", label: "Chênh lệch", f: "money", v: (x) => (x.rev || 0) - (x.listed || 0) },
+              { k: "slTra", label: "SL trả", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.rqtyDv), sub: "" }), coTong: true, wrap: true },
+              { ...M.ret, label: "Giá trị trả", v: (x: NhomBC) => (x.ret ? -x.ret : 0) },
+              M.net,
+              ...(chiTieu
+                ? [
+                    { k: "target", label: "Chỉ tiêu", f: "money", v: (x: NhomBC) => (x.k ? chiTieu : null), noTot: true } as CotBang<NhomBC>,
+                    { k: "dat", label: "% đạt", f: "pct", v: (x: NhomBC) => (x.k ? (x.net || 0) / chiTieu : null), noTot: true, tone: (x: NhomBC) => ((x.net || 0) >= chiTieu ? "success" : (x.net || 0) < chiTieu * 0.7 ? "danger" : "warning") } as CotBang<NhomBC>,
+                  ]
+                : []),
+              phu(M.nInv),
+              phu(M.nCust),
+              phu(M.share),
+              M.gp,
+              M.margin,
+            ]
             break
           default:
             cot = [M.net, M.nCust, M.perCust, phu(M.share), M.gp]
@@ -329,6 +358,19 @@ export function ManBanHang() {
         bieuDo: view === "docs" ? null : bieuDo,
         tenXuat,
         rong: !cur.some((l) => l.loai > 0),
+        thieuGV: thieuGV.length ? (
+          <KhoiGap
+            tieuDe={`${thieuGV.length} mã hàng chưa có giá vốn — lãi gộp đang tính giá vốn 0`}
+            phai={`DT ${soGon(thieuGV.reduce((s, x) => s + x.tien, 0))}`}
+            testId="bc-thieu-gia-von"
+            dong={thieuGV.map((x) => ({
+              label: x.sku ? `${x.sku} · ${x.ten}` : x.ten,
+              sub: `Bán ${hienSoLuong(dm.sp.get(x.sp), x.sl).t} · bấm để xem khách mua`,
+              value: soDu(x.tien),
+              onClick: () => daoThem({ l: x.ten, v: "cust", f: { prod: x.sp } }),
+            }))}
+          />
+        ) : null,
         phu:
           view === "docs" ? null : (
             <>
@@ -463,15 +505,16 @@ export function ManBanHang() {
         )
       }
     }
-    return { kpis, bang, bieuDo: view === "docs" ? null : bieuDo, tenXuat, rong: cur.length === 0, phu: null }
+    return { kpis, bang, bieuDo: view === "docs" ? null : bieuDo, tenXuat, rong: cur.length === 0, phu: null, thieuGV: null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, a, b, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
 
   // Đường đào sâu
-  const tenGoc = `Bán hàng · Theo ${CHIEU[(coChieu(st.xem) ? st.xem : "time") as Exclude<Xem, "docs">].label.toLowerCase()}`
+  const tenGoc = `Bán hàng · Theo ${CHIEU[xemGoc as Exclude<Xem, "docs">].label.toLowerCase()}`
   const dao: MatDao[] = [{ label: tenGoc, onClick: () => veBuoc(0) }, ...st.dao.map((s: BuocDao, i: number) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["cust", "cgroup", "channel", "province", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "pgroup", "brand", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
+  const loai: LoaiLoc[] = ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "pgroup", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
   const nhanKy = `${tenKy(st.ky)} · ${nhanKhoang(ky.a, ky.b)}`
+  const dangDao = st.dao.length > 0
 
   return (
     <KhungBaoCao
@@ -500,6 +543,8 @@ export function ManBanHang() {
         />
       }
     >
+      {/* Đang đào sâu → bảng chi tiết ngay dưới đường đào sâu, không phải cuộn (chủ nhà 27/09/2026). */}
+      {dangDao && vm && !nap.loi && !bc.loading && vm.bang}
       <div className="flex flex-wrap items-center gap-2.5">
         <CongTacDoan
           className="w-full lg:w-[220px]"
@@ -520,6 +565,7 @@ export function ManBanHang() {
         <>
           {nap.data?.thieu && <ChuaDu text="Số liệu quá lớn, đang hiện 20.000 dòng đầu — thu hẹp kỳ hoặc thêm lọc." />}
           <HangKpi kpis={vm.kpis} />
+          {vm.thieuGV}
           {vm.rong && !st.dao.length ? (
             <KhongCoSo
               text={`${tenKy(st.ky)} chưa có ${nguon === "inv" ? "hoá đơn" : "đơn đặt"} nào${Object.keys(st.loc).length ? " khớp lọc" : ""} — đổi kỳ sang Tháng trước?`}
@@ -527,9 +573,9 @@ export function ManBanHang() {
             />
           ) : (
             <>
-              <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === (st.xem || "time") && !st.dao.length, onClick: () => doiXem(v) }))} />
+              <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />
+              {!dangDao && vm.bang}
               {vm.bieuDo}
-              {vm.bang}
               {vm.phu}
             </>
           )}

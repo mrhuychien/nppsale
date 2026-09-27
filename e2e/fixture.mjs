@@ -193,6 +193,8 @@ export const rpc = {
   post_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f004", invoice_code: "HD-E2E-3", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "partially_invoiced" }],
   assign_doc_seller: () => null,
   user_has_permission: () => true,
+  /* Mức doanh số chung A / tháng (cài đặt lương, mig 196) — cột Chỉ tiêu của Báo cáo tổng hợp. */
+  my_sales_target: () => 3000000,
   /* Phiếu lương của tôi (mig 201) — một kỳ đã chốt. */
   my_payslips: () => [{
     payroll_run_id: "00000000-0000-4000-8000-00000000a701", month: "2026-08-01", locked_at: "2026-09-02T03:00:00Z",

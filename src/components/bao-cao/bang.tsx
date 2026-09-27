@@ -4,7 +4,8 @@
  * BẢNG SỐ LIỆU CHUẨN của Báo cáo tổng hợp (spec mục 2.7):
  * - Cột đầu = tên chiều đang xem; cột chỉ số căn phải, chữ số thẳng cột.
  * - Nút "Cột" bật / tắt cột phụ. Bấm tiêu đề để sắp. DÒNG TỔNG ghim ngay dưới tiêu đề.
- * - Cột "% tổng" vẽ thanh mảnh trong ô. 50 dòng / trang (máy tính), "Tải thêm 20" (điện thoại).
+ * - Cột "% tổng" vẽ thanh mảnh trong ô. 20 dòng / trang, bảng không có thanh cuộn riêng (chủ nhà
+ *   27/09/2026: "hiển thị 20 dòng 1 trang, ko phải cuộn chuột"); điện thoại "Tải thêm 20".
  * - Điện thoại: bảng thành danh sách thẻ — tên, số chính bên phải, 2–3 số phụ dòng dưới.
  * - Cột giá vốn / lãi: không có quyền thì ẩn hẳn (không để trống, không "***").
  */
@@ -14,6 +15,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils"
 import { soDu, phanTram } from "@/lib/bao-cao/so"
 import { ngayDu } from "@/lib/bao-cao/ky"
+
+/** Số dòng một trang của bảng báo cáo (máy tính) — chủ nhà 27/09/2026. */
+export const SO_DONG_TRANG = 20
 
 export interface DongBang {
   _n: string
@@ -40,9 +44,15 @@ export interface CotBang<G> {
   cost?: boolean
   /** Dòng Tổng để trống ở cột này. */
   noTot?: boolean
+  /** Dòng Tổng vẫn hiện ô này dù là cột chữ / số lượng (vd "640 hộp · 120 chai"). */
+  coTong?: boolean
+  /** Cho xuống dòng (chuỗi dài) thay vì kéo rộng bảng. */
+  wrap?: boolean
   tone?: (g: G) => "danger" | "warning" | "muted" | "primary" | "success" | undefined
   render?: (g: G) => { t: string; tone?: "danger" | "warning" | "muted" | "primary" | "success"; sub?: string }
 }
+
+const GIAN_DONG = "min-w-[180px] max-w-[320px]"
 
 const mau = {
   danger: "text-destructive",
@@ -62,7 +72,7 @@ interface O {
 
 function oCua<G>(c: CotBang<G>, g: G, laTong: boolean, coSo: number): O {
   const right = c.f !== "text" && c.f !== "date"
-  if (laTong && (c.noTot || c.f === "text" || c.f === "date" || c.f === "qty")) return { t: "", sub: "", right, cls: "", bar: null }
+  if (laTong && (c.noTot || (!c.coTong && (c.f === "text" || c.f === "date" || c.f === "qty")))) return { t: "", sub: "", right, cls: "", bar: null }
   let v: unknown
   try {
     v = c.v(g)
@@ -186,7 +196,7 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.dong, sap, p.khongSap, hien.map((c) => c.k).join()])
 
-  const CO_TRANG = 50
+  const CO_TRANG = SO_DONG_TRANG
   const soTrang = Math.max(1, Math.ceil(dong.length / CO_TRANG))
   const trangNay = Math.min(trang, soTrang - 1)
   const dongMay = dong.slice(trangNay * CO_TRANG, (trangNay + 1) * CO_TRANG)
@@ -258,7 +268,7 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
       </div>
 
       {/* Máy tính */}
-      <div className="hidden max-h-[600px] overflow-auto border-t lg:block">
+      <div className="hidden overflow-x-auto border-t lg:block">
         <table className="w-full border-separate border-spacing-0 tabular-nums">
           <thead>
             <tr>
@@ -283,7 +293,7 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
                   <span className="text-xs font-medium text-muted-foreground"> · {p.phuTong ?? `${p.dong.length} dòng`}</span>
                 </td>
                 {tongO.map((o, i) => (
-                  <td key={i} style={{ top: 37 }} className={cn("sticky z-[2] whitespace-nowrap border-b border-primary/20 bg-primary/10 px-3.5 py-2 text-[13px] font-bold", o.right ? "text-right" : "text-left", o.cls)}>
+                  <td key={i} style={{ top: 37 }} className={cn("sticky z-[2] border-b border-primary/20", hien[i].wrap ? GIAN_DONG : "whitespace-nowrap", "bg-primary/10 px-3.5 py-2 text-[13px] font-bold", o.right ? "text-right" : "text-left", o.cls)}>
                     {o.t}
                   </td>
                 ))}
@@ -302,7 +312,7 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
                   {hien.map((c) => {
                     const o = oCua(c, g, false, coSo)
                     return (
-                      <td key={c.k} className={cn("whitespace-nowrap border-b px-3.5 py-2 align-middle text-[13px]", o.right ? "text-right" : "text-left", c.bold || g._bold ? "font-semibold" : "font-medium", o.cls)}>
+                      <td key={c.k} className={cn("border-b px-3.5 py-2 align-middle text-[13px]", c.wrap ? GIAN_DONG : "whitespace-nowrap", o.right ? "text-right" : "text-left", c.bold || g._bold ? "font-semibold" : "font-medium", o.cls)}>
                         {o.bar != null ? (
                           <div className="flex items-center justify-end gap-2">
                             <span>{o.t}</span>
@@ -326,12 +336,17 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
         </table>
       </div>
       {soTrang > 1 && (
-        <div className="hidden items-center justify-end gap-2 border-t px-3.5 py-2.5 text-xs text-muted-foreground lg:flex">
-          {trangNay * CO_TRANG + 1}–{Math.min(dong.length, (trangNay + 1) * CO_TRANG)} / {dong.length}
-          <button type="button" aria-label="Trang trước" onClick={() => setTrang(Math.max(0, trangNay - 1))} className="h-8 w-8 rounded-lg border bg-card">
+        <div className="hidden items-center justify-end gap-2 border-t px-3.5 py-2.5 text-xs text-muted-foreground lg:flex" data-testid="bc-phan-trang">
+          <span>
+            {trangNay * CO_TRANG + 1}–{Math.min(dong.length, (trangNay + 1) * CO_TRANG)} / {dong.length} dòng
+          </span>
+          <button type="button" aria-label="Trang trước" disabled={trangNay === 0} onClick={() => setTrang(Math.max(0, trangNay - 1))} className="h-8 w-8 rounded-lg border bg-card disabled:opacity-40">
             ‹
           </button>
-          <button type="button" aria-label="Trang sau" onClick={() => setTrang(Math.min(soTrang - 1, trangNay + 1))} className="h-8 w-8 rounded-lg border bg-card">
+          <span className="font-semibold text-foreground">
+            Trang {trangNay + 1} / {soTrang}
+          </span>
+          <button type="button" aria-label="Trang sau" disabled={trangNay >= soTrang - 1} onClick={() => setTrang(Math.min(soTrang - 1, trangNay + 1))} className="h-8 w-8 rounded-lg border bg-card disabled:opacity-40">
             ›
           </button>
         </div>

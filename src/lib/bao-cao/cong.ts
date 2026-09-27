@@ -11,6 +11,8 @@
  *   `credit_note_amount` (hàng đổi không tính). Xem `nap-ban-hang.ts`.
  */
 
+import { congSL, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
+
 /** Một dòng bán (+) hoặc dòng trả (−). */
 export interface DongBan {
   /** Ngày trừ / ghi doanh số — YYYY-MM-DD lịch VN. */
@@ -31,6 +33,10 @@ export interface DongBan {
   giaVon: number
   /** Số lượng đơn vị cơ sở, dương. */
   sl: number
+  /** Giá trị niêm yết của dòng bán (SL dòng × giá niêm yết của đơn vị dòng) — như báo cáo cũ. */
+  niemYet?: number
+  /** Dòng bán của mặt hàng CHƯA CÓ GIÁ VỐN trong kỳ (giá vốn đang tính = 0 → lãi gộp phồng). */
+  thieuGV?: true
 }
 
 /** Một dòng đơn đặt (không huỷ) — số HOẠT ĐỘNG, không phải doanh thu. */
@@ -70,6 +76,9 @@ export interface SanPhamBC {
   donViLon: { ten: string; heSo: number } | null
   /** Mọi đơn vị quy đổi (để quy dòng không có hệ số chụp về đơn vị cơ sở). */
   donVi?: { ten: string; heSo: number }[]
+  /** Giá bán lẻ (đơn vị cơ sở) + bảng giá CHUNG theo đơn vị — để tính giá trị niêm yết. */
+  giaBan?: number
+  bangGia?: { ten: string; gia: number }[]
 }
 
 /** Danh mục để dịch id → tên và tra chiều của khách / mặt hàng. */
@@ -93,9 +102,13 @@ export const danhMucRong = (): DanhMucBC => ({
 
 // ---------------------------------------------------------------- lọc
 
+/**
+ * ⚠ Không có Thương hiệu / Nhóm khách / Tỉnh / Bảng giá — chủ nhà 27/09/2026 bỏ khỏi mọi báo cáo
+ *   (cả lọc lẫn "Xem theo"). Đường dẫn cũ còn `l_brand`… thì bị bỏ qua khi đọc.
+ */
 export type LoaiLoc =
-  | "cust" | "cgroup" | "channel" | "province" | "staff"
-  | "prod" | "pgroup" | "brand" | "ncc"
+  | "cust" | "channel" | "staff"
+  | "prod" | "pgroup" | "ncc"
   | "ostatus" | "creator" | "pay" | "dstatus"
 
 export interface ThongTinLoc {
@@ -106,13 +119,10 @@ export interface ThongTinLoc {
 
 export const LOAI_LOC: Record<LoaiLoc, ThongTinLoc> = {
   cust: { label: "Khách hàng", short: "Khách", unit: "khách" },
-  cgroup: { label: "Nhóm khách", unit: "nhóm khách" },
   channel: { label: "Kênh / tuyến", short: "Kênh", unit: "kênh" },
-  province: { label: "Tỉnh", unit: "tỉnh" },
   staff: { label: "Nhân viên bán", short: "Nhân viên", unit: "NV" },
   prod: { label: "Mặt hàng", unit: "mặt hàng" },
   pgroup: { label: "Nhóm hàng", unit: "nhóm hàng" },
-  brand: { label: "Thương hiệu", unit: "thương hiệu" },
   ncc: { label: "Nhà cung cấp", short: "NCC", unit: "NCC" },
   ostatus: { label: "Trạng thái đơn", unit: "trạng thái" },
   creator: { label: "Người tạo", unit: "người" },
@@ -139,11 +149,8 @@ export function giaTriChieu(k: LoaiLoc, x: CoChieu, dm: DanhMucBC): string | und
     case "cust": return x.kh
     case "staff": return x.nv
     case "prod": return x.sp
-    case "cgroup": return x.kh === undefined ? undefined : dm.khach.get(x.kh)?.nhom || CHUA_CO
     case "channel": return x.kh === undefined ? undefined : dm.khach.get(x.kh)?.kenh || CHUA_CO
-    case "province": return x.kh === undefined ? undefined : dm.khach.get(x.kh)?.tinh || CHUA_CO
     case "pgroup": return x.sp === undefined ? undefined : dm.sp.get(x.sp)?.nhom || CHUA_CO
-    case "brand": return x.sp === undefined ? undefined : dm.sp.get(x.sp)?.thuongHieu || CHUA_CO
     case "ncc": return x.sp === undefined ? undefined : dm.sp.get(x.sp)?.ncc || CHUA_CO
     case "ostatus": return x.trangThai
     case "creator": return x.nguoiTao
@@ -198,14 +205,19 @@ export function congBan(ls: readonly DongBan[]): TongBan {
 export interface NhomBan extends TongBan {
   k: string
   nProd: number
-  /** SL cơ sở bán ra / trả về. */
+  /** SL cơ sở bán ra / trả về. ⚠ Cộng lẫn đơn vị khi nhóm nhiều mặt hàng — hiện `qtyDv`. */
   qty: number
   rqty: number
+  /** SL theo từng đơn vị cơ sở ("640 hộp · 120 chai") — bán ra / trả về. */
+  qtyDv: SLTheoDonVi
+  rqtyDv: SLTheoDonVi
+  /** Σ giá trị niêm yết của dòng bán; chênh lệch = rev − listed. */
+  listed: number
   /** Ngày bán gần nhất. */
   last: string
 }
 
-export function gomBan(ls: readonly DongBan[], khoa: (l: DongBan) => string): Map<string, NhomBan> {
+export function gomBan(ls: readonly DongBan[], khoa: (l: DongBan) => string, dm?: DanhMucBC): Map<string, NhomBan> {
   const m = new Map<string, { k: string; ls: DongBan[] }>()
   for (const l of ls) {
     const k = khoa(l)
@@ -216,18 +228,53 @@ export function gomBan(ls: readonly DongBan[], khoa: (l: DongBan) => string): Ma
   const out = new Map<string, NhomBan>()
   for (const { k, ls: gl } of Array.from(m.values())) {
     const t = congBan(gl)
-    let qty = 0, rqty = 0, last = ""
+    let qty = 0, rqty = 0, last = "", listed = 0
+    const qtyDv: SLTheoDonVi = {}, rqtyDv: SLTheoDonVi = {}
     const sp = new Set<string>()
     for (const l of gl) {
+      const dv = dm?.sp.get(l.sp)?.donViCoSo
       if (l.loai > 0) {
         qty += l.sl
+        listed += l.niemYet || 0
+        congSL(qtyDv, dv, l.sl)
         if (l.sp) sp.add(l.sp)
         if (l.ngay > last) last = l.ngay
-      } else rqty += l.sl
+      } else {
+        rqty += l.sl
+        congSL(rqtyDv, dv, l.sl)
+      }
     }
-    out.set(k, { ...t, k, nProd: sp.size, qty, rqty, last })
+    out.set(k, { ...t, k, nProd: sp.size, qty, rqty, last, qtyDv, rqtyDv, listed })
   }
   return out
+}
+
+export interface MaThieuGiaVon {
+  sp: string
+  sku: string
+  ten: string
+  /** Doanh thu (đã phân bổ) của mã trong các dòng đưa vào. */
+  tien: number
+  sl: number
+}
+
+/**
+ * Mã hàng bán ra mà chưa có giá vốn (chủ nhà 27/09/2026: "một số mã hàng chưa có giá vốn, phần
+ * Lãi gộp hãy chỉ ra các mã này"). Xếp theo doanh thu giảm dần — mã bán nhiều làm lệch lãi nhiều.
+ */
+export function maChuaCoGiaVon(ls: readonly DongBan[], dm: DanhMucBC): MaThieuGiaVon[] {
+  const m = new Map<string, MaThieuGiaVon>()
+  for (const l of ls) {
+    if (l.loai < 0 || !l.thieuGV || !l.sp) continue
+    let e = m.get(l.sp)
+    if (!e) {
+      const p = dm.sp.get(l.sp)
+      m.set(l.sp, (e = { sp: l.sp, sku: p?.sku || "", ten: p?.ten || "Không rõ mặt hàng", tien: 0, sl: 0 }))
+    }
+    e.tien += l.tien
+    e.sl += l.sl
+  }
+  return Array.from(m.values()).sort((a, b) => b.tien - a.tien)
 }
 
 // ---------------------------------------------------------------- cộng đơn đặt

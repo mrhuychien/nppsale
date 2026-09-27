@@ -34,7 +34,9 @@ interface SpTho {
   brand: string | null
   primary_supplier_id: string | null
   base_unit: string | null
+  sell_price?: number | string | null
   units?: { unit_name: string; conversion: number | string }[] | null
+  price_lists?: { unit_name: string; price: number | string; group_id: string | null }[] | null
 }
 
 export interface KetQuaDanhMuc {
@@ -52,7 +54,7 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
     }, `đọc ${bang}`)
   const [kh, sp, nv, nhom, tuyen, ncc, pc] = await Promise.all([
     doc<KhachTho>("customers", "id, store_name, group_id, channel, province, payment_terms, credit_limit"),
-    doc<SpTho>("products", "id, sku, name, category, brand, primary_supplier_id, base_unit, units:product_units(unit_name, conversion)"),
+    doc<SpTho>("products", "id, sku, name, category, brand, primary_supplier_id, base_unit, sell_price, units:product_units(unit_name, conversion), price_lists(unit_name, price, group_id)"),
     doc<{ id: string; full_name: string }>("users", "id, full_name"),
     doc<{ id: string; name: string }>("customer_groups", "id, name"),
     doc<{ id: string; code: string | null; name: string }>("sales_routes", "id, code, name"),
@@ -100,6 +102,9 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
       donViCoSo: p.base_unit || "",
       donViLon: lon || null,
       donVi,
+      giaBan: Number(p.sell_price) || 0,
+      // Chỉ bảng giá CHUNG (group_id rỗng) là giá niêm yết — như `giaNiemYetDonVi`.
+      bangGia: (p.price_lists || []).filter((g) => !g.group_id).map((g) => ({ ten: g.unit_name, gia: Number(g.price) || 0 })),
     })
   }
   const thieu = [kh, sp, nv, nhom, tuyen, ncc, pc].some((r) => r.truncated)
@@ -110,5 +115,10 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
 export function quyDoiTuDanhMuc(dm: DanhMucBC, spId: string) {
   const s = dm.sp.get(spId)
   if (!s) return null
-  return { base_unit: s.donViCoSo, units: (s.donVi || []).map((u) => ({ unit_name: u.ten, conversion: u.heSo })) }
+  return {
+    base_unit: s.donViCoSo,
+    units: (s.donVi || []).map((u) => ({ unit_name: u.ten, conversion: u.heSo })),
+    sell_price: s.giaBan ?? 0,
+    price_lists: (s.bangGia || []).map((g) => ({ unit_name: g.ten, price: g.gia, group_id: null })),
+  }
 }

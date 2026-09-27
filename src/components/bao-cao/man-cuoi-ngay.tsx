@@ -17,7 +17,7 @@ import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chu
 import { createClient } from "@/lib/supabase/client"
 import { congNgay, ngayDu, ngayThang, THU_VN, thu } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
-import { congBan, quaLoc, type LoaiLoc } from "@/lib/bao-cao/cong"
+import { congBan, quaLoc, maChuaCoGiaVon, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram, soSanh } from "@/lib/bao-cao/so"
 import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
 import { napKhoanThu, napPhieuChi, tonQuy } from "@/lib/bao-cao/nap-tien"
@@ -66,6 +66,7 @@ export function ManCuoiNgay() {
       x.don.filter((o) => String(o.order_date).slice(0, 10) === n && quaLoc({ kh: o.customer_id, nv: o.sales_user_id || "", nguoiTao: o.created_by || "" }, loc, dm))
     const L = dongNgay(d)
     const T = congBan(L)
+    const nThieuGV = xemGiaVon ? maChuaCoGiaVon(L, dm).length : 0
     const TP = st.soSanh ? congBan(dongNgay(congNgay(d, -1))) : null
     const O = donNgay(d)
     const song = O.filter((o) => o.status !== "cancelled")
@@ -81,7 +82,7 @@ export function ManCuoiNgay() {
       { id: "rev", label: "Doanh thu", value: soGon(T.rev), info: GIAI_THICH.rev, delta: soSanh(T.rev, TP?.rev, true), onClick: docs("Hoá đơn", "inv") },
       { id: "ret", label: "Hàng trả", value: soGon(T.ret), info: GIAI_THICH.ret, delta: soSanh(T.ret, TP?.ret, false), onClick: docs("Phiếu trả", "ret") },
       { id: "net", label: "Doanh thu thuần", value: soGon(T.net), info: GIAI_THICH.net, delta: soSanh(T.net, TP?.net, true) },
-      ...(xemGiaVon ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}`, delta: soSanh(T.gp, TP?.gp, true) } satisfies TheKpi] : []),
+      ...(xemGiaVon ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}${nThieuGV ? ` · ${nThieuGV} mã chưa có giá vốn` : ""}`, tone: nThieuGV ? "warning" : undefined, delta: soSanh(T.gp, TP?.gp, true) } satisfies TheKpi] : []),
     ]
     const tien: DongKhoi[] = [
       { label: "Tiền mặt thu", sub: `${tm.length} khoản thu`, value: soDu(sum(tm)), onClick: docs("Thu tiền mặt", "rcash") },
@@ -230,6 +231,8 @@ export function ManCuoiNgay() {
         ) : vm ? (
           <>
             {nap.data?.thieu && <ChuaDu text="Số liệu quá lớn, đang hiện 20.000 dòng đầu." />}
+            {/* Đang đào sâu → bảng chi tiết lên đầu (chủ nhà 27/09/2026). */}
+            {st.dao.length > 0 && vm.bang}
             <HangKpi kpis={vm.kpis} />
             {vm.rong && !st.dao.length ? (
               <KhongCoSo text={`${nhanNgay} chưa có đơn, hoá đơn hay khoản thu nào — xem ngày trước?`} nut={{ label: "Xem ngày trước", onClick: () => dat({ ngay: congNgay(d, -1), dao: [] }) }} />
@@ -241,7 +244,7 @@ export function ManCuoiNgay() {
                     <KhoiDanhSach tieuDe="Trạng thái đơn trong ngày" phai={`${vm.soDon} đơn`} dong={vm.trangThai} />
                   </div>
                 )}
-                {vm.bang}
+                {!st.dao.length && vm.bang}
               </>
             )}
           </>

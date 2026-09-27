@@ -379,10 +379,12 @@ export function ManTaiChinh() {
         <LoiDocSo text={`Đọc số tài chính hỏng: ${nap.loi}. Màn này không hiện số 0 thay cho phần lỗi.`} onThuLai={nap.taiLai} />
       ) : vm ? (
         <>
+          {/* Đang đào sâu → bảng chi tiết lên đầu (chủ nhà 27/09/2026). */}
+          {st.dao.length > 0 && vm.bang}
           <HangKpi kpis={vm.kpis} />
           <GhiChu text="Số toàn NPP, không có lọc." />
+          {!st.dao.length && vm.bang}
           {vm.bieuDo}
-          {vm.bang}
         </>
       ) : null}
       <XemNhanhChungTu ct={ct} onDong={() => setCt(null)} />

@@ -20,7 +20,7 @@ import {
   giaVonBinhQuanCoSo, soLuongCoSoDongHd, soLuongCoSoDongTra, giamGiaHoaDon,
   type RevenueInvoiceRow, type InvoiceLineRow, type ReturnSummaryRow, type ReturnLineRow,
 } from "@/lib/analytics/sales"
-import { nhanVienPhieuTra } from "@/lib/analytics/hang-ban-nhan-vien"
+import { nhanVienPhieuTra, giaTriNiemYetDong } from "@/lib/analytics/hang-ban-nhan-vien"
 import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import type { DanhMucBC, DongBan } from "./cong"
@@ -96,8 +96,11 @@ export function dungDongBan(p: {
     ls.forEach((l, i) => {
       const tien = i === ls.length - 1 ? conLai : Math.round((Number(l.line_total || 0) / S) * tong)
       conLai -= tien
-      const sl = soLuongCoSoDongHd(l, quyDoiTuDanhMuc(dm, l.product_id))
-      dong.push({ ...base, sp: l.product_id, tien, giaVon: sl * (p.giaVonCoSo.get(l.product_id) || 0), sl })
+      const qd = quyDoiTuDanhMuc(dm, l.product_id)
+      const sl = soLuongCoSoDongHd(l, qd)
+      const gvCoSo = p.giaVonCoSo.get(l.product_id) || 0
+      const niemYet = giaTriNiemYetDong(l, qd)
+      dong.push({ ...base, sp: l.product_id, tien, giaVon: sl * gvCoSo, sl, niemYet, ...(sl > 0 && !(gvCoSo > 0) ? { thieuGV: true as const } : {}) })
     })
   }
   const theoTra = new Map<string, ReturnLineRow[]>()

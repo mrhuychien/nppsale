@@ -80,7 +80,7 @@ export function ManCongNo() {
       type D = DongBang & NoKhach
       const ds: D[] = khach.map((k) => {
         const c = dm.khach.get(k.kh)
-        return { ...k, _n: c?.ten || "Khách đã xoá", _sub: [c?.kenh, c?.tinh].filter(Boolean).join(" · ") }
+        return { ...k, _n: c?.ten || "Khách đã xoá", _sub: c?.kenh || "" }
       })
       const cot: CotBang<D>[] = [
         { k: "nv", label: "NV phụ trách", f: "text", v: (x) => tenGiaTri(dm, "staff", x.nv) },
@@ -244,7 +244,7 @@ export function ManCongNo() {
 
   const goc = (st.xem || "customer") as keyof typeof XEM
   const dao: MatDao[] = [{ label: `Công nợ · Theo ${XEM[goc].toLowerCase()}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["cust", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "channel", "province", "dstatus"]
+  const loai: LoaiLoc[] = ["cust", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "channel", "dstatus"]
   return (
     <KhungBaoCao
       href="/bao-cao/cong-no"
@@ -276,14 +276,16 @@ export function ManCongNo() {
       ) : vm ? (
         <>
           {nap.data?.thieu && <ChuaDu text="Số liệu quá lớn, đang hiện 20.000 dòng đầu — thêm lọc để thu hẹp." />}
+          {/* Đang đào sâu → bảng chi tiết lên đầu (chủ nhà 27/09/2026). */}
+          {st.dao.length > 0 && vm.bang}
           <HangKpi kpis={vm.kpis} />
           {khoaNV && <GhiChu text="Chỉ hiện khách bạn phụ trách." />}
           <HangChon
             nhan="Xem theo"
             ds={(Object.keys(XEM) as (keyof typeof XEM)[]).filter((v) => !(khoaNV && v === "staff")).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))}
           />
+          {!st.dao.length && vm.bang}
           {vm.bieuDo}
-          {vm.bang}
         </>
       ) : null}
       <XemNhanhChungTu ct={ct} onDong={() => setCt(null)} />

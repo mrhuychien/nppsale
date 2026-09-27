@@ -56,6 +56,29 @@ test("Bán hàng: bấm để đào sâu Khách → Mặt hàng → Hoá đơn �
   await expect(bang).toContainText("Theo khách")
 })
 
+test("Bán hàng theo nhân viên: cột như báo cáo cũ + chỉ tiêu; không còn Thương hiệu / Nhóm khách / Tỉnh", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto(`/bao-cao/ban-hang?${KY}&xem=staff`)
+  const bang = page.getByTestId("bc-bang")
+  for (const c of ["SL bán", "Giá trị niêm yết", "Doanh thu", "Chênh lệch", "SL trả", "Giá trị trả", "DT thuần", "Chỉ tiêu", "% đạt"]) {
+    await expect(bang.locator("th", { hasText: c }).first()).toBeVisible()
+  }
+  // Chỉ tiêu tháng 9 = mức doanh số chung A (3.000.000).
+  await expect(bang.getByRole("row", { name: /Chủ NPP/ })).toContainText("3.000.000")
+  // Dữ liệu mẫu không có phiếu xuất → mã bán ra chưa có giá vốn: lãi gộp chỉ ra từng mã.
+  await expect(page.getByTestId("bc-kpi-gp")).toContainText("chưa có giá vốn")
+  await page.getByTestId("bc-thieu-gia-von").getByRole("button").first().click()
+  await expect(page.getByTestId("bc-thieu-gia-von")).toContainText("Sữa hộp")
+  const xemTheo = page.getByTestId("bc-xem-theo")
+  for (const x of ["Thương hiệu", "Nhóm khách", "Tỉnh"]) await expect(xemTheo.getByRole("button", { name: x })).toHaveCount(0)
+  // Đào sâu → bảng chi tiết lên ngay dưới đường đào sâu, trên các thẻ số.
+  await bang.getByRole("row", { name: /Chủ NPP/ }).click()
+  await expect(page.getByTestId("bc-duong-dao")).toContainText("Chủ NPP")
+  const yBang = (await page.getByTestId("bc-bang").boundingBox())!.y
+  const yKpi = (await page.getByTestId("bc-kpi-net").boundingBox())!.y
+  expect(yBang).toBeLessThan(yKpi)
+})
+
 test("Bán hàng: nguồn Đơn đặt có băng hổ phách; đổi chế độ xem giữ kỳ", async ({ page }) => {
   await dangNhap(page)
   await page.goto(`/bao-cao/ban-hang?${KY}`)

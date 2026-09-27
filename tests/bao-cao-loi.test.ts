@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { kyTheoMa, chiaThoiGian, doHat, khoaThoiGian, congNgay, homNayVN, nhanKhoang } from "@/lib/bao-cao/ky"
 import { soGon, soDu, soSanh, phanTram, boDau } from "@/lib/bao-cao/so"
-import { congBan, gomBan, congDat, quaLoc, hienSoLuong, danhMucRong, type DongBan, type DongDat } from "@/lib/bao-cao/cong"
+import { congBan, gomBan, congDat, quaLoc, hienSoLuong, danhMucRong, LOAI_LOC, type DongBan, type DongDat } from "@/lib/bao-cao/cong"
 import { docTrangThai, ghiTrangThai, hieuLuc, TRANG_THAI_GOC } from "@/lib/bao-cao/trang-thai"
 
 describe("kỳ báo cáo (spec 2.3)", () => {
@@ -97,9 +97,14 @@ describe("cộng dồn dòng bán", () => {
     dm.khach.set("k1", { ten: "Cô Ba", nhom: "g1", kenh: "Tuyến A", tinh: "Hải Phòng", nv: "n1", hanMuc: 0, hanNo: 0 })
     dm.sp.set("p1", { ten: "Sữa", sku: "S", nhom: "Sữa", thuongHieu: "", ncc: "c1", donViCoSo: "hộp", donViLon: null })
     expect(quaLoc({ kh: "k1", sp: "p1" }, { channel: ["Tuyến A"], ncc: ["c1"] }, dm)).toBe(true)
-    expect(quaLoc({ kh: "k1", sp: "p1" }, { province: ["Hà Nội"] }, dm)).toBe(false)
+    expect(quaLoc({ kh: "k1", sp: "p1" }, { channel: ["Tuyến B"] }, dm)).toBe(false)
     expect(quaLoc({ kh: "k1" }, { ncc: ["c9"] }, dm)).toBe(true) // phiếu thu không có mặt hàng
-    expect(quaLoc({ kh: "k1", sp: "p1" }, { brand: ["(Chưa có)"] }, dm)).toBe(true)
+    expect(quaLoc({ kh: "k1", sp: "p1" }, { pgroup: ["Sữa"] }, dm)).toBe(true)
+  })
+  it("bỏ lọc Thương hiệu / Nhóm khách / Tỉnh (chủ nhà 27/09/2026): đường dẫn cũ không còn lọc", () => {
+    for (const k of ["brand", "cgroup", "province"]) expect(k in LOAI_LOC).toBe(false)
+    const st = docTrangThai(new URLSearchParams("l_brand=Vinamilk&l_province=HN&l_cgroup=g1&l_cust=k1"))
+    expect(st.loc).toEqual({ cust: ["k1"] })
   })
   it("số lượng: đơn vị lớn + đơn vị cơ sở, không cộng lẫn", () => {
     const sp = { ten: "", sku: "", nhom: "", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 } }

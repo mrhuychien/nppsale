@@ -23,13 +23,15 @@ import { soGon, soDu } from "@/lib/bao-cao/so"
 import { napTonKho, napBienDong, tinhXnt, NGUONG_KHO, type TonMatHang, type LoKho, type DongXnt } from "@/lib/bao-cao/nap-kho"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
-const XEM = { current: "Tồn hiện tại", xnt: "Xuất – nhập – tồn", exp: "Sắp hết hạn", low: "Tồn thấp", slow: "Chậm bán", pgroup: "Nhóm hàng", brand: "Thương hiệu", ncc: "Nhà cung cấp" } as const
+const XEM = { current: "Tồn hiện tại", xnt: "Xuất – nhập – tồn", exp: "Sắp hết hạn", low: "Tồn thấp", slow: "Chậm bán", pgroup: "Nhóm hàng", ncc: "Nhà cung cấp" } as const
 type XemGoc = keyof typeof XEM
 
 export function ManKho() {
   const bc = useBaoCao("reports", MAC_DINH_MAN["/bao-cao/kho"])
   const { st, dat, daoThem, veBuoc, doiXem, homNay, xemGiaVon, orgId } = bc
-  const E = hieuLuc(st, st.xem || "current", null)
+  // Đường dẫn cũ `xem=brand` (đã bỏ) → về Tồn hiện tại.
+  const goc: XemGoc = st.xem in XEM ? (st.xem as XemGoc) : "current"
+  const E = hieuLuc(st, goc, null)
   const view = E.xem
   const ky = kyTheoMa(st.ky, homNay, st.ca, st.cb)
   const [a, b] = E.khoang || [ky.a, ky.b]
@@ -250,12 +252,12 @@ export function ManKho() {
           )
         }
       }
-    } else if (view === "pgroup" || view === "brand" || view === "ncc") {
+    } else if (view === "pgroup" || view === "ncc") {
       type D = DongBang & { k: string; giaTri: number; n: number }
       const m = new Map<string, D>()
       for (const x of ton) {
         const p = dm.sp.get(x.sp)
-        const k = (view === "pgroup" ? p?.nhom : view === "brand" ? p?.thuongHieu : p?.ncc) || CHUA_CO
+        const k = (view === "pgroup" ? p?.nhom : p?.ncc) || CHUA_CO
         const g = m.get(k) || { k, _n: view === "ncc" ? tenGiaTri(dm, "ncc", k) : k, giaTri: 0, n: 0 }
         g.giaTri += x.giaTri
         g.n += 1
@@ -283,9 +285,8 @@ export function ManKho() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, bd.data, bd.loi, bd.dangTai, JSON.stringify(E), view, a, b, xemGiaVon, homNay])
 
-  const goc = (st.xem || "current") as XemGoc
   const dao: MatDao[] = [{ label: `Kho · ${XEM[goc]}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["prod", "pgroup", "brand", "ncc"]
+  const loai: LoaiLoc[] = ["prod", "pgroup", "ncc"]
   return (
     <KhungBaoCao
       href="/bao-cao/kho"
@@ -319,13 +320,15 @@ export function ManKho() {
       ) : vm ? (
         <>
           {(nap.data?.thieu || bd.data?.thieu) && <ChuaDu text="Số liệu quá lớn, đang hiện 20.000 dòng đầu — thêm lọc để thu hẹp." />}
+          {/* Đang đào sâu → bảng chi tiết lên đầu (chủ nhà 27/09/2026). */}
+          {st.dao.length > 0 && vm.bang}
           <HangKpi kpis={vm.kpis} />
           <GhiChu
             text={`Ngưỡng: sắp hết hạn ≤ ${NGUONG_KHO.hetHan} ngày · tồn thấp khi đủ bán < ${NGUONG_KHO.tonThap} ngày · chậm bán khi ${NGUONG_KHO.khongBan} ngày không bán hoặc cần > ${NGUONG_KHO.banHet} ngày mới bán hết.`}
           />
           <HangChon nhan="Xem theo" ds={(Object.keys(XEM) as XemGoc[]).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))} />
+          {!st.dao.length && vm.bang}
           {vm.bieuDo}
-          {vm.bang}
         </>
       ) : null}
     </KhungBaoCao>

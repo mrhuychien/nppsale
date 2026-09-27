@@ -18,7 +18,7 @@ import { useNap, layDanhMuc, tenGiaTri } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { kyTheoMa, soNgay, doHat, chiaThoiGian, khoaThoiGian, tenKy, congNgay } from "@/lib/bao-cao/ky"
 import { lienKetMan, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
-import { congBan, gomBan, CHUA_CO, type DongBan } from "@/lib/bao-cao/cong"
+import { congBan, gomBan, maChuaCoGiaVon, CHUA_CO, type DongBan } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram, soSanh, duongXuHuong } from "@/lib/bao-cao/so"
 import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
 import { napDonChuaXuat } from "@/lib/bao-cao/nap-don-dat"
@@ -72,6 +72,7 @@ export function ManTongQuan() {
     const prev = cmp ? d.ban.dong.filter((l) => l.ngay >= cmp[0] && l.ngay <= cmp[1]) : null
     const T = congBan(cur)
     const TP = prev ? congBan(prev) : null
+    const nThieuGV = xemGiaVon ? maChuaCoGiaVon(cur, dm).length : 0
     const theoNgay = (f: (l: DongBan) => number) => {
       const v = new Array(len).fill(0)
       for (const l of cur) v[soNgay(a, l.ngay)] += f(l)
@@ -83,7 +84,7 @@ export function ManTongQuan() {
     const kpis: TheKpi[] = [
       { id: "net", label: "Doanh thu thuần", value: soGon(T.net), info: GIAI_THICH.net, delta: soSanh(T.net, TP?.net, true), spark: theoNgay((l) => l.loai * l.tien), onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...kyDi, xem: "time" })) },
       ...(xemGiaVon
-        ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}`, delta: soSanh(T.gp, TP?.gp, true), spark: theoNgay((l) => l.loai * (l.tien - l.giaVon)), onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...kyDi, xem: "time" })) } satisfies TheKpi]
+        ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}${nThieuGV ? ` · ${nThieuGV} mã chưa có giá vốn` : ""}`, tone: nThieuGV ? "warning" : undefined, delta: soSanh(T.gp, TP?.gp, true), spark: theoNgay((l) => l.loai * (l.tien - l.giaVon)), onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...kyDi, xem: "time" })) } satisfies TheKpi]
         : []),
       { id: "nInv", label: "Số hoá đơn", value: soDu(T.nInv), info: GIAI_THICH.nInv, delta: soSanh(T.nInv, TP?.nInv, true), onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...kyDi, xem: "time", dao: [{ l: "Hoá đơn", v: "docs" }] })) },
       { id: "cust", label: "Khách mua", value: soDu(T.nCust), info: GIAI_THICH.cust, delta: soSanh(T.nCust, TP?.nCust, true), onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...kyDi, xem: "cust" })) },

@@ -115,6 +115,16 @@ test("đọc một lượt ở máy chủ (mig 204): Bán hàng / Công nợ / K
   }
 })
 
+test("Bán hàng theo thời gian: ngày không có doanh số bỏ khỏi bảng", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto(`/bao-cao/ban-hang?${KY}`)
+  const bang = page.getByTestId("bc-bang")
+  await expect(bang.getByRole("row", { name: /^23\/09/ })).toContainText("900.000")
+  await expect(bang.getByRole("row", { name: /^22\/09/ })).toContainText("300.000")
+  await expect(bang.getByRole("row", { name: /^01\/09/ })).toHaveCount(0)
+  await expect(bang.getByTestId("bc-dong-tong")).toContainText("1.200.000")
+})
+
 test("Bán hàng: nguồn Đơn đặt có băng hổ phách; đổi chế độ xem giữ kỳ", async ({ page }) => {
   await dangNhap(page)
   await page.goto(`/bao-cao/ban-hang?${KY}`)

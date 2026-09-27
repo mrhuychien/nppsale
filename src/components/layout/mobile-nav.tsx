@@ -13,7 +13,13 @@ import {
 import { NEW_ORDER_HREF } from "@/lib/nav/new-order"
 
 // Quyền tra theo `href` trong `@/lib/nav/nav-permission` — không khai ở đây.
-interface NavItem { label: string; href: string; icon: LucideIcon }
+interface NavItem {
+  label: string
+  href: string
+  icon: LucideIcon
+  /** Sáng lên ở mọi trang dưới tiền tố này (mặc định: `href`). */
+  khop?: string
+}
 type NavAction = NavItem
 
 /**
@@ -46,7 +52,9 @@ const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: "Trang chủ", href: "/home", icon: Home },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
     { label: "Khách", href: "/customers", icon: Users },
-    { label: "Công nợ", href: "/receivables", icon: CreditCard },
+    /* Chủ nhà 27/09/2026: "Nút Công nợ thay bằng Báo cáo tổng hợp". NVBH không có màn Tổng
+       quan (reports.dashboard) nên mở thẳng Bán hàng; sáng ở mọi màn /bao-cao/*. */
+    { label: "Báo cáo", href: "/bao-cao/ban-hang", icon: BarChart3, khop: "/bao-cao" },
   ],
   warehouse: [
     { label: "Kho", href: "/inventory", icon: Boxes },
@@ -107,7 +115,7 @@ export function MobileNav({ role }: { role: Role }) {
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}
       >
         {left.map((i) => (
-          <NavTab key={i.href} item={i} active={isActive(pathname, i.href)} />
+          <NavTab key={i.href} item={i} active={isActive(pathname, i.khop ?? i.href)} />
         ))}
 
         {showAction && action && (
@@ -135,7 +143,7 @@ export function MobileNav({ role }: { role: Role }) {
         )}
 
         {right.map((i) => (
-          <NavTab key={i.href} item={i} active={isActive(pathname, i.href)} />
+          <NavTab key={i.href} item={i} active={isActive(pathname, i.khop ?? i.href)} />
         ))}
       </div>
     </nav>

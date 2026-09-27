@@ -65,6 +65,14 @@ function tenDong(xem: Exclude<Xem, "docs" | "time">, k: string, dm: DanhMucBC): 
   return { n: k || CHUA_CO, s: "" }
 }
 
+/**
+ * Theo thời gian: ngày / tuần / tháng KHÔNG có doanh số thì bỏ khỏi BẢNG (chủ nhà 27/09/2026:
+ * "các ngày có doanh số bằng 0 thì bỏ khỏi bảng"). Biểu đồ vẫn đủ trục ngày để thấy nhịp bán.
+ * ⚠ Ngày có trả hàng mà không bán vẫn giữ — doanh thu thuần của ngày đó âm, bỏ đi là lệch tổng.
+ */
+export const coBan = (x: { rev?: number; ret?: number }) => (x.rev || 0) !== 0 || (x.ret || 0) !== 0
+export const coDat = (x: { val?: number }) => (x.val || 0) !== 0
+
 interface DuLieu {
   dm: DanhMucBC
   ban: DongBan[]
@@ -307,7 +315,7 @@ export function ManBanHang() {
             tieuDe={"Theo " + c.label.toLowerCase()}
             cotDau={view === "time" ? (g === "day" ? "Ngày" : g === "week" ? "Tuần" : "Tháng") : c.label}
             cot={cot}
-            dong={nhom}
+            dong={view === "time" ? nhom.filter(coBan) : nhom}
             tong={tong}
             coSo={T.net}
             sapMacDinh={view === "time" ? { k: "_n", dir: 1 } : { k: "net", dir: -1 }}
@@ -476,7 +484,7 @@ export function ManBanHang() {
             { k: "not", label: "Chưa xuất", f: "money", v: (x) => x.not, tone: (x) => ((x.not || 0) > 0 ? "warning" : undefined) },
             { k: "share", label: "% tổng", f: "share", v: (x) => x.val, opt: true },
           ]}
-          dong={nhom}
+          dong={view === "time" ? nhom.filter(coDat) : nhom}
           tong={{ _n: "Tổng", ...T }}
           coSo={T.val}
           sapMacDinh={view === "time" ? { k: "_n", dir: 1 } : { k: "val", dir: -1 }}

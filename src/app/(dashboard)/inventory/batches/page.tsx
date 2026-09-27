@@ -1,30 +1,28 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
+import { viMatchAllWords } from "@/lib/search"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate, getExpiryStatus } from "@/lib/utils"
-import { BoxesIcon, Plus, Eye, AlertTriangle, Clock, RefreshCw } from "lucide-react"
+import { BoxesIcon, Plus, AlertTriangle, Clock, RefreshCw } from "lucide-react"
 import type { Batch, Product } from "@/types"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
@@ -38,6 +36,8 @@ import {
   type BatchColumnKey,
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
+
+type BatchRow = Batch & { product?: Product }
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -53,7 +53,6 @@ export default function BatchesPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [tab, setTab] = useState("all")
   const supabase = createClient()
-  const router = useRouter()
   const {
     columns: visibleColumns,
     setColumns,
@@ -65,7 +64,6 @@ export default function BatchesPage() {
     BATCH_COLUMNS,
     []
   )
-  const show = (k: BatchColumnKey) => visibleColumns.includes(k)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
   const locNC = useAdvancedFilter("inventory-batches", LOC_LO_HANG)
 
@@ -162,193 +160,87 @@ export default function BatchesPage() {
     }
   }
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  /* Dải lọc (thay cho các tab cũ) — cùng `StatusChips` với đơn / hóa đơn. */
+  const [search, setSearch] = useState("")
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+  const theoTab = useMemo(() => {
+    const ds = tab === "sale" ? saleBatches : tab === "date" ? dateBatches : tab === "fefo" ? fefoBatches : tab === "expiring" ? expiring : locBatches
+    const t = search.trim()
+    return t ? ds.filter((b) => viMatchAllWords(t, b.product?.name, b.batch_code, b.location)) : ds
+  }, [tab, search, locBatches, saleBatches, dateBatches, fefoBatches, expiring])
+  const { pg, trang } = usePhanTrangTaiCho(theoTab, JSON.stringify([tab, search, locNC.key]))
+  const demNguoc = tab === "date" || tab === "fefo" || tab === "expiring"
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<BatchRow> & { k?: BatchColumnKey; khi?: boolean }> = [
+      {
+        key: "product", label: "Sản phẩm", width: "minmax(220px,2fr)",
+        sort: (a, b) => (a.product?.name ?? "").localeCompare(b.product?.name ?? "", "vi"),
+        render: (b) => <span className="block truncate text-sm font-bold">{b.product?.name}</span>,
+      },
+      { k: "batchCode", key: "batchCode", label: "Mã lô", width: "140px", render: (b) => <DocCodeLink href={`/inventory/batches/${b.id}`}>{b.batch_code}</DocCodeLink> },
+      {
+        k: "zone", key: "zone", label: "Kho", width: "90px",
+        render: (b) => <Badge variant={b.warehouse_zone === "date" ? "warning" : "success"} className="font-semibold">{b.warehouse_zone === "date" ? "Date" : "Bán"}</Badge>,
+      },
+      { k: "location", key: "location", label: "Vị trí", width: "120px", render: (b) => <DocCellText muted>{b.location}</DocCellText> },
+      { k: "qtyInitial", key: "qtyInitial", label: "Ban đầu", width: "100px", align: "right", render: (b) => b.qty_initial },
+      { k: "qtyOnHand", key: "qtyOnHand", label: "Tồn", width: "100px", align: "right", sort: (a, b) => Number(a.qty_on_hand) - Number(b.qty_on_hand), render: (b) => b.qty_on_hand },
+      { k: "manufacturedAt", key: "manufacturedAt", label: "NSX", width: "110px", render: (b) => <DocCellDate date={b.manufactured_at ? formatDate(b.manufactured_at) : "-"} /> },
+      {
+        k: "expiresAt", key: "expiresAt", label: "HSD", width: "130px",
+        sort: (a, b) => (a.expires_at ?? "").localeCompare(b.expires_at ?? ""),
+        render: (b) => {
+          const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
+          return <Badge variant={status === "danger" ? "danger" : status === "warning" ? "warning" : "success"}>{formatDate(b.expires_at)}</Badge>
+        },
+      },
+      {
+        key: "countdown", label: "Còn lại", width: "130px", khi: demNguoc,
+        render: (b) => {
+          const days = daysUntil(b.expires_at)
+          return (
+            <span className={`inline-flex items-center gap-1 text-xs font-semibold ${days < 30 ? "text-error" : days < 90 ? "text-[#b54708]" : "text-muted-foreground"}`}>
+              <Clock className="h-3 w-3" />
+              {days < 0 ? `Đã hết hạn ${Math.abs(days)}d` : `${days} ngày`}
+            </span>
+          )
+        },
+      },
+    ]
+    return cols.filter((c) => (c.khi ?? true) && (!c.k || visibleColumns.includes(c.k)))
+  }, [visibleColumns, demNguoc])
+
+  if (authLoading) return <Skeleton className="h-96" />
 
   const canCreate =
     user && ["warehouse", "owner"].includes(user.role) && hasPermission(user.role, "inventory", "create")
 
-  const renderTable = (rows: (Batch & { product?: Product })[], showCountdown = false) => (
-    <>
-      {/* Desktop table */}
-      <div className="hidden lg:block rounded-2xl border bg-card shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Sản phẩm</TableHead>
-              {show("batchCode") && <TableHead>Mã lô</TableHead>}
-              {show("zone") && <TableHead>Kho</TableHead>}
-              {show("location") && <TableHead>Vị trí</TableHead>}
-              {show("qtyInitial") && <TableHead className="text-right">Ban đầu</TableHead>}
-              {show("qtyOnHand") && <TableHead className="text-right">Tồn</TableHead>}
-              {show("manufacturedAt") && <TableHead>NSX</TableHead>}
-              {show("expiresAt") && <TableHead>HSD</TableHead>}
-              {showCountdown && <TableHead>Còn lại</TableHead>}
-              <TableHead className="w-32 text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((b) => {
-              const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
-              const days = daysUntil(b.expires_at)
-              const isCritical = days < 30
-              const isDateZone = b.warehouse_zone === "date"
-              return (
-                <TableRow
-                  key={b.id}
-                  className={`cursor-pointer ${isCritical && showCountdown ? "bg-error-container/50 hover:bg-error-container" : ""}`}
-                  onClick={() => router.push(`/inventory/batches/${b.id}`)}
-                >
-                  <TableCell className="font-medium">{b.product?.name}</TableCell>
-                  {show("batchCode") && <TableCell className="font-mono text-sm">{b.batch_code}</TableCell>}
-                  {show("zone") && (
-                    <TableCell>
-                      <Badge
-                        variant={isDateZone ? "warning" : "success"}
-                        className="font-semibold"
-                      >
-                        {isDateZone ? "Date" : "Bán"}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {show("location") && <TableCell>{b.location || "-"}</TableCell>}
-                  {show("qtyInitial") && <TableCell className="text-right tabular-nums">{b.qty_initial}</TableCell>}
-                  {show("qtyOnHand") && <TableCell className="text-right tabular-nums font-medium">{b.qty_on_hand}</TableCell>}
-                  {show("manufacturedAt") && <TableCell>{b.manufactured_at ? formatDate(b.manufactured_at) : "-"}</TableCell>}
-                  {show("expiresAt") && (
-                    <TableCell>
-                      <Badge
-                        variant={
-                          status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
-                        }
-                      >
-                        {formatDate(b.expires_at)}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {showCountdown && (
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs font-semibold ${
-                          days < 0
-                            ? "text-error"
-                            : days < 30
-                            ? "text-error"
-                            : days < 90
-                            ? "text-[#b54708]"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        <Clock className="h-3 w-3" />
-                        {days < 0 ? `Đã hết hạn ${Math.abs(days)}d` : `${days} ngày`}
-                      </span>
-                    </TableCell>
-                  )}
-                  <TableCell className="text-right">
-                    <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Mobile card list */}
-      <div className="lg:hidden space-y-3">
-        {rows.map((b) => {
-          const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
-          const days = daysUntil(b.expires_at)
-          const isCritical = days < 30
-          const isDateZone = b.warehouse_zone === "date"
-          return (
-            <div
-              key={b.id}
-              className={`relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform ${
-                isCritical && showCountdown ? "border-error/40 bg-error-container/30" : ""
-              }`}
-              onClick={() => router.push(`/inventory/batches/${b.id}`)}
-            >
-              <div className="p-4">
-                <div className="flex justify-between items-start gap-3 mb-2">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-extrabold text-base leading-tight truncate">
-                      {b.product?.name}
-                    </h3>
-                    <p className="font-mono text-xs text-primary mt-0.5">
-                      Lô: {b.batch_code}
-                    </p>
-                    {b.location && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Vị trí: {b.location}
-                      </p>
-                    )}
-                  </div>
-                  <div className="shrink-0 flex flex-col items-end gap-1">
-                    <Badge variant={isDateZone ? "warning" : "success"} className="font-semibold">
-                      {isDateZone ? "Kho date" : "Kho bán"}
-                    </Badge>
-                    <Badge
-                      variant={
-                        status === "danger" ? "danger" : status === "warning" ? "warning" : "success"
-                      }
-                    >
-                      HSD: {formatDate(b.expires_at)}
-                    </Badge>
-                    {showCountdown && (
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs font-semibold ${
-                          days < 0
-                            ? "text-error"
-                            : days < 30
-                            ? "text-error"
-                            : days < 90
-                            ? "text-[#b54708]"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        <Clock className="h-3 w-3" />
-                        {days < 0 ? `Hết hạn ${Math.abs(days)}d` : `${days} ngày`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Ban đầu</p>
-                    <p className="font-medium">{b.qty_initial}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Tồn</p>
-                    <p className="font-bold">{b.qty_on_hand}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">NSX</p>
-                    <p className="font-medium">
-                      {b.manufactured_at ? formatDate(b.manufactured_at) : "-"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </>
-  )
+  const xem = xemId ? batches.find((b) => b.id === xemId) ?? null : null
+  const GOI_Y: Record<string, string> = {
+    sale: "Hàng còn xa hạn — bán theo giá list bình thường.",
+    date: "Hàng gần hạn — gom lại bán xả với giá ưu đãi. Tự động chuyển khi ≤ ngưỡng cấu hình ở Cài đặt giá.",
+    fefo: "Lô xếp theo hạn sử dụng tăng dần - ưu tiên xuất trước (First Expiry First Out)",
+  }
+  const RONG: Record<string, { title: string; description: string }> = {
+    sale: { title: "Kho hàng bán trống", description: "Tất cả lô hiện tại đều thuộc kho date" },
+    date: { title: "Chưa có hàng date", description: "Chưa có lô nào gần hạn — tất cả đang ở kho hàng bán" },
+    expiring: { title: "Không có lô sắp hết hạn", description: "Tất cả lô hàng còn hạn trên 30 ngày" },
+  }
+  const rong = batches.length === 0
+    ? {
+        title: loadError ? "Không tải được dữ liệu" : "Chưa có lô hàng",
+        description: loadError ? "Xem thông báo lỗi phía trên." : "Lô hàng sẽ được tạo khi nhập kho hoặc bằng nút 'Tạo lô mới'",
+      }
+    : search.trim()
+      ? { title: "Không có lô nào khớp", description: "Thử từ khoá khác." }
+      : RONG[tab] ?? { title: "Không có lô phù hợp", description: "Thử đổi bộ lọc." }
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý lô hàng" description={`${batches.length} lô hàng`} backHref="/inventory">
+      <PageHeader title="Quản lý lô hàng" descriptionDesktopOnly description={`${batches.length} lô hàng`} backHref="/inventory">
         <div className="flex items-center gap-2">
-          <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <ColumnPicker
-            available={BATCH_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
           {canCreate && (
             <Button variant="outline" size="sm" onClick={refreshZones} disabled={refreshing}>
               <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -403,78 +295,99 @@ export default function BatchesPage() {
         </Card>
       )}
 
-      {batches.length === 0 ? (
-        <EmptyState
-          icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />}
-          title={loadError ? "Không tải được dữ liệu" : "Chưa có lô hàng"}
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : "Lô hàng sẽ được tạo khi nhập kho hoặc bằng nút 'Tạo lô mới'"
-          }
-        />
-      ) : (
-        <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList>
-            <TabsTrigger value="all">Tất cả ({locBatches.length})</TabsTrigger>
-            <TabsTrigger value="sale">Kho hàng bán ({saleBatches.length})</TabsTrigger>
-            <TabsTrigger value="date">Kho hàng date ({dateBatches.length})</TabsTrigger>
-            <TabsTrigger value="fefo">FEFO (ưu tiên xuất)</TabsTrigger>
-            <TabsTrigger value="expiring">
-              Sắp hết hạn ({expiring.length})
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="all" className="mt-4">
-            {renderTable(locBatches)}
-          </TabsContent>
-          <TabsContent value="sale" className="mt-4">
-            <p className="text-xs text-muted-foreground mb-2">
-              Hàng còn xa hạn — bán theo giá list bình thường.
-            </p>
-            {saleBatches.length === 0 ? (
-              <EmptyState
-                icon={<BoxesIcon className="h-8 w-8 text-muted-foreground" />}
-                title="Kho hàng bán trống"
-                description="Tất cả lô hiện tại đều thuộc kho date"
-              />
-            ) : (
-              renderTable(saleBatches)
-            )}
-          </TabsContent>
-          <TabsContent value="date" className="mt-4">
-            <p className="text-xs text-muted-foreground mb-2">
-              Hàng gần hạn — gom lại bán xả với giá ưu đãi. Tự động chuyển khi
-              ≤ ngưỡng cấu hình ở Cài đặt giá.
-            </p>
-            {dateBatches.length === 0 ? (
-              <EmptyState
-                icon={<Clock className="h-8 w-8 text-muted-foreground" />}
-                title="Chưa có hàng date"
-                description="Chưa có lô nào gần hạn — tất cả đang ở kho hàng bán"
-              />
-            ) : (
-              renderTable(dateBatches, true)
-            )}
-          </TabsContent>
-          <TabsContent value="fefo" className="mt-4">
-            <p className="text-xs text-muted-foreground mb-2">
-              Lô xếp theo hạn sử dụng tăng dần - ưu tiên xuất trước (First Expiry First Out)
-            </p>
-            {renderTable(fefoBatches, true)}
-          </TabsContent>
-          <TabsContent value="expiring" className="mt-4">
-            {expiring.length === 0 ? (
-              <EmptyState
-                icon={<AlertTriangle className="h-8 w-8 text-muted-foreground" />}
-                title="Không có lô sắp hết hạn"
-                description="Tất cả lô hàng còn hạn trên 30 ngày"
-              />
-            ) : (
-              renderTable(expiring, true)
-            )}
-          </TabsContent>
-        </Tabs>
-      )}
+      <StatusChips
+        active={tab}
+        onPick={setTab}
+        chips={[
+          { key: "all", label: "Tất cả", count: locBatches.length, accent: "#181c1e" },
+          { key: "sale", label: "Kho hàng bán", count: saleBatches.length, accent: "#22c55e" },
+          { key: "date", label: "Kho hàng date", count: dateBatches.length, accent: "#fdb022" },
+          { key: "fefo", label: "FEFO (ưu tiên xuất)", count: fefoBatches.length, accent: "#2563eb" },
+          { key: "expiring", label: "Sắp hết hạn", count: expiring.length, accent: "#ef5350" },
+        ]}
+      />
+
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm sản phẩm, mã lô, vị trí…"
+        activeCount={locNC.soDangAp}
+        onClear={locNC.xoa}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+      </MobileFilterBar>
+
+      <DocListLayout
+        toolbar={
+          <>
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm sản phẩm, mã lô, vị trí…" />
+            <XoaLocButton show={!!search} onClick={() => setSearch("")} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <ColumnPicker available={BATCH_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        /* Tồn của các lô là số lượng của nhiều mặt hàng khác đơn vị — cộng lại là vô nghĩa. */
+        totals={null}
+        totalsNote={GOI_Y[tab] ? <p className="text-xs text-muted-foreground">{GOI_Y[tab]}</p> : null}
+        loading={loading}
+        isEmpty={theoTab.length === 0}
+        empty={
+          <EmptyState
+            icon={tab === "date" ? <Clock className="h-8 w-8 text-muted-foreground" /> : tab === "expiring" ? <AlertTriangle className="h-8 w-8 text-muted-foreground" /> : <BoxesIcon className="h-8 w-8 text-muted-foreground" />}
+            title={rong.title}
+            description={rong.description}
+          />
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(b) => setXemId(b.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            onOpen={(b) => setXemId(b.id)}
+            card={(b) => {
+              const days = daysUntil(b.expires_at)
+              const isDateZone = b.warehouse_zone === "date"
+              return {
+                accent: days < 30 ? "#ef5350" : isDateZone ? "#fdb022" : "#22c55e",
+                title: b.product?.name ?? "—",
+                total: `Tồn ${b.qty_on_hand}`,
+                meta: [`Lô ${b.batch_code}`, b.location ? `Vị trí ${b.location}` : null].filter(Boolean).join(" · "),
+                payment: `HSD ${formatDate(b.expires_at)}`,
+                paymentCredit: days < 90,
+                summary: `${isDateZone ? "Kho date" : "Kho bán"} · Ban đầu ${b.qty_initial}${b.manufactured_at ? ` · NSX ${formatDate(b.manufactured_at)}` : ""}`,
+                badge: days < 0
+                  ? { label: `Hết hạn ${Math.abs(days)}d`, bg: "#fdecec", fg: "#b00020" }
+                  : days < 30 ? { label: `Còn ${days} ngày`, bg: "#fdecec", fg: "#b00020" } : null,
+              }
+            }}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.batch_code ?? "Lô hàng"}
+        subtitle={xem?.product?.name}
+        badge={xem ? <Badge variant={xem.warehouse_zone === "date" ? "warning" : "success"}>{xem.warehouse_zone === "date" ? "Kho date" : "Kho bán"}</Badge> : null}
+        fields={xem ? [
+          { label: "Sản phẩm", value: xem.product?.name, wide: true },
+          { label: "Tồn", value: String(xem.qty_on_hand) },
+          { label: "Ban đầu", value: String(xem.qty_initial) },
+          { label: "NSX", value: xem.manufactured_at ? formatDate(xem.manufactured_at) : null },
+          { label: "HSD", value: formatDate(xem.expires_at) },
+          { label: "Vị trí", value: xem.location },
+          { label: "Còn lại", value: daysUntil(xem.expires_at) < 0 ? `Đã hết hạn ${Math.abs(daysUntil(xem.expires_at))} ngày` : `${daysUntil(xem.expires_at)} ngày` },
+        ] : []}
+        detailHref={xem ? `/inventory/batches/${xem.id}` : undefined}
+      />
     </div>
   )
 }

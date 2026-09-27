@@ -1,13 +1,20 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
+import { viMatchAllWords } from "@/lib/search"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -44,7 +51,6 @@ export default function UsersPage() {
     setColumns,
     resetColumns,
   } = useListViewPrefs("settings-users", DEFAULT_USER_COLUMNS, [], USER_COLUMNS, [])
-  const show = (k: UserColumnKey) => visibleColumns.includes(k)
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
@@ -103,201 +109,167 @@ export default function UsersPage() {
     }
   }
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  /* Khuôn danh sách chung (chủ nhà 27/09/2026): dải trạng thái, ô tìm, lưới, thẻ, xem nhanh. */
+  const [status, setStatus] = useState("all")
+  const [search, setSearch] = useState("")
+  const [xemId, setXemId] = useState<string | null>(null)
+  const locRows = useMemo(() => {
+    const t = search.trim()
+    return t ? users.filter((u) => viMatchAllWords(t, u.full_name, u.phone, ROLE_LABELS[u.role])) : users
+  }, [users, search])
+  const counts = useMemo(() => ({
+    all: locRows.length,
+    active: locRows.filter((u) => u.is_active).length,
+    locked: locRows.filter((u) => !u.is_active).length,
+  }), [locRows])
+  const shown = useMemo(
+    () => (status === "all" ? locRows : locRows.filter((u) => (status === "active") === !!u.is_active)),
+    [locRows, status]
+  )
+  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([status, search]))
+
+  /** Nút thao tác của MỘT người — dùng chung cho cột Thao tác và ngăn xem nhanh. */
+  const thaoTac = (u: User, rong = false) =>
+    canManage ? (
+      <span className={`flex items-center gap-2 ${rong ? "w-full flex-wrap" : "justify-end"}`} onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" variant="outline" className={rong ? "h-11 flex-1" : undefined} onClick={() => setToggleTarget(u)}>
+          {u.is_active ? (
+            <>
+              <Lock className="h-4 w-4 mr-1" /> Tạm khóa
+            </>
+          ) : (
+            <>
+              <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
+            </>
+          )}
+        </Button>
+        <Button size="sm" variant="outline" className={rong ? "h-11 flex-1" : undefined} onClick={() => router.push(`/settings/users/${u.id}`)}>
+          <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
+        </Button>
+        {isOwner && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={`text-primary hover:bg-primary/10 ${rong ? "h-11" : ""}`}
+            onClick={() => setQrTarget(u)}
+            title="Mã QR đăng nhập"
+            aria-label="Mã QR đăng nhập"
+          >
+            <QrCode className="h-4 w-4" />
+          </Button>
+        )}
+        {isOwner && u.id !== currentUser?.id && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={`text-destructive hover:bg-destructive/10 ${rong ? "h-11" : ""}`}
+            onClick={() => setDeleteTarget(u)}
+            aria-label="Xoá người dùng"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+      </span>
+    ) : (
+      <span className="text-xs text-muted-foreground">-</span>
+    )
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<User> & { k?: UserColumnKey }> = [
+      {
+        key: "name", label: "Họ tên", width: "minmax(200px,1.5fr)",
+        sort: (a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? "", "vi"),
+        render: (u) => <span className="block truncate text-sm font-bold">{u.full_name}</span>,
+      },
+      { k: "role", key: "role", label: "Vai trò", width: "150px", render: (u) => <Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge> },
+      { k: "phone", key: "phone", label: "SĐT", width: "140px", render: (u) => <DocCellText muted>{u.phone}</DocCellText> },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "140px",
+        render: (u) => <Badge variant={u.is_active ? "success" : "secondary"}>{u.is_active ? "Đang hoạt động" : "Tạm khóa"}</Badge>,
+      },
+      { k: "action", key: "action", label: "Thao tác", width: "380px", align: "right", render: (u) => thaoTac(u) },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, canManage, isOwner, currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? users.find((u) => u.id === xemId) ?? null : null
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý người dùng" description={`${users.length} người dùng`} backHref="/settings">
-        <div className="flex items-center gap-2">
-          <ColumnPicker
-            available={USER_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-          {isOwner && (
-            <Button asChild>
-              <Link href="/settings/users/new">
-                <Plus className="mr-2 h-4 w-4" /> Tạo nhân viên
-              </Link>
-            </Button>
-          )}
-        </div>
+      <PageHeader title="Quản lý người dùng" descriptionDesktopOnly description={`${users.length} người dùng`} backHref="/settings">
+        {isOwner && (
+          <Button asChild>
+            <Link href="/settings/users/new">
+              <Plus className="mr-2 h-4 w-4" /> Tạo nhân viên
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
-      {users.length === 0 ? (
-        <EmptyState icon={<Users className="h-8 w-8 text-muted-foreground" />} title="Chưa có người dùng" description="Tạo người dùng qua Supabase Auth" />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden lg:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Họ tên</TableHead>
-                  {show("role") && <TableHead>Vai trò</TableHead>}
-                  {show("phone") && <TableHead>SĐT</TableHead>}
-                  {show("status") && <TableHead>Trạng thái</TableHead>}
-                  {show("action") && <TableHead className="text-right">Thao tác</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.full_name}</TableCell>
-                    {show("role") && <TableCell><Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge></TableCell>}
-                    {show("phone") && <TableCell>{u.phone || "-"}</TableCell>}
-                    {show("status") && (
-                      <TableCell>
-                        <Badge variant={u.is_active ? "success" : "secondary"}>
-                          {u.is_active ? "Đang hoạt động" : "Tạm khóa"}
-                        </Badge>
-                      </TableCell>
-                    )}
-                    {show("action") && (
-                      <TableCell className="text-right">
-                        {canManage ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setToggleTarget(u)}
-                            >
-                              {u.is_active ? (
-                                <>
-                                  <Lock className="h-4 w-4 mr-1" /> Tạm khóa
-                                </>
-                              ) : (
-                                <>
-                                  <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
-                                </>
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => router.push(`/settings/users/${u.id}`)}
-                            >
-                              <Pencil className="h-4 w-4 mr-1" /> Chỉnh sửa
-                            </Button>
-                            {isOwner && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-primary hover:bg-primary/10"
-                                onClick={() => setQrTarget(u)}
-                                title="Mã QR đăng nhập"
-                              >
-                                <QrCode className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {isOwner && u.id !== currentUser?.id && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive hover:bg-destructive/10"
-                                onClick={() => setDeleteTarget(u)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+      <StatusChips
+        active={status}
+        onPick={setStatus}
+        chips={[
+          { key: "active", label: "Đang hoạt động", count: counts.active, accent: "#22c55e" },
+          { key: "locked", label: "Tạm khóa", count: counts.locked, accent: "#98a2b3" },
+          { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
+        ]}
+      />
 
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
-            {users.map((u) => (
-              <div
-                key={u.id}
-                className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden"
-              >
-                <div className="p-4">
-                  <div className="flex justify-between items-start gap-3 mb-2">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-extrabold text-base leading-tight truncate">
-                        {u.full_name}
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {ROLE_LABELS[u.role] || u.role}
-                        </Badge>
-                        {u.phone && (
-                          <span className="text-xs text-muted-foreground">
-                            SĐT: {u.phone}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="shrink-0">
-                      <Badge variant={u.is_active ? "success" : "secondary"}>
-                        {u.is_active ? "Hoạt động" : "Tạm khóa"}
-                      </Badge>
-                    </div>
-                  </div>
-                  {canManage && (
-                    <div className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setToggleTarget(u)}
-                      >
-                        {u.is_active ? (
-                          <>
-                            <Lock className="h-4 w-4 mr-1" /> Tạm khóa
-                          </>
-                        ) : (
-                          <>
-                            <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => router.push(`/settings/users/${u.id}`)}
-                      >
-                        <Pencil className="h-4 w-4 mr-1" /> Sửa
-                      </Button>
-                      {isOwner && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-primary hover:bg-primary/10"
-                          onClick={() => setQrTarget(u)}
-                          title="Mã QR đăng nhập"
-                        >
-                          <QrCode className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {isOwner && u.id !== currentUser?.id && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive hover:bg-destructive/10"
-                          onClick={() => setDeleteTarget(u)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      {/* Màn không có bộ lọc nào ngoài ô tìm — thanh điện thoại chỉ có ô tìm. */}
+      <MobileFilterBar value={search} onChange={setSearch} placeholder="Tìm họ tên, SĐT, vai trò…" activeCount={0} open={false} onOpenChange={() => {}} />
+
+
+      <DocListLayout
+        toolbar={
+          <>
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm họ tên, SĐT, vai trò…" />
+            <XoaLocButton show={!!search} onClick={() => setSearch("")} />
+          </>
+        }
+        toolbarEnd={<ColumnPicker available={USER_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />}
+        totals={null}
+        loading={loading}
+        isEmpty={shown.length === 0}
+        empty={
+          <EmptyState
+            icon={<Users className="h-8 w-8 text-muted-foreground" />}
+            title={users.length === 0 ? "Chưa có người dùng" : "Không có người dùng khớp"}
+            description={users.length === 0 ? "Tạo người dùng qua Supabase Auth" : "Thử từ khoá khác."}
+          />
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(u) => setXemId(u.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            onOpen={(u) => setXemId(u.id)}
+            card={(u) => ({
+              accent: u.is_active ? "#22c55e" : "#98a2b3",
+              title: u.full_name,
+              total: "",
+              meta: [ROLE_LABELS[u.role] || u.role, u.phone ? `SĐT: ${u.phone}` : null].filter(Boolean).join(" · "),
+              badge: u.is_active ? null : { label: "Tạm khóa", bg: "#eef1f5", fg: "#565a67" },
+            })}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.full_name ?? "Người dùng"}
+        subtitle={xem ? ROLE_LABELS[xem.role] || xem.role : undefined}
+        badge={xem ? <Badge variant={xem.is_active ? "success" : "secondary"}>{xem.is_active ? "Đang hoạt động" : "Tạm khóa"}</Badge> : null}
+        fields={xem ? [
+          { label: "Vai trò", value: ROLE_LABELS[xem.role] || xem.role },
+          { label: "SĐT", value: xem.phone },
+        ] : []}
+        actions={xem && canManage ? thaoTac(xem, true) : null}
+      />
 
       <ConfirmDialog
         open={!!toggleTarget}

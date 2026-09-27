@@ -12,20 +12,17 @@ import { LOC_KHUYEN_MAI } from "@/lib/search/list-filter-fields"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Input } from "@/components/ui/input"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
 import {
   Select,
   SelectContent,
@@ -39,7 +36,7 @@ import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-ba
 import { formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
 import { PROMOTION_TYPES } from "@/lib/constants"
-import { Tag, Plus, TrendingUp, Trophy, Search, Power, PowerOff } from "lucide-react"
+import { Tag, Plus, Trophy, Power, PowerOff } from "lucide-react"
 import type { Promotion } from "@/types"
 import {
   PROMOTION_COLUMNS,
@@ -77,7 +74,6 @@ export default function PromotionsPage() {
     PROMOTION_COLUMNS,
     PROMOTION_FILTERS
   )
-  const show = (k: PromotionColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: PromotionFilterKey) => activeFilters.includes(k)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
   const locNC = useAdvancedFilter("promotions", LOC_KHUYEN_MAI)
@@ -119,7 +115,6 @@ export default function PromotionsPage() {
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 3)
 
-  const medalColors = ["bg-[#fff4ed] text-[#b54708]", "bg-surface-container-low text-on-surface-variant", "bg-[#fff4ed] text-[#c2410c]"]
 
   const toggleOne = (id: string, next: boolean) => {
     setSelectedIds((prev) => {
@@ -181,11 +176,90 @@ export default function PromotionsPage() {
       ]
     : []
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+
+  /* Số trên dải trạng thái — đếm trên mọi bộ lọc TRỪ trạng thái. */
+  const counts = useMemo(() => {
+    const c = { active: 0, inactive: 0, all: 0 }
+    for (const p of promotions) {
+      if (filterActive("search") && search && !viIncludes(p.name, viNormalize(search))) continue
+      if (filterActive("type") && typeFilter !== "all" && p.type !== typeFilter) continue
+      if (!khopLoc(p, LOC_KHUYEN_MAI, locNC.dieuKien)) continue
+      c.all += 1
+      c[p.is_active ? "active" : "inactive"] += 1
+    }
+    return c
+  }, [promotions, search, typeFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key]))
+  const thoiGian = (p: Promotion) => `${p.starts_at ? formatDate(p.starts_at) : "?"} - ${p.ends_at ? formatDate(p.ends_at) : "∞"}`
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Promotion> & { k?: PromotionColumnKey }> = [
+      ...(canEdit
+        ? [{
+            key: "select",
+            label: (
+              <Checkbox
+                checked={allSelected ? true : someSelected && !allSelected ? "indeterminate" : false}
+                onCheckedChange={(v) => toggleAll(!!v)}
+                aria-label="Chọn tất cả"
+              />
+            ),
+            width: "44px",
+            render: (p: Promotion) => (
+              <span onClick={(e) => e.stopPropagation()}>
+                <Checkbox checked={selectedIds.has(p.id)} onCheckedChange={(v) => toggleOne(p.id, !!v)} aria-label={`Chọn ${p.name}`} />
+              </span>
+            ),
+          }]
+        : []),
+      {
+        key: "name", label: "Tên chương trình", width: "minmax(240px,2fr)",
+        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        render: (p) => <DocCodeLink href={`/promotions/${p.id}`}>{p.name}</DocCodeLink>,
+      },
+      { k: "type", key: "type", label: "Loại", width: "160px", render: (p) => <Badge variant="outline">{getTypeLabel(p.type)}</Badge> },
+      { k: "priority", key: "priority", label: "Ưu tiên", width: "100px", align: "right", sort: (a, b) => a.priority - b.priority, render: (p) => p.priority },
+      { k: "period", key: "period", label: "Thời gian", width: "200px", render: (p) => <DocCellText muted>{thoiGian(p)}</DocCellText> },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "120px",
+        render: (p) => <Badge variant={p.is_active ? "success" : "secondary"}>{p.is_active ? "Đang chạy" : "Ngừng"}</Badge>,
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, canEdit, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? promotions.find((p) => p.id === xemId) ?? null : null
+  const typeSelect = (
+    <Select value={typeFilter} onValueChange={setTypeFilter}>
+      <SelectTrigger aria-label="Loại KM" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Loại KM" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả loại</SelectItem>
+        {PROMOTION_TYPES.map((t) => (
+          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  /* "So sánh ROI" cũ — top 3 theo ưu tiên — gọn thành một dòng phụ dưới dòng thống kê. */
+  const topNote = topPromos.length > 0 ? (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
+      <span className="inline-flex items-center gap-1"><Trophy className="h-3.5 w-3.5 text-[#b54708]" /> Ưu tiên cao nhất:</span>
+      {topPromos.map((p) => (
+        <button key={p.id} type="button" onClick={() => setXemId(p.id)} className="font-bold text-on-surface hover:underline">
+          {p.name} <span className="text-on-surface-variant">P{p.priority}</span>
+        </button>
+      ))}
+    </p>
+  ) : null
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Khuyến mãi" description={`${promotions.length} chương trình`}>
+      <PageHeader title="Khuyến mãi" descriptionDesktopOnly description={`${promotions.length} chương trình`}>
         {user && hasPermission(user.role, "promotions", "create") && (
           <Button onClick={() => router.push("/promotions/new")}>
             <Plus className="mr-2 h-4 w-4" /> Tạo KM
@@ -193,231 +267,92 @@ export default function PromotionsPage() {
         )}
       </PageHeader>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm tên chương trình..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        )}
-        {filterActive("type") && (
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Loại KM" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả loại</SelectItem>
-              {PROMOTION_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Trạng thái" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="active">Đang chạy</SelectItem>
-              <SelectItem value="inactive">Ngừng</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={PROMOTION_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={PROMOTION_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
+      {filterActive("status") && (
+        <StatusChips
+          active={statusFilter}
+          onPick={setStatusFilter}
+          chips={[
+            { key: "active", label: "Đang chạy", count: counts.active, accent: "#22c55e" },
+            { key: "inactive", label: "Ngừng", count: counts.inactive, accent: "#98a2b3" },
+            { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
+          ]}
+        />
+      )}
+
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm tên chương trình..."
+        activeCount={(typeFilter !== "all" ? 1 : 0) + locNC.soDangAp}
+        onClear={() => { setTypeFilter("all"); locNC.xoa() }}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          {filterActive("type") && <LocNhanhField label="Loại KM">{typeSelect}</LocNhanhField>}
+          <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
         </div>
-      </div>
+      </MobileFilterBar>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div>
-          {filtered.length === 0 ? (
-            <EmptyState
-              icon={<Tag className="h-8 w-8 text-muted-foreground" />}
-              title={
-                promotions.length === 0
-                  ? "Chưa có chương trình khuyến mãi"
-                  : "Không có KM phù hợp"
-              }
-            />
-          ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden lg:block overflow-x-auto rounded-2xl border bg-card shadow-sm">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      {canEdit && (
-                        <TableHead className="w-10">
-                          <Checkbox
-                            checked={allSelected ? true : someSelected && !allSelected ? "indeterminate" : false}
-                            onCheckedChange={(v) => toggleAll(!!v)}
-                            aria-label="Chọn tất cả"
-                          />
-                        </TableHead>
-                      )}
-                      <TableHead>Tên chương trình</TableHead>
-                      {show("type") && <TableHead>Loại</TableHead>}
-                      {show("priority") && <TableHead>Ưu tiên</TableHead>}
-                      {show("period") && <TableHead>Thời gian</TableHead>}
-                      {show("status") && <TableHead>Trạng thái</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((p) => {
-                      const checked = selectedIds.has(p.id)
-                      return (
-                        <TableRow
-                          key={p.id}
-                          className="cursor-pointer hover:bg-muted/40"
-                          onClick={() => router.push(`/promotions/${p.id}`)}
-                        >
-                          {canEdit && (
-                            <TableCell onClick={(e) => e.stopPropagation()}>
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(v) => toggleOne(p.id, !!v)}
-                                aria-label={`Chọn ${p.name}`}
-                              />
-                            </TableCell>
-                          )}
-                          <TableCell className="font-medium">{p.name}</TableCell>
-                          {show("type") && (
-                            <TableCell>
-                              <Badge variant="outline">{getTypeLabel(p.type)}</Badge>
-                            </TableCell>
-                          )}
-                          {show("priority") && <TableCell>{p.priority}</TableCell>}
-                          {show("period") && (
-                            <TableCell className="text-sm">
-                              {p.starts_at ? formatDate(p.starts_at) : "?"} -{" "}
-                              {p.ends_at ? formatDate(p.ends_at) : "∞"}
-                            </TableCell>
-                          )}
-                          {show("status") && (
-                            <TableCell>
-                              <Badge variant={p.is_active ? "success" : "secondary"}>
-                                {p.is_active ? "Đang chạy" : "Ngừng"}
-                              </Badge>
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+      <DocListLayout
+        toolbar={
+          <>
+            {filterActive("search") && <DocListSearch value={search} onChange={setSearch} placeholder="Tìm tên chương trình..." />}
+            {filterActive("type") && typeSelect}
+            <XoaLocButton show={!!search || typeFilter !== "all"} onClick={() => { setSearch(""); setTypeFilter("all") }} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={PROMOTION_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={PROMOTION_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        totals={null}
+        totalsNote={topNote}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<Tag className="h-8 w-8 text-muted-foreground" />}
+            title={promotions.length === 0 ? "Chưa có chương trình khuyến mãi" : "Không có KM phù hợp"}
+          />
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            onOpen={(p) => setXemId(p.id)}
+            select={canEdit ? { checked: (p) => selectedIds.has(p.id), onChange: (p, v) => toggleOne(p.id, v) } : undefined}
+            card={(p) => ({
+              accent: p.is_active ? "#22c55e" : "#98a2b3",
+              title: p.name,
+              total: `P${p.priority}`,
+              meta: thoiGian(p),
+              payment: getTypeLabel(p.type),
+              badge: p.is_active ? null : { label: "Ngừng", bg: "#eef1f5", fg: "#565a67" },
+            })}
+          />
+        }
+      />
 
-              {/* Mobile card list */}
-              <div className="lg:hidden space-y-3">
-                {filtered.map((p) => {
-                  const checked = selectedIds.has(p.id)
-                  return (
-                    <div
-                      key={p.id}
-                      className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden active:scale-[0.99] transition-transform"
-                    >
-                      <div className="p-4">
-                        <div className="flex justify-between items-start gap-3 mb-2">
-                          {canEdit && (
-                            <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(v) => toggleOne(p.id, !!v)}
-                                aria-label={`Chọn ${p.name}`}
-                              />
-                            </div>
-                          )}
-                          <div
-                            className="min-w-0 flex-1 cursor-pointer"
-                            onClick={() => router.push(`/promotions/${p.id}`)}
-                          >
-                            <h3 className="font-extrabold text-base leading-tight">
-                              {p.name}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                              <Badge variant="outline" className="text-xs">{getTypeLabel(p.type)}</Badge>
-                              <Badge variant="outline" className="text-xs">Ưu tiên: P{p.priority}</Badge>
-                            </div>
-                          </div>
-                          <div className="shrink-0">
-                            <Badge variant={p.is_active ? "success" : "secondary"}>
-                              {p.is_active ? "Đang chạy" : "Ngừng"}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="pt-2 mt-2 border-t text-xs text-muted-foreground">
-                          {p.starts_at ? formatDate(p.starts_at) : "?"} - {p.ends_at ? formatDate(p.ends_at) : "∞"}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ROI sidebar */}
-        <Card className="rounded-xl shadow-card h-fit">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              So sánh ROI
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Top 3 chương trình theo độ ưu tiên
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {topPromos.length === 0 ? (
-              <div className="text-sm text-muted-foreground italic">
-                Chưa có chương trình hoạt động
-              </div>
-            ) : (
-              topPromos.map((p, i) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 rounded-xl border p-3 hover:bg-muted/30 cursor-pointer transition-colors"
-                  onClick={() => router.push(`/promotions/${p.id}`)}
-                >
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${medalColors[i]}`}
-                  >
-                    <Trophy className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {getTypeLabel(p.type)}
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="shrink-0">
-                    P{p.priority}
-                  </Badge>
-                </div>
-              ))
-            )}
-            <div className="pt-2 text-xs text-muted-foreground border-t">
-              Dữ liệu lượt áp dụng sắp cập nhật
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.name ?? "Khuyến mãi"}
+        subtitle={xem ? thoiGian(xem) : undefined}
+        badge={xem ? <Badge variant={xem.is_active ? "success" : "secondary"}>{xem.is_active ? "Đang chạy" : "Ngừng"}</Badge> : null}
+        fields={xem ? [
+          { label: "Loại", value: getTypeLabel(xem.type) },
+          { label: "Ưu tiên", value: `P${xem.priority}` },
+          { label: "Bắt đầu", value: xem.starts_at ? formatDate(xem.starts_at) : "?" },
+          { label: "Kết thúc", value: xem.ends_at ? formatDate(xem.ends_at) : "∞" },
+        ] : []}
+        detailHref={xem ? `/promotions/${xem.id}` : undefined}
+      />
 
       <BulkActionsBar
         count={selectedIds.size}

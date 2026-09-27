@@ -23,8 +23,8 @@ interface Props {
   /** Số bộ lọc đang bật, KHÔNG tính ô tìm. */
   activeCount: number
   onClear?: () => void
-  /** Nội dung sheet lọc. */
-  children: React.ReactNode
+  /** Nội dung sheet lọc. Bỏ trống = màn không có bộ lọc nào ngoài ô tìm → không có nút Lọc. */
+  children?: React.ReactNode
   open: boolean
   onOpenChange: (o: boolean) => void
 }
@@ -68,6 +68,7 @@ export function MobileFilterBar({
               </button>
             )}
           </div>
+          {children != null && (
           <Button
             type="button"
             variant="outline"
@@ -82,9 +83,11 @@ export function MobileFilterBar({
               </span>
             )}
           </Button>
+          )}
         </div>
       </div>
 
+      {children != null && (
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="bottom" className="lg:hidden">
           <div className="space-y-4">{children}</div>
@@ -100,6 +103,7 @@ export function MobileFilterBar({
           </div>
         </SheetContent>
       </Sheet>
+      )}
     </>
   )
 }

@@ -86,6 +86,13 @@ describe("mảnh dùng chung của thanh công cụ", () => {
   })
 })
 
+describe("MobileFilterBar không có bộ lọc", () => {
+  it("không truyền nội dung lọc thì không có nút Lọc lẫn tấm lọc rỗng", () => {
+    const m = code(read("src/components/ui/mobile-filter-bar.tsx"))
+    expect(m.match(/\{children != null && \(/g)?.length).toBe(2)
+  })
+})
+
 describe("DocTable — bấm dòng xem nhanh, bấm mã sang chi tiết", () => {
   it("dòng gọi onOpen; mã chặn nổi bọt", () => {
     expect(TABLE).toContain("onClick={onOpen ? () => onOpen(r) : undefined}")
@@ -164,7 +171,9 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
  * DANH SÁCH ĐÃ VỀ KHUÔN CHUNG. Thêm màn nào vào khuôn thì thêm vào đây — chốt giữ cho màn ấy
  * không trôi về một bố cục riêng.
  */
-const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: boolean; thanhPhan?: string }> = [
+const DA_VE_KHUON: Array<{
+  duong: string; mobileFilter?: boolean; statusChips?: boolean; thanhPhan?: string; khongLocNangCao?: boolean
+}> = [
   { duong: "finance/cash-receipts", mobileFilter: true, statusChips: true },
   { duong: "finance/expenses", mobileFilter: true, statusChips: true },
   { duong: "purchasing/receipts", mobileFilter: true, statusChips: true },
@@ -175,12 +184,16 @@ const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: 
   { duong: "inventory/entries", mobileFilter: true, statusChips: true },
   { duong: "suppliers", mobileFilter: true, statusChips: true },
   { duong: "products", mobileFilter: true, statusChips: true, thanhPhan: "src/components/products/product-table.tsx" },
+  { duong: "promotions", mobileFilter: true, statusChips: true },
+  { duong: "inventory/batches", mobileFilter: true, statusChips: true },
+  // Danh sách người dùng: chưa có trường lọc nâng cao nào được khai báo cho bảng `users`.
+  { duong: "settings/users", mobileFilter: true, statusChips: true, khongLocNangCao: true },
   // Công nợ: điện thoại giữ dải tuổi nợ + thẻ có nút "Thu tiền" (NVBH đi thu).
   { duong: "receivables" },
 ]
 
 describe("các danh sách đã về khuôn chung", () => {
-  it.each(DA_VE_KHUON)("/$duong", ({ duong, mobileFilter, statusChips, thanhPhan }) => {
+  it.each(DA_VE_KHUON)("/$duong", ({ duong, mobileFilter, statusChips, thanhPhan, khongLocNangCao }) => {
     // Màn tách lưới ra thành phần riêng (sản phẩm) thì đọc cả thành phần ấy.
     const s = code(read(`src/app/(dashboard)/${duong}/page.tsx`)) + (thanhPhan ? "\n" + code(read(thanhPhan)) : "")
     expect(s, "không dùng khuôn DocListLayout").toContain("<DocListLayout")
@@ -193,7 +206,7 @@ describe("các danh sách đã về khuôn chung", () => {
     // Phân trang 20/trang: máy chủ (`usePagination()`) hoặc tại chỗ (`usePhanTrangTaiCho`).
     expect(s).toMatch(/usePagination\(\)|usePhanTrangTaiCho\(/)
     expect(s).toContain("<ColumnPicker")
-    expect(s).toContain("<AdvancedFilter")
+    if (!khongLocNangCao) expect(s).toContain("<AdvancedFilter")
     expect(s).toMatch(/totals=\{/)
     if (mobileFilter) expect(s).toContain("<MobileFilterBar")
     if (statusChips) expect(s).toContain("<StatusChips")

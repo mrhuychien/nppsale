@@ -23,6 +23,7 @@ import {
   loadSellRefDataShared,
   peekSellRefData,
   isSellCatalogFresh,
+  addSellCustomer,
   isCachedCatalogFresh,
   seedSellRefData,
   refreshSellStockShared,
@@ -71,6 +72,8 @@ interface SellDataValue {
   reload: () => void
   productById: (id: string) => SellProduct | undefined
   customerById: (id: string | null) => Customer | undefined
+  /** Thêm khách đọc riêng từ máy chủ (không có trong danh mục đã tải) — xem `loadOneSellCustomer`. */
+  addCustomer: (c: Customer) => void
   /**
    * Lọc theo CHỈ MỤC đã chuẩn hoá sẵn — xem `viSearchKey`. Trả mảng con
    * của `products` ĐÃ XẾP HẠNG theo độ khớp (chữ rỗng: thứ tự gốc).
@@ -163,6 +166,11 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tick])
 
+  const addCustomer = useCallback((c: Customer) => {
+    addSellCustomer(c)
+    setCustomers((ds) => (ds.some((x) => x.id === c.id) ? ds : [...ds, c]))
+  }, [])
+
   const productIndex = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const customerIndex = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers])
 
@@ -217,6 +225,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       reload,
       productById: (id) => productIndex.get(id),
       customerById: (id) => (id ? customerIndex.get(id) : undefined),
+      addCustomer,
       filterProducts,
       filterCustomers,
       listMemory,
@@ -231,6 +240,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       reload,
       productIndex,
       customerIndex,
+      addCustomer,
       filterProducts,
       filterCustomers,
     ]

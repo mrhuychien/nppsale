@@ -64,10 +64,39 @@ export function isSellCatalogFresh(now = Date.now()): boolean {
   return memo !== null && now - memo.catalogAt < CATALOG_FRESH_MS
 }
 
+const KHOA_CU = "sell-danh-muc-cu"
+
+/**
+ * Khách vừa được tạo / sửa (chủ nhà 27/09/2026) → danh mục bán hàng trên máy đã CŨ: lần mở /sell
+ * sau tải lại đủ, không đợi hết `CATALOG_FRESH_MS`. Ghi cả RAM lẫn mốc trên máy (bản IndexedDB).
+ */
+export function lamCuDanhMucBan(now = Date.now()): void {
+  if (memo) memo = { ...memo, catalogAt: 0 }
+  try {
+    localStorage.setItem(KHOA_CU, String(now))
+  } catch {
+    /* không có bộ nhớ trình duyệt — RAM đã đánh dấu là đủ cho phiên này */
+  }
+}
+
+function mocCu(): number {
+  try {
+    return Number(localStorage.getItem(KHOA_CU)) || 0
+  } catch {
+    return 0
+  }
+}
+
 /** Bản lưu trên máy (IndexedDB) còn đủ mới để khỏi tải lại danh mục. */
 export function isCachedCatalogFresh(cachedAt: string | number | null | undefined, now = Date.now()): boolean {
   const t = typeof cachedAt === "number" ? cachedAt : cachedAt ? Date.parse(cachedAt) : NaN
-  return Number.isFinite(t) && now - t >= 0 && now - t < CATALOG_FRESH_MS
+  return Number.isFinite(t) && now - t >= 0 && now - t < CATALOG_FRESH_MS && t > mocCu()
+}
+
+/** Thêm một khách vừa đọc riêng (khách mới tạo sau lần tải danh mục) vào bản trong RAM. */
+export function addSellCustomer(c: SellRefData["customers"][number]): void {
+  if (!memo || memo.data.customers.some((x) => x.id === c.id)) return
+  memo = { ...memo, data: { ...memo.data, customers: [...memo.data.customers, c] } }
 }
 
 /** Ghi bản danh mục đọc từ máy (IndexedDB) làm gốc, để làm mới TỒN KHO trên nó. */

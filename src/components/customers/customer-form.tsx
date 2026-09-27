@@ -1,5 +1,6 @@
 "use client"
 
+import { lamCuDanhMucBan } from "@/lib/sell/ref-store"
 import { useState, useEffect } from "react"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
@@ -277,6 +278,9 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
           variant: outcome.kind === "failed" ? "destructive" : undefined,
         })
       }
+
+      // Danh mục khách của /sell trên máy giờ đã cũ — lần mở sau tải lại (thấy khách mới / tên mới).
+      lamCuDanhMucBan()
 
       /**
        * ⚠ CHỈ QUAY VỀ LUỒNG CŨ KHI THẬT SỰ CÓ MÃ KHÁCH. `newId` rỗng nghĩa

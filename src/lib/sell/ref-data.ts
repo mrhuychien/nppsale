@@ -201,6 +201,25 @@ export async function peekCachedSellRefData(): Promise<SellRefData | null> {
   }
 }
 
+/**
+ * ĐỌC RIÊNG MỘT KHÁCH (chủ nhà 27/09/2026: "sao từ một số khách hàng ấn tạo đơn lại báo
+ * không tìm thấy khách hàng của đường dẫn này?").
+ *
+ * Danh mục của /sell giữ trên máy tới `CATALOG_FRESH_MS` và chỉ có khách ĐANG HOẠT ĐỘNG — nên
+ * khách vừa tạo sau lần tải danh mục, hay khách Tạm ngưng / Khoá, không có trong đó. Bấm "Tạo
+ * đơn" từ những khách ấy thì hỏi thẳng máy chủ thay vì kết luận "không tìm thấy".
+ * `null` = không có khách này (đã xoá / không thuộc đơn vị); lỗi mạng thì NÉM.
+ */
+export async function loadOneSellCustomer(supabase: unknown, id: string): Promise<Customer | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any
+  const doc = (cols: string) => sb.from("customers").select(cols).eq("id", id).maybeSingle() as Promise<{ data: Customer | null; error: { message: string } | null }>
+  let r = await doc(CUST_COLS)
+  if (r.error) r = await doc("*, group:customer_groups(*)")
+  if (r.error) throw new Error(r.error.message)
+  return r.data ?? null
+}
+
 /** Lô KHO BÁN còn hàng — nguồn của tồn kho trên màn bán. */
 function docLoBan(sb: Client) {
   return (

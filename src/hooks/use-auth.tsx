@@ -84,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Subscribe to auth state. The INITIAL_SESSION event fires
     // immediately on mount with the current session (or null).
     // This is faster and more reliable than calling getSession().
+    /** Người đã (đang) đọc hồ sơ trong phiên này. */
+    let hoSoCua: string | null = null
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -93,8 +95,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         const au = session.user
         setAuthUser({ id: au.id, email: au.email || "" })
+        /* ⚠ MỘT HỒ SƠ MỘT LẦN (chủ nhà 27/09/2026 — log Supabase vượt gói). Supabase phát
+           INITIAL_SESSION rồi SIGNED_IN / TOKEN_REFRESHED cho cùng một người: trước đây mỗi sự
+           kiện đọc lại hồ sơ (2 câu). Cùng người thì bỏ qua — trừ USER_UPDATED (đổi thông tin). */
+        if (hoSoCua === au.id && event !== "USER_UPDATED") {
+          markResolved(event)
+          return
+        }
+        hoSoCua = au.id
         // Fetch profile in background
         fetchProfile(au.id).then((profile) => {
+          // Đọc hỏng thì cho sự kiện sau đọc lại — đừng kẹt ở "đã có hồ sơ".
+          if (!profile) hoSoCua = null
           if (!profile || !mounted) return
           /**
            * ⚠ TÀI KHOẢN BỊ KHOÁ PHẢI BỊ ĐẨY RA, VÀ PHẢI ĐƯỢC NÓI VÌ SAO.
@@ -130,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(profile)
         })
       } else {
+        hoSoCua = null
         setUser(null)
         setAuthUser(null)
       }

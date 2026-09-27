@@ -1,6 +1,7 @@
 "use client"
 
 import { lamCuDanhMucBan } from "@/lib/sell/ref-store"
+import { xoaNhoNen } from "@/lib/cache/nho-nen"
 import { useState, useEffect } from "react"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
@@ -281,6 +282,7 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
 
       // Danh mục khách của /sell trên máy giờ đã cũ — lần mở sau tải lại (thấy khách mới / tên mới).
       lamCuDanhMucBan()
+      xoaNhoNen("nen:khach") // ô lọc khách ở danh sách đơn / hoá đơn thấy khách mới ngay
 
       /**
        * ⚠ CHỈ QUAY VỀ LUỒNG CŨ KHI THẬT SỰ CÓ MÃ KHÁCH. `newId` rỗng nghĩa

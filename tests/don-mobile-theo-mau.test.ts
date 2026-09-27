@@ -35,8 +35,9 @@ describe("danh sách đơn điện thoại theo mẫu", () => {
 describe("chuông thông báo gắn hai lần không làm trắng màn", () => {
   /* Đầu trang xanh gắn một chuông trong khi app bar (ẩn bằng CSS) vẫn gắn chuông của nó —
      cùng tên kênh là supabase ném "cannot add postgres_changes callbacks after subscribe()". */
-  it("mỗi chuông một kênh realtime riêng", () => {
+  it("mọi chuông dùng MỘT kênh chung (27/09/2026: bớt log Supabase), tên kênh vẫn có đuôi ngẫu nhiên", () => {
     const b = readFileSync(resolve(__dirname, "../src/components/layout/notification-bell.tsx"), "utf-8")
-    expect(b).toContain(".channel(`notifications-${authUser.id}-${Math.random().toString(36).slice(2, 10)}`)")
+    expect(b).toContain(".channel(`notifications-${uid}-${Math.random().toString(36).slice(2, 10)}`)")
+    expect(b).toMatch(/if \(!khoTB\.kenh\) \{/)
   })
 })

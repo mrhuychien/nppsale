@@ -47,89 +47,155 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("vi-VN")
 }
 
+/* ================================================================
+ * KHO THÔNG BÁO DÙNG CHUNG (chủ nhà 27/09/2026 — log Supabase vượt gói).
+ *
+ * Một màn có thể gắn 2–3 chuông (app bar đang ẩn bằng CSS + đầu trang riêng của màn). Trước
+ * đây MỖI chuông tự đọc 20 thông báo và tự mở một kênh realtime, và đọc lại mỗi lần chuyển
+ * trang — 3 lượt đọc + 3 kênh cho một màn. Nay: một lượt đọc cho cả phiên, một kênh realtime
+ * dùng chung (đếm người dùng, đóng trễ để chuyển trang không đóng/mở lại); bấm mở chuông vẫn
+ * đọc mới.
+ * ================================================================ */
+interface TrangThaiTB {
+  items: Notification[]
+  unread: number
+}
+const khoTB = {
+  uid: null as string | null,
+  tb: { items: [], unread: 0 } as TrangThaiTB,
+  daDoc: false,
+  dangDoc: null as Promise<void> | null,
+  nghe: new Set<(t: TrangThaiTB) => void>(),
+  kenh: null as { go: () => void } | null,
+  soChuong: 0,
+  henDong: null as ReturnType<typeof setTimeout> | null,
+}
+
+function datTB(f: (t: TrangThaiTB) => TrangThaiTB) {
+  khoTB.tb = f(khoTB.tb)
+  khoTB.nghe.forEach((cb) => cb(khoTB.tb))
+}
+
+function docTB(uid: string, epMoi = false): Promise<void> {
+  if (khoTB.uid !== uid) {
+    khoTB.uid = uid
+    khoTB.daDoc = false
+    khoTB.tb = { items: [], unread: 0 }
+  }
+  if (khoTB.dangDoc) return khoTB.dangDoc
+  if (khoTB.daDoc && !epMoi) return Promise.resolve()
+  khoTB.dangDoc = (async () => {
+    const { data, error: dataErr } = await createClient()
+      .from("notifications")
+      .select("id, type, title, body, link_url, is_read, created_at")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(20)
+    if (dataErr) console.error("[layout/notification-bell] truy vấn lỗi:", dataErr.message)
+    else khoTB.daDoc = true
+    const rows = (data as Notification[]) || []
+    if (khoTB.uid === uid) datTB(() => ({ items: rows, unread: rows.filter((n) => !n.is_read).length }))
+  })().finally(() => {
+    khoTB.dangDoc = null
+  })
+  return khoTB.dangDoc
+}
+
+/** Một kênh realtime cho mọi chuông của người này; chuông cuối gỡ ra thì 10 giây sau mới đóng. */
+function moKenhTB(uid: string): () => void {
+  khoTB.soChuong++
+  if (khoTB.henDong) {
+    clearTimeout(khoTB.henDong)
+    khoTB.henDong = null
+  }
+  if (!khoTB.kenh) {
+    const supabase = createClient()
+    /* ⚠ Tên kênh có đuôi ngẫu nhiên: đăng ký lại cùng tên kênh lúc kênh cũ chưa gỡ xong là
+       supabase ném "cannot add postgres_changes callbacks … after subscribe()" (26/09/2026). */
+    const channel = supabase
+      .channel(`notifications-${uid}-${Math.random().toString(36).slice(2, 10)}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` },
+        (payload) => {
+          const n = payload.new as Notification
+          datTB((t) => ({ items: [n, ...t.items].slice(0, 20), unread: t.unread + (n.is_read ? 0 : 1) }))
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` },
+        (payload) => {
+          const next = payload.new as Notification
+          const prevRow = payload.old as Notification
+          datTB((t) => ({
+            items: t.items.map((x) => (x.id === next.id ? next : x)),
+            unread: !prevRow.is_read && next.is_read ? Math.max(0, t.unread - 1) : prevRow.is_read && !next.is_read ? t.unread + 1 : t.unread,
+          }))
+        }
+      )
+      .subscribe()
+    khoTB.kenh = { go: () => void supabase.removeChannel(channel) }
+  }
+  return () => {
+    khoTB.soChuong = Math.max(0, khoTB.soChuong - 1)
+    if (khoTB.soChuong > 0) return
+    khoTB.henDong = setTimeout(() => {
+      khoTB.henDong = null
+      if (khoTB.soChuong === 0 && khoTB.kenh) {
+        khoTB.kenh.go()
+        khoTB.kenh = null
+      }
+    }, 10_000)
+  }
+}
+
 function ChuongThongBao() {
   const { authUser } = useAuth()
   const supabase = createClient()
   const router = useRouter()
 
   const [open, setOpen] = useState(false)
-  const [items, setItems] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [tb, setTb] = useState<TrangThaiTB>(khoTB.tb)
   const [loading, setLoading] = useState(false)
+  const items = tb.items
+  const unreadCount = tb.unread
+  const setItems = (f: (p: Notification[]) => Notification[]) => datTB((t) => ({ ...t, items: f(t.items) }))
+  const setUnreadCount = (f: number | ((p: number) => number)) =>
+    datTB((t) => ({ ...t, unread: typeof f === "function" ? f(t.unread) : f }))
 
-  const fetchNotifications = useCallback(async () => {
-    if (!authUser?.id) return
-    setLoading(true)
-    const { data, error: dataErr } = await supabase
-      .from("notifications")
-      .select("id, type, title, body, link_url, is_read, created_at")
-      .eq("user_id", authUser.id)
-      .order("created_at", { ascending: false })
-      .limit(20)
-    if (dataErr) console.error("[layout/notification-bell] truy vấn lỗi:", dataErr.message)
-    const rows = (data as Notification[]) || []
-    setItems(rows)
-    setUnreadCount(rows.filter((n) => !n.is_read).length)
-    setLoading(false)
-  }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    khoTB.nghe.add(setTb)
+    setTb(khoTB.tb)
+    return () => {
+      khoTB.nghe.delete(setTb)
+    }
+  }, [])
 
-  // Initial load
+  const fetchNotifications = useCallback(
+    async (epMoi = false) => {
+      if (!authUser?.id) return
+      setLoading(true)
+      await docTB(authUser.id, epMoi)
+      setLoading(false)
+    },
+    [authUser?.id]
+  )
+
+  // Lần đầu trong phiên mới đọc; chuông gắn sau dùng lại số đã có.
   useEffect(() => {
     fetchNotifications()
   }, [fetchNotifications])
 
-  // Realtime subscription — INSERT pushes new rows; UPDATE syncs is_read
-  // changes made from other tabs/devices. Replaces the previous 60s poll.
+  // Realtime — INSERT đẩy dòng mới; UPDATE đồng bộ is_read từ tab / máy khác. Một kênh chung.
   useEffect(() => {
     if (!authUser?.id) return
-    /* ⚠ MỖI CHUÔNG MỘT KÊNH. Màn có đầu trang riêng (danh sách đơn điện thoại, trang chủ NVBH)
-       gắn thêm một chuông trong khi app bar (đang ẩn bằng CSS) vẫn gắn chuông của nó — hai lần
-       đăng ký cùng tên kênh là supabase ném "cannot add postgres_changes callbacks … after
-       subscribe()" và cả màn trắng (26/09/2026). */
-    const channel = supabase
-      .channel(`notifications-${authUser.id}-${Math.random().toString(36).slice(2, 10)}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${authUser.id}`,
-        },
-        (payload) => {
-          const n = payload.new as Notification
-          setItems((prev) => [n, ...prev].slice(0, 20))
-          if (!n.is_read) setUnreadCount((prev) => prev + 1)
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${authUser.id}`,
-        },
-        (payload) => {
-          const next = payload.new as Notification
-          const prevRow = payload.old as Notification
-          setItems((prev) => prev.map((x) => (x.id === next.id ? next : x)))
-          if (!prevRow.is_read && next.is_read) {
-            setUnreadCount((prev) => Math.max(0, prev - 1))
-          } else if (prevRow.is_read && !next.is_read) {
-            setUnreadCount((prev) => prev + 1)
-          }
-        }
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [authUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    return moKenhTB(authUser.id)
+  }, [authUser?.id])
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
-    if (next) fetchNotifications()
+    if (next) fetchNotifications(true)
   }
 
   const markOneRead = async (n: Notification) => {

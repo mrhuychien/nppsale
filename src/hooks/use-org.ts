@@ -14,6 +14,9 @@ interface OrgRow {
 // re-fetch khi user navigate giữa các trang có in chứng từ (phiếu
 // lương, phiếu thu, biên bản bàn giao, …).
 const cache = new Map<string, OrgRow>()
+/* ⚠ GỘP LƯỢT ĐANG ĐỌC (chủ nhà 27/09/2026 — log Supabase vượt gói): một trang gắn 2–3 thành
+   phần cùng dùng `useOrg` lúc bộ nhớ còn trống thì trước đây mỗi cái tự đọc — 3 lượt cho một dòng. */
+const dangDoc = new Map<string, PromiseLike<{ data: unknown; error: { message: string } | null }>>()
 
 export function clearOrgCache(): void {
   cache.clear()
@@ -39,13 +42,13 @@ export function useOrg() {
       return
     }
     let cancelled = false
-    const supabase = createClient()
-    supabase
-      .from("organizations")
-      .select("id, name, allow_oversell")
-      .eq("id", orgId)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    let p = dangDoc.get(orgId)
+    if (!p) {
+      p = createClient().from("organizations").select("id, name, allow_oversell").eq("id", orgId).maybeSingle()
+      dangDoc.set(orgId, p)
+      void Promise.resolve(p).finally(() => dangDoc.delete(orgId))
+    }
+    p.then(({ data, error }) => {
         if (error) console.error("[hooks/use-org] truy vấn lỗi:", error.message)
         if (cancelled) return
         const raw = data as Partial<OrgRow> | null

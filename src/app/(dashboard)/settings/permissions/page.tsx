@@ -1,5 +1,6 @@
 "use client"
 
+import { xoaNhoQuyen } from "@/components/permissions-loader"
 import { oTheoMauNvbh } from "@/lib/permission-templates"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -314,6 +315,7 @@ export default function PermissionsPage() {
       return
     }
     setOriginal(JSON.parse(JSON.stringify(matrix)) as FeatureMatrix)
+    xoaNhoQuyen() // máy này tải lại là thấy quyền mới; máy khác chậm nhất 5 phút
     toast({
       title: "Đã lưu phân quyền",
       description: "Các thay đổi sẽ được áp dụng sau khi tải lại trang.",

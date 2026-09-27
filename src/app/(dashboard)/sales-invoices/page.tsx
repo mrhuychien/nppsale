@@ -21,6 +21,7 @@
  * nói thẳng điều đó.
  */
 
+import { nhoNen, coLoi } from "@/lib/cache/nho-nen"
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
@@ -212,16 +213,18 @@ export default function SalesInvoicesPage() {
          * ⚠ Phân trang theo `id` — mốc chia trang phải DUY NHẤT; hai
          *   cửa hàng trùng tên là các trang lặp/sót nhau.
          */
-        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>(
-          (from, to) =>
-            supabase
-              .from("customers")
-              .select("id, store_name, owner_name, phone", { count: "exact" })
-              .order("id")
-              .range(from, to)
-        ),
-        supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"),
-        supabase.from("sales_routes").select("code, name").eq("is_active", true).order("sort_order"),
+        // Danh mục nền cho ô lọc — nhớ 5 phút trong phiên (log Supabase, 27/09/2026).
+        nhoNen("nen:khach-nhe", () =>
+          fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>(
+            (from, to) =>
+              supabase
+                .from("customers")
+                .select("id, store_name, owner_name, phone", { count: "exact" })
+                .order("id")
+                .range(from, to)
+          ), coLoi),
+        nhoNen("nen:nhan-vien-ban", () => supabase.from("users").select("id, full_name, role").in("role", ["sales", "manager", "owner"]).order("full_name"), coLoi),
+        nhoNen("nen:tuyen", () => supabase.from("sales_routes").select("code, name").eq("is_active", true).order("sort_order"), coLoi),
       ])
       if (cancelled) return
       const e = ([customersRes, usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)

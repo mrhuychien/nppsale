@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { xoaNhoQuyen } from "@/components/permissions-loader"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -313,6 +314,7 @@ export function PermissionMatrix({
           )
         }
       }
+      xoaNhoQuyen() // máy đang dùng thấy quyền mới ngay, không đợi 5 phút
       toast({ title: `Đã lưu ${pending.size} thay đổi` })
       await fetchData()
     } catch (e) {

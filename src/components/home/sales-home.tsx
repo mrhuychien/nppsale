@@ -29,6 +29,10 @@ export interface OChucNang {
   tamKhoa?: boolean
 }
 
+/** Số liệu trang chủ NVBH nhớ trong phiên — xem chú thích ở hiệu ứng nạp. */
+export const NHO_TRANG_CHU_MS = 2 * 60_000
+const boNhoTrangChu = new Map<string, { luc: number; dl: DuLieu }>()
+
 interface DuLieu {
   hd: HoaDonTC[]
   tra: TraTC[]
@@ -72,6 +76,15 @@ export function SalesHome({
 
   useEffect(() => {
     if (!homNay || !userId) return
+    /* ⚠ NHỚ 2 PHÚT (chủ nhà 27/09/2026 — log Supabase vượt gói: một NVBH quay về trang chủ 17
+       lần / giờ, mỗi lần ~15 lượt đọc). Trong 2 phút: hiện ngay số đã có, không đọc lại; quá 2
+       phút: hiện số cũ trước rồi đọc mới đè lên. */
+    const khoaNho = `${userId}|${homNay}|${xemKho ? 1 : 0}`
+    const nho = boNhoTrangChu.get(khoaNho)
+    if (nho) {
+      setDl(nho.dl)
+      if (Date.now() - nho.luc < NHO_TRANG_CHU_MS) return
+    }
     let huy = false
     const sb = createClient()
     const dau = ngayDauCanDoc(homNay)
@@ -160,7 +173,7 @@ export function SalesHome({
         const thamHomNay = new Set(thamR.rows.filter((v) => v.visit_date === homNay).map((v) => v.customer_id))
         const nhapDau = (nhapR.data ?? [])[0] as unknown as { total: number; customer: { store_name: string } | null } | undefined
 
-        setDl({
+        const moi: DuLieu = {
           hd: hdR.rows.map((h) => ({ ...h, total: Number(h.total || 0) })),
           tra: traR.error ? [] : traCuaToi(traR.rows, userId),
           don: donR.rows,
@@ -178,7 +191,9 @@ export function SalesHome({
           mucTieuThang: tgR.error ? 0 : Number(tgR.data || 0),
           tonThap,
           loSapHet,
-        })
+        }
+        boNhoTrangChu.set(khoaNho, { luc: Date.now(), dl: moi })
+        setDl(moi)
       } catch (e) {
         if (!huy) setLoi(errorMessage(e))
       }

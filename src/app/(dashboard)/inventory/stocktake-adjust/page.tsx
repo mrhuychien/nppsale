@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { dieuKienTim } from "@/lib/search/list-search"
+import { timXepHang } from "@/lib/search"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -104,7 +105,8 @@ export default function StocktakeAdjustPage() {
         .select("id, sku, name, base_unit, batches(id, batch_code, qty_on_hand, unit_cost, expires_at)")
         .eq("status", "active")
         .order("name")
-        .limit(15)
+        /* Lấy 60 rồi XẾP HẠNG (mã trùng khớp lên đầu), hiện 15. */
+        .limit(60)
       const { data, error } = await (q.length >= 2
         ? base.or(dieuKienTim("products", ["sku", "name"], q))
         : base
@@ -114,7 +116,8 @@ export default function StocktakeAdjustPage() {
         console.warn("[stocktake search]", error.message)
         return
       }
-      setMatches((data as Array<Product & { batches?: Batch[] }>) || [])
+      const ds = (data as Array<Product & { batches?: Batch[] }>) || []
+      setMatches(q.length >= 2 ? timXepHang(ds, q, (p) => [p.sku, p.name], { gioiHan: 15, ganDung: false }).ketQua : ds.slice(0, 15))
     }
     run()
     return () => controller.abort()

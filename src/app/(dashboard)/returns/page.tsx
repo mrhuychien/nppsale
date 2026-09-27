@@ -193,7 +193,8 @@ export default function ReturnsPage() {
       { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
       { column: "requested_by", table: "users", columns: ["full_name"] },
       { column: "order_id", table: "sales_orders", columns: ["order_code"] },
-    ]
+    ],
+    "returns"
   )
 
   /* Chờ cả hai lượt tra — ô tìm nhanh và các trường. */

@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
+import { KHONG_DONG_NAO, menhDeTimDanhSach } from "@/lib/search/list-search"
 import {
   chuDonVi, docIds, gopSoanHang, soanHangHref,
   type PickDoc, type PickLine, type ProductUnits,
@@ -146,24 +147,20 @@ function Trang() {
       .limit(TRAN_TIM)
     qd = caDaHuy ? qd.in("status", ["posted", "cancelled"]) : qd.eq("status", "posted")
     if (term) {
-      const like = `%${term.replace(/[%,()]/g, " ")}%`
-      const [{ data: kh }, { data: dh }] = await Promise.all([
-        supabase.from("customers").select("id").or(`store_name.ilike.${like},phone.ilike.${like},owner_name.ilike.${like}`).limit(200),
-        supabase.from("sales_orders").select("id").ilike("order_code", like).limit(200),
+      /* Ô tìm chung (chủ nhà 27/09/2026): từng từ, không dấu, mã viết liền — như mọi danh sách. */
+      const or = await menhDeTimDanhSach(supabase, "sales_invoices", term, user?.org_id, ["invoice_code"], [
+        { column: "customer_id", table: "customers", columns: ["store_name", "phone", "owner_name"] },
+        { column: "order_id", table: "sales_orders", columns: ["order_code"] },
       ])
-      const idsKh = ((kh as Array<{ id: string }>) ?? []).map((k) => k.id)
-      const idsDh = ((dh as Array<{ id: string }>) ?? []).map((k) => k.id)
-      const hoac = [`invoice_code.ilike.${like}`]
-      if (idsKh.length) hoac.push(`customer_id.in.(${idsKh.join(",")})`)
-      if (idsDh.length) hoac.push(`order_id.in.(${idsDh.join(",")})`)
-      qd = qd.or(hoac.join(","))
+      if (luot !== timRef.current) return
+      qd = qd.or(or.filter ?? KHONG_DONG_NAO)
     }
     const { data, error } = await qd
     if (luot !== timRef.current) return
     if (error) console.error("[soan-hang] tìm hóa đơn lỗi:", error.message)
     setKetQua((data as unknown as HoaDon[]) ?? [])
     setDangTim(false)
-  }, [supabase, caDaHuy])
+  }, [supabase, caDaHuy, user?.org_id])
 
   useEffect(() => {
     if (authLoading) return

@@ -29,7 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { Download, Search } from "lucide-react"
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
 import { buildStockExportAoa, stockExportFileName } from "@/lib/inventory/stock-export"
@@ -217,12 +217,7 @@ export function StockBalanceTable() {
     let arr = Array.from(map.values())
     if (onlyOnHand) arr = arr.filter((r) => r.totalQty > 0)
     if (search.trim()) {
-      const q = viNormalize(search)
-      arr = arr.filter(
-        (r) =>
-          viIncludes(r.product.name, q) ||
-          viIncludes(r.product.sku, q)
-      )
+      arr = arr.filter((r) => viMatchAllWords(search, r.product.sku, r.product.name))
     }
     return arr.sort((a, b) => a.product.name.localeCompare(b.product.name, "vi"))
   }, [rows, products, search, onlyOnHand])

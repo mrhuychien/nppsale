@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { Factory, Search } from "lucide-react"
 
 /** Một dòng trả về của hàm SQL `payables_by_supplier()` (migration 093). */
@@ -72,10 +72,7 @@ export default function PayablesBySupplierPage() {
 
   const filteredRows = useMemo(() => {
     if (!search) return rows
-    const q = viNormalize(search)
-    return rows.filter(
-      (r) => viIncludes(r.supplierName, q) || viIncludes(r.supplierCode, q)
-    )
+    return rows.filter((r) => viMatchAllWords(search, r.supplierCode, r.supplierName))
   }, [rows, search])
 
   const totalOutstanding = rows.reduce((s, r) => s + r.remaining, 0)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -264,8 +264,7 @@ export default function SalesReportPage() {
       const code = o.invoice_code
       if (
         !search ||
-        viIncludes(code, viNormalize(search)) ||
-        viIncludes((customerMap.get(o.customer_id)?.store_name || ""), viNormalize(search))
+        viMatchAllWords(search, code, customerMap.get(o.customer_id)?.store_name)
       ) {
         e.invoices.push({
           id: o.id,
@@ -327,10 +326,8 @@ export default function SalesReportPage() {
       .filter(({ giam }) => giam > 0)
       .filter(({ o }) => {
         if (!search) return true
-        const q = viNormalize(search)
         return (
-          viIncludes(o.invoice_code, q) ||
-          viIncludes((customerMap.get(o.customer_id)?.store_name || ""), q)
+          viMatchAllWords(search, o.invoice_code, customerMap.get(o.customer_id)?.store_name)
         )
       })
       .map(({ o, giam }) => {
@@ -355,9 +352,7 @@ export default function SalesReportPage() {
     return returns
       .filter((r) => {
         if (!search) return true
-        return (customerMap.get(r.customer_id)?.store_name || "")
-          .toLowerCase()
-          .includes(search.toLowerCase())
+        return viMatchAllWords(search, customerMap.get(r.customer_id)?.store_name)
       })
       .map((r) => ({
         id: r.id,
@@ -422,7 +417,7 @@ export default function SalesReportPage() {
       })
       .filter((r) => {
         if (!search) return true
-        return viIncludes(r.name, viNormalize(search))
+        return viMatchAllWords(search, r.name)
       })
       .sort((a, b) => b.revenue - a.revenue)
   }, [

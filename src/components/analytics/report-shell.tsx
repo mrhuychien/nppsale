@@ -9,7 +9,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { cn } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import { useClientNow } from "@/hooks/use-client-now"
 import { CompactSelect } from "@/components/ui/compact-select"
 
@@ -242,14 +242,7 @@ export function FilterSearchSelect({
   }, [open])
 
   const selected = options.find((o) => o.id === value)
-  const q = viNormalize(query)
-  const filtered = !q
-    ? options
-    : options.filter(
-        (o) =>
-          viIncludes(o.label, q) ||
-          viIncludes((o.hint || ""), q)
-      )
+  const filtered = timXepHang(options, query, (o) => [o.label, o.hint]).ketQua
 
   return (
     <div ref={ref} className="relative">
@@ -384,14 +377,7 @@ export function FilterMultiSelect({
 
   const selectedSet = new Set(value)
   const selectedOpts = options.filter((o) => selectedSet.has(o.id))
-  const q = viNormalize(query)
-  const filtered = !q
-    ? options
-    : options.filter(
-        (o) =>
-          viIncludes(o.label, q) ||
-          viIncludes((o.hint || ""), q)
-      )
+  const filtered = timXepHang(options, query, (o) => [o.label, o.hint]).ketQua
 
   const toggle = (id: string) => {
     if (selectedSet.has(id)) onChange(value.filter((v) => v !== id))

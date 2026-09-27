@@ -14,7 +14,7 @@
 
 import type { InvoiceableLine, InvoiceDraftLine } from "@/lib/orders/post-invoice"
 import { conversionFor, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import type { CartLine } from "@/lib/sell/cart"
 import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discount"
 
@@ -305,9 +305,8 @@ export function searchAddable(
   limit = 20
 ): PricedProduct[] {
   const out: PricedProduct[] = []
-  for (const p of products) {
+  for (const p of timXepHang(products, term, (x) => [x.sku, x.barcode, x.name], { nho: "hang" }).ketQua) {
     if (alreadyOnScreen.has(p.id)) continue
-    if (!viMatchAllWords(term, p.name, p.sku, p.barcode)) continue
     out.push(p)
     if (out.length >= limit) break
   }

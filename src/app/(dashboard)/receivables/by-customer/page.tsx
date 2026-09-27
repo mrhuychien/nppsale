@@ -15,7 +15,7 @@ import { formatCurrency } from "@/lib/utils"
 import { truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { docCongNoTheoKhach } from "./doc-so-cong-no"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { Users, Search } from "lucide-react"
 
 type Filter = "all" | "overdue" | "over_limit"
@@ -108,8 +108,7 @@ export default function ReceivablesByCustomerPage() {
   const filteredRows = useMemo(() => {
     let result = rows
     if (search) {
-      const q = viNormalize(search)
-      result = result.filter((r) => viIncludes(r.storeName, q))
+      result = result.filter((r) => viMatchAllWords(search, r.storeName))
     }
     if (filter === "overdue") {
       result = result.filter((r) => r.overdueAmount > 0)

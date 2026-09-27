@@ -30,7 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
 import { formatInt } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { AlertCircle, PackageSearch, Search, ShoppingCart } from "lucide-react"
 import {
   buildReorder, groupBySupplier, REORDER_ORDER_STATUSES, NO_SUPPLIER_LABEL,
@@ -161,8 +161,7 @@ export default function ReorderPage() {
       list = list.filter((r) => (r.supplier_id ?? "none") === supplierKey)
     }
     if (search.trim()) {
-      const q = viNormalize(search)
-      list = list.filter((r) => viIncludes(r.product_name, q) || viIncludes(r.sku, q))
+      list = list.filter((r) => viMatchAllWords(search, r.sku, r.product_name))
     }
     return list
   }, [rows, supplierKey, search])

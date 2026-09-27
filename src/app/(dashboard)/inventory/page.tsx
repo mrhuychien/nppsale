@@ -178,7 +178,8 @@ export default function InventoryPage() {
    */
   const listSearch = useListSearch(
     supabase, debouncedSearch, user?.org_id, ["batch_code"],
-    [{ column: "product_id", table: "products", columns: ["name", "sku", "barcode"] }]
+    [{ column: "product_id", table: "products", columns: ["name", "sku", "barcode"] }],
+    "batches"
   )
 
   // Paginated batches list.

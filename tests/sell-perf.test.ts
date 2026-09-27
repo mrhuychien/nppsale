@@ -80,9 +80,10 @@ describe("Chỉ mục tìm kiếm: chuẩn hoá MỘT lần, kết quả Y HỆT
   })
 
   it("provider dựng khoá một lần theo danh mục, màn hình lọc qua khoá", () => {
-    expect(HOOK).toContain("viSearchKey(p.name, p.sku, p.barcode ?? \"\")")
-    expect(HOOK).toContain("viSearchKey(c.store_name, c.owner_name ?? \"\", c.phone ?? \"\", c.address ?? \"\")")
-    expect(POS).toContain("filterProducts(term)")
+    /* Chỉ mục lọc + xếp hạng (mig 205 / 27/09/2026): mã, mã vạch, SĐT đứng trước. */
+    expect(HOOK).toContain("taoMucTim(p.sku, p.barcode ?? \"\", p.name)")
+    expect(HOOK).toContain("taoMucTim(c.phone ?? \"\", c.store_name, c.owner_name ?? \"\", c.address ?? \"\")")
+    expect(POS).toContain("filterProducts(term, byStock)")
     expect(CUST).toContain("filterCustomers(deferredQ.trim())")
     // Không màn nào còn chuẩn hoá lại ở mỗi phím.
     expect(POS).not.toContain("viMatchAllWords")

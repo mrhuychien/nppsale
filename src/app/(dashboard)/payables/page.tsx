@@ -117,7 +117,8 @@ export default function PayablesPage() {
    */
   const listSearch = useListSearch(
     supabase, debouncedSearch, user?.org_id, ["invoice_number"],
-    [{ column: "supplier_id", table: "suppliers", columns: ["name", "code"] }]
+    [{ column: "supplier_id", table: "suppliers", columns: ["name", "code"] }],
+    "payables"
   )
 
   // Paginated table query.

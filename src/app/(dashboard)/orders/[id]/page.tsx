@@ -34,7 +34,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
 import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Archive, Printer } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
@@ -2934,13 +2934,7 @@ export default function OrderDetailPage() {
           {swapTruncated && <CatalogueShortNote />}
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = viNormalize(swapSearch)
-              const list = swapCatalog.filter(
-                (p) =>
-                  !q ||
-                  viIncludes(p.name, q) ||
-                  viIncludes(p.sku, q)
-              )
+              const list = timXepHang(swapCatalog, swapSearch, (p) => [p.sku, p.name]).ketQua
               if (list.length === 0) {
                 return (
                   <p className="text-xs text-muted-foreground text-center py-6">
@@ -2988,13 +2982,7 @@ export default function OrderDetailPage() {
           {swapTruncated && <CatalogueShortNote />}
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = viNormalize(addLineSearch)
-              const list = swapCatalog.filter(
-                (p) =>
-                  !q ||
-                  viIncludes(p.name, q) ||
-                  viIncludes(p.sku, q)
-              )
+              const list = timXepHang(swapCatalog, addLineSearch, (p) => [p.sku, p.name]).ketQua
               if (list.length === 0) {
                 return (
                   <p className="text-xs text-muted-foreground text-center py-6">

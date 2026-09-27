@@ -32,7 +32,7 @@
  */
 
 import type { Product, ProductUnit } from "@/types"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 
 /** Sản phẩm kèm danh sách đơn vị quy đổi, đúng hình dạng hai màn đang đọc. */
 export type ReturnProduct = Product & { units?: ProductUnit[] }
@@ -109,9 +109,8 @@ export function searchReturnProducts(
   limit = 12
 ): ReturnProduct[] {
   const out: ReturnProduct[] = []
-  for (const p of products) {
+  for (const p of timXepHang(products, term, (x) => [x.sku, x.barcode, x.name], { nho: "hang" }).ketQua) {
     if (alreadyOnSlip.has(p.id)) continue
-    if (!viMatchAllWords(term, p.name, p.sku, p.barcode)) continue
     out.push(p)
     if (out.length >= limit) break
   }

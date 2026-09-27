@@ -146,12 +146,12 @@ const QUA_NGUOI_THU = {
 
 /** Ô tìm nhanh: mã phiếu, ghi chú, tên / SĐT khách, mã hóa đơn, người thu — ghép "HOẶC". */
 export const TIM_NHANH_PHIEU_THU: readonly TruongTim[] = [
-  { key: "q", nhan: "Tìm nhanh", cotRieng: ["receipt_code", "notes"], chuoi: [QUA_KHACH, QUA_HOA_DON, QUA_NGUOI_THU] },
+  { key: "q", nhan: "Tìm nhanh", cotRieng: ["receipt_code", "notes"], bang: "cash_receipts", chuoi: [QUA_KHACH, QUA_HOA_DON, QUA_NGUOI_THU] },
 ]
 
 /** Các trường của nút lọc trong ô tìm — ghép "VÀ". */
 export const TRUONG_PHIEU_THU: readonly TruongTim[] = [
-  { key: "ma", nhan: "Theo mã phiếu thu, mã hóa đơn", cotRieng: ["receipt_code"], chuoi: [QUA_HOA_DON] },
+  { key: "ma", nhan: "Theo mã phiếu thu, mã hóa đơn", cotRieng: ["receipt_code"], bang: "cash_receipts", chuoi: [QUA_HOA_DON] },
   { key: "khach", nhan: "Theo tên, số điện thoại khách hàng", chuoi: [QUA_KHACH] },
   { key: "nguoi", nhan: "Theo người thu", chuoi: [QUA_NGUOI_THU] },
 ]

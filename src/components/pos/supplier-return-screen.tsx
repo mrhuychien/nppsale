@@ -65,7 +65,7 @@ import {
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import {
   focusPosPicker,
   useRegisterPosProductSearch,
@@ -230,15 +230,13 @@ export function SupplierReturnScreen({
   const mucHang = useMemo(
     () => {
       const out: Array<{ id: string; title: string; subtitle: string; sku: string | null }> = []
-      for (const p of products) {
-        if (!viMatchAllWords(tuKhoa, p.name, p.sku, p.barcode)) continue
+      for (const p of timXepHang(products, tuKhoa, (x) => [x.sku, x.barcode, x.name], { gioiHan: 60, nho: "hang" }).ketQua) {
         out.push({
           id: p.id,
           title: p.name,
           subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
           sku: p.sku ?? null,
         })
-        if (out.length >= 60) break
       }
       return out
     },
@@ -263,7 +261,7 @@ export function SupplierReturnScreen({
         id: x.id,
         title: x.name,
         meta: [x.code, x.phone, x.address].filter(Boolean).join(" · "),
-        keywords: `${x.code ?? ""} ${x.phone ?? ""}`,
+        keywords: [x.code, x.phone],
       })),
     [suppliers]
   )

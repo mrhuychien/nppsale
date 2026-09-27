@@ -37,7 +37,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
@@ -226,12 +226,7 @@ export default function CustomersReportPage() {
       if (!c) return false
       if (customerFilter.length && !customerFilter.includes(c.id)) return false
       if (!search) return true
-      const q = viNormalize(search)
-      return (
-        viIncludes(c.store_name, q) ||
-        viIncludes((c.phone || ""), q) ||
-        viIncludes(c.id, q)
-      )
+      return viMatchAllWords(search, c.phone, c.store_name, c.id)
     },
     [search, customerFilter]
   )

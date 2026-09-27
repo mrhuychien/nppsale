@@ -42,7 +42,7 @@ import {
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { cn, formatCurrency, VN_TZ } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import { getDailyQuote, QUOTE_CATEGORY_LABEL } from "@/lib/sales-quotes"
 
 type TileColor =
@@ -252,11 +252,8 @@ export default function HomeLauncherPage() {
   const visibleTiles = useMemo(() => filterByPermission(role, TILES), [role])
 
   const filteredTiles = useMemo(() => {
-    const q = viNormalize(search)
-    if (!q) return visibleTiles
-    return visibleTiles.filter(
-      (t) => viIncludes(t.label, q) || viIncludes(t.href, q)
-    )
+    if (!search.trim()) return visibleTiles
+    return timXepHang(visibleTiles, search, (t) => [t.label, t.href]).ketQua
   }, [search, visibleTiles])
 
   const searching = search.trim().length > 0

@@ -20,6 +20,7 @@
  * vẫn nằm ở màn `/finance/cash-receipts/new` như cũ — chọn đơn chỉ điền
  * sẵn số còn phải thu vào ô của dòng ấy, kế toán sửa lại được.
  */
+import { viMatchAllWords } from "@/lib/search"
 
 /** Một dòng công nợ đang mở, kèm thông tin đơn để nhận ra nó. */
 export interface OrderDebtRow {
@@ -73,7 +74,7 @@ export function searchOrderDebts(
   } = {}
 ): OrderDebtRow[] {
   const { lockedCustomerId = null, alreadyPicked, limit = 20 } = opts
-  const t = normalize(term)
+  const t = term.trim()
   const out: OrderDebtRow[] = []
   for (const r of rows) {
     if (outstandingOf(r) <= 0) continue
@@ -86,20 +87,7 @@ export function searchOrderDebts(
   return out
 }
 
-function matches(r: OrderDebtRow, t: string): boolean {
-  return (
-    normalize(r.orderCode ?? "").includes(t) ||
-    normalize(r.invoiceCode ?? "").includes(t) ||
-    normalize(r.customerName).includes(t) ||
-    normalize(r.salesUserName ?? "").includes(t)
-  )
-}
-
-function normalize(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/gi, "d")
-    .toLowerCase()
-    .trim()
+/** Ô tìm chung (chủ nhà 27/09/2026): từng từ, không dấu, mã viết liền — `viMatchAllWords`. */
+function matches(r: OrderDebtRow, term: string): boolean {
+  return viMatchAllWords(term, r.invoiceCode, r.orderCode, r.customerName, r.salesUserName)
 }

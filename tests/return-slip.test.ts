@@ -4,6 +4,7 @@ import { resolve, join } from "node:path"
 import {
   returnCreditOf, searchReturnable, toReturnLine, type ReturnCartLine,
 } from "../src/lib/sell/returns"
+import { locXepHang, taoMucTim } from "../src/lib/search"
 
 const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
@@ -613,15 +614,12 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
      *   trăm) nên câu lệnh đổi hình, còn luật thì không suy suyển: chưa
      *   gõ gì vẫn phải xổ ra `items`, không được xổ ra rỗng.
      */
+    /* Nhánh "chưa gõ gì" nay nằm ở `locXepHang` (lọc + xếp hạng dùng chung) — chốt hành vi. */
     const src = code(read("src/components/pos/search-dropdown.tsx"))
-    const i = src.indexOf("if (!words.length)")
-    expect(i, "không còn nhánh 'chưa gõ gì' — ô tìm hết xổ danh sách").toBeGreaterThan(-1)
-    const nhanh = src.slice(i, src.indexOf("\n", i))
-    expect(nhanh, "ô tìm của /pos thôi xổ danh sách khi ô còn trống").toContain("items")
-    expect(
-      /return (\[\]|\{[^}]*:\s*\[\])/.test(nhanh),
-      "ô tìm của /pos trả danh sách RỖNG khi chưa gõ"
-    ).toBe(false)
+    expect(src, "ô tìm của /pos không còn lọc qua phép chung").toContain("locXepHang(items, keys, q")
+    const items = ["Sữa", "Bánh", "Kẹo"]
+    const r = locXepHang(items, items.map((t) => taoMucTim(t)), "", { gioiHan: 50 })
+    expect(r.ketQua, "ô tìm của /pos trả danh sách RỖNG khi chưa gõ").toEqual(items)
   })
 
   /**
@@ -653,7 +651,7 @@ describe("không màn nào MỚI tự vẽ ô thêm hàng", () => {
   it("/pos chỉ có hai component ô tìm HÀNG dùng chung", () => {
     /* Ô TÌM = có phép gõ-để-lọc: hoặc bọc `ProductPicker`, hoặc tự lọc
        bằng bộ so tiếng Việt dùng chung. Ô CHỌN thì không có cái nào. */
-    const laOTim = (src: string) => /<ProductPicker|viQueryWords/.test(src)
+    const laOTim = (src: string) => /<ProductPicker|viQueryWords|locXepHang\(/.test(src)
     const pham = moiTsx(resolve(ROOT, "src/components/pos"))
       .map((p) => p.slice(ROOT.length + 1))
       .filter((rel) => /search|picker|dropdown/i.test(rel))

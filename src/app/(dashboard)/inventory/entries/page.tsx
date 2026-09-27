@@ -36,7 +36,7 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
 import { formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
 import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
@@ -196,11 +196,7 @@ export default function StockEntriesPage() {
   const filtered = useMemo(() => {
     return entries.filter((e) => {
       if (filterActive("search") && search) {
-        const q = viNormalize(search)
-        const matches =
-          viIncludes(e.entry_code, q) ||
-          viIncludes((e.notes || ""), q)
-        if (!matches) return false
+        if (!viMatchAllWords(search, e.entry_code, e.notes)) return false
       }
       /**
        * ⚠ KHÔNG GÁC SAU `filterActive("type")` NỮA. Dải viên thuốc LUÔN

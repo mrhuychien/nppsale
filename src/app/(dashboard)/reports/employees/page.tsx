@@ -44,7 +44,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 
@@ -235,7 +235,7 @@ export default function EmployeesReportPage() {
       if (!search) return true
       const u = userMap.get(uid)
       if (!u) return false
-      return viIncludes(u.full_name, viNormalize(search))
+      return viMatchAllWords(search, u.full_name)
     },
     [search, salesUserFilter, userMap]
   )

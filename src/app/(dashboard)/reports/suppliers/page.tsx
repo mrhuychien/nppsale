@@ -16,7 +16,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { fetchPostedStockEntries, fetchOrgRows } from "@/lib/analytics/sales"
 import { giaTriVonDongKho, slCoSoDong, slCoSoDongKho } from "@/lib/analytics/quy-doi-dong"
 import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
@@ -254,12 +254,7 @@ export default function SuppliersReportPage() {
       if (!s) return false
       if (supplierFilter.length && !supplierFilter.includes(s.id)) return false
       if (!search) return true
-      const q = viNormalize(search)
-      return (
-        viIncludes(s.name, q) ||
-        viIncludes((s.code || ""), q) ||
-        viIncludes((s.phone || ""), q)
-      )
+      return viMatchAllWords(search, s.code, s.phone, s.name)
     },
     [search, supplierFilter]
   )

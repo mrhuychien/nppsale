@@ -34,7 +34,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { PROMOTION_TYPES } from "@/lib/constants"
 import { Tag, Plus, Trophy, Power, PowerOff } from "lucide-react"
 import type { Promotion } from "@/types"
@@ -97,7 +97,7 @@ export default function PromotionsPage() {
   const filtered = useMemo(() => {
     return promotions.filter((p) => {
       if (filterActive("search") && search) {
-        if (!viIncludes(p.name, viNormalize(search))) return false
+        if (!viMatchAllWords(search, p.name)) return false
       }
       if (filterActive("type") && typeFilter !== "all" && p.type !== typeFilter)
         return false
@@ -183,7 +183,7 @@ export default function PromotionsPage() {
   const counts = useMemo(() => {
     const c = { active: 0, inactive: 0, all: 0 }
     for (const p of promotions) {
-      if (filterActive("search") && search && !viIncludes(p.name, viNormalize(search))) continue
+      if (filterActive("search") && search && !viMatchAllWords(search, p.name)) continue
       if (filterActive("type") && typeFilter !== "all" && p.type !== typeFilter) continue
       if (!khopLoc(p, LOC_KHUYEN_MAI, locNC.dieuKien)) continue
       c.all += 1

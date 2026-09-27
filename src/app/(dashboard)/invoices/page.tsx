@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useState, useRef } from "react"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
-import { ilikeDk } from "@/lib/search/list-search"
+import { coTimKd, dieuKienTim } from "@/lib/search/list-search"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -158,6 +158,8 @@ export default function InvoicesPage() {
     async function fetch() {
       // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
       if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
+      const timKd = debouncedSearch ? await coTimKd(supabase, "invoices") : false
+      if (cancelled) return
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
       const taoQ = (from: number, to: number, dem: boolean) => {
         let q = supabase
@@ -172,7 +174,8 @@ export default function InvoicesPage() {
           .order("created_at", { ascending: false })
           .range(from, to)
         if (filterActive("search") && debouncedSearch) {
-          q = q.or(["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"].map((c) => ilikeDk(c, debouncedSearch)).join(","))
+          /* Từng từ, không dấu, số HĐ viết liền (mig 205) — xem `dieuKienTim`. */
+          q = q.or(dieuKienTim("invoices", ["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"], debouncedSearch, timKd))
         }
         for (const f of locNC.menhDe) q = q.or(f)
         if (filterActive("status") && statusFilter !== "all") {

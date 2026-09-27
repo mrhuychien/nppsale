@@ -1,7 +1,7 @@
 import type { OfflineReturnLine } from "@/lib/orders/create"
 import { RETURN_REASONS as CONSTANT_REASONS } from "@/lib/constants"
 import { ceilingFor } from "@/lib/sell/cart"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 
 /**
  * Hàng trả / đổi đi kèm một đơn bán.
@@ -215,11 +215,5 @@ export function returnCeilingFor(listPrice: number, rules: ReturnPriceRules): nu
 export function searchReturnable<
   T extends { name: string; sku: string; barcode?: string | null }
 >(products: T[], term: string, limit: number): T[] {
-  const out: T[] = []
-  for (const p of products) {
-    if (!viMatchAllWords(term, p.name, p.sku, p.barcode ?? "")) continue
-    out.push(p)
-    if (out.length >= limit) break
-  }
-  return out
+  return timXepHang(products, term, (x) => [x.sku, x.barcode, x.name], { gioiHan: limit, nho: "hang" }).ketQua
 }

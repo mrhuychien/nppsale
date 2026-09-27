@@ -45,7 +45,7 @@ import {
   type FeatureGroup,
 } from "@/lib/permissions-features"
 import { cn } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
@@ -193,14 +193,9 @@ export function PermissionMatrix({
   const filteredGroups = useMemo(() => {
     const grouped = featuresByGroup()
     if (!search.trim()) return grouped
-    const q = viNormalize(search)
     const out: Record<FeatureGroup, FeatureDef[]> = {} as Record<FeatureGroup, FeatureDef[]>
     for (const g of FEATURE_GROUPS) {
-      const list = (grouped[g] || []).filter(
-        (f) =>
-          viIncludes(f.label, q) ||
-          viIncludes(f.key, q)
-      )
+      const list = (grouped[g] || []).filter((f) => viMatchAllWords(search, f.label, f.key))
       if (list.length > 0) out[g] = list
     }
     return out

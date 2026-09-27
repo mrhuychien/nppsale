@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { chuCaiDau, boTienToCuaHang } from "../src/lib/pos/avatar"
+import { locXepHang, taoMucTim } from "../src/lib/search"
 
 /**
  * CHỌN KHÁCH / CHỌN NHÂN VIÊN Ở `/pos` — đợt 22/09/2026.
@@ -35,30 +36,24 @@ describe("số kết quả phải là số THẬT, không phải số đã cắt
    * có bao nhiêu mã khớp — và con số hiện lên trở thành một lời nói dối
    * không có cách nào phát hiện từ màn hình.
    */
+  /* Phép lọc nay nằm ở `locXepHang` (src/lib/search.ts) — chốt HÀNH VI của nó. */
+  const muc = Array.from({ length: 120 }, (_, i) => `Khách an ${i}`)
+  const chiMuc = muc.map((t) => taoMucTim(t))
   it("vòng lặp đếm không dừng ở trần vẽ", () => {
-    const i = TIM.indexOf("for (let k = 0")
-    expect(i, "không còn vòng lọc").toBeGreaterThan(-1)
-    const dieuKien = TIM.slice(i, TIM.indexOf(")", i))
-    expect(dieuKien, "vòng lặp vẫn dừng ở trần — số khớp lại là số đã cắt")
-      .not.toMatch(/out\.length\s*<|TRAN_VE|<\s*50/)
-    expect(dieuKien, "vòng lặp không quét hết danh mục").toContain("items.length")
+    const r = locXepHang(muc, chiMuc, "an", { gioiHan: 50 })
+    expect(r.soKhop, "số khớp lại là số đã cắt").toBe(120)
   })
 
   it("trần chỉ cắt phần VẼ, không cắt phần ĐẾM", () => {
-    const i = TIM.indexOf("for (let k = 0")
-    const than = TIM.slice(i, TIM.indexOf("return { ketQua: out", i))
-    /* Đếm trước, cắt sau — và cắt bằng một điều kiện riêng. */
-    expect(than, "không còn biến đếm riêng").toMatch(/n\+\+|n\s*\+=\s*1/)
-    expect(than, "phần vẽ không bị chặn bởi trần — danh sách vẽ hết").toMatch(
-      /if \(out\.length < TRAN_VE\)/
-    )
+    const r = locXepHang(muc, chiMuc, "an", { gioiHan: 50 })
+    expect(r.ketQua).toHaveLength(50)
+    expect(TIM, "ô chọn không cắt phần vẽ ở trần").toMatch(/locXepHang\(items, keys, q, \{ gioiHan: TRAN_VE \}\)/)
   })
 
   it("ô rỗng cũng báo TỔNG danh mục, không báo số dòng vừa cắt", () => {
-    const i = TIM.indexOf("if (!words.length)")
-    expect(i).toBeGreaterThan(-1)
-    const nhanh = TIM.slice(i, TIM.indexOf("\n", i))
-    expect(nhanh, "chưa gõ gì mà vẫn báo số đã cắt").toContain("soKhop: items.length")
+    const r = locXepHang(muc, chiMuc, "  ", { gioiHan: 50 })
+    expect(r.soKhop, "chưa gõ gì mà vẫn báo số đã cắt").toBe(120)
+    expect(r.ketQua).toHaveLength(50)
   })
 
   /**
@@ -67,8 +62,8 @@ describe("số kết quả phải là số THẬT, không phải số đã cắt
    * hiểu vì sao chỉ thấy 50 — và không biết rằng gõ thêm sẽ ra khác.
    */
   it("bị cắt thì nói là đang hiện bao nhiêu trong bao nhiêu", () => {
-    expect(TIM, "không so số khớp với số vẽ").toMatch(/soKhop > ketQua\.length/)
-    expect(TIM, "không nói rõ đang hiện một phần").toContain("hiện ${ketQua.length} trong ${soKhop}")
+    expect(TIM, "không so số khớp với số vẽ").toMatch(/soKhop > soVe/)
+    expect(TIM, "không nói rõ đang hiện một phần").toContain("hiện ${soVe} trong ${soKhop}")
     expect(TIM, "không chỉ cho người dùng đường thu hẹp").toContain("gõ thêm để thu hẹp")
   })
 })

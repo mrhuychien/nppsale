@@ -262,7 +262,8 @@ export default function SalesInvoicesPage() {
     [
       { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
       { column: "order_id", table: "sales_orders", columns: ["order_code"] },
-    ]
+    ],
+    "sales_invoices"
   )
   /* ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu 23/09/2026) — mã hóa đơn/đơn, hàng, số lô,
      khách; ghép "VÀ". Xem `useFieldSearch`. Trễ 350 ms cho tấm lọc điện thoại. */

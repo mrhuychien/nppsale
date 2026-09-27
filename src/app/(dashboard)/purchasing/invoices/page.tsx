@@ -121,7 +121,8 @@ export default function PurchaseInvoicesLookupPage() {
         column: "id", table: "payables", columns: ["invoice_number"],
         idColumn: "stock_entry_id",
       },
-    ]
+    ],
+    "stock_entries"
   )
 
   /**

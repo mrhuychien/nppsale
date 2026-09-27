@@ -480,7 +480,8 @@ export default function OrdersPage() {
    */
   const listSearch = useListSearch(
     supabase, debouncedSearch, user?.org_id, ["order_code"],
-    [{ column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] }]
+    [{ column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] }],
+    "sales_orders"
   )
   /**
    * ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu chủ nhà 23/09/2026) — mã đơn, mã/tên hàng,

@@ -51,7 +51,7 @@ import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { viMatchAllWords } from "@/lib/search"
 import { trangThaiCuaChon } from "@/lib/list/status-multi"
 import { Plus, Trash2, Wallet } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
@@ -170,12 +170,7 @@ export default function ExpensesPage() {
     return expenses.filter((e) => {
       if (categoryFilter !== "all" && e.category_id !== categoryFilter) return false
       if (search) {
-        const q = viNormalize(search)
-        if (
-          !viIncludes(e.description, q) &&
-          !viIncludes(e.reference_code, q) &&
-          !viIncludes(e.category?.name, q)
-        ) {
+        if (!viMatchAllWords(search, e.reference_code, e.description, e.category?.name)) {
           return false
         }
       }

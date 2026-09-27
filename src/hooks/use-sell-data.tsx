@@ -27,7 +27,7 @@ import {
   seedSellRefData,
   refreshSellStockShared,
 } from "@/lib/sell/ref-store"
-import { viMatchKey, viQueryWords, viSearchKey } from "@/lib/search"
+import { locXepHang, taoMucTim, viQueryWords } from "@/lib/search"
 import type { Customer } from "@/types"
 
 /**
@@ -73,9 +73,9 @@ interface SellDataValue {
   customerById: (id: string | null) => Customer | undefined
   /**
    * Lọc theo CHỈ MỤC đã chuẩn hoá sẵn — xem `viSearchKey`. Trả mảng con
-   * của `products`, giữ thứ tự gốc, chưa sắp xếp.
+   * của `products` ĐÃ XẾP HẠNG theo độ khớp (chữ rỗng: thứ tự gốc).
    */
-  filterProducts: (term: string) => SellProduct[]
+  filterProducts: (term: string, soPhu?: (a: SellProduct, b: SellProduct) => number) => SellProduct[]
   filterCustomers: (term: string) => Customer[]
   listMemory: MutableRefObject<ListMemory>
 }
@@ -172,38 +172,36 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
    * một lần; sau đó mỗi phím gõ chỉ còn 1.700 phép `includes`.
    */
   const productKeys = useMemo(
-    () => products.map((p) => viSearchKey(p.name, p.sku, p.barcode ?? "")),
+    () => products.map((p) => taoMucTim(p.sku, p.barcode ?? "", p.name)),
     [products]
   )
   const customerKeys = useMemo(
     () =>
       customers.map((c) =>
-        viSearchKey(c.store_name, c.owner_name ?? "", c.phone ?? "", c.address ?? "")
+        taoMucTim(c.phone ?? "", c.store_name, c.owner_name ?? "", c.address ?? "")
       ),
     [customers]
   )
 
+  /**
+   * ⚠ LỌC + XẾP HẠNG (chủ nhà 27/09/2026 — tìm "chính xác, linh hoạt"): mã /
+   *   mã vạch / SĐT trùng khớp lên đầu, rồi đầu mã, đầu từ, rồi chứa; không có
+   *   kết quả nào thì gợi ý gần đúng (gõ sai một chữ). `soPhu` xếp các dòng
+   *   CÙNG điểm (vd theo tồn kho) — đừng `.sort()` lại sau, là mất thứ hạng.
+   */
   const filterProducts = useCallback(
-    (term: string) => {
-      const words = viQueryWords(term)
-      if (!words.length) return products
-      const out: SellProduct[] = []
-      for (let i = 0; i < products.length; i++) {
-        if (viMatchKey(productKeys[i], words)) out.push(products[i])
-      }
-      return out
+    (term: string, soPhu?: (a: SellProduct, b: SellProduct) => number) => {
+      if (!viQueryWords(term).length) return products
+      return locXepHang(products, productKeys, term, {
+        soPhu: soPhu ? (a, b) => soPhu(products[a], products[b]) : undefined,
+      }).ketQua
     },
     [products, productKeys]
   )
   const filterCustomers = useCallback(
     (term: string) => {
-      const words = viQueryWords(term)
-      if (!words.length) return customers
-      const out: Customer[] = []
-      for (let i = 0; i < customers.length; i++) {
-        if (viMatchKey(customerKeys[i], words)) out.push(customers[i])
-      }
-      return out
+      if (!viQueryWords(term).length) return customers
+      return locXepHang(customers, customerKeys, term).ketQua
     },
     [customers, customerKeys]
   )

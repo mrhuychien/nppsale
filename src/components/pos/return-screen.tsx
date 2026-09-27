@@ -50,7 +50,7 @@ import {
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import {
   focusPosPicker,
   useRegisterPosProductSearch,
@@ -505,7 +505,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           title: p.name,
           meta: `${p.sku ?? "—"} · ${p.base_unit} · Tồn ${ton.toLocaleString("vi-VN")}`,
           alert: ton <= 0,
-          keywords: `${p.sku ?? ""} ${p.barcode ?? ""}`,
+          keywords: [p.sku, p.barcode],
           right: (
             <span className="n text-[12.5px] font-semibold text-[var(--pos-ink)]">
               {formatCurrency(unitPriceFor(p, p.base_unit, groupId))}
@@ -537,13 +537,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
    */
   const mucChoODung = useMemo(() => {
     const nguon = gioDich === "tra" ? mucHangTra : mucHang
-    const out: Array<{ id: string; title: string; subtitle: string; meta: string; alert?: boolean }> = []
-    for (const it of nguon) {
-      if (!viMatchAllWords(tuKhoa, it.title, it.keywords ?? "")) continue
-      out.push({ id: it.id, title: it.title, subtitle: it.meta ?? "", meta: it.meta ?? "", alert: it.alert })
-      if (out.length >= 60) break
-    }
-    return out
+    return timXepHang(nguon, tuKhoa, (it) => [...(it.keywords ?? []), it.title], { gioiHan: 60, nho: "pos-tra" }).ketQua
+      .map((it) => ({ id: it.id, title: it.title, subtitle: it.meta ?? "", meta: it.meta ?? "", alert: it.alert }))
   }, [gioDich, mucHangTra, mucHang, tuKhoa])
 
   const chonHang = useCallback(
@@ -567,7 +562,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         id: c.id,
         title: c.store_name,
         meta: [c.phone, c.address].filter(Boolean).join(" · "),
-        keywords: `${c.owner_name ?? ""} ${c.phone ?? ""}`,
+        keywords: [c.phone, c.owner_name],
       })),
     [customers]
   )

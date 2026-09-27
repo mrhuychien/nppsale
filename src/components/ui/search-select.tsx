@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { Check, ChevronDown, X } from "lucide-react"
 
@@ -92,14 +92,8 @@ export function SearchSelect({
   }, [open])
 
   const results = useMemo(() => {
-    const t = term.trim()
-    const out: SearchSelectOption[] = []
-    for (const o of options) {
-      if (t && !viMatchAllWords(t, o.label, o.hint, o.keywords)) continue
-      out.push(o)
-      if (out.length >= limit) break
-    }
-    return out
+    /* Lọc + XẾP HẠNG (trùng khớp → đầu mã → đầu từ → chứa), gần đúng khi quá ít kết quả. */
+    return timXepHang(options, term, (o) => [o.label, o.hint, o.keywords], { gioiHan: limit, nho: "search-select" }).ketQua
   }, [options, term, limit])
 
   // Danh sách đổi thì con trỏ phải về đầu, nếu không Enter chọn nhầm mục

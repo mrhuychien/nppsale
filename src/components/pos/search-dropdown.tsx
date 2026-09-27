@@ -27,7 +27,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { viQueryWords, viSearchKey, viMatchKey } from "@/lib/search"
+import { locXepHang, taoMucTim } from "@/lib/search"
 import { chuCaiDau } from "@/lib/pos/avatar"
 
 /**
@@ -40,6 +40,11 @@ import { chuCaiDau } from "@/lib/pos/avatar"
  */
 const TRAN_VE = 50
 
+/** Các trường tìm của một mục, theo thứ tự quan trọng. */
+export function truongTimCua(it: SearchItem): unknown[] {
+  return [...(it.keywords ?? []), it.title, it.meta ?? ""]
+}
+
 export interface SearchItem {
   id: string
   /** Dòng chính. */
@@ -48,8 +53,11 @@ export interface SearchItem {
   meta?: string
   /** Số bên phải: giá, hoặc công nợ. */
   right?: ReactNode
-  /** Chữ dùng để tìm, ngoài `title` và `meta`. */
-  keywords?: string
+  /**
+   * Chữ dùng để tìm, ngoài `title` và `meta` — MỖI GIÁ TRỊ MỘT PHẦN TỬ, mã /
+   * SĐT trước: gõ trùng khớp cả một SĐT / mã thì dòng ấy lên đầu (`diemTim`).
+   */
+  keywords?: Array<string | null | undefined>
   /** Hết hàng / nợ quá hạn — tô đỏ phần `meta`. */
   alert?: boolean
 }
@@ -97,7 +105,7 @@ export function SearchDropdown({
    * máy yếu — ô tìm "nuốt" chữ. Xem `viSearchKey`.
    */
   const keys = useMemo(
-    () => items.map((it) => viSearchKey(it.title, it.meta ?? "", it.keywords ?? "")),
+    () => items.map((it) => taoMucTim(...truongTimCua(it))),
     [items]
   )
 
@@ -115,18 +123,14 @@ export function SearchDropdown({
    *   mã là vài trăm micro-giây; dựng vài nghìn nút DOM mới là chỗ
    *   khựng. Nên đếm đủ, cắt phần VẼ, và nói ra là đã cắt.
    */
-  const { ketQua, soKhop } = useMemo(() => {
-    const words = viQueryWords(q)
-    if (!words.length) return { ketQua: items.slice(0, TRAN_VE), soKhop: items.length }
-    const out: SearchItem[] = []
-    let n = 0
-    for (let k = 0; k < items.length; k++) {
-      if (!viMatchKey(keys[k], words)) continue
-      n++
-      if (out.length < TRAN_VE) out.push(items[k])
-    }
-    return { ketQua: out, soKhop: n }
-  }, [q, items, keys])
+  const { ketQua, soKhop, ganDung } = useMemo(
+    /* Lọc + XẾP HẠNG: SĐT / mã trùng khớp lên đầu, rồi đầu mã, đầu từ, chứa;
+       không có kết quả nào thì gợi ý GẦN ĐÚNG (gõ sai một chữ). */
+    () => locXepHang(items, keys, q, { gioiHan: TRAN_VE }),
+    [q, items, keys]
+  )
+  /* Số dòng KHỚP THẬT đang vẽ — gợi ý gần đúng nằm riêng ở cuối. */
+  const soVe = ketQua.length - ganDung
 
   useEffect(() => { setI(0) }, [q])
 
@@ -207,12 +211,19 @@ export function SearchDropdown({
                 hay toàn bộ — và không biết rằng gõ thêm sẽ ra khác.
             */}
             <span className="n shrink-0 text-[11px] font-bold text-[var(--pos-muted)]">
-              {soKhop > ketQua.length
-                ? `hiện ${ketQua.length} trong ${soKhop}`
-                : `${soKhop} kết quả`}
+              {ganDung > 0 && soKhop === 0
+                ? `${ganDung} gần đúng`
+                : soKhop > soVe
+                  ? `hiện ${soVe} trong ${soKhop}`
+                  : `${soKhop} kết quả`}
             </span>
           </div>
-          {soKhop > ketQua.length && (
+          {ganDung > 0 && (
+            <p className="mt-1.5 text-[11px] font-semibold text-[var(--pos-muted)]">
+              Không có kết quả khớp đúng — đang gợi ý gần đúng (gõ sai chữ).
+            </p>
+          )}
+          {soKhop > soVe && (
             <p className="mt-1.5 text-[11px] font-semibold text-[var(--pos-muted)]">
               Danh sách chỉ vẽ {TRAN_VE} dòng đầu — gõ thêm để thu hẹp.
             </p>

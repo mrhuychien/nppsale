@@ -67,7 +67,7 @@ import { unitPriceFor, conversionFor, sellableUnits, stockInUnit } from "@/lib/s
 import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom } from "@/lib/pricing"
 import { isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { toStockLines } from "@/lib/sell/stock"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import {
   useRegisterPosProductSearch, usePosSearchTerm, focusPosPicker,
 } from "@/store/pos/product-search"
@@ -770,14 +770,13 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   const mucHang = useMemo(
     () => {
       const out: Array<SellProduct & { title: string; subtitle: string }> = []
-      for (const p of products) {
-        if (!viMatchAllWords(moTimHang, p.name, p.sku, p.barcode)) continue
+      /* Lọc + XẾP HẠNG: mã / mã vạch trùng khớp lên đầu, rồi đầu tên, rồi chứa. */
+      for (const p of timXepHang(products, moTimHang, (x) => [x.sku, x.barcode, x.name], { gioiHan: 60, nho: "hang" }).ketQua) {
         out.push({
           ...p,
           title: p.name,
           subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
         })
-        if (out.length >= 60) break
       }
       return out
     },
@@ -857,7 +856,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
         id: c.id,
         title: c.store_name,
         meta: [c.phone, c.address].filter(Boolean).join(" · "),
-        keywords: `${c.owner_name ?? ""} ${c.phone ?? ""}`,
+        keywords: [c.phone, c.owner_name],
       })),
     [customers]
   )

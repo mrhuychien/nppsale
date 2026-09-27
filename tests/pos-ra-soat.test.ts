@@ -259,7 +259,7 @@ describe("bố cục vừa màn 1280–1440", () => {
       expect(
         s,
         `${ten}: danh mục không lọc theo từ khoá — gõ chữ nào dải gợi ý cũng y nguyên`
-      ).toMatch(/viMatchAllWords\(\s*tuKhoa|viMatchAllWords\(\s*moTimHang/)
+      ).toMatch(/(viMatchAllWords|timXepHang)\(\s*(\w+,\s*)?(tuKhoa|moTimHang)\b/)
     }
   })
 

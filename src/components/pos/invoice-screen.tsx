@@ -49,7 +49,7 @@ import {
 import { reissueLock, reissuePaymentNote } from "@/lib/pos/invoice-edit"
 import { dongHangDoi, giaTheoHeSo } from "@/lib/pos/invoice-exchange"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
-import { viMatchAllWords } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
@@ -596,15 +596,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const tuKhoa = usePosSearchTerm()
   const mucHang = useMemo(() => {
     const out: Array<{ id: string; title: string; subtitle: string; ton: number; gia: number }> = []
-    for (const p of products) {
-      if (!viMatchAllWords(tuKhoa, p.name, p.sku, p.barcode)) continue
+    for (const p of timXepHang(products, tuKhoa, (x) => [x.sku, x.barcode, x.name], { gioiHan: 60, nho: "hang" }).ketQua) {
       out.push({
         id: p.id, title: p.name,
         subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
         ton: stockByProduct[p.id] ?? 0,
         gia: unitPriceFor(p, sellableUnits(p)[0], groupId),
       })
-      if (out.length >= 60) break
     }
     return out
   }, [products, stockByProduct, tuKhoa, groupId])

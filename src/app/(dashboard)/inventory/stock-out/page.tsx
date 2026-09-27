@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { viIncludes, viNormalize } from "@/lib/search"
+import { timXepHang } from "@/lib/search"
 import {
   Filter,
   Inbox,
@@ -1374,13 +1374,7 @@ export default function StockOutPage() {
           />
           <div className="max-h-72 overflow-y-auto border rounded-lg divide-y">
             {(() => {
-              const q = viNormalize(swapSearch)
-              const list = productCatalog.filter(
-                (p) =>
-                  !q ||
-                  viIncludes(p.name, q) ||
-                  viIncludes(p.sku, q)
-              )
+              const list = timXepHang(productCatalog, swapSearch, (p) => [p.sku, p.name]).ketQua
               if (list.length === 0) {
                 return (
                   <p className="text-xs text-muted-foreground text-center py-6">

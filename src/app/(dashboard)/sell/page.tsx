@@ -148,7 +148,8 @@ export default function SellPage() {
     if (term) {
       // ⚠ Lọc qua CHỈ MỤC đã chuẩn hoá sẵn ở provider, không chuẩn hoá lại
       // 1.700 × 3 trường ở mỗi phím gõ. Xem `viSearchKey`.
-      return filterProducts(term).sort(byStock).slice(0, RENDER_CAP)
+      /* Xếp theo độ khớp; cùng điểm thì theo tồn kho. */
+      return filterProducts(term, byStock).slice(0, RENDER_CAP)
     }
     const all = filterProducts("")
     if (tab === "freq" && frequentIds.length) {

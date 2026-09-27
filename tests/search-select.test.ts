@@ -14,7 +14,7 @@ const STOCKIN = readFileSync("src/app/(dashboard)/inventory/stock-in/page.tsx", 
 describe("ô chọn có tìm kiếm", () => {
   /** ⚠ Bắt gõ đủ dấu là bắt người dùng bỏ cuộc và cuộn tay như cũ. */
   it("bỏ dấu khi so, dùng chung hàm tìm của kho mã", () => {
-    expect(SS).toContain("viMatchAllWords(t, o.label, o.hint, o.keywords)")
+    expect(SS).toContain("timXepHang(options, term, (o) => [o.label, o.hint, o.keywords]")
   })
 
   /**

@@ -91,11 +91,15 @@ describe("phiếu lương của tôi — các khoản", () => {
 })
 
 describe("trang gộp /reports — số toàn NPP", () => {
-  it("NVBH không vào; trang chủ NVBH có ô Báo cáo → /reports/sales", () => {
+  it("NVBH không vào; trang chủ NVBH có ô Báo cáo tổng hợp → /bao-cao/ban-hang (27/09/2026)", () => {
     expect(duocVaoTrang("sales", "/reports", "reports")).toBe(false)
     for (const r of ["owner", "manager", "accountant", "warehouse"] as const) expect(duocVaoTrang(r, "/reports", "reports"), r).toBe(true)
     const h = doc("src/app/(dashboard)/home/page.tsx")
-    expect(h).toMatch(/TILES_NVBH: Tile\[\] = \[\s*\{ label: "Báo cáo", href: "\/reports\/sales"/)
+    expect(h).toMatch(/TILES_NVBH: Tile\[\] = \[\s*\{ label: "Báo cáo tổng hợp", href: "\/bao-cao\/ban-hang"/)
+    // Bỏ Công nợ KH + ô Báo cáo cũ; Hoa hồng / Khuyến mãi tạm khoá.
+    expect(h).toContain('const BO_KHOI_NVBH = ["/receivables", "/reports", "/reports/sales"]')
+    expect(h).toContain('const TAM_KHOA_NVBH = ["/commissions", "/promotions"]')
+    expect(doc("src/components/home/sales-home.tsx")).toMatch(/if \(t\.tamKhoa\) \{[\s\S]*?aria-disabled="true"/)
     expect(h).toContain("filterByPermission(role, TILES_NVBH)")
   })
 })

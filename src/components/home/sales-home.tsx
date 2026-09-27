@@ -20,7 +20,14 @@ import {
   loiNhacMucTieu, nhanNgay, congNgay, traCuaToi, ngayTuyen, nhanTuyen, type KyTrangChu, type HoaDonTC, type TraTC,
 } from "@/lib/home/sales-home"
 
-export interface OChucNang { label: string; href: string; icon: LucideIcon; color: string }
+export interface OChucNang {
+  label: string
+  href: string
+  icon: LucideIcon
+  color: string
+  /** Tạm thời không bấm được (chủ nhà 27/09/2026: Hoa hồng, Khuyến mãi). */
+  tamKhoa?: boolean
+}
 
 interface DuLieu {
   hd: HoaDonTC[]
@@ -349,6 +356,15 @@ export function SalesHome({
           <div className="grid grid-cols-4 gap-x-2 gap-y-4 rounded-2xl border bg-card p-3 shadow-sm">
             {oHien.map((t) => {
               const Icon = t.icon
+              if (t.tamKhoa) {
+                return (
+                  <div key={t.href} aria-disabled="true" title="Tạm thời chưa mở" data-testid="o-tam-khoa"
+                    className="flex cursor-not-allowed select-none flex-col items-center gap-1.5 text-center opacity-40 grayscale">
+                    <span className={cn("flex h-11 w-11 items-center justify-center rounded-xl", t.color)}><Icon className="h-5 w-5" /></span>
+                    <span className="text-[11.5px] font-semibold leading-tight">{t.label}</span>
+                  </div>
+                )
+              }
               return (
                 <Link key={t.href} href={t.href} className="flex flex-col items-center gap-1.5 text-center">
                   <span className={cn("flex h-11 w-11 items-center justify-center rounded-xl", t.color)}><Icon className="h-5 w-5" /></span>

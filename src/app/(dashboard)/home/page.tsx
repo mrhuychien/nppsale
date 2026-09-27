@@ -132,19 +132,30 @@ const TILES: Tile[] = [
   { label: "Trợ giúp", href: "/help", icon: HelpCircle, color: "blue" },
 ]
 
-/** Ô riêng của trang chủ NVBH: báo cáo bán hàng của mình (trang gộp /reports là số toàn NPP). */
+/**
+ * Ô riêng của trang chủ NVBH. Chủ nhà 27/09/2026: "Khu chức năng: báo cáo thay bằng báo cáo tổng
+ * hợp" — NVBH không có màn Tổng quan (reports.dashboard) nên mở thẳng Bán hàng của Báo cáo tổng hợp.
+ */
 const TILES_NVBH: Tile[] = [
-  { label: "Báo cáo", href: "/reports/sales", icon: BarChart3, color: "blue" },
+  { label: "Báo cáo tổng hợp", href: "/bao-cao/ban-hang", icon: BarChart3, color: "blue" },
 ]
 
+/** Chủ nhà 27/09/2026: bỏ "Công nợ KH"; ô Báo cáo cũ nhường cho Báo cáo tổng hợp. */
+const BO_KHOI_NVBH = ["/receivables", "/reports", "/reports/sales"]
+/** Chủ nhà 27/09/2026: "Nút hoa hồng, khuyến mại tạm thời cho không bấm được". */
+const TAM_KHOA_NVBH = ["/commissions", "/promotions"]
+
 /** Thứ tự ô "Chức năng" trên trang chủ NVBH theo mẫu; ô còn lại theo sau. */
-const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/promotions", "/receivables", "/reports/sales", "/luong-cua-toi", "/commissions"]
+const THU_TU_NVBH = ["/sell", "/orders", "/customers", "/bao-cao/ban-hang", "/luong-cua-toi", "/promotions", "/commissions"]
 function oChucNangNvbh(tiles: Tile[]) {
   const hang = (t: Tile) => {
     const i = THU_TU_NVBH.indexOf(t.href)
     return i < 0 ? THU_TU_NVBH.length : i
   }
-  return [...tiles].sort((a, b) => hang(a) - hang(b)).map((t) => ({ ...t, color: COLOR_CLASS[t.color] }))
+  return [...tiles]
+    .filter((t) => !BO_KHOI_NVBH.includes(t.href))
+    .sort((a, b) => hang(a) - hang(b))
+    .map((t) => ({ ...t, color: COLOR_CLASS[t.color], tamKhoa: TAM_KHOA_NVBH.includes(t.href) }))
 }
 
 /* ⚠ `order_date` / `visit_date` là DATE: so bằng NGÀY theo giờ VN. Mốc nửa đêm

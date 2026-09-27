@@ -36,7 +36,13 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
     await expect(trang.getByRole("link", { name: "Bán hàng" })).toBeVisible()
     // Chủ nhà 26/09/2026: NVBH chỉ còn bán hàng + công nợ / báo cáo bán hàng / phiếu lương.
     await expect(trang.getByRole("link", { name: "Phiếu lương" })).toHaveAttribute("href", "/luong-cua-toi")
-    await expect(trang.getByRole("link", { name: "Báo cáo" })).toHaveAttribute("href", "/reports/sales")
+    // Chủ nhà 27/09/2026: Báo cáo → Báo cáo tổng hợp; bỏ Công nợ KH; Hoa hồng / Khuyến mãi tạm khoá.
+    await expect(trang.getByRole("link", { name: "Báo cáo tổng hợp" })).toHaveAttribute("href", "/bao-cao/ban-hang")
+    await expect(trang.getByRole("link", { name: "Công nợ KH" })).toHaveCount(0)
+    for (const o of ["Hoa hồng", "Khuyến mãi"]) {
+      await expect(trang.getByRole("link", { name: o })).toHaveCount(0)
+      await expect(trang.getByTestId("o-tam-khoa").filter({ hasText: o })).toHaveAttribute("aria-disabled", "true")
+    }
     await expect(trang.getByRole("link", { name: "Sản phẩm" })).toHaveCount(0)
     await expect(trang.getByRole("link", { name: "Phiếu thu" })).toHaveCount(0)
     await expect(trang.getByText("Tồn kho thấp")).toHaveCount(0)

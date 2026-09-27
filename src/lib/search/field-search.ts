@@ -13,7 +13,11 @@
  *   trần thì `truncated` để màn nói "kết quả đang thiếu", không im lặng.
  */
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { idsMatching, ilikeDk, MATCH_CAP, NO_MATCH, type IdMatch } from "@/lib/search/list-search"
+import {
+  buildOrFilter, idsMatching, KHONG_DONG_NAO, MATCH_CAP, NO_MATCH, type IdMatch,
+} from "@/lib/search/list-search"
+
+export { KHONG_DONG_NAO, chiaNganSach } from "@/lib/search/list-search"
 
 /** Một bước tra: bước đầu tìm chữ trong `cotTim`; các bước sau lọc `theoCot` trong mã của bước trước. */
 export interface BuocTra {
@@ -36,12 +40,14 @@ export interface TruongTim {
   goiY?: string
   /** Cột CỦA CHÍNH bảng danh sách để tìm chữ (vd `order_code`). */
   cotRieng?: string[]
+  /**
+   * Bảng danh sách — để `cotRieng` tìm cả khoá `tim_kd` (mã viết liền, bỏ số 0
+   * đầu, không dấu; mig 205). Xem `coTimKd`.
+   */
+  bang?: string
   /** Chuỗi tra ra mã, rồi so với `cotDich` của bảng danh sách. */
   chuoi?: { buoc: BuocTra[]; cotDich: string }[]
 }
-
-/** Không khớp gì — một điều kiện không dòng nào thoả. */
-export const KHONG_DONG_NAO = "id.eq.00000000-0000-0000-0000-000000000000"
 
 const TRAN_DONG = 1000
 
@@ -81,45 +87,28 @@ export async function maTheoChuoi(
  * Điều kiện `or` của MỘT trường. Trả `KHONG_DONG_NAO` khi trường có chữ mà
  * không khớp gì — bỏ qua điều kiện là trả về CẢ danh sách cho một câu tìm
  * không ra gì, đúng kiểu nói dối "không lọc được thì thôi".
+ *
+ * Cùng luật với ô tìm nhanh (`buildOrFilter`): mọi từ trên cột riêng, HOẶC
+ * mọi từ ở bảng tra, HOẶC (tra trộn) từ số trên cột riêng VÀ từ chữ ở bảng tra.
  */
-export function dieuKienTruong(truong: TruongTim, term: string, khop: IdMatch[]): string | null {
+export function dieuKienTruong(
+  truong: TruongTim,
+  term: string,
+  khop: IdMatch[],
+  opt: { timKd?: boolean; tron?: IdMatch[] } = {}
+): string | null {
   const t = term.trim()
   if (!t) return null
-  const phan = (truong.cotRieng ?? []).map((c) => ilikeDk(c, t))
-  ;(truong.chuoi ?? []).forEach((c, i) => {
-    const m = khop[i] ?? NO_MATCH
-    if (m.ids.length > 0) phan.push(`${c.cotDich}.in.(${m.ids.join(",")})`)
-  })
-  return phan.length > 0 ? phan.join(",") : KHONG_DONG_NAO
+  const f = buildOrFilter(
+    t,
+    truong.cotRieng ?? [],
+    (truong.chuoi ?? []).map((c, i) => ({ column: c.cotDich, match: khop[i] ?? NO_MATCH })),
+    opt
+  )
+  return f.filter ?? KHONG_DONG_NAO
 }
 
 /** Số trường đang có chữ — để nút lọc hiện huy hiệu. */
 export function soTruongDangTim(values: Record<string, string>): number {
   return Object.values(values).filter((v) => v.trim()).length
-}
-
-/**
- * ⚠ NGÂN SÁCH MÃ CHUNG CHO MỌI TRƯỜNG. Mỗi trường được tới `MATCH_CAP`
- *   mã thì hai trường cùng chạm trần là 300+ uuid (~11 KB) trong MỖI câu
- *   danh sách / đếm / cộng tiền — đường dẫn quá dài, cổng API trả lỗi và
- *   danh sách rỗng (xem chú thích `ID_MOI_LO`). Chia chung một ngân sách;
- *   bị cắt thì `truncated` để màn nói "kết quả đang thiếu".
- */
-export function chiaNganSach(
-  khop: Record<string, IdMatch[]>,
-  thuTu: readonly string[],
-  tong: number = MATCH_CAP
-): Record<string, IdMatch[]> {
-  let con = tong
-  const out: Record<string, IdMatch[]> = {}
-  for (const k of thuTu) {
-    const ms = khop[k]
-    if (!ms) continue
-    out[k] = ms.map((m) => {
-      const lay = m.ids.slice(0, Math.max(0, con))
-      con -= lay.length
-      return { ids: lay, truncated: m.truncated || lay.length < m.ids.length }
-    })
-  }
-  return out
 }

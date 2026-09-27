@@ -20,15 +20,23 @@ function cotTrigger(): Record<string, string[]> {
 
 describe("dieuKienTim — gõ không dấu vẫn ra chữ có dấu", () => {
   it("bảng có tim_kd: thêm điều kiện đã bỏ dấu", () => {
+    expect(dieuKienTim("products", ["name", "sku"], "Bánh")).toBe(
+      'name.ilike."%Bánh%",sku.ilike."%Bánh%",tim_kd.ilike."%banh%"'
+    )
+  })
+  it("nhiều từ: MỖI từ một nhóm `or`, ghép `and` — thứ tự từ không quan trọng", () => {
     expect(dieuKienTim("products", ["name", "sku"], "Bánh  Đậu")).toBe(
-      'name.ilike."%Bánh  Đậu%",sku.ilike."%Bánh  Đậu%",tim_kd.ilike."%banh dau%"'
+      'and(or(name.ilike."%Bánh%",sku.ilike."%Bánh%",tim_kd.ilike."%banh%"),' +
+        'or(name.ilike."%Đậu%",sku.ilike."%Đậu%",tim_kd.ilike."%dau%"))'
     )
   })
   it("bảng không có tim_kd: giữ nguyên điều kiện cũ", () => {
     expect(dieuKienTim("sales_orders", ["order_code"], "DH-01")).toBe('order_code.ilike."%DH-01%"')
   })
   it("ký tự đại diện và ngoặc kép vẫn được thoát ở vế bỏ dấu", () => {
-    expect(dieuKienTim("customers", [], 'Mẹ "Tú" 50%')).toBe('tim_kd.ilike."%me \\"tu\\" 50\\\\%%"')
+    expect(dieuKienTim("customers", [], '"Tú" 50%')).toBe(
+      'and(or(tim_kd.ilike."%tu%",tim_kd.ilike."%\\"tu\\"%"),or(tim_kd.ilike."%50%",tim_kd.ilike."%50\\\\%%"))'
+    )
   })
 })
 

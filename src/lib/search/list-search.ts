@@ -18,6 +18,12 @@
  * thì phải hỏi mã khách trước rồi mới lọc theo `customer_id`. Đó là hai
  * lượt gọi và một cái bẫy — danh sách mã có thể dài quá URL — nên nó
  * phải nằm ở MỘT chỗ có chốt, không phải chép ra từng màn.
+ *
+ * ⚠ TỪNG TỪ MỘT, KHÔNG NGUYÊN CỤM (chủ nhà 27/09/2026: "tìm kiếm chính xác,
+ * linh hoạt hơn, tìm kiếm được không dấu"). Chữ gõ tách thành từ; MỖI từ
+ * phải có mặt ở một cột nào đó — mỗi từ là một nhóm `or(...)`, các nhóm ghép
+ * bằng `and(...)`. Cùng luật với `viMatchAllWords` ở trình duyệt; khoá bỏ
+ * dấu `tim_kd` cùng luật với `viValueKey` (mig 205).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -69,24 +75,144 @@ export function ilikeDk(column: string, raw: string): string {
 }
 
 /**
- * Bảng có cột `tim_kd` — các cột tìm được, BỎ DẤU (mig 177).
+ * Bảng có cột `tim_kd` THẬT — các cột tìm được, BỎ DẤU (mig 177, khoá mới
+ * từ mig 205). Có sẵn từ lâu nên dùng thẳng, không dò.
  *
- * ⚠ LUẬT BỎ DẤU PHẢI TRÙNG `viNormalize`. Máy chủ tính `tim_kd` bằng
- *   `khong_dau()`; chữ gõ bỏ dấu ở đây bằng `viNormalize`. Hai bên lệch
- *   một chữ là "banh" không ra "Bánh" — chốt tests/tim-khong-dau.test.ts
- *   và /tmp/pgtest/t177.sql giữ chúng cùng một luật.
+ * ⚠ LUẬT BỎ DẤU PHẢI TRÙNG `viNormalize` / `viValueKey`. Máy chủ tính
+ *   `tim_kd` bằng `khoa_tim()`; chữ gõ bỏ dấu ở đây bằng `viNormalize`. Hai
+ *   bên lệch một chữ là "banh" không ra "Bánh" — chốt tests/tim-khong-dau.test.ts
+ *   và tests/tim-chung.test.ts giữ chúng cùng một luật.
  */
 export const BANG_TIM_KHONG_DAU: ReadonlySet<string> = new Set(["products", "customers", "suppliers"])
 
 /**
- * Mệnh đề `or` tìm `raw` trong `columns` của `table` — kèm `tim_kd` khi
- * bảng có cột ấy, để gõ không dấu vẫn ra chữ có dấu.
+ * Bảng chứng từ có `tim_kd` là CỘT TÍNH (hàm `public.tim_kd(<bảng>)`, mig 205)
+ * — mã chứng từ viết liền / bỏ số 0 đầu, tên người không dấu.
+ *
+ * ⚠ PHẢI DÒ TRƯỚC KHI DÙNG (`coTimKd`). Sổ chưa chạy mig 205 mà gửi
+ *   `tim_kd.ilike…` là PostgREST báo "cột không có" và CẢ danh sách trắng.
  */
-export function dieuKienTim(table: string, columns: string[], raw: string): string {
-  const parts = columns.map((c) => ilikeDk(c, raw))
-  const kd = viNormalize(raw)
-  if (BANG_TIM_KHONG_DAU.has(table) && kd) parts.push(ilikeDk("tim_kd", kd))
-  return parts.join(",")
+export const BANG_TIM_KD_TINH: ReadonlySet<string> = new Set([
+  "sales_orders", "sales_invoices", "returns", "stock_entries", "batches",
+  "payables", "cash_receipts", "users", "invoices",
+])
+
+const doTimKd = new Map<string, Promise<boolean>>()
+
+/**
+ * Bảng này hỏi được `tim_kd` chưa. Bảng có cột thật: có. Bảng có cột tính:
+ * dò MỘT lần mỗi phiên (một câu `limit 1` đúng hình dạng sẽ dùng).
+ *
+ * ⚠ LỖI MẠNG KHÔNG ĐƯỢC NHỚ. Dò hỏng vì mất mạng mà ghi "không có" là cả
+ *   phiên tìm theo luật cũ; chỉ nhớ khi máy chủ trả lời rõ ràng.
+ */
+export function coTimKd(sb: SupabaseClient, table: string): Promise<boolean> {
+  if (BANG_TIM_KHONG_DAU.has(table)) return Promise.resolve(true)
+  if (!BANG_TIM_KD_TINH.has(table)) return Promise.resolve(false)
+  const cu = doTimKd.get(table)
+  if (cu) return cu
+  const p = (async () => {
+    try {
+      const { error } = await sb.from(table).select("id").or(ilikeDk("tim_kd", "0")).limit(1)
+      if (!error) return true
+      const ro = /tim_kd|42703|PGRST(1|2)\d\d/i.test(`${error.code ?? ""} ${error.message ?? ""}`)
+      if (!ro) doTimKd.delete(table)
+      return false
+    } catch {
+      doTimKd.delete(table)
+      return false
+    }
+  })()
+  doTimKd.set(table, p)
+  return p
+}
+
+/** Chỉ cho kiểm thử: quên kết quả dò. */
+export function _quenDoTimKd(): void {
+  doTimKd.clear()
+}
+
+/** Một từ gõ: nguyên dạng (cho cột thường) và các dạng bỏ dấu (cho `tim_kd`). */
+export interface TuTim {
+  go: string
+  kd: string[]
+}
+
+/**
+ * Tách chữ gõ thành từ.
+ *
+ * `kd` = bản viết liền đã bỏ dấu ("DH-0123" → "dh0123") — khớp khoá mig 205;
+ * cộng bản bỏ dấu giữ dấu câu ("q.8") nếu khác — khớp khoá cũ của mig 177,
+ * để sổ chưa chạy mig 205 vẫn tìm được như trước.
+ */
+export function tachTuTim(raw: string): TuTim[] {
+  const out: TuTim[] = []
+  for (const go of raw.trim().split(/\s+/)) {
+    if (!go) continue
+    const n = viNormalize(go)
+    const lien = n.split(/[^a-z0-9]+/).join("")
+    const kd: string[] = []
+    if (lien) kd.push(lien)
+    if (n && n !== lien) kd.push(n)
+    if (!out.some((t) => t.go.toLowerCase() === go.toLowerCase())) out.push({ go, kd })
+  }
+  return out
+}
+
+/** Chia từ gõ thành từ CÓ CHỮ SỐ (mã, số) và từ chữ (tên). */
+export function tachSoChu(raw: string): { so: string; chu: string } {
+  const so: string[] = []
+  const chu: string[] = []
+  for (const w of raw.trim().split(/\s+/)) {
+    if (!w) continue
+    ;(/[0-9]/.test(w) ? so : chu).push(w)
+  }
+  return { so: so.join(" "), chu: chu.join(" ") }
+}
+
+/** Không khớp gì — một điều kiện không dòng nào thoả. */
+export const KHONG_DONG_NAO = "id.eq.00000000-0000-0000-0000-000000000000"
+
+/** Các vế của MỘT từ: mỗi cột `ilike` nguyên dạng, `tim_kd` `ilike` các dạng bỏ dấu. */
+function veCuaTu(t: TuTim, columns: string[], timKd: boolean): string[] {
+  const ve = columns.map((c) => ilikeDk(c, t.go))
+  if (timKd) for (const k of t.kd) ve.push(ilikeDk("tim_kd", k))
+  return ve
+}
+
+/** Nhóm các từ thành MỘT phần tử logic (đặt được vào `or(...)` / `and(...)`). */
+function motPhanTu(nhom: string[][]): string | null {
+  const co = nhom.filter((g) => g.length > 0)
+  if (co.length === 0) return null
+  const boc = (g: string[]) => (g.length === 1 ? g[0] : `or(${g.join(",")})`)
+  return co.length === 1 ? boc(co[0]) : `and(${co.map(boc).join(",")})`
+}
+
+/**
+ * Phần tử logic "MỌI từ của `raw` có ở một trong `columns` (hoặc `tim_kd`)".
+ * `null` khi không có gì để so.
+ */
+export function phanTuTim(columns: string[], raw: string, timKd: boolean): string | null {
+  return motPhanTu(tachTuTim(raw).map((t) => veCuaTu(t, columns, timKd)))
+}
+
+/**
+ * Mệnh đề cho `.or(...)`: tìm `raw` trong `columns` của `table` — từng từ,
+ * kèm `tim_kd` khi bảng có, để gõ không dấu / mã viết liền vẫn ra.
+ *
+ * ⚠ MỘT TỪ thì ra đúng hình dạng cũ ("a.ilike…,b.ilike…"); NHIỀU TỪ thì là
+ *   một khối `and(or(…),or(…))` — vẫn là một mệnh đề cho `.or()`.
+ */
+export function dieuKienTim(
+  table: string,
+  columns: string[],
+  raw: string,
+  timKd: boolean = BANG_TIM_KHONG_DAU.has(table)
+): string {
+  const nhom = tachTuTim(raw).map((t) => veCuaTu(t, columns, timKd)).filter((g) => g.length > 0)
+  if (nhom.length === 0) return KHONG_DONG_NAO
+  if (nhom.length === 1) return nhom[0].join(",")
+  return motPhanTu(nhom) as string
 }
 
 export interface IdMatch {
@@ -99,8 +225,8 @@ export interface IdMatch {
 export const NO_MATCH: IdMatch = { ids: [], truncated: false }
 
 /**
- * Mã của những dòng ở bảng `table` có BẤT KỲ cột nào trong `columns`
- * khớp `term`.
+ * Mã của những dòng ở bảng `table` có MỌI từ của `term` ở một trong `columns`
+ * (hoặc trong `tim_kd` nếu bảng có).
  *
  * ⚠ ĐÂY LÀ LƯỢT TRA CỨU PHỤ, KHÔNG PHẢI DANH SÁCH HIỆN RA. Nó chỉ lấy
  * cột `id`, có trần, và kết quả đi vào một `in.(...)` của truy vấn
@@ -124,10 +250,11 @@ export async function idsMatching(
 ): Promise<IdMatch> {
   const t = term.trim()
   if (!t || columns.length === 0) return NO_MATCH
+  const timKd = await coTimKd(supabase, table)
   let q = supabase
     .from(table)
     .select(idColumn)
-    .or(dieuKienTim(table, columns, t))
+    .or(dieuKienTim(table, columns, t, timKd))
     // ⚠ CÓ MỐC SẮP XẾP. Không có thì hai lần gọi cùng một từ khoá có thể
     //   trả về hai tập mã khác nhau, và danh sách nhấp nháy.
     .order(idColumn)
@@ -177,10 +304,51 @@ export interface OrClause {
 }
 
 /**
+ * ⚠ NGÂN SÁCH MÃ CHUNG CHO MỌI DANH SÁCH `in.(…)` CỦA MỘT CÂU. Mỗi lượt tra
+ *   được tới `MATCH_CAP` mã thì hai lượt cùng chạm trần là 300+ uuid (~11 KB)
+ *   trong MỖI câu danh sách / đếm / cộng tiền — đường dẫn quá dài, cổng API
+ *   trả lỗi và danh sách rỗng (xem chú thích `ID_MOI_LO`). Chia chung một
+ *   ngân sách; bị cắt thì `truncated` để màn nói "kết quả đang thiếu".
+ */
+export function chiaNganSach(
+  khop: Record<string, IdMatch[]>,
+  thuTu: readonly string[],
+  tong: number = MATCH_CAP
+): Record<string, IdMatch[]> {
+  let con = tong
+  const out: Record<string, IdMatch[]> = {}
+  for (const k of thuTu) {
+    const ms = khop[k]
+    if (!ms) continue
+    out[k] = ms.map((m) => {
+      const lay = m.ids.slice(0, Math.max(0, con))
+      con -= lay.length
+      return { ids: lay, truncated: m.truncated || lay.length < m.ids.length }
+    })
+  }
+  return out
+}
+
+export interface TuyChonMenhDe {
+  /** Bảng đang liệt kê hỏi được `tim_kd` (xem `coTimKd`). */
+  timKd?: boolean
+  /**
+   * Tra TRỘN: mã tra theo riêng các từ CHỮ, ghép VÀ với các từ CÓ SỐ trên cột
+   * của chính bảng — "minh 0123" = đơn 0123 CỦA khách Minh. Cùng thứ tự với
+   * `idFilters`. Xem `tachSoChu`.
+   */
+  tron?: IdMatch[]
+}
+
+/**
  * Dựng mệnh đề `or` cho truy vấn chính.
  *
  * @param ownColumns Cột của CHÍNH bảng đang liệt kê (`order_code`…).
- * @param idFilters  Cặp "cột khoá ngoại" ↔ mã đã tra được.
+ * @param idFilters  Cặp "cột khoá ngoại" ↔ mã đã tra được (tra theo CẢ chữ gõ).
+ *
+ * Dòng khớp khi: MỌI từ có trên cột của chính nó, HOẶC MỌI từ có ở bảng tra
+ * (khoá ngoại nằm trong danh sách mã), HOẶC (tra trộn) từ số có trên chính nó
+ * VÀ từ chữ có ở bảng tra.
  *
  * ⚠ KHÔNG CÓ MÃ NÀO KHỚP THÌ BỎ HẲN VẾ ẤY, đừng dựng `in.()` rỗng.
  * PostgREST đọc `in.()` là "không khớp gì" — nối vào `or` thì vô hại,
@@ -190,15 +358,87 @@ export interface OrClause {
 export function buildOrFilter(
   term: string,
   ownColumns: string[],
-  idFilters: Array<{ column: string; match: IdMatch }>
+  idFilters: Array<{ column: string; match: IdMatch }>,
+  opt: TuyChonMenhDe = {}
 ): OrClause {
   const t = term.trim()
   if (!t) return { filter: null, truncated: false }
-  const parts = ownColumns.map((c) => ilikeDk(c, t))
-  let truncated = false
-  for (const f of idFilters) {
-    if (f.match.truncated) truncated = true
-    if (f.match.ids.length > 0) parts.push(`${f.column}.in.(${f.match.ids.join(",")})`)
+  const timKd = !!opt.timKd
+  const parts: string[] = []
+  const rieng = ownColumns.length > 0 || timKd ? phanTuTim(ownColumns, t, timKd) : null
+  if (rieng) {
+    // Một từ, nhiều cột: trải phẳng như trước ("a.ilike…,b.ilike…").
+    if (rieng.startsWith("or(")) parts.push(rieng.slice(3, -1))
+    else parts.push(rieng)
   }
+  const ds: Record<string, IdMatch[]> = {}
+  const thuTu: string[] = []
+  idFilters.forEach((f, i) => {
+    ds[`d${i}`] = [f.match]
+    thuTu.push(`d${i}`)
+  })
+  ;(opt.tron ?? []).forEach((m, i) => {
+    ds[`t${i}`] = [m]
+    thuTu.push(`t${i}`)
+  })
+  const chia = chiaNganSach(ds, thuTu)
+  let truncated = false
+  idFilters.forEach((f, i) => {
+    const m = chia[`d${i}`][0]
+    if (m.truncated) truncated = true
+    if (m.ids.length > 0) parts.push(`${f.column}.in.(${m.ids.join(",")})`)
+  })
+  const so = tachSoChu(t).so
+  const riengSo = so && (ownColumns.length > 0 || timKd) ? phanTuTim(ownColumns, so, timKd) : null
+  ;(opt.tron ?? []).forEach((_, i) => {
+    const m = chia[`t${i}`]?.[0]
+    const f = idFilters[i]
+    if (!m || !f) return
+    if (m.truncated) truncated = true
+    if (riengSo && m.ids.length > 0) parts.push(`and(${riengSo},${f.column}.in.(${m.ids.join(",")}))`)
+  })
   return { filter: parts.length > 0 ? parts.join(",") : null, truncated }
+}
+
+/** Một lượt tra phụ: khoá ngoại nào ↔ tìm ở bảng nào, cột nào. */
+export interface LookupSpec {
+  /** Cột khoá ngoại trên CHÍNH bảng đang liệt kê. */
+  column: string
+  table: string
+  columns: string[]
+  /** Cột lấy ra làm khoá — mặc định `id`. Xem `idsMatching`. */
+  idColumn?: string
+}
+
+/** Cần tra trộn không: có cả từ số lẫn từ chữ, có cột riêng và có bảng tra. */
+export function canTraTron(term: string, coCotRieng: boolean, soBangTra: number): string | null {
+  const { so, chu } = tachSoChu(term)
+  return so && chu && coCotRieng && soBangTra > 0 ? chu : null
+}
+
+/**
+ * MỆNH ĐỀ TÌM ĐẦY ĐỦ cho một danh sách — dò `tim_kd`, tra các bảng phụ (cả
+ * lượt trộn), dựng `or`. Dùng chung cho `useListSearch` và màn nào tự gọi
+ * (soạn hàng). Trả thêm `timKd` để nơi gọi biết đã dùng khoá mới chưa.
+ */
+export async function menhDeTimDanhSach(
+  sb: SupabaseClient,
+  bang: string | null,
+  term: string,
+  orgId: string | null | undefined,
+  ownColumns: string[],
+  lookups: LookupSpec[]
+): Promise<OrClause & { timKd: boolean }> {
+  const t = term.trim()
+  if (!t) return { filter: null, truncated: false, timKd: false }
+  const [timKd, matches] = await Promise.all([
+    bang ? coTimKd(sb, bang) : Promise.resolve(false),
+    Promise.all(lookups.map((s) => idsMatching(sb, s.table, s.columns, t, orgId, s.idColumn ?? "id"))),
+  ])
+  const chu = canTraTron(t, ownColumns.length > 0 || timKd, lookups.length)
+  const tron = chu
+    ? await Promise.all(lookups.map((s) => idsMatching(sb, s.table, s.columns, chu, orgId, s.idColumn ?? "id")))
+    : undefined
+  const or = buildOrFilter(t, ownColumns, lookups.map((s, i) => ({ column: s.column, match: matches[i] })), { timKd, tron })
+  return { ...or, timKd }
 }

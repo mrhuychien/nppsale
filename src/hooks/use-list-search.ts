@@ -20,19 +20,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
-import {
-  idsMatching, buildOrFilter, lookupSettled, NO_MATCH, type IdMatch,
-} from "@/lib/search/list-search"
+import { lookupSettled, menhDeTimDanhSach, type LookupSpec } from "@/lib/search/list-search"
 
-/** Một lượt tra phụ: khoá ngoại nào ↔ tìm ở bảng nào, cột nào. */
-export interface LookupSpec {
-  /** Cột khoá ngoại trên CHÍNH bảng đang liệt kê. */
-  column: string
-  table: string
-  columns: string[]
-  /** Cột lấy ra làm khoá — mặc định `id`. Xem `idsMatching`. */
-  idColumn?: string
-}
+export type { LookupSpec }
 
 export interface ListSearch {
   /**
@@ -59,12 +49,18 @@ export function useListSearch(
   orgId: string | null | undefined,
   /** Cột của CHÍNH bảng đang liệt kê. */
   ownColumns: string[],
-  lookups: LookupSpec[]
+  lookups: LookupSpec[],
+  /**
+   * Tên bảng đang liệt kê — để tìm cả khoá `tim_kd` của nó (mã viết liền,
+   * bỏ số 0 đầu, không dấu; mig 205). Bỏ trống thì chỉ tìm `ownColumns`.
+   */
+  bang?: string
 ): ListSearch {
   const t = term.trim()
-  const [state, setState] = useState<{ term: string; matches: IdMatch[] }>({
+  const [state, setState] = useState<{ term: string; filter: string | null; truncated: boolean }>({
     term: "",
-    matches: [],
+    filter: null,
+    truncated: false,
   })
 
   /**
@@ -72,20 +68,18 @@ export function useListSearch(
    *   trong thân component, nên tham chiếu đổi mỗi lần vẽ lại — để nó
    *   thẳng vào mảng phụ thuộc là hiệu ứng chạy vô hạn.
    */
-  const key = JSON.stringify(lookups)
+  const key = JSON.stringify([ownColumns, lookups, bang ?? null])
 
   useEffect(() => {
     if (!t) {
-      setState({ term: "", matches: [] })
+      setState({ term: "", filter: null, truncated: false })
       return
     }
     let cancelled = false
     ;(async () => {
-      const specs: LookupSpec[] = JSON.parse(key)
-      const matches = await Promise.all(
-        specs.map((s) => idsMatching(supabase, s.table, s.columns, t, orgId, s.idColumn ?? "id"))
-      )
-      if (!cancelled) setState({ term: t, matches })
+      const [cot, specs, b]: [string[], LookupSpec[], string | null] = JSON.parse(key)
+      const or = await menhDeTimDanhSach(supabase, b, t, orgId, cot, specs)
+      if (!cancelled) setState({ term: t, filter: or.filter, truncated: or.truncated })
     })()
     return () => { cancelled = true }
   }, [t, orgId, key]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -93,14 +87,8 @@ export function useListSearch(
   /* ⚠ LUẬT NẰM Ở `lookupSettled`, không viết lại ở đây — xem chú thích
      của hàm ấy: bản viết thẳng vào hook thì không chốt nào canh được. */
   const ready = lookupSettled(state.term, t)
-  const specs: LookupSpec[] = JSON.parse(key)
-  const idFilters = specs.map((s, i) => ({
-    column: s.column,
-    match: state.matches[i] ?? NO_MATCH,
-  }))
-  const or = buildOrFilter(t, ownColumns, idFilters)
-  const filter = or.filter
-  const truncated = or.truncated
+  const filter = ready ? state.filter : null
+  const truncated = ready ? state.truncated : false
 
   /**
    * ⚠ PHẢI TRẢ VỀ MỘT OBJECT CÓ DANH TÍNH ỔN ĐỊNH. Đây là lỗi ĐÃ LÀM

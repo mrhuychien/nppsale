@@ -12,8 +12,10 @@ describe("ô tìm khách theo cả địa chỉ", () => {
     for (const c of ["store_name", "owner_name", "phone", "address", "ward", "district", "province"]) {
       expect(COT_TIM_KHACH, c).toContain(c)
     }
-    expect(dieuKienTim("customers", COT_TIM_KHACH, "Hàng Kênh")).toContain('address.ilike."%Hàng Kênh%"')
-    expect(dieuKienTim("customers", COT_TIM_KHACH, "Hàng Kênh")).toContain('tim_kd.ilike."%hang kenh%"')
+    /* Từng từ (mig 205): mỗi từ một nhóm `or`, ghép `and`. */
+    expect(dieuKienTim("customers", COT_TIM_KHACH, "Hàng Kênh")).toContain('address.ilike."%Hàng%"')
+    expect(dieuKienTim("customers", COT_TIM_KHACH, "Hàng Kênh")).toContain('address.ilike."%Kênh%"')
+    expect(dieuKienTim("customers", COT_TIM_KHACH, "Hàng Kênh")).toContain('tim_kd.ilike."%kenh%"')
   })
   it("màn danh sách dùng đúng bộ cột; chữ gợi ý nói có địa chỉ", () => {
     const p = doc("src/app/(dashboard)/customers/page.tsx")

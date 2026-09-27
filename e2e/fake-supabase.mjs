@@ -99,40 +99,71 @@ function tachOr(v) {
   out.push(v.slice(dau))
   return out.filter(Boolean)
 }
+/**
+ * Một phần tử logic: `a.eq.1`, `and(…)`, `or(…)` (lồng tuỳ ý, như PostgREST —
+ * ô tìm từng từ gửi `and(or(…),or(…))`, mig 205). `null` = không hiểu.
+ */
+function phanTuFn(dk) {
+  for (const [tien, moi] of [["and(", "every"], ["or(", "some"], ["not.and(", "every"], ["not.or(", "some"]]) {
+    if (dk.startsWith(tien) && dk.endsWith(")")) {
+      const con = tachOr(dk.slice(tien.length, -1)).map(phanTuFn)
+      if (con.some((c) => !c)) return null
+      const f = (r) => con[moi]((c) => c(r))
+      return tien.startsWith("not.") ? (r) => !f(r) : f
+    }
+  }
+  const i = dk.indexOf(".")
+  return filterFn(dk.slice(0, i), dk.slice(i + 1))
+}
+
 /** `or=(a.eq.1,b.ilike.%x%)` → hàm kiểm dòng; điều kiện lạ thì `null` (ghi log). */
-function orFn(v) {
+function orFn(v, moi = "some") {
   const trong = v.replace(/^\(/, "").replace(/\)$/, "")
   const fs = []
   for (const dk of tachOr(trong)) {
-    /* `and(a.gte.1,a.lte.2)` lồng trong `or` — lọc nâng cao "trong khoảng". */
-    if (dk.startsWith("and(")) {
-      const con = tachOr(dk.slice(4, -1)).map((x) => { const j = x.indexOf("."); return filterFn(x.slice(0, j), x.slice(j + 1)) })
-      if (con.some((c) => !c)) return null
-      fs.push((r) => con.every((c) => c(r)))
-      continue
-    }
-    const i = dk.indexOf(".")
-    const f = filterFn(dk.slice(0, i), dk.slice(i + 1))
+    const f = phanTuFn(dk)
     if (!f) return null
     fs.push(f)
   }
-  return (r) => fs.some((f) => f(r))
+  return (r) => fs[moi]((f) => f(r))
 }
 
 /**
- * Trigger `tim_kd` của mig 177, chép sang đây: bảng → cột ghép, bỏ dấu
- * theo đúng luật `viNormalize` / `khong_dau()`.
+ * Khoá `tim_kd`, chép từ `viValueKey` (src/lib/search.ts) / `khoa_tim()` (mig 205):
+ * bảng → cột ghép. Ba bảng đầu là cột thật (mig 177/203), còn lại là cột tính
+ * `tim_kd(<bảng>)` của mig 205. ⚠ Chốt tests/tim-chung.test.ts so hàm này với
+ * `viValueKey` trên cùng bộ mẫu.
  */
 const TIM_KD = {
   products: ["sku", "name", "barcode"],
-  customers: ["store_name", "owner_name", "phone", "tax_code"],
+  customers: ["store_name", "owner_name", "phone", "tax_code", "address", "ward", "district", "province"],
   suppliers: ["name", "code", "phone", "tax_code"],
+  sales_orders: ["order_code"],
+  sales_invoices: ["invoice_code"],
+  returns: ["return_code"],
+  stock_entries: ["entry_code"],
+  batches: ["batch_code"],
+  payables: ["invoice_number"],
+  cash_receipts: ["receipt_code", "notes"],
+  users: ["full_name", "phone"],
+  invoices: ["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"],
 }
 const khongDau = (v) => String(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().replace(/\s+/g, " ").trim()
+export function khoaTim(v) {
+  if (v === null || v === undefined) return ""
+  const tu = khongDau(v).split(/[^a-z0-9]+/).filter(Boolean)
+  if (!tu.length) return ""
+  const lien = tu.join("")
+  const out = [tu.join(" ")]
+  if (tu.length > 1) out.push(lien)
+  const lien0 = tu.map((w) => w.replace(/(^|[a-z])0+(?=[0-9])/g, "$1")).join("")
+  if (lien0 !== lien) out.push(lien0)
+  return out.join(" ")
+}
 function ganTimKd(table, row) {
   const cot = TIM_KD[table]
-  if (cot && row && typeof row === "object") row.tim_kd = khongDau(cot.map((c) => row[c] ?? "").join(" "))
+  if (cot && row && typeof row === "object") row.tim_kd = cot.map((c) => khoaTim(row[c])).filter(Boolean).join(" ")
   return row
 }
 
@@ -229,7 +260,12 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
         else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]
         continue
       }
-      if (k === "and") { entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]; continue }
+      if (k === "and") {
+        const f = orFn(v, "every")
+        if (f) filters.push(f)
+        else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]
+        continue
+      }
       const f = filterFn(k, v)
       if (f) filters.push(f)
       else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]

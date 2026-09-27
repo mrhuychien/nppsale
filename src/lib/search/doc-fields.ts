@@ -25,7 +25,7 @@ const THEO_KHACH: TruongTim = {
 }
 
 export const TRUONG_DON_HANG: readonly TruongTim[] = [
-  { key: "ma", nhan: "Theo mã đơn hàng", cotRieng: ["order_code"] },
+  { key: "ma", nhan: "Theo mã đơn hàng", cotRieng: ["order_code"], bang: "sales_orders" },
   theoHang("sales_order_lines", "order_id"),
   THEO_KHACH,
 ]
@@ -35,6 +35,7 @@ export const TRUONG_HOA_DON: readonly TruongTim[] = [
     key: "ma",
     nhan: "Theo mã hóa đơn, mã đơn",
     cotRieng: ["invoice_code"],
+    bang: "sales_invoices",
     chuoi: [{ cotDich: "order_id", buoc: [{ bang: "sales_orders", cotTim: ["order_code"], layCot: "id", coOrg: true }] }],
   },
   theoHang("sales_invoice_lines", "invoice_id"),

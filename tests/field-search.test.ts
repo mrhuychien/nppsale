@@ -95,7 +95,7 @@ describe("dieuKienTruong", () => {
    *   cả câu truy vấn. `"` và `\` trong ngoặc kép phải thoát.
    */
   it("giá trị đặt trong ngoặc kép; \" và \\ được thoát", () => {
-    expect(dieuKienTruong(MA, "DH,01 (x)", [])).toBe('order_code.ilike."%DH,01 (x)%"')
+    expect(dieuKienTruong(MA, "DH,01 (x)", [])).toBe('and(order_code.ilike."%DH,01%",order_code.ilike."%(x)%")')
     expect(dieuKienTruong(MA, 'a"b', [])).toBe('order_code.ilike."%a\\"b%"')
   })
   it("đếm trường đang tìm", () => {

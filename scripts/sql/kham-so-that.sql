@@ -356,8 +356,10 @@ SELECT 41, 'Mig 202 (NVBH chỉ còn bán hàng)',
 UNION ALL
 -- 42. Mig 203 — tìm khách theo cả địa chỉ (tim_kd có địa chỉ)
 SELECT 42, 'Mig 203 (Tìm khách theo địa chỉ)',
+  -- So sau khi bỏ mọi thứ ngoài a-z0-9: đúng cho cả khoá kiểu mig 177/203 lẫn khoá mig 205.
   CASE WHEN EXISTS (SELECT 1 FROM customers WHERE COALESCE(address, '') <> ''
-                      AND tim_kd NOT LIKE '%' || public.khong_dau(address) || '%')
+                      AND regexp_replace(COALESCE(tim_kd, ''), '[^a-z0-9]', '', 'g')
+                          NOT LIKE '%' || regexp_replace(public.khong_dau(address), '[^a-z0-9]', '', 'g') || '%')
        THEN 'CHƯA — gõ địa chỉ không dấu không ra khách'
        ELSE 'OK — đã vá' END, ''
 UNION ALL
@@ -367,5 +369,25 @@ SELECT 43, 'Mig 204 (Báo cáo đọc một lượt)',
          OR to_regprocedure('public.bao_cao_cong_no(date, date)') IS NULL
          OR to_regprocedure('public.bao_cao_ton_kho(date, date)') IS NULL
        THEN 'CHƯA — báo cáo vẫn chạy nhưng đọc từng bảng (chậm)'
+       ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 44. Mig 205 — tìm kiếm chung: khoá tìm (mã viết liền, bỏ số 0 đầu), cột tính tim_kd
+--     cho bảng chứng từ, chỉ mục trigram
+SELECT 44, 'Mig 205 (Tìm kiếm chung: từng từ, không dấu, mã viết liền)',
+  -- ⚠ Gọi hàm của mig 205 qua query_to_xml: sổ chưa chạy mig 205 thì gọi thẳng là cả
+  --   phiếu khám báo lỗi "function does not exist" ngay lúc dịch câu.
+  CASE WHEN to_regprocedure('public.khoa_tim(text)') IS NULL
+            OR to_regprocedure('public.tim_kd(public.sales_orders)') IS NULL
+       THEN 'CHƯA — gõ "dh0123" không ra DH-0123, tìm người lập không dấu không ra'
+       WHEN (xpath('/row/k/text()', query_to_xml($q$SELECT public.khoa_tim('DH-0123') || '|' ||
+              public.khoa_tim(U&'S\1eefa h\1ed9p \0110\00e0 N\1eb5ng') AS k$q$, false, true, '')))[1]::text
+            <> 'dh 0123 dh0123 dh123|sua hop da nang suahopdanang'
+       THEN 'LỆCH — khoa_tim() không còn trùng viValueKey (src/lib/search.ts)'
+       WHEN (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM products
+              WHERE tim_kd IS DISTINCT FROM public.khoa_tim_ds(sku::text, name::text, barcode::text)$q$,
+              false, true, '')))[1]::text <> '0'
+       THEN 'LỆCH — còn hàng có tim_kd kiểu cũ, chạy lại mig 205'
+       WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sales_orders_tim_kd_trgm')
+       THEN 'CHƯA — thiếu chỉ mục trigram, ô tìm quét cả bảng'
        ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

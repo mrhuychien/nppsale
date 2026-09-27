@@ -1,9 +1,13 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { usePagination } from "@/hooks/use-pagination"
-import { DataPagination } from "@/components/ui/data-pagination"
-import { useRouter } from "next/navigation"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
@@ -20,17 +24,13 @@ import {
   DEFAULT_PAYABLE_COLUMNS,
   type PayableColumnKey,
 } from "./list-config"
-import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel } from "@/lib/utils"
-import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
-import { Factory, Plus, Search } from "lucide-react"
+import { Factory, Plus } from "lucide-react"
 import Link from "@/components/ui/link"
 import type { Payable, PayableStatus } from "@/types"
 
@@ -42,6 +42,15 @@ const PAYABLE_STATUS_MAP: Record<PayableStatus, { label: string; variant: "defau
   paid: { label: "Đã trả đủ", variant: "success" },
   overdue: { label: "Quá hạn", variant: "danger" },
 }
+
+/** Dải trạng thái — cùng `StatusChips` với đơn / hóa đơn (khuôn danh sách chung, 27/09/2026). */
+const TABS: Array<{ key: StatusFilter; label: string; accent: string }> = [
+  { key: "open", label: "Chưa trả", accent: "#b9c4d6" },
+  { key: "partial", label: "Trả 1 phần", accent: "#fdb022" },
+  { key: "overdue", label: "Quá hạn", accent: "#ef5350" },
+  { key: "paid", label: "Đã trả", accent: "#22c55e" },
+  { key: "all", label: "Tất cả", accent: "#181c1e" },
+]
 
 export default function PayablesPage() {
   const { user, loading: authLoading } = useRoleGuard("receivables")
@@ -63,13 +72,11 @@ export default function PayablesPage() {
     return () => clearTimeout(t)
   }, [search])
   const supabase = createClient()
-  const router = useRouter()
   const {
     columns: visibleColumns,
     setColumns,
     resetColumns,
   } = useListViewPrefs("payables", DEFAULT_PAYABLE_COLUMNS, [], PAYABLE_COLUMNS, [])
-  const show = (k: PayableColumnKey) => visibleColumns.includes(k)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("payables", LOC_CONG_NO_PHAI_TRA)
 
@@ -178,6 +185,77 @@ export default function PayablesPage() {
    */
   const filtered = payables
 
+
+  /**
+   * SỐ ĐẾM TRÊN DẢI TRẠNG THÁI — đếm ở máy chủ, cùng ô tìm + lọc nâng cao với danh sách
+   * (khuôn danh sách chung, 27/09/2026). ⚠ Không đếm từ `payables` (một trang).
+   */
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!listSearch.ready || !locNC.ready) return
+    let huy = false
+    ;(async () => {
+      const one = async (st: string | null) => {
+        let q = supabase.from("payables").select("id", { count: "exact", head: true })
+        if (listSearch.filter) q = q.or(listSearch.filter)
+        for (const f of locNC.menhDe) q = q.or(f)
+        if (st) q = q.eq("status", st)
+        const { count, error } = await q
+        if (error) console.warn("[payables] đếm theo trạng thái lỗi:", error.message)
+        return count ?? 0
+      }
+      const keys = TABS.filter((t) => t.key !== "all").map((t) => t.key)
+      const so = await Promise.all([...keys.map((k) => one(k)), one(null)])
+      if (huy) return
+      const c: Record<string, number> = { all: so[so.length - 1] }
+      keys.forEach((k, i) => { c[k] = so[i] })
+      setCounts(c)
+    })()
+    return () => { huy = true }
+  }, [debouncedSearch, listSearch, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Payable> & { k?: PayableColumnKey }> = [
+      {
+        key: "supplier", label: "Nhà cung cấp", width: "minmax(200px,1.5fr)",
+        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        render: (p) => <span className="block truncate text-sm font-bold">{p.supplier?.name || "-"}</span>,
+      },
+      {
+        k: "invoiceNumber", key: "invoiceNumber", label: "Mã HĐ", width: "140px",
+        render: (p) => <DocCodeLink href={`/payables/${p.id}`}>{p.invoice_number || "-"}</DocCodeLink>,
+      },
+      { k: "amount", key: "amount", label: "Số tiền", width: "130px", align: "right", sort: (a, b) => Number(a.amount) - Number(b.amount), render: (p) => formatCurrency(p.amount) },
+      { k: "paid", key: "paid", label: "Đã trả", width: "130px", align: "right", render: (p) => formatCurrency(p.paid) },
+      { k: "remaining", key: "remaining", label: "Còn lại", width: "140px", align: "right", sort: (a, b) => (a.amount - a.paid) - (b.amount - b.paid), render: (p) => formatCurrency(p.amount - p.paid) },
+      {
+        k: "dueDate", key: "dueDate", label: "Hạn trả", width: "110px",
+        sort: (a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""),
+        render: (p) => <DocCellDate date={p.due_date ? formatDate(p.due_date) : "-"} />,
+      },
+      {
+        k: "aging", key: "aging", label: "Tuổi nợ", width: "130px",
+        render: (p) => {
+          const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
+          return p.status !== "paid" && p.due_date
+            ? <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdueOf(p.due_date))}</Badge>
+            : "-"
+        },
+      },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "130px",
+        render: (p) => {
+          const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
+          return <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+        },
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns])
+
   if (authLoading) return <Skeleton className="h-96" />
 
   /**
@@ -196,19 +274,19 @@ export default function PayablesPage() {
     .reduce((sum, p) => sum + conNo(p), 0)
   const suppliersWithDebt = new Set(allOpen.map((p) => p.supplier_id)).size
 
-  const agingVariant = (status: string): "success" | "warning" | "danger" | "default" => {
-    switch (status) {
-      case "current": return "success"
-      case "warning": return "warning"
-      case "overdue": return "danger"
-      case "critical": return "danger"
-      default: return "default"
-    }
-  }
+  const xem = xemId ? filtered.find((p) => p.id === xemId) ?? null : null
+  const xemStatus = xem ? (PAYABLE_STATUS_MAP[xem.status as PayableStatus] || { label: xem.status, variant: "default" as const }) : null
+  const tongNote = (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
+      <span>Trong hạn <b className="tabular-data text-tertiary">{formatCurrency(totalInTerm)}</b></span>
+      <span>Quá hạn <b className="tabular-data text-destructive">{formatCurrency(totalOverdue)}</b></span>
+      <span>Số NCC đang nợ <b className="tabular-data text-on-surface">{suppliersWithDebt}</b></span>
+    </p>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Công nợ nhà cung cấp" description={`Tổng phải trả: ${formatCurrency(totalOutstanding)}`}>
+      <PageHeader title="Công nợ nhà cung cấp" descriptionDesktopOnly description={`Tổng phải trả: ${formatCurrency(totalOutstanding)}`}>
         <div className="flex gap-2">
           <Button variant="outline" asChild>
             <Link href="/payables/by-supplier">Theo NCC</Link>
@@ -219,95 +297,13 @@ export default function PayablesPage() {
         </div>
       </PageHeader>
 
-      {/*
-        ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
-          lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
-      */}
-      {listSearch.truncated && !loading && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50/60 px-4 py-3 text-sm text-[#7a4b00]">
-          <p className="font-semibold">Kết quả tìm đang thiếu</p>
-          <p className="mt-0.5">
-            Có hơn {MATCH_CAP} nhà cung cấp khớp &ldquo;{debouncedSearch}&rdquo; — danh sách dưới
-            chưa đủ. Gõ thêm cho hẹp lại.
-          </p>
-        </div>
-      )}
+      <StatusChips
+        active={statusFilter}
+        onPick={(k) => setStatusFilter(k as StatusFilter)}
+        chips={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))}
+      />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tổng phải trả</p>
-            <p className="text-xl font-black mt-1">{formatCurrency(totalOutstanding)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Trong hạn</p>
-            <p className="text-xl font-black mt-1 text-tertiary">{formatCurrency(totalInTerm)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Quá hạn</p>
-            <p className="text-xl font-black mt-1 text-destructive">{formatCurrency(totalOverdue)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Số NCC đang nợ</p>
-            <p className="text-xl font-black mt-1">{suppliersWithDebt}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search + Filter */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm theo NCC, mã hóa đơn..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {(["all", "open", "partial", "overdue", "paid"] as StatusFilter[]).map((f) => {
-                const labels: Record<StatusFilter, string> = {
-                  all: "Tất cả",
-                  open: "Chưa trả",
-                  partial: "Trả 1 phần",
-                  overdue: "Quá hạn",
-                  paid: "Đã trả",
-                }
-                return (
-                  <button
-                    key={f}
-                    onClick={() => setStatusFilter(f)}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      statusFilter === f
-                        ? "bg-primary text-on-primary"
-                        : "bg-surface-low text-muted-foreground hover:bg-surface-container"
-                    }`}
-                  >
-                    {labels[f]}
-                  </button>
-                )
-              })}
-            </div>
-            <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} />
-            <ColumnPicker
-              available={PAYABLE_COLUMNS}
-              value={visibleColumns}
-              onChange={setColumns}
-              onReset={resetColumns}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
 
       {/* Bốn ô tổng đọc hỏng / thiếu — nói ra, không để 0 trông như "không nợ". */}
       {statsError && (
@@ -331,141 +327,113 @@ export default function PayablesPage() {
         </div>
       )}
 
-      {/* Table */}
-      {loading ? (
-        <Skeleton className="h-96" />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Factory className="h-8 w-8 text-muted-foreground" />}
-          title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ NCC"}
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : search || statusFilter !== "all"
-                ? "Thử thay đổi bộ lọc"
-                : payables.length === 0 &&
-                    (user?.role === "sales" || user?.role === "driver" || user?.role === "warehouse")
-                  ? "Vai trò của bạn không có quyền xem công nợ nhà cung cấp (giá vốn nhập). Đây là dữ liệu tài chính chỉ dành cho Chủ, Quản lý và Kế toán — liên hệ kế toán nếu cần đối chiếu."
-                  : "Tạo công nợ nhà cung cấp đầu tiên"
-          }
-        />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <Card className="hidden lg:block">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nhà cung cấp</TableHead>
-                      {show("invoiceNumber") && <TableHead>Mã HĐ</TableHead>}
-                      {show("amount") && <TableHead className="text-right">Số tiền</TableHead>}
-                      {show("paid") && <TableHead className="text-right">Đã trả</TableHead>}
-                      {show("remaining") && <TableHead className="text-right">Còn lại</TableHead>}
-                      {show("dueDate") && <TableHead>Hạn trả</TableHead>}
-                      {show("aging") && <TableHead>Tuổi nợ</TableHead>}
-                      {show("status") && <TableHead>Trạng thái</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((p) => {
-                      const remaining = p.amount - p.paid
-                      const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-                      const daysOverdue = daysOverdueOf(p.due_date)
-                      const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
-                      return (
-                        <TableRow
-                          key={p.id}
-                          className="cursor-pointer"
-                          onClick={() => router.push(`/payables/${p.id}`)}
-                        >
-                          <TableCell className="font-medium">{p.supplier?.name || "-"}</TableCell>
-                          {show("invoiceNumber") && <TableCell className="font-mono text-xs">{p.invoice_number || "-"}</TableCell>}
-                          {show("amount") && <TableCell className="text-right tabular-nums">{formatCurrency(p.amount)}</TableCell>}
-                          {show("paid") && <TableCell className="text-right tabular-nums">{formatCurrency(p.paid)}</TableCell>}
-                          {show("remaining") && <TableCell className="text-right font-bold tabular-nums">{formatCurrency(remaining)}</TableCell>}
-                          {show("dueDate") && <TableCell>{p.due_date ? formatDate(p.due_date) : "-"}</TableCell>}
-                          {show("aging") && (
-                            <TableCell>
-                              {p.status !== "paid" && p.due_date ? (
-                                <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
-                          )}
-                          {show("status") && (
-                            <TableCell>
-                              <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm theo NCC, mã hóa đơn..."
+        activeCount={locNC.soDangAp}
+        onClear={locNC.xoa}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+      </MobileFilterBar>
 
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
-            {filtered.map((p) => {
-              const remaining = p.amount - p.paid
+      {/* ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026). "Tổng phải trả" là của các khoản CHƯA
+          TRẢ trên toàn sổ (bốn ô tổng cũ), không phải của trang. */}
+      <DocListLayout
+        toolbar={
+          <>
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm theo NCC, mã hóa đơn..." />
+            <XoaLocButton show={!!search} onClick={() => setSearch("")} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <ColumnPicker
+              available={PAYABLE_COLUMNS}
+              value={visibleColumns}
+              onChange={setColumns}
+              onReset={resetColumns}
+            />
+          </>
+        }
+        totals={{
+          label: "Tổng phải trả (toàn sổ)",
+          countText: `${pg.total} khoản nợ NCC`,
+          total: statsError || statsTruncated ? null : formatCurrency(totalOutstanding),
+        }}
+        totalsNote={statsError ? null : tongNote}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<Factory className="h-8 w-8 text-muted-foreground" />}
+            title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ NCC"}
+            description={
+              loadError
+                ? "Xem thông báo lỗi phía trên."
+                : search || statusFilter !== "all"
+                  ? "Thử thay đổi bộ lọc"
+                  : payables.length === 0 &&
+                      (user?.role === "sales" || user?.role === "driver" || user?.role === "warehouse")
+                    ? "Vai trò của bạn không có quyền xem công nợ nhà cung cấp (giá vốn nhập). Đây là dữ liệu tài chính chỉ dành cho Chủ, Quản lý và Kế toán — liên hệ kế toán nếu cần đối chiếu."
+                    : "Tạo công nợ nhà cung cấp đầu tiên"
+            }
+          />
+        }
+        pg={pg}
+        shownCount={filtered.length}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} />}
+        cards={
+          <DocCardList
+            items={filtered}
+            onOpen={(p) => setXemId(p.id)}
+            card={(p) => {
               const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-              const daysOverdue = daysOverdueOf(p.due_date)
-              const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
-              return (
-                <div
-                  key={p.id}
-                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                  onClick={() => router.push(`/payables/${p.id}`)}
-                >
-                  <div className="p-4">
-                    <div className="flex justify-between items-start gap-3 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-extrabold text-base leading-tight truncate">
-                          {p.supplier?.name || "-"}
-                        </h3>
-                        {p.invoice_number && (
-                          <p className="font-mono text-xs text-muted-foreground mt-0.5 truncate">
-                            HĐ: {p.invoice_number}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Hạn: {p.due_date ? formatDate(p.due_date) : "-"}
-                        </p>
-                      </div>
-                      <div className="shrink-0 flex flex-col items-end gap-1">
-                        <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-                        {p.status !== "paid" && p.due_date && (
-                          <Badge variant={agingVariant(aging)}>{agingLabel(daysOverdue)}</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
-                      <div>
-                        <p className="text-muted-foreground">Số tiền</p>
-                        <p className="font-medium">{formatCurrency(p.amount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Đã trả</p>
-                        <p className="font-medium">{formatCurrency(p.paid)}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Còn lại</p>
-                        <p className="font-bold text-destructive">{formatCurrency(remaining)}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <DataPagination pg={pg} shownCount={filtered.length} />
-        </>
-      )}
+              const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus]
+              return {
+                accent: p.status === "paid" ? "#22c55e" : aging === "current" ? "#b9c4d6" : "#ef5350",
+                title: p.supplier?.name || "-",
+                total: formatCurrency(p.amount - p.paid),
+                meta: [p.invoice_number ? `HĐ ${p.invoice_number}` : null, `Hạn ${p.due_date ? formatDate(p.due_date) : "-"}`].filter(Boolean).join(" · "),
+                payment: p.status !== "paid" && p.due_date ? agingLabel(daysOverdueOf(p.due_date)) : "",
+                paymentCredit: p.status !== "paid" && aging !== "current",
+                summary: `Số tiền ${formatCurrency(p.amount)} · Đã trả ${formatCurrency(p.paid)}`,
+                badge: statusCfg && p.status !== "paid" ? { label: statusCfg.label, bg: p.status === "overdue" ? "#fdecec" : "#fff4e0", fg: p.status === "overdue" ? "#b00020" : "#8a5a00" } : null,
+              }
+            }}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.invoice_number || "Công nợ NCC"}
+        subtitle={xem?.supplier?.name || undefined}
+        badge={xemStatus ? <Badge variant={xemStatus.variant}>{xemStatus.label}</Badge> : null}
+        fields={xem ? [
+          { label: "Nhà cung cấp", value: xem.supplier?.name, wide: true },
+          { label: "Số tiền", value: formatCurrency(xem.amount) },
+          { label: "Đã trả", value: formatCurrency(xem.paid) },
+          { label: "Hạn trả", value: xem.due_date ? formatDate(xem.due_date) : null },
+          { label: "Tuổi nợ", value: xem.status !== "paid" && xem.due_date ? agingLabel(daysOverdueOf(xem.due_date)) : null },
+        ] : []}
+        total={xem ? { label: "Còn lại", value: formatCurrency(xem.amount - xem.paid) } : undefined}
+        detailHref={xem ? `/payables/${xem.id}` : undefined}
+      />
     </div>
   )
+}
+
+function agingVariant(status: string): "success" | "warning" | "danger" | "default" {
+  switch (status) {
+    case "current": return "success"
+    case "warning": return "warning"
+    case "overdue": return "danger"
+    case "critical": return "danger"
+    default: return "default"
+  }
 }

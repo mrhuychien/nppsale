@@ -1,5 +1,17 @@
 "use client"
 
+/**
+ * CHI PHÍ — danh sách.
+ *
+ * ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026: "Làm chung form hiển thị danh sách cho toàn
+ *   bộ các danh sách theo form đang dùng cho Đơn hàng, hóa đơn, trả hàng"): dải trạng thái có
+ *   số đếm, một thẻ gồm thanh công cụ · dòng tổng · lưới · phân trang 20/trang, thẻ trên điện
+ *   thoại, bấm dòng mở xem nhanh. Bốn thẻ thống kê cũ gộp vào dòng tổng + dòng phụ.
+ *
+ * ⚠ SỔ TẢI ĐỦ TRONG KỲ (tổng chi phí phải đủ) rồi lọc / phân trang tại chỗ — tổng là của CẢ
+ *   bộ lọc, không phải của trang.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { PeriodSelect } from "@/components/ui/period-select"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
@@ -10,8 +22,10 @@ import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
 import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -26,13 +40,27 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import {
+  DocListLayout, DocListSearch, LocNhanhButton, LocNhanhField, XoaLocButton,
+} from "@/components/ui/doc-list-layout"
+import { DocTable, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viIncludes, viNormalize } from "@/lib/search"
-import { Plus, Search, Trash2, Wallet, Receipt, Info } from "lucide-react"
+import { trangThaiCuaChon } from "@/lib/list/status-multi"
+import { Plus, Trash2, Wallet } from "lucide-react"
 import type { Expense, ExpenseCategory, ExpenseBucket } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import {
+  EXPENSE_COLUMNS, EXPENSE_FILTERS, DEFAULT_EXPENSE_COLUMNS, DEFAULT_EXPENSE_FILTERS,
+  type ExpenseColumnKey, type ExpenseFilterKey,
+} from "./list-config"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -42,6 +70,16 @@ const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   tax: { label: "Thuế", color: "text-on-surface-variant bg-surface-container" },
   other: { label: "Khác", color: "text-muted-foreground bg-muted" },
 }
+
+const PAYMENT_LABEL: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", ewallet: "Ví điện tử" }
+
+/** Dải trạng thái: đã trả / chưa trả. Khoá lưu là chữ, `is_paid` là cờ. */
+const TABS = [
+  { key: "paid", label: "Đã trả", accent: "#22c55e" },
+  { key: "unpaid", label: "Chưa trả", accent: "#fdb022" },
+  { key: "all", label: "Tất cả", accent: "#181c1e" },
+] as const
+const trangThaiChiPhi = (e: Expense) => (e.is_paid ? "paid" : "unpaid")
 
 export default function ExpensesPage() {
   const { loading: authLoading } = useRoleGuard("settings")
@@ -59,11 +97,22 @@ export default function ExpensesPage() {
   /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
   const [dateFrom, setDateFrom] = useState(() => khoangKy("month").from)
   const [dateTo, setDateTo] = useState(() => khoangKy("month").to)
+  /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
+  const [status, setStatus] = useLuuTrangThai("expenses", "all")
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [filterSheet, setFilterSheet] = useState(false)
+  const [xemId, setXemId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("expenses", LOC_CHI_PHI)
+
+  const {
+    columns: visibleColumns, filters: activeFilters,
+    setColumns, setFilters, resetColumns, resetFilters,
+  } = useListViewPrefs("expenses", DEFAULT_EXPENSE_COLUMNS, DEFAULT_EXPENSE_FILTERS, EXPENSE_COLUMNS, EXPENSE_FILTERS)
+  const filterActive = (k: ExpenseFilterKey) => activeFilters.includes(k)
 
   // Form state
   const [formDate, setFormDate] = useState(today.toISOString().slice(0, 10))
@@ -116,7 +165,8 @@ export default function ExpensesPage() {
 
   useEffect(() => { fetch() }, [fetch])
 
-  const filtered = useMemo(() => {
+  /** Mọi bộ lọc TRỪ trạng thái — để dải trạng thái đếm đúng theo bộ lọc đang áp. */
+  const locRows = useMemo(() => {
     return expenses.filter((e) => {
       if (categoryFilter !== "all" && e.category_id !== categoryFilter) return false
       if (search) {
@@ -133,6 +183,17 @@ export default function ExpensesPage() {
     })
   }, [expenses, categoryFilter, search])
 
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: locRows.length, paid: 0, unpaid: 0 }
+    for (const e of locRows) c[trangThaiChiPhi(e)] += 1
+    return c
+  }, [locRows])
+
+  const filtered = useMemo(() => {
+    const chon = trangThaiCuaChon(status)
+    return chon ? locRows.filter((e) => chon.includes(trangThaiChiPhi(e))) : locRows
+  }, [locRows, status])
+
   const totals = useMemo(() => {
     const byBucket: Record<string, number> = {}
     let total = 0
@@ -147,6 +208,8 @@ export default function ExpensesPage() {
     }
     return { byBucket, total, paid, unpaid }
   }, [filtered])
+
+  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([status, categoryFilter, search, dateFrom, dateTo, locNC.key]))
 
   const resetForm = () => {
     setFormDate(today.toISOString().slice(0, 10))
@@ -207,6 +270,7 @@ export default function ExpensesPage() {
       await ghiPhaiTrungDong(supabase.from("expenses").delete().eq("id", id))
       toast({ title: "Đã xóa" })
       setExpenses((prev) => prev.filter((e) => e.id !== id))
+      setXemId((cur) => (cur === id ? null : cur))
     } catch (err) {
       const message = errorMessage(err, "Lỗi")
       toast({ title: "Lỗi", description: message, variant: "destructive" })
@@ -219,12 +283,114 @@ export default function ExpensesPage() {
   // ⚠ XOÁ hẹp hơn SỬA: `expenses_delete` chỉ cho chủ + quản lý. Kế toán
   //   thấy nút xoá là bị mời bấm vào một thao tác chắc chắn bị từ chối.
   const canDelete = user && ["owner", "manager"].includes(user.role)
+  /* Chi phí tự sinh (`source_type`) không xoá tay — xoá ở chứng từ gốc. */
+  const xoaDuoc = (e: Expense) => !!canDelete && e.source_type === null
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Expense> & { k?: ExpenseColumnKey }> = [
+      {
+        key: "date", label: "Ngày chi", width: "120px",
+        sort: (a, b) => (a.expense_date ?? "").localeCompare(b.expense_date ?? ""),
+        render: (e) => <DocCellDate date={formatDate(e.expense_date)} />,
+      },
+      { k: "category", key: "category", label: "Danh mục", width: "minmax(160px,1fr)", render: (e) => <DocCellText>{e.category?.name}</DocCellText> },
+      {
+        k: "bucket", key: "bucket", label: "Phân loại", width: "120px",
+        render: (e) => {
+          const m = BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket] ?? BUCKET_LABEL.other
+          return <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${m.color}`}>{m.label}</span>
+        },
+      },
+      {
+        k: "description", key: "description", label: "Mô tả", width: "minmax(200px,1.5fr)",
+        render: (e) => (
+          <>
+            <DocCellText muted title={e.description ?? undefined}>{e.description}</DocCellText>
+            {e.source_type && <span className="block text-[11px] italic text-on-surface-variant">tự sinh: {e.source_type}</span>}
+          </>
+        ),
+      },
+      { k: "reference", key: "reference", label: "Mã tham chiếu", width: "140px", render: (e) => <span className="block truncate font-mono text-xs">{e.reference_code || "—"}</span> },
+      { k: "method", key: "method", label: "Hình thức", width: "120px", render: (e) => <DocCellText muted>{e.payment_method ? (PAYMENT_LABEL[e.payment_method] ?? e.payment_method) : null}</DocCellText> },
+      {
+        k: "total", key: "total", label: "Số tiền", width: "140px", align: "right",
+        sort: (a, b) => Number(a.amount) - Number(b.amount),
+        render: (e) => formatCurrency(e.amount),
+      },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "120px",
+        render: (e) => (e.is_paid ? <Badge variant="success">Đã trả</Badge> : <Badge variant="warning">Chưa trả</Badge>),
+      },
+      {
+        key: "actions", label: "", width: "56px",
+        render: (e) =>
+          xoaDuoc(e) ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              aria-label="Xoá chi phí"
+              onClick={(ev) => { ev.stopPropagation(); handleDelete(e.id) }}
+              disabled={deleting === e.id}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          ) : null,
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, deleting, canDelete]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
+  const ky = kyCuaKhoang(dateFrom, dateTo)
+  const macDinh = khoangKy("month")
+  const coLocKhac = categoryFilter !== "all" || dateFrom !== macDinh.from || dateTo !== macDinh.to
+  const clearAdvanced = () => {
+    setCategoryFilter("all")
+    setDateFrom(macDinh.from)
+    setDateTo(macDinh.to)
+  }
+  const activeFilterCount = (categoryFilter !== "all" ? 1 : 0) + (dateFrom !== macDinh.from || dateTo !== macDinh.to ? 1 : 0)
+  const xem = xemId ? expenses.find((e) => e.id === xemId) ?? null : null
+
+  const categorySelect = (
+    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+      <SelectTrigger aria-label="Danh mục" className="h-10 w-[180px] rounded-xl font-semibold"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả danh mục</SelectItem>
+        {categories.map((c) => (
+          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const dateFields = (
+    <>
+      <LocNhanhField label="Từ ngày">
+        <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+      </LocNhanhField>
+      <LocNhanhField label="Đến ngày">
+        <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+      </LocNhanhField>
+    </>
+  )
+  const bucketNote = (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
+      <span>Đã trả <b className="tabular-data text-tertiary">{formatCurrency(totals.paid)}</b></span>
+      <span>Chưa trả <b className="tabular-data text-[#b54708]">{formatCurrency(totals.unpaid)}</b></span>
+      {(Object.entries(totals.byBucket) as Array<[ExpenseBucket, number]>)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([bucket, amount]) => (
+          <span key={bucket}>{BUCKET_LABEL[bucket]?.label || bucket} <b className="tabular-data text-on-surface">{formatCurrency(amount)}</b></span>
+        ))}
+    </p>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Chi phí" description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
+      <PageHeader title="Chi phí" descriptionDesktopOnly description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
         {canEdit && (
           <Button onClick={openAdd}>
             <Plus className="h-4 w-4 mr-1.5" /> Thêm chi phí
@@ -232,167 +398,104 @@ export default function ExpensesPage() {
         )}
       </PageHeader>
 
-      {/* Period filter */}
-      <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-4">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Kỳ</Label>
-            <PeriodSelect
-              className="w-full"
-              value={kyCuaKhoang(dateFrom, dateTo)}
-              onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Từ ngày</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Đến ngày</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Danh mục</Label>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <StatusChips
+        multi
+        active={status}
+        onPick={setStatus}
+        chips={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))}
+      />
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Wallet className="h-3.5 w-3.5" /> Tổng chi phí
-            </div>
-            <p className="text-xl font-black mt-1">{formatCurrency(totals.total)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-xs text-tertiary">
-              <Receipt className="h-3.5 w-3.5" /> Đã trả
-            </div>
-            <p className="text-xl font-black mt-1 text-tertiary">{formatCurrency(totals.paid)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 text-xs text-[#b54708]">
-              <Receipt className="h-3.5 w-3.5" /> Chưa trả
-            </div>
-            <p className="text-xl font-black mt-1 text-[#b54708]">{formatCurrency(totals.unpaid)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
-              Phân loại
-            </p>
-            <div className="space-y-0.5">
-              {(Object.entries(totals.byBucket) as Array<[ExpenseBucket, number]>)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 3)
-                .map(([bucket, amount]) => (
-                  <div key={bucket} className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">{BUCKET_LABEL[bucket]?.label || bucket}</span>
-                    <span className="font-semibold">{formatCurrency(amount)}</span>
-                  </div>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm mô tả, mã tham chiếu…"
+        activeCount={activeFilterCount}
+        onClear={clearAdvanced}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          <LocNhanhField label="Kỳ">
+            <PeriodSelect className="w-full" value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
+          </LocNhanhField>
+          {dateFields}
+          <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>
+          <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+        </div>
+      </MobileFilterBar>
 
-      {/* Search */}
-      <div className="flex items-center gap-2">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Tìm mô tả, mã tham chiếu..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+      <DocListLayout
+        toolbar={
+          <>
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm mô tả, mã tham chiếu…" />
+            {filterActive("category") && categorySelect}
+            <PeriodSelect value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
+            <XoaLocButton show={coLocKhac || !!search} onClick={() => { clearAdvanced(); setSearch("") }} />
+            {filterActive("date") && <LocNhanhButton open={showAdvanced} onToggle={() => setShowAdvanced((v) => !v)} />}
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={EXPENSE_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={EXPENSE_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        advanced={showAdvanced && filterActive("date") ? dateFields : null}
+        totals={{ label: "Tổng chi phí", countText: `${filtered.length} khoản chi`, total: formatCurrency(totals.total) }}
+        totalsNote={filtered.length > 0 ? bucketNote : null}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<Wallet className="h-8 w-8 text-muted-foreground" />}
+            title={expenses.length === 0 ? "Chưa có chi phí" : "Không có chi phí khớp bộ lọc"}
+            description={expenses.length === 0 ? "Thêm chi phí đầu tiên" : "Thử đổi khoảng thời gian hoặc danh mục"}
           />
-        </div>
-        <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} />
-      </div>
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            unit="khoản chi"
+            getDate={(e) => e.expense_date}
+            getTotal={(e) => Number(e.amount) || 0}
+            onOpen={(e) => setXemId(e.id)}
+            card={(e) => ({
+              accent: e.is_paid ? "#22c55e" : "#fdb022",
+              title: e.category?.name || e.description || "Chi phí",
+              total: formatCurrency(e.amount),
+              meta: [BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket]?.label, e.reference_code].filter(Boolean).join(" · "),
+              payment: e.payment_method ? (PAYMENT_LABEL[e.payment_method] ?? e.payment_method) : "",
+              summary: e.category?.name && e.description ? e.description : undefined,
+              badge: e.is_paid ? null : { label: "Chưa trả", bg: "#fff4e0", fg: "#8a5a00" },
+            })}
+          />
+        }
+      />
 
-      {/* List */}
-      {loading ? (
-        <Skeleton className="h-64" />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Wallet className="h-8 w-8 text-muted-foreground" />}
-          title={expenses.length === 0 ? "Chưa có chi phí" : "Không có chi phí khớp bộ lọc"}
-          description={expenses.length === 0 ? "Thêm chi phí đầu tiên" : "Thử đổi khoảng thời gian hoặc danh mục"}
-        />
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((e) => {
-            const bucket = e.category?.bucket || "other"
-            const meta = BUCKET_LABEL[bucket]
-            return (
-              <Card key={e.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`text-[10px] font-bold uppercase rounded px-1.5 py-0.5 ${meta.color}`}>
-                          {meta.label}
-                        </span>
-                        {e.category && (
-                          <span className="text-xs font-semibold">{e.category.name}</span>
-                        )}
-                        {e.is_paid ? (
-                          <Badge variant="success">Đã trả</Badge>
-                        ) : (
-                          <Badge variant="warning">Chưa trả</Badge>
-                        )}
-                        {e.source_type && (
-                          <span className="text-[10px] text-muted-foreground italic flex items-center gap-0.5">
-                            <Info className="h-2.5 w-2.5" /> auto: {e.source_type}
-                          </span>
-                        )}
-                      </div>
-                      {e.description && (
-                        <p className="text-sm mt-1">{e.description}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDate(e.expense_date)}
-                        {e.reference_code && ` • Ref: ${e.reference_code}`}
-                        {e.payment_method && ` • ${e.payment_method}`}
-                      </p>
-                    </div>
-                    <div className="shrink-0 flex flex-col items-end gap-2">
-                      <p className="text-lg font-black">{formatCurrency(e.amount)}</p>
-                      {canDelete && e.source_type === null && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => handleDelete(e.id)}
-                          disabled={deleting === e.id}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.category?.name || "Chi phí"}
+        subtitle={xem ? formatDate(xem.expense_date) : undefined}
+        badge={xem ? (xem.is_paid ? <Badge variant="success">Đã trả</Badge> : <Badge variant="warning">Chưa trả</Badge>) : null}
+        fields={xem ? [
+          { label: "Phân loại", value: BUCKET_LABEL[(xem.category?.bucket || "other") as ExpenseBucket]?.label },
+          { label: "Hình thức", value: xem.payment_method ? (PAYMENT_LABEL[xem.payment_method] ?? xem.payment_method) : null },
+          { label: "Mã tham chiếu", value: xem.reference_code },
+          { label: "Nguồn", value: xem.source_type ? `Tự sinh: ${xem.source_type}` : "Nhập tay" },
+          { label: "Mô tả", value: xem.description, wide: true },
+        ] : []}
+        total={xem ? { label: "Số tiền", value: formatCurrency(xem.amount) } : undefined}
+        actions={xem && xoaDuoc(xem) ? (
+          <Button variant="outline" className="h-11 flex-1 text-destructive" onClick={() => handleDelete(xem.id)} disabled={deleting === xem.id}>
+            <Trash2 className="mr-2 h-4 w-4" /> Xoá
+          </Button>
+        ) : null}
+      />
 
       {/* Add dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

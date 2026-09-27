@@ -103,7 +103,10 @@ describe("nút mảng tiền khớp RLS", () => {
   it("xoá chi phí: chủ + quản lý (expenses_delete)", () => {
     const s = doc("src/app/(dashboard)/finance/expenses/page.tsx")
     expect(s).toContain('const canDelete = user && ["owner", "manager"].includes(user.role)')
-    expect(s).toMatch(/\{canDelete && e\.source_type === null && \(/)
+    // Khuôn danh sách chung (27/09/2026): nút xoá ở lưới VÀ ở ngăn xem nhanh cùng qua một điều kiện.
+    expect(s).toContain("const xoaDuoc = (e: Expense) => !!canDelete && e.source_type === null")
+    expect(s).toContain("xoaDuoc(e) ? (")
+    expect(s).toContain("actions={xem && xoaDuoc(xem) ? (")
   })
 
   it("xoá bậc lương / thưởng: có bắt lỗi", () => {

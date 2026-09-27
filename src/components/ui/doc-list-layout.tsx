@@ -22,7 +22,9 @@ import type { ReactNode } from "react"
 import { ChevronDown, ChevronUp, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { DocSearchBox } from "@/components/ui/doc-search-box"
 import { MATCH_CAP } from "@/lib/search/list-search"
+import type { TruongTim } from "@/lib/search/field-search"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -43,6 +45,7 @@ export function DocListLayout({
   toolbarEnd,
   advanced,
   totals,
+  totalsNote,
   mobileSummary,
   loading,
   isEmpty,
@@ -51,6 +54,7 @@ export function DocListLayout({
   cards,
   pg,
   shownCount,
+  mobilePager,
 }: {
   /** Nửa trái thanh công cụ: ô tìm, bộ lọc nhanh, kỳ, "Xoá lọc", nút "Lọc nhanh". */
   toolbar: ReactNode
@@ -60,6 +64,8 @@ export function DocListLayout({
   advanced?: ReactNode
   /** Dòng thống kê. `null` = màn không có tiền để cộng. */
   totals: DocListTotalsInfo | null
+  /** Một dòng phụ ngay dưới dòng tổng (vd "Đã trả · Chưa trả") — cả máy tính lẫn điện thoại. */
+  totalsNote?: ReactNode
   /** Dải tóm tắt của điện thoại (`DocListSummary`); bỏ trống thì dùng dòng thống kê. */
   mobileSummary?: ReactNode
   loading: boolean
@@ -71,6 +77,8 @@ export function DocListLayout({
   cards: ReactNode
   pg: UsePaginationReturn
   shownCount?: number
+  /** Thay phân trang điện thoại — vd `LoadMore` của màn công nợ (NVBH cuộn để đi thu). */
+  mobilePager?: ReactNode
 }) {
   return (
     <>
@@ -93,6 +101,7 @@ export function DocListLayout({
         {totals && (
           <DocListTotals desktopOnly label={totals.label} countText={totals.countText} total={totals.total} />
         )}
+        {totalsNote && <div className="border-b border-outline-variant/40 px-4 py-2">{totalsNote}</div>}
 
         {loading ? (
           <div className="space-y-2 p-4">
@@ -115,6 +124,7 @@ export function DocListLayout({
           (totals && (
             <DocListTotals className="rounded-xl border" label={totals.label} countText={totals.countText} total={totals.total} />
           ))}
+        {totalsNote && <div className="px-1">{totalsNote}</div>}
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
         ) : isEmpty ? (
@@ -122,11 +132,30 @@ export function DocListLayout({
         ) : (
           <>
             {cards}
-            <DataPagination pg={pg} shownCount={shownCount} />
+            {mobilePager ?? <DataPagination pg={pg} shownCount={shownCount} />}
           </>
         )}
       </div>
     </>
+  )
+}
+
+const KHONG_TRUONG: readonly TruongTim[] = []
+const KHONG_AP: Record<string, string> = {}
+const boQua = () => {}
+
+/** Ô tìm của thanh công cụ cho màn CHƯA có tìm theo trường — cùng ô với `DocSearchBox`. */
+export function DocListSearch({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <DocSearchBox
+      className="min-w-[260px] max-w-md flex-1"
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      fields={KHONG_TRUONG}
+      applied={KHONG_AP}
+      onApply={boQua}
+    />
   )
 }
 

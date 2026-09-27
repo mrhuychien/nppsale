@@ -43,6 +43,18 @@ export function DocSearchBox({
   useEffect(() => { if (open) setNhap(applied) }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
   const soTruong = soTruongDangTim(applied)
 
+  /* Màn chưa có tìm theo trường (danh sách lọc ở trình duyệt) — cùng ô, không có nút xổ. */
+  if (fields.length === 0) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="pl-10" aria-label={placeholder} />
+        </div>
+      </div>
+    )
+  }
+
   const tim = () => {
     onApply(Object.fromEntries(fields.map((f) => [f.key, (nhap[f.key] ?? "").trim()])))
     setOpen(false)

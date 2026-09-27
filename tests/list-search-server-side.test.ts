@@ -141,7 +141,9 @@ describe("mọi danh sách có phân trang đều tìm cả sổ", () => {
     /** ⚠ Chạm trần thì NÓI RA — thiếu mà im là đi lại con đường cũ. */
     it(`${ten}: chạm trần thì cảnh báo ra màn`, () => {
       expect(src).toContain("listSearch.truncated")
-      expect(src).toContain("Kết quả tìm đang thiếu")
+      // Khuôn danh sách chung (27/09/2026): câu cảnh báo nằm trong `KetQuaThieu` dùng chung.
+      const dungChung = /<KetQuaThieu show=\{listSearch\.truncated/.test(src)
+      if (!dungChung) expect(src).toContain("Kết quả tìm đang thiếu")
     })
 
     /** ⚠ Placeholder phải nói đúng phạm vi — đừng hứa hẹn sai. */

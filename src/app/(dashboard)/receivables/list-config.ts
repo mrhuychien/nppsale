@@ -1,6 +1,8 @@
 import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 
 export const RECEIVABLE_COLUMNS = [
+  /* Nhãn của một khoản nợ là MÃ HÓA ĐƠN (CLAUDE.md — công nợ theo hóa đơn, 24/09/2026). */
+  { key: "invoice", label: "Hóa đơn" },
   { key: "salesUser", label: "NV phụ trách" },
   { key: "amount", label: "Phải thu" },
   { key: "paid", label: "Đã thu" },
@@ -13,6 +15,7 @@ export const RECEIVABLE_COLUMNS = [
 export type ReceivableColumnKey = (typeof RECEIVABLE_COLUMNS)[number]["key"]
 
 export const DEFAULT_RECEIVABLE_COLUMNS: ReceivableColumnKey[] = [
+  "invoice",
   "salesUser",
   "amount",
   "paid",

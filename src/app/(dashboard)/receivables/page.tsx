@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
@@ -10,7 +9,9 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { usePagination } from "@/hooks/use-pagination"
-import { DataPagination } from "@/components/ui/data-pagination"
+import { DocListLayout } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
@@ -25,7 +26,6 @@ import {
   type ReceivableColumnKey,
 } from "./list-config"
 import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -34,7 +34,7 @@ import {
   formatCurrency, formatDate, getAgingStatus, daysOverdueOf, AGING_RANGE,
 } from "@/lib/utils"
 import {
-  HandCoins, CreditCard, Eye, FileText } from "lucide-react"
+  HandCoins, CreditCard, FileText } from "lucide-react"
 import Link from "@/components/ui/link"
 import type { Receivable } from "@/types"
 import {
@@ -44,6 +44,17 @@ import {
 } from "@/lib/receivables/credit"
 
 type BucketKey = "current" | "warning" | "overdue" | "critical"
+
+/**
+ * Nhãn của một khoản nợ = MÃ HÓA ĐƠN (CLAUDE.md, chủ nhà 24/09/2026: công nợ theo hóa đơn).
+ * Không có hóa đơn: nợ đầu kỳ, hoặc dư có của phiếu trả tự lập (mig 191).
+ */
+function nhanKhoanNo(r: Receivable): string {
+  if (r.invoice?.invoice_code) return r.invoice.invoice_code
+  if (r.opening_balance) return "Nợ đầu kỳ"
+  if ((r as Receivable & { return_id?: string | null }).return_id) return "Phiếu trả (dư có)"
+  return "—"
+}
 
 /** Một dòng trả về của hàm SQL `receivables_summary()` (migration 093). */
 type AgingSummary = {
@@ -79,13 +90,13 @@ export default function ReceivablesPage() {
   const khoaTaiRef = useRef<KhoaTai>(null)
   const pg = usePagination()
   const supabase = createClient()
-  const router = useRouter()
   const {
     columns: visibleColumns,
     setColumns,
     resetColumns,
   } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [], RECEIVABLE_COLUMNS, [])
-  const show = (k: ReceivableColumnKey) => visibleColumns.includes(k)
+  /** Khoản nợ đang mở ở ngăn xem nhanh (khuôn danh sách chung, 27/09/2026). */
+  const [xemId, setXemId] = useState<string | null>(null)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("receivables", LOC_CONG_NO_PHAI_THU)
 
@@ -141,9 +152,9 @@ export default function ReceivablesPage() {
       }
       const res = await taiHaiNhip<Receivable, ResilientResult<Receivable>>(
         (from, to, dem) => selectResilient<Receivable>((sel) => build(sel, from, to, dem),
-        "id, amount, paid, due_date, status, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)",
+        "id, amount, paid, due_date, status, opening_balance, invoice_id, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name), invoice:sales_invoices(id, invoice_code, invoice_date)",
         // eslint-disable-next-line no-restricted-syntax
-        "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name)"),
+        "*, customer:customers(store_name), sales_user:users!receivables_sales_user_id_fkey(full_name), invoice:sales_invoices(id, invoice_code, invoice_date)"),
         pg.from,
         pg.to,
         (dau) => {
@@ -164,7 +175,66 @@ export default function ReceivablesPage() {
     return () => { cancelled = true }
   }, [pg.from, pg.to, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Receivable> & { k?: ReceivableColumnKey }> = [
+      {
+        key: "customer", label: "Khách hàng", width: "minmax(200px,1.5fr)",
+        sort: (a, b) => (a.customer?.store_name ?? "").localeCompare(b.customer?.store_name ?? "", "vi"),
+        render: (r) => <span className="block truncate text-sm font-bold">{r.customer?.store_name || "-"}</span>,
+      },
+      {
+        k: "invoice", key: "invoice", label: "Hóa đơn", width: "150px",
+        render: (r) => (r.invoice_id
+          ? <DocCodeLink href={`/sales-invoices/${r.invoice_id}`}>{nhanKhoanNo(r)}</DocCodeLink>
+          : <span className="text-xs text-on-surface-variant">{nhanKhoanNo(r)}</span>),
+      },
+      { k: "salesUser", key: "salesUser", label: "NV phụ trách", width: "150px", render: (r) => <DocCellText>{r.sales_user?.full_name}</DocCellText> },
+      { k: "amount", key: "amount", label: "Phải thu", width: "130px", align: "right", sort: (a, b) => Number(a.amount) - Number(b.amount), render: (r) => formatCurrency(r.amount) },
+      { k: "paid", key: "paid", label: "Đã thu", width: "130px", align: "right", render: (r) => formatCurrency(r.paid) },
+      {
+        k: "remaining", key: "remaining", label: "Còn lại", width: "150px", align: "right",
+        sort: (a, b) => remainingOf(a) - creditOf(a) - (remainingOf(b) - creditOf(b)),
+        render: (r) => {
+          /* ⚠ KẸP VỀ 0 VÀ GỌI TÊN PHẦN DƯ. Truy vấn của màn này KHÔNG lọc trạng thái, nên
+             dòng đã thu dư (Q11) / công nợ âm (mig 186) vẫn nằm đây; `amount - paid` trần trụi
+             in ra số ÂM bằng màu đỏ — trông y hệt một khoản nợ khẩn cấp, trong khi sự thật là
+             nhà phân phối đang giữ tiền của khách. */
+          const remaining = remainingOf(r)
+          const credit = creditOf(r)
+          return credit > 0 ? <span className="text-tertiary">Dư có {formatCurrency(credit)}</span> : formatCurrency(remaining)
+        },
+      },
+      {
+        k: "dueDate", key: "dueDate", label: "Hạn", width: "110px",
+        sort: (a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""),
+        render: (r) => <DocCellDate date={r.due_date ? formatDate(r.due_date) : "-"} />,
+      },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "140px",
+        /* ⚠ Nhãn + màu cùng một nguồn (`rowStateLabel` / `rowStateVariant`) — không lấy chữ
+           từ `r.status` (cột thanh toán do RPC ghi, không ai tính lại mỗi ngày). */
+        render: (r) => <Badge variant={rowStateVariant(r)}>{rowStateLabel(r)}</Badge>,
+      },
+      {
+        k: "action", key: "action", label: "Thao tác", width: "140px", align: "right",
+        render: () => (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => { e.stopPropagation(); if (typeof window !== "undefined") window.print() }}
+          >
+            <FileText className="mr-1 h-3.5 w-3.5" />
+            Xuất bản kê
+          </Button>
+        ),
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns])
+
   if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? receivables.find((r) => r.id === xemId) ?? null : null
 
   const totalOutstanding = Number(summary?.total_outstanding ?? 0)
   // Ngưỡng chia nhóm nằm trong hàm SQL `receivables_summary` và PHẢI khớp
@@ -204,10 +274,6 @@ export default function ReceivablesPage() {
     buckets.critical.amount,
     1
   )
-
-  const handleExportStatement = () => {
-    if (typeof window !== "undefined") window.print()
-  }
 
   return (
     <div className="space-y-4">
@@ -328,18 +394,6 @@ export default function ReceivablesPage() {
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-end gap-2">
-        <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
-        <div className="hidden lg:block">
-          <ColumnPicker
-            available={RECEIVABLE_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-        </div>
-      </div>
-
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
@@ -348,105 +402,57 @@ export default function ReceivablesPage() {
         </div>
       )}
 
-      {loading ? (
-        <Skeleton className="h-96" />
-      ) : receivables.length === 0 ? (
-        <EmptyState
-          icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
-          title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ"}
-          description={
-            loadError
-              ? "Xem thông báo lỗi phía trên."
-              : isWarehouse
-                ? "Vai trò Kho không có quyền xem công nợ phải thu. Liên hệ kế toán để đối chiếu."
-                : isSales
-                  ? "Bạn chỉ thấy công nợ của đơn ghi tên bạn. Công nợ từ đơn nhập liệu cũ (chưa gắn NV phụ trách) sẽ không hiển thị — nhờ kế toán gán lại NV phụ trách."
-                  : isDriver
-                    ? "Bạn chỉ thấy công nợ thuộc các đơn trong chuyến giao của bạn (COD). Chưa có chuyến nào được gán thì danh sách sẽ trống."
-                    : undefined
-          }
-        />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden lg:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Khách hàng</TableHead>
-                  {show("salesUser") && <TableHead>NV phụ trách</TableHead>}
-                  {show("amount") && <TableHead className="text-right">Phải thu</TableHead>}
-                  {show("paid") && <TableHead className="text-right">Đã thu</TableHead>}
-                  {show("remaining") && <TableHead className="text-right">Còn lại</TableHead>}
-                  {show("dueDate") && <TableHead>Hạn</TableHead>}
-                  {show("status") && <TableHead>Trạng thái</TableHead>}
-                  {show("action") && <TableHead className="text-right">Thao tác</TableHead>}
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {receivables.map((r) => {
-                  /* ⚠ KẸP VỀ 0 VÀ GỌI TÊN PHẦN DƯ. Truy vấn của màn này
-                     KHÔNG lọc trạng thái, nên dòng đã thu dư (Q11) vẫn
-                     nằm đây; `amount - paid` trần trụi in ra số ÂM bằng
-                     màu đỏ — trông y hệt một khoản nợ khẩn cấp, trong khi
-                     sự thật là nhà phân phối đang giữ tiền của khách. */
-                  const remaining = remainingOf(r)
-                  const credit = creditOf(r)
-                  return (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/receivables/${r.id}`)}
-                    >
-                      <TableCell className="font-medium">{r.customer?.store_name || "-"}</TableCell>
-                      {show("salesUser") && <TableCell>{r.sales_user?.full_name || "-"}</TableCell>}
-                      {show("amount") && <TableCell className="text-right tabular-nums">{formatCurrency(r.amount)}</TableCell>}
-                      {show("paid") && <TableCell className="text-right tabular-nums">{formatCurrency(r.paid)}</TableCell>}
-                      {show("remaining") && (
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {credit > 0 ? (
-                            <span className="text-tertiary">Dư có {formatCurrency(credit)}</span>
-                          ) : (
-                            formatCurrency(remaining)
-                          )}
-                        </TableCell>
-                      )}
-                      {show("dueDate") && <TableCell>{r.due_date ? formatDate(r.due_date) : "-"}</TableCell>}
-                      {show("status") && (
-                        <TableCell>
-                          {/* ⚠ HUY HIỆU NÀY TỪNG LẤY MÀU THEO TUỔI NỢ NHƯNG
-                              LẤY CHỮ TỪ `r.status` — một cột trạng thái
-                              THANH TOÁN do RPC ghi và không ai tính lại mỗi
-                              ngày. Hai dòng cùng hạn hiện hai chữ khác nhau,
-                              và cả hai đều là tiếng Anh. */}
-                          <Badge variant={rowStateVariant(r)}>{rowStateLabel(r)}</Badge>
-                        </TableCell>
-                      )}
-                      {show("action") && (
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleExportStatement()}
-                          >
-                            <FileText className="mr-1 h-3.5 w-3.5" />
-                            Xuất bản kê
-                          </Button>
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+      {/* ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026) — một thẻ: thanh công cụ · dòng tổng ·
+          lưới · phân trang; bấm dòng mở xem nhanh. Điện thoại giữ thẻ có nút "Thu tiền" +
+          "Tải thêm": NVBH mở màn này để đi thu. */}
+      <DocListLayout
+        toolbar={<span className="text-sm font-bold text-on-surface">Các khoản công nợ</span>}
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <ColumnPicker
+              available={RECEIVABLE_COLUMNS}
+              value={visibleColumns}
+              onChange={setColumns}
+              onReset={resetColumns}
+            />
+          </>
+        }
+        totals={{
+          label: "Tổng công nợ (toàn sổ)",
+          countText: `${pg.total} khoản nợ${locNC.soDangAp ? " khớp bộ lọc" : ""}`,
+          total: summaryError ? null : formatCurrency(totalOutstanding),
+        }}
+        mobileSummary={
+          <div className="flex justify-end">
+            <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
           </div>
-
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
+        }
+        loading={loading}
+        isEmpty={receivables.length === 0}
+        empty={
+          <EmptyState
+            icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
+            title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ"}
+            description={
+              loadError
+                ? "Xem thông báo lỗi phía trên."
+                : isWarehouse
+                  ? "Vai trò Kho không có quyền xem công nợ phải thu. Liên hệ kế toán để đối chiếu."
+                  : isSales
+                    ? "Bạn chỉ thấy công nợ của đơn ghi tên bạn. Công nợ từ đơn nhập liệu cũ (chưa gắn NV phụ trách) sẽ không hiển thị — nhờ kế toán gán lại NV phụ trách."
+                    : isDriver
+                      ? "Bạn chỉ thấy công nợ thuộc các đơn trong chuyến giao của bạn (COD). Chưa có chuyến nào được gán thì danh sách sẽ trống."
+                      : undefined
+            }
+          />
+        }
+        pg={pg}
+        shownCount={receivables.length}
+        table={<DocTable rows={receivables} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        mobilePager={<LoadMore pg={pg} shown={receivables.length} />}
+        cards={
+          <div className="space-y-3">
             {mobileReceivables.map((r) => {
               const remaining = remainingOf(r)
               const credit = creditOf(r)
@@ -465,10 +471,11 @@ export default function ReceivablesPage() {
                   accent={aging === "critical" ? "danger" : aging === "overdue" ? "warning" : null}
                   subtitle={
                     <>
+                      <span className="font-mono">{nhanKhoanNo(r)}</span>
                       {overdueDays > 0 ? (
-                        <span className="font-semibold text-error">Quá hạn {overdueDays} ngày</span>
+                        <span className="font-semibold text-error">· Quá hạn {overdueDays} ngày</span>
                       ) : (
-                        <span>Hạn {r.due_date ? formatDate(r.due_date) : "-"}</span>
+                        <span>· Hạn {r.due_date ? formatDate(r.due_date) : "-"}</span>
                       )}
                       <span>· Đã thu {formatCurrency(r.paid)}</span>
                       {r.sales_user?.full_name && <span>· {r.sales_user.full_name}</span>}
@@ -488,13 +495,35 @@ export default function ReceivablesPage() {
                 />
               )
             })}
-            <LoadMore pg={pg} shown={receivables.length} />
           </div>
-          <div className="hidden lg:block">
-            <DataPagination pg={pg} shownCount={receivables.length} />
-          </div>
-        </>
-      )}
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem ? nhanKhoanNo(xem) : "Khoản nợ"}
+        subtitle={xem?.customer?.store_name || undefined}
+        badge={xem ? <Badge variant={rowStateVariant(xem)}>{rowStateLabel(xem)}</Badge> : null}
+        fields={xem ? [
+          { label: "Khách hàng", value: xem.customer?.store_name, wide: true },
+          { label: "NV phụ trách", value: xem.sales_user?.full_name },
+          { label: "Hạn", value: xem.due_date ? formatDate(xem.due_date) : null },
+          { label: "Phải thu", value: formatCurrency(xem.amount) },
+          { label: "Đã thu", value: formatCurrency(xem.paid) },
+        ] : []}
+        total={xem ? (creditOf(xem) > 0
+          ? { label: "Dư có của khách", value: formatCurrency(creditOf(xem)) }
+          : { label: "Còn lại", value: formatCurrency(remainingOf(xem)) }) : undefined}
+        detailHref={xem ? `/receivables/${xem.id}` : undefined}
+        actions={xem && creditOf(xem) <= 0 && remainingOf(xem) > 0 ? (
+          <Button variant="outline" className="h-11 flex-1" asChild>
+            <Link href={`/receivables/collect?receivableId=${xem.id}`}>
+              <HandCoins className="mr-1.5 h-4 w-4" /> Thu tiền
+            </Link>
+          </Button>
+        ) : null}
+      />
     </div>
   )
 }

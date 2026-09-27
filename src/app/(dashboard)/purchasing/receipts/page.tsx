@@ -17,17 +17,29 @@
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
-import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { tongChungTu } from "@/lib/orders/list-summary"
 import Link from "@/components/ui/link"
-import { Plus, Search } from "lucide-react"
+import { PackagePlus, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
 import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
+import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import {
+  PURCHASE_RECEIPT_COLUMNS, PURCHASE_RECEIPT_FILTERS,
+  DEFAULT_PURCHASE_RECEIPT_COLUMNS, DEFAULT_PURCHASE_RECEIPT_FILTERS,
+  ZONE_LABEL, type PurchaseReceiptColumnKey,
+} from "./list-config"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChips } from "@/components/ui/status-chips"
 import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
@@ -76,6 +88,18 @@ export default function PurchaseReceiptsPage() {
   const [tab, setTab] = useLuuTrangThai("purchase-receipts", "")
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết nên lọc ở trình duyệt bằng `khopLoc`. */
   const locNC = useAdvancedFilter("purchasing-receipts", LOC_HOA_DON_MUA)
+  const [filterSheet, setFilterSheet] = useState(false)
+  const [xemId, setXemId] = useState<string | null>(null)
+  const {
+    columns: visibleColumns, filters: activeFilters,
+    setColumns, setFilters, resetColumns, resetFilters,
+  } = useListViewPrefs(
+    "purchase-receipts",
+    DEFAULT_PURCHASE_RECEIPT_COLUMNS,
+    DEFAULT_PURCHASE_RECEIPT_FILTERS,
+    PURCHASE_RECEIPT_COLUMNS,
+    PURCHASE_RECEIPT_FILTERS
+  )
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -133,11 +157,46 @@ export default function PurchaseReceiptsPage() {
     !canhBao
   )
 
+
+  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([tab, q, locNC.key]))
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<Row> & { k?: PurchaseReceiptColumnKey }> = [
+      {
+        key: "code", label: "Mã phiếu", width: "150px",
+        render: (r) => <DocCodeLink href={`/purchasing/receipts/${r.id}`}>{r.receipt_code || "(chưa cấp mã)"}</DocCodeLink>,
+      },
+      {
+        k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "minmax(200px,1.5fr)",
+        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        render: (r) => <span className="block truncate text-sm font-bold">{r.supplier?.name || "—"}</span>,
+      },
+      { k: "invoiceNumber", key: "invoiceNumber", label: "Số HĐ", width: "130px", render: (r) => <DocCellText muted>{r.invoice_number}</DocCellText> },
+      {
+        k: "date", key: "date", label: "Ngày", width: "110px",
+        sort: (a, b) => (a.invoice_date ?? "").localeCompare(b.invoice_date ?? ""),
+        render: (r) => <DocCellDate date={r.invoice_date ? formatDate(r.invoice_date) : "—"} />,
+      },
+      { k: "zone", key: "zone", label: "Kho", width: "140px", render: (r) => <DocCellText muted>{r.warehouse_zone ? (ZONE_LABEL[r.warehouse_zone] ?? r.warehouse_zone) : null}</DocCellText> },
+      {
+        k: "total", key: "total", label: "Cần trả NCC", width: "150px", align: "right",
+        sort: (a, b) => Number(a.total) - Number(b.total),
+        render: (r) => formatCurrency(Number(r.total || 0)),
+      },
+      { k: "status", key: "status", label: "Trạng thái", width: "130px", render: (r) => <Badge variant="secondary">{receiptStatusLabel(r.status)}</Badge> },
+      { k: "notes", key: "notes", label: "Ghi chú", width: "minmax(160px,1fr)", render: (r) => <DocCellText muted title={r.notes ?? undefined}>{r.notes}</DocCellText> },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns])
+
   if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
+  const khongTinhHuy = !tachTrangThai(tab).includes("cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(","))
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Phiếu nhập hàng" description="Nhập hàng từ nhà cung cấp — hoàn thành là nhập kho và ghi công nợ.">
+      <PageHeader title="Phiếu nhập hàng" descriptionDesktopOnly description="Nhập hàng từ nhà cung cấp — hoàn thành là nhập kho và ghi công nợ.">
         <Button asChild>
           <Link href="/purchasing/receipts/new"><Plus className="mr-1.5 h-4 w-4" /> Tạo phiếu</Link>
         </Button>
@@ -155,76 +214,88 @@ export default function PurchaseReceiptsPage() {
         onPick={setTab}
       />
 
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder="Mã phiếu, số hoá đơn, tên NCC…" className="pl-8"
-          />
-        </div>
-        <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} />
-      </div>
-
       {canhBao && (
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
       )}
-      {!loading && (
-        <DocListTotals
-          className="rounded-xl border"
-          label="Tổng tiền phiếu nhập"
-          countText={`${tongPhieu.soPhieu} phiếu nhập${!tachTrangThai(tab).includes("cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(",")) ? " · không tính phiếu huỷ" : ""}`}
-          total={tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong)}
-        />
-      )}
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
-        </div>
-      ) : shown.length === 0 ? (
-        <p className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground">
-          {/* ⚠ "Chưa có phiếu nào" là một KẾT LUẬN màn hình không có cơ sở
-              để rút ra: 0 dòng cũng là thứ ta nhận được khi RLS chặn. */}
-          {q.trim() || tab || locNC.soDangAp
-            ? "Không có phiếu nào khớp bộ lọc."
-            : "Chưa thấy phiếu nhập nào. Bấm Tạo phiếu để bắt đầu."}
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-left">Mã phiếu</th>
-                <th className="px-3 py-2 text-left">Nhà cung cấp</th>
-                <th className="px-3 py-2 text-left">Số HĐ</th>
-                <th className="px-3 py-2 text-left">Ngày</th>
-                <th className="px-3 py-2 text-left">Trạng thái</th>
-                <th className="px-3 py-2 text-right">Cần trả NCC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-muted/40">
-                  <td className="px-3 py-2">
-                    <Link href={`/purchasing/receipts/${r.id}`} className="font-mono font-semibold text-primary hover:underline">
-                      {r.receipt_code || "(chưa cấp mã)"}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">{r.supplier?.name || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.invoice_number || "—"}</td>
-                  <td className="px-3 py-2">{r.invoice_date ? formatDate(r.invoice_date) : "—"}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant="secondary">{receiptStatusLabel(r.status)}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                    {formatCurrency(Number(r.total || 0))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+
+      <MobileFilterBar
+        value={q}
+        onChange={setQ}
+        placeholder="Mã phiếu, số hoá đơn, tên NCC…"
+        activeCount={locNC.soDangAp}
+        onClear={locNC.xoa}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+      </MobileFilterBar>
+
+      <DocListLayout
+        toolbar={
+          <>
+            <DocListSearch value={q} onChange={setQ} placeholder="Mã phiếu, số hoá đơn, tên NCC…" />
+            <XoaLocButton show={!!q.trim()} onClick={() => setQ("")} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={PURCHASE_RECEIPT_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={PURCHASE_RECEIPT_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        totals={{
+          label: "Tổng tiền phiếu nhập",
+          countText: `${tongPhieu.soPhieu} phiếu nhập${khongTinhHuy ? " · không tính phiếu huỷ" : ""}`,
+          total: tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong),
+        }}
+        loading={loading}
+        isEmpty={shown.length === 0}
+        empty={
+          <EmptyState
+            icon={<PackagePlus className="h-8 w-8 text-muted-foreground" />}
+            /* ⚠ "Chưa có phiếu nào" là một KẾT LUẬN màn hình không có cơ sở để rút ra: 0 dòng
+               cũng là thứ ta nhận được khi RLS chặn. */
+            title={q.trim() || tab || locNC.soDangAp ? "Không có phiếu nào khớp bộ lọc." : "Chưa thấy phiếu nhập nào."}
+            description={q.trim() || tab || locNC.soDangAp ? "Sửa hoặc bỏ bớt điều kiện lọc." : "Bấm Tạo phiếu để bắt đầu."}
+          />
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            onOpen={(r) => setXemId(r.id)}
+            card={(r) => ({
+              accent: receiptStatusTone(r.status),
+              title: r.supplier?.name || "—",
+              total: formatCurrency(Number(r.total || 0)),
+              meta: [r.invoice_date ? formatDate(r.invoice_date) : null, r.receipt_code || "(chưa cấp mã)"].filter(Boolean).join(" · "),
+              payment: r.invoice_number ? `HĐ ${r.invoice_number}` : "",
+              badge: r.status === "completed" ? null : { label: receiptStatusLabel(r.status), bg: "#fff4e0", fg: "#8a5a00" },
+            })}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.receipt_code || "Phiếu nhập"}
+        subtitle={xem?.invoice_date ? formatDate(xem.invoice_date) : undefined}
+        badge={xem ? <Badge variant="secondary">{receiptStatusLabel(xem.status)}</Badge> : null}
+        fields={xem ? [
+          { label: "Nhà cung cấp", value: xem.supplier?.name, wide: true },
+          { label: "Số HĐ", value: xem.invoice_number },
+          { label: "Kho", value: xem.warehouse_zone ? (ZONE_LABEL[xem.warehouse_zone] ?? xem.warehouse_zone) : null },
+          { label: "Tạm tính", value: xem.subtotal == null ? null : formatCurrency(Number(xem.subtotal)) },
+          { label: "VAT", value: formatCurrency(Number(xem.vat_override ?? xem.vat ?? 0)) },
+          { label: "Ghi chú", value: xem.notes, wide: true },
+        ] : []}
+        total={xem ? { label: "Cần trả NCC", value: formatCurrency(Number(xem.total || 0)) } : undefined}
+        detailHref={xem ? `/purchasing/receipts/${xem.id}` : undefined}
+      />
     </div>
   )
 }

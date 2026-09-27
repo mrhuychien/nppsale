@@ -75,6 +75,14 @@ describe("DocListLayout — một thẻ như màn hóa đơn", () => {
   })
 })
 
+describe("mảnh dùng chung của thanh công cụ", () => {
+  it("KetQuaThieu nói ra khi tra mã chạm trần", () => {
+    const k = cat(LAYOUT, "export function KetQuaThieu", "\n}\n")
+    expect(k).toContain("if (!show) return null")
+    expect(k).toContain("Kết quả tìm đang thiếu")
+  })
+})
+
 describe("DocTable — bấm dòng xem nhanh, bấm mã sang chi tiết", () => {
   it("dòng gọi onOpen; mã chặn nổi bọt", () => {
     expect(TABLE).toContain("onClick={onOpen ? () => onOpen(r) : undefined}")
@@ -146,6 +154,47 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
   it("chỉ đọc — không ghi tiền từ trình duyệt", () => {
     expect(PHIEU_THU).not.toMatch(/\.(insert|update|upsert|delete)\(/)
     expect(PHIEU_THU).not.toContain(".rpc(")
+  })
+})
+
+/**
+ * DANH SÁCH ĐÃ VỀ KHUÔN CHUNG. Thêm màn nào vào khuôn thì thêm vào đây — chốt giữ cho màn ấy
+ * không trôi về một bố cục riêng.
+ */
+const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: boolean }> = [
+  { duong: "finance/cash-receipts", mobileFilter: true, statusChips: true },
+  { duong: "finance/expenses", mobileFilter: true, statusChips: true },
+  { duong: "purchasing/receipts", mobileFilter: true, statusChips: true },
+  { duong: "purchase-returns", mobileFilter: true, statusChips: true },
+  { duong: "payables", mobileFilter: true, statusChips: true },
+  // Công nợ: điện thoại giữ dải tuổi nợ + thẻ có nút "Thu tiền" (NVBH đi thu).
+  { duong: "receivables" },
+]
+
+describe("các danh sách đã về khuôn chung", () => {
+  it.each(DA_VE_KHUON)("/$duong", ({ duong, mobileFilter, statusChips }) => {
+    const s = code(read(`src/app/(dashboard)/${duong}/page.tsx`))
+    expect(s, "không dùng khuôn DocListLayout").toContain("<DocListLayout")
+    expect(s, "lưới không theo DocTable").toMatch(/<DocTable rows=\{\w+\} columns=\{columns\}/)
+    // Bấm dòng mở xem nhanh.
+    expect(s).toMatch(/<DocTable[^>]*onOpen=\{/)
+    expect(s).toMatch(/<DocQuickView|<CashReceiptDrawer/)
+    // Lưới cũ tự dựng thì không còn.
+    expect(s).not.toMatch(/<table[\s>]|<Table>/)
+    // Phân trang 20/trang: máy chủ (`usePagination()`) hoặc tại chỗ (`usePhanTrangTaiCho`).
+    expect(s).toMatch(/usePagination\(\)|usePhanTrangTaiCho\(/)
+    expect(s).toContain("<ColumnPicker")
+    expect(s).toContain("<AdvancedFilter")
+    expect(s).toMatch(/totals=\{/)
+    if (mobileFilter) expect(s).toContain("<MobileFilterBar")
+    if (statusChips) expect(s).toContain("<StatusChips")
+  })
+
+  it("phân trang tại chỗ dùng đúng mặc định 20 dòng và về trang 1 khi đổi lọc", () => {
+    const h = code(read("src/hooks/use-phan-trang-tai-cho.ts"))
+    expect(h).toContain("const pg = usePagination()")
+    expect(h).toContain("useEffect(() => { reset() }, [khoaLoc, reset])")
+    expect(h).toContain("items.slice(pg.from, pg.to + 1)")
   })
 })
 

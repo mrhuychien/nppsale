@@ -118,7 +118,6 @@ const CON_NO_MOC_PHAN_TRANG = [
   "src/app/(dashboard)/notifications/page.tsx",
   "src/app/(dashboard)/orders/page.tsx",
   "src/app/(dashboard)/products/page.tsx",
-  "src/app/(dashboard)/purchasing/invoices/page.tsx",
   "src/app/(dashboard)/returns/page.tsx",
   "src/app/(dashboard)/sell/drafts/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",

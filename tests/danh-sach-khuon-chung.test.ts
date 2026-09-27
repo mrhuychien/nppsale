@@ -167,6 +167,9 @@ const DA_VE_KHUON: Array<{ duong: string; mobileFilter?: boolean; statusChips?: 
   { duong: "purchasing/receipts", mobileFilter: true, statusChips: true },
   { duong: "purchase-returns", mobileFilter: true, statusChips: true },
   { duong: "payables", mobileFilter: true, statusChips: true },
+  { duong: "purchasing/invoices", mobileFilter: true, statusChips: true },
+  { duong: "invoices", mobileFilter: true, statusChips: true },
+  { duong: "inventory/entries", mobileFilter: true, statusChips: true },
   // Công nợ: điện thoại giữ dải tuổi nợ + thẻ có nút "Thu tiền" (NVBH đi thu).
   { duong: "receivables" },
 ]

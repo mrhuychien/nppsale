@@ -1,6 +1,14 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+/**
+ * HÓA ĐƠN ĐIỆN TỬ (MISA) — danh sách.
+ *
+ * ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026: "Làm chung form hiển thị danh sách cho toàn
+ *   bộ các danh sách theo form đang dùng cho Đơn hàng, hóa đơn, trả hàng"): bốn ô thống kê cũ
+ *   thành dải trạng thái MISA có số đếm; một thẻ gồm thanh công cụ · lưới · phân trang; thẻ
+ *   trên điện thoại; bấm dòng mở xem nhanh.
+ */
+import { useEffect, useMemo, useState, useRef } from "react"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { ilikeDk } from "@/lib/search/list-search"
 import { useRouter } from "next/navigation"
@@ -10,23 +18,26 @@ import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { usePagination } from "@/hooks/use-pagination"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { StatusChips } from "@/components/ui/status-chips"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_HOA_DON_DIEN_TU } from "@/lib/search/list-filter-fields"
-import { DataPagination } from "@/components/ui/data-pagination"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { buildMisaInvoiceUrl, MISA_LIST_URL } from "@/lib/misa/web-url"
 import Link from "@/components/ui/link"
 import { misaStatusBadge } from "@/lib/misa/labels"
-import { FileText, Plus, Search, ExternalLink, CheckCircle2, Clock, AlertCircle } from "lucide-react"
+import { FileText, Plus, ExternalLink } from "lucide-react"
 import type { Invoice } from "@/types"
 import {
   INVOICE_COLUMNS,
@@ -68,7 +79,7 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [misaFilter, setMisaFilter] = useState("all")
-  const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0 })
+  const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0, attention: 0 })
   const [misaCompanyId, setMisaCompanyId] = useState<string | null>(null)
   const pg = usePagination()
   const supabase = createClient()
@@ -87,7 +98,6 @@ export default function InvoicesPage() {
     INVOICE_COLUMNS,
     INVOICE_FILTERS
   )
-  const show = (k: InvoiceColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: InvoiceFilterKey) => activeFilters.includes(k)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("invoices", LOC_HOA_DON_DIEN_TU)
@@ -96,13 +106,14 @@ export default function InvoicesPage() {
   // filter (số tổng vẫn chính xác).
   useEffect(() => {
     async function loadStats() {
-      const [allRes, signedRes, errorRes, pendingRes] = await Promise.all([
+      const [allRes, signedRes, errorRes, pendingRes, attentionRes] = await Promise.all([
         supabase.from("invoices").select("id", { count: "exact", head: true }),
         supabase.from("invoices").select("id", { count: "exact", head: true }).eq("misa_status", "signed"),
         supabase.from("invoices").select("id", { count: "exact", head: true }).eq("misa_status", "error"),
         supabase.from("invoices").select("id", { count: "exact", head: true }).or("misa_status.is.null,misa_status.eq.pending"),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).in("misa_status", ["replaced", "cancelled", "amount_mismatch", "waiting_code"]),
       ])
-      const qErr = ([allRes, signedRes, errorRes, pendingRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr = ([allRes, signedRes, errorRes, pendingRes, attentionRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/invoices] truy vấn lỗi:", qErr.message)
       setStats({
@@ -110,6 +121,7 @@ export default function InvoicesPage() {
         signed: signedRes.count ?? 0,
         error: errorRes.count ?? 0,
         pending: pendingRes.count ?? 0,
+        attention: attentionRes.count ?? 0,
       })
     }
     loadStats()
@@ -193,8 +205,10 @@ export default function InvoicesPage() {
     return () => { cancelled = true }
   }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
+
   const filtered = invoices // đã filter server-side
-  if (authLoading) return <Skeleton className="h-96" />
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
 
   const statusVariant = (s: string): "default" | "success" | "danger" | "secondary" => {
     switch (s) { case "issued": return "success"; case "cancelled": return "danger"; default: return "secondary" }
@@ -202,266 +216,195 @@ export default function InvoicesPage() {
   const statusLabel = (s: string) => {
     switch (s) { case "issued": return "Đã phát hành"; case "cancelled": return "Đã hủy"; default: return "Nháp" }
   }
+  const misaLinks = (inv: InvoiceRow) =>
+    inv.misa_ref_id || inv.misa_lookup_code ? (
+      <span className="flex flex-col gap-0.5">
+        <a
+          href={buildMisaInvoiceUrl(inv.misa_ref_id || inv.misa_lookup_code, misaCompanyId) || MISA_LIST_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          Mở MISA <ExternalLink className="h-3 w-3" />
+        </a>
+        {inv.misa_invoice_url && (
+          <a
+            href={inv.misa_invoice_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[10px] text-muted-foreground hover:underline"
+          >
+            Tra cứu công khai
+          </a>
+        )}
+      </span>
+    ) : (
+      <span className="text-xs text-muted-foreground">—</span>
+    )
+  const misaCell = (inv: InvoiceRow) => {
+    const misa = misaStatusBadge(inv.misa_status)
+    return misa ? (
+      <span className="flex flex-col gap-0.5">
+        <Badge variant={misa.variant}>{misa.label}</Badge>
+        {inv.misa_status === "error" && (
+          <span className="max-w-[220px] truncate text-[11px] text-destructive" title={inv.misa_error || undefined}>
+            {inv.misa_error || "Không rõ lý do — xem log MISA"}
+          </span>
+        )}
+      </span>
+    ) : (
+      <span className="text-xs text-muted-foreground">—</span>
+    )
+  }
+  const ngay = (inv: InvoiceRow) => (inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-")
 
-  // Stats từ separate count queries (chính xác toàn tổng, không phụ thuộc page hiện tại)
-  const totalInvoices = stats.total
-  const signedCount = stats.signed
-  const pendingCount = stats.pending
-  const errorCount = stats.error
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<InvoiceRow> & { k?: InvoiceColumnKey }> = [
+      {
+        k: "number", key: "number", label: "Số HĐ", width: "150px",
+        render: (inv) => (
+          <DocCodeLink href={`/invoices/${inv.id}`}>
+            {inv.invoice_number || <span className="font-sans text-xs font-normal text-muted-foreground">chưa cấp số</span>}
+          </DocCodeLink>
+        ),
+      },
+      {
+        key: "customer", label: "Khách hàng", width: "minmax(200px,1.5fr)",
+        sort: (a, b) => (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "vi"),
+        render: (inv) => <span className="block truncate text-sm font-bold">{inv.customer_name}</span>,
+      },
+      { k: "amount", key: "amount", label: "Tổng tiền", width: "140px", align: "right", sort: (a, b) => Number(a.total) - Number(b.total), render: (inv) => formatCurrency(inv.total) },
+      { k: "date", key: "date", label: "Ngày", width: "110px", render: (inv) => <DocCellDate date={ngay(inv)} /> },
+      { k: "status", key: "status", label: "Trạng thái", width: "130px", render: (inv) => <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge> },
+      { k: "misa", key: "misa", label: "MISA", width: "minmax(150px,1fr)", render: misaCell },
+      { k: "lookup", key: "lookup", label: "Tra cứu", width: "130px", render: misaLinks },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, misaCompanyId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? filtered.find((i) => i.id === xemId) ?? null : null
+  /* Dải MISA — thay bốn ô thống kê cũ; số đếm là của TOÀN sổ (đếm riêng lúc mở màn). */
+  const MISA_CHIPS = [
+    { key: "signed", label: "Đã ký số MISA", count: stats.signed, accent: "#22c55e" },
+    { key: "pending", label: "Chờ gửi", count: stats.pending, accent: "#fdb022" },
+    { key: "error", label: "Lỗi", count: stats.error, accent: "#ef5350" },
+    { key: "attention", label: "Cần xử lý", count: stats.attention, accent: "#f97316" },
+    { key: "all", label: "Tất cả", count: stats.total, accent: "#181c1e" },
+  ]
+  const statusSelect = (
+    <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <SelectTrigger aria-label="Trạng thái hóa đơn" className="h-10 w-40 rounded-xl font-semibold"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Mọi trạng thái</SelectItem>
+        <SelectItem value="draft">Nháp</SelectItem>
+        <SelectItem value="issued">Đã phát hành</SelectItem>
+        <SelectItem value="cancelled">Đã hủy</SelectItem>
+      </SelectContent>
+    </Select>
+  )
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Hóa đơn điện tử" description={`${totalInvoices} hóa đơn`}>
+    <div className="space-y-4">
+      <PageHeader title="Hóa đơn điện tử" descriptionDesktopOnly description={`${stats.total} hóa đơn`}>
+        {/* Đối soát hai chiều: rổ "chỉ có trên MISA" không hiện được ở
+            danh sách này vì những tờ đó KHÔNG CÓ trong bảng invoices. */}
+        <Button variant="outline" asChild>
+          <Link href="/invoices/reconcile">Đối soát MISA</Link>
+        </Button>
         {user && hasPermission(user.role, "invoices", "create") && (
           <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tạo hóa đơn</Button>
         )}
       </PageHeader>
 
-      {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <p className="text-xs text-muted-foreground font-medium">Tổng hóa đơn</p>
-          <p className="text-xl font-bold mt-1">{totalInvoices}</p>
-        </div>
-        <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-tertiary font-medium">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Đã ký số MISA
-          </div>
-          <p className="text-xl font-bold mt-1 text-tertiary">{signedCount}</p>
-        </div>
-        <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-[#b54708] font-medium">
-            <Clock className="h-3.5 w-3.5" /> Chờ gửi
-          </div>
-          <p className="text-xl font-bold mt-1 text-[#b54708]">{pendingCount}</p>
-        </div>
-        <div className="bg-card rounded-2xl border border-border/40 p-4">
-          <div className="flex items-center gap-2 text-xs text-error font-medium">
-            <AlertCircle className="h-3.5 w-3.5" /> Lỗi
-          </div>
-          <p className="text-xl font-bold mt-1 text-error">{errorCount}</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Tìm số HĐ, khách hàng, mã MISA..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          </div>
-        )}
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="draft">Nháp</SelectItem>
-              <SelectItem value="issued">Đã phát hành</SelectItem>
-              <SelectItem value="cancelled">Đã hủy</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("misa") && (
-          <Select value={misaFilter} onValueChange={setMisaFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">MISA: Tất cả</SelectItem>
-              <SelectItem value="signed">Đã ký số</SelectItem>
-              <SelectItem value="pending">Chờ gửi</SelectItem>
-              <SelectItem value="error">Lỗi</SelectItem>
-              <SelectItem value="attention">Cần xử lý</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        {/* Đối soát hai chiều: rổ "chỉ có trên MISA" không hiện được ở
-            danh sách này vì những tờ đó KHÔNG CÓ trong bảng invoices. */}
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/invoices/reconcile">Đối soát MISA</Link>
-        </Button>
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={INVOICE_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={INVOICE_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
-        </div>
-      </div>
-
-      {loading ? (
-        <Skeleton className="h-96" />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-8 w-8 text-muted-foreground" />}
-          title={pg.total === 0 ? "Chưa có hóa đơn" : "Không tìm thấy hóa đơn"}
-          description={pg.total === 0 ? "Hóa đơn được tạo từ đơn hàng đã giao" : "Thử đổi bộ lọc"}
-        />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  {show("number") && <TableHead>Số HĐ</TableHead>}
-                  <TableHead>Khách hàng</TableHead>
-                  {show("amount") && <TableHead className="text-right">Tổng tiền</TableHead>}
-                  {show("date") && <TableHead>Ngày</TableHead>}
-                  {show("status") && <TableHead>Trạng thái</TableHead>}
-                  {show("misa") && <TableHead>MISA</TableHead>}
-                  {show("lookup") && <TableHead>Tra cứu</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((inv) => {
-                  const misa = misaStatusBadge(inv.misa_status)
-                  return (
-                    <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(`/invoices/${inv.id}`)}>
-                      {show("number") && (
-                        <TableCell className="font-mono text-sm font-medium">
-                          {inv.invoice_number || <span className="font-sans text-xs text-muted-foreground">chưa cấp số</span>}
-                        </TableCell>
-                      )}
-                      <TableCell className="font-medium">{inv.customer_name}</TableCell>
-                      {show("amount") && (
-                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(inv.total)}</TableCell>
-                      )}
-                      {show("date") && (
-                        <TableCell className="text-muted-foreground">{inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}</TableCell>
-                      )}
-                      {show("status") && (
-                        <TableCell>
-                          <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
-                        </TableCell>
-                      )}
-                      {show("misa") && (
-                        <TableCell>
-                          {misa ? (
-                            <div className="flex flex-col gap-0.5">
-                              <Badge variant={misa.variant}>{misa.label}</Badge>
-                              {inv.misa_status === "error" && (
-                                <span
-                                  className="max-w-[220px] truncate text-[11px] text-destructive"
-                                  title={inv.misa_error || undefined}
-                                >
-                                  {inv.misa_error || "Không rõ lý do — xem log MISA"}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      )}
-                      {show("lookup") && (
-                        <TableCell>
-                          {(inv.misa_ref_id || inv.misa_lookup_code) ? (
-                            <div className="flex flex-col gap-0.5">
-                              <a
-                                href={buildMisaInvoiceUrl(inv.misa_ref_id || inv.misa_lookup_code, misaCompanyId) || MISA_LIST_URL}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
-                              >
-                                Mở MISA <ExternalLink className="h-3 w-3" />
-                              </a>
-                              {inv.misa_invoice_url && (
-                                <a
-                                  href={inv.misa_invoice_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-[10px] text-muted-foreground hover:underline"
-                                >
-                                  Tra cứu công khai
-                                </a>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="lg:hidden space-y-3">
-            {filtered.map((inv) => {
-              const misa = misaStatusBadge(inv.misa_status)
-              return (
-                <div
-                  key={inv.id}
-                  className="relative rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                  onClick={() => router.push(`/invoices/${inv.id}`)}
-                >
-                  <div className="p-4">
-                    <div className="flex justify-between items-start gap-3 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-mono text-xs font-bold text-primary">
-                          {inv.invoice_number || <span className="font-sans text-xs text-muted-foreground">chưa cấp số</span>}
-                        </p>
-                        <h3 className="font-extrabold text-base leading-tight truncate mt-0.5">
-                          {inv.customer_name}
-                        </h3>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {inv.issued_at ? formatDate(inv.issued_at) : inv.created_at ? formatDate(inv.created_at) : "-"}
-                        </p>
-                      </div>
-                      <div className="shrink-0 flex flex-col items-end gap-1">
-                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
-                        {misa && <Badge variant={misa.variant}>{misa.label}</Badge>}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t">
-                      <span className="text-xs text-muted-foreground">Tổng tiền</span>
-                      <span className="font-bold text-base">{formatCurrency(inv.total)}</span>
-                    </div>
-                    {(inv.misa_ref_id || inv.misa_lookup_code) && (
-                      <div className="flex items-center gap-3 mt-2">
-                        <a
-                          href={buildMisaInvoiceUrl(inv.misa_ref_id || inv.misa_lookup_code, misaCompanyId) || MISA_LIST_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-primary hover:underline text-xs flex items-center gap-1 font-medium"
-                        >
-                          Mở MISA <ExternalLink className="h-3 w-3" />
-                        </a>
-                        {inv.misa_invoice_url && (
-                          <a
-                            href={inv.misa_invoice_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[11px] text-muted-foreground hover:underline"
-                          >
-                            Tra cứu công khai
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <DataPagination pg={pg} shownCount={filtered.length} />
-        </>
+      {filterActive("misa") && (
+        <StatusChips active={misaFilter} onPick={setMisaFilter} chips={MISA_CHIPS} />
       )}
+
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm số HĐ, khách hàng, mã MISA..."
+        activeCount={(statusFilter !== "all" ? 1 : 0) + locNC.soDangAp}
+        onClear={() => { setStatusFilter("all"); locNC.xoa() }}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+          <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+        </div>
+      </MobileFilterBar>
+
+      <DocListLayout
+        toolbar={
+          <>
+            {filterActive("search") && (
+              <DocListSearch value={search} onChange={setSearch} placeholder="Tìm số HĐ, khách hàng, mã MISA..." />
+            )}
+            {filterActive("status") && statusSelect}
+            <XoaLocButton show={!!search || statusFilter !== "all"} onClick={() => { setSearch(""); setStatusFilter("all") }} />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={INVOICE_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={INVOICE_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        /* Hóa đơn điện tử là bản khai với MISA, không phải sổ doanh thu (doanh thu theo hóa
+           đơn bán ghi sổ) — màn này không cộng tiền để khỏi đọc nhầm thành doanh thu. */
+        totals={null}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<FileText className="h-8 w-8 text-muted-foreground" />}
+            title={pg.total === 0 ? "Chưa có hóa đơn" : "Không tìm thấy hóa đơn"}
+            description={pg.total === 0 ? "Hóa đơn được tạo từ đơn hàng đã giao" : "Thử đổi bộ lọc"}
+          />
+        }
+        pg={pg}
+        shownCount={filtered.length}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(inv) => setXemId(inv.id)} />}
+        cards={
+          <DocCardList
+            items={filtered}
+            onOpen={(inv) => setXemId(inv.id)}
+            card={(inv) => {
+              const misa = misaStatusBadge(inv.misa_status)
+              return {
+                accent: inv.status === "cancelled" ? "#ef5350" : inv.misa_status === "signed" ? "#22c55e" : inv.misa_status === "error" ? "#ef5350" : "#fdb022",
+                title: inv.customer_name || "—",
+                total: formatCurrency(inv.total),
+                meta: [ngay(inv), inv.invoice_number || "chưa cấp số"].join(" · "),
+                payment: statusLabel(inv.status),
+                summary: inv.misa_status === "error" ? (inv.misa_error || "Lỗi MISA — xem log") : undefined,
+                badge: misa && inv.misa_status !== "signed" ? { label: misa.label, bg: "#fff4e0", fg: "#8a5a00" } : null,
+              }
+            }}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.invoice_number || "Hóa đơn (chưa cấp số)"}
+        subtitle={xem ? ngay(xem) : undefined}
+        badge={xem ? <Badge variant={statusVariant(xem.status)}>{statusLabel(xem.status)}</Badge> : null}
+        fields={xem ? [
+          { label: "Khách hàng", value: xem.customer_name, wide: true },
+          { label: "MISA", value: misaCell(xem) },
+          { label: "Tra cứu", value: misaLinks(xem) },
+        ] : []}
+        total={xem ? { label: "Tổng tiền", value: formatCurrency(xem.total) } : undefined}
+        detailHref={xem ? `/invoices/${xem.id}` : undefined}
+      />
     </div>
   )
 }

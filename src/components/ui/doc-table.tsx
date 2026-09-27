@@ -21,7 +21,8 @@ import { cn } from "@/lib/utils"
 
 export interface DocColumn<T> {
   key: string
-  label: string
+  /** Chữ tiêu đề — hoặc một ô (vd hộp chọn tất cả của chế độ chọn nhiều). */
+  label: ReactNode
   /** Rãnh lưới: "140px", "minmax(200px,1.5fr)". */
   width: string
   align?: "right"

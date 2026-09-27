@@ -13,11 +13,16 @@ import { khopLoc } from "@/lib/search/advanced-filter"
 import { LOC_PHIEU_KHO } from "@/lib/search/list-filter-fields"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { DocCardList } from "@/components/ui/doc-card-list"
+import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
+import { vnDateKey, vnTime } from "@/lib/orders/status-tone"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -37,11 +42,10 @@ import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
 import { cancelStockEntry, cancelEntryMessage } from "@/lib/inventory/cancel-entry"
 import { ghiSoPhieuNhap } from "@/lib/inventory/approve-entry"
 import {
-  ClipboardList, Plus, Eye, Trash2, MoreHorizontal, Search,
+  ClipboardList, Plus, Eye, Trash2, MoreHorizontal,
   ArrowDownToLine, ArrowUpFromLine, ClipboardCheck,
   CheckCircle2, CircleX,
 } from "lucide-react"
-import Link from "@/components/ui/link"
 import type { StockEntry } from "@/types"
 import {
   STOCK_ENTRY_COLUMNS,
@@ -86,7 +90,6 @@ export default function StockEntriesPage() {
     STOCK_ENTRY_COLUMNS,
     STOCK_ENTRY_FILTERS
   )
-  const show = (k: StockEntryColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: StockEntryFilterKey) => activeFilters.includes(k)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). Màn tải hết → lọc ở trình duyệt. */
   const locNC = useAdvancedFilter("inventory-entries", LOC_PHIEU_KHO)
@@ -376,12 +379,139 @@ export default function StockEntriesPage() {
       ]
     : []
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+
+  const [xemId, setXemId] = useState<string | null>(null)
+  const [filterSheet, setFilterSheet] = useState(false)
+  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key]))
+  const trangThai = (e: StockEntry) => e.status || "posted"
+
+  /** Việc làm được với một phiếu — dùng chung cho menu ⋮ của lưới và ngăn xem nhanh. */
+  const hanhDong = (e: StockEntry) => ({
+    duyet: !!canUpdate && trangThai(e) === "draft" && e.type !== "stocktake",
+    duyetKiemKe: trangThai(e) === "draft" && e.type === "stocktake",
+    huy: !!canUpdate && trangThai(e) === "posted",
+    xoa: !!canDelete && trangThai(e) === "draft",
+  })
+
+  const columns = useMemo(() => {
+    const cols: Array<DocColumn<StockEntry> & { k?: StockEntryColumnKey }> = [
+      ...(canUpdate
+        ? [{
+            key: "select",
+            label: (
+              <Checkbox
+                checked={allSelected ? true : someSelected && !allSelected ? "indeterminate" : false}
+                onCheckedChange={(v) => toggleAll(!!v)}
+                aria-label="Chọn tất cả"
+              />
+            ),
+            width: "44px",
+            render: (e: StockEntry) => (
+              <span onClick={(ev) => ev.stopPropagation()}>
+                <Checkbox
+                  checked={selectedIds.has(e.id)}
+                  onCheckedChange={(v) => toggleOne(e.id, !!v)}
+                  aria-label={`Chọn ${e.entry_code}`}
+                />
+              </span>
+            ),
+          }]
+        : []),
+      { key: "code", label: "Mã phiếu", width: "150px", render: (e) => <DocCodeLink href={`/inventory/entries/${e.id}`}>{e.entry_code}</DocCodeLink> },
+      { k: "type", key: "type", label: "Loại", width: "130px", render: (e) => <Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge> },
+      {
+        k: "status", key: "status", label: "Trạng thái", width: "120px",
+        render: (e) => {
+          const s = getStatusMeta(trangThai(e))
+          return <Badge variant={s.variant}>{s.label}</Badge>
+        },
+      },
+      { k: "creator", key: "creator", label: "Người tạo", width: "160px", render: (e) => <DocCellText>{e.creator?.full_name}</DocCellText> },
+      { k: "notes", key: "notes", label: "Ghi chú", width: "minmax(200px,1.5fr)", render: (e) => <DocCellText muted title={e.notes ?? undefined}>{e.notes}</DocCellText> },
+      {
+        k: "date", key: "date", label: "Ngày", width: "110px",
+        sort: (a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""),
+        render: (e) => <DocCellDate date={formatDate(e.created_at)} time={e.created_at ? vnTime(e.created_at) : null} />,
+      },
+      {
+        key: "actions", label: "Thao tác", width: "80px", align: "right",
+        render: (e) => {
+          const hd = hanhDong(e)
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Thao tác ${e.entry_code}`} onClick={(ev) => ev.stopPropagation()}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(ev) => { ev.stopPropagation(); router.push(`/inventory/entries/${e.id}`) }}>
+                  <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
+                </DropdownMenuItem>
+                {hd.duyet && (
+                  <DropdownMenuItem onClick={(ev) => { ev.stopPropagation(); handleApprove(e) }}>
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt
+                  </DropdownMenuItem>
+                )}
+                {hd.duyetKiemKe && (
+                  <DropdownMenuItem onClick={(ev) => { ev.stopPropagation(); router.push(`/inventory/adjustments`) }}>
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt tại trang điều chỉnh
+                  </DropdownMenuItem>
+                )}
+                {hd.huy && (
+                  <DropdownMenuItem onClick={(ev) => { ev.stopPropagation(); handleCancel(e) }}>
+                    <CircleX className="mr-2 h-4 w-4 text-[#b54708]" /> Hủy phiếu
+                  </DropdownMenuItem>
+                )}
+                {hd.xoa && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive" onClick={(ev) => { ev.stopPropagation(); setDeleteTarget(e) }}>
+                      <Trash2 className="mr-2 h-4 w-4" /> Xóa
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      },
+    ]
+    return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
+  }, [visibleColumns, canUpdate, canDelete, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (authLoading) return <Skeleton className="h-96" />
+
+  const xem = xemId ? entries.find((e) => e.id === xemId) ?? null : null
+  const xemHd = xem ? hanhDong(xem) : null
+  const typeSelect = (
+    <Select value={typeFilter} onValueChange={setTypeFilter}>
+      <SelectTrigger aria-label="Loại phiếu" className="h-10 w-40 rounded-xl font-semibold"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả loại</SelectItem>
+        {STOCK_ENTRY_TYPES.map((t) => (
+          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const statusSelect = (
+    <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <SelectTrigger aria-label="Trạng thái phiếu" className="h-10 w-40 rounded-xl font-semibold"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Tất cả trạng thái</SelectItem>
+        <SelectItem value="draft">Nháp</SelectItem>
+        <SelectItem value="posted">Đã duyệt</SelectItem>
+        <SelectItem value="cancelled">Đã hủy</SelectItem>
+      </SelectContent>
+    </Select>
+  )
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Phiếu kho"
+        descriptionDesktopOnly
         description={`${entries.length} phiếu • ${draftCount} chờ duyệt`}
         backHref="/inventory"
       >
@@ -446,203 +576,110 @@ export default function StockEntriesPage() {
       */}
       <StatusChips chips={typeChips} active={typeFilter} onPick={setTypeFilter} />
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        {filterActive("search") && (
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Tìm mã phiếu hoặc ghi chú..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        )}
-        {filterActive("type") && (
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả loại</SelectItem>
-              {STOCK_ENTRY_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {filterActive("status") && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả trạng thái</SelectItem>
-              <SelectItem value="draft">Nháp</SelectItem>
-              <SelectItem value="posted">Đã duyệt</SelectItem>
-              <SelectItem value="cancelled">Đã hủy</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} />
-          <FilterPicker
-            available={STOCK_ENTRY_FILTERS}
-            value={activeFilters}
-            onChange={setFilters}
-            onReset={resetFilters}
-          />
-          <ColumnPicker
-            available={STOCK_ENTRY_COLUMNS}
-            value={visibleColumns}
-            onChange={setColumns}
-            onReset={resetColumns}
-          />
+      <MobileFilterBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Tìm mã phiếu hoặc ghi chú..."
+        activeCount={(statusFilter !== "all" ? 1 : 0) + locNC.soDangAp}
+        onClear={() => { setStatusFilter("all"); locNC.xoa() }}
+        open={filterSheet}
+        onOpenChange={setFilterSheet}
+      >
+        <div className="grid gap-4">
+          {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+          <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
         </div>
-      </div>
+      </MobileFilterBar>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
-          title={entries.length === 0 ? "Chưa có phiếu kho" : "Không tìm thấy phiếu"}
-          description={entries.length === 0 ? "Tạo phiếu đầu tiên bằng nút 'Tạo phiếu'" : "Thử đổi bộ lọc"}
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30">
-                {canUpdate && (
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={allSelected ? true : someSelected && !allSelected ? "indeterminate" : false}
-                      onCheckedChange={(v) => toggleAll(!!v)}
-                      aria-label="Chọn tất cả"
-                    />
-                  </TableHead>
-                )}
-                <TableHead>Mã phiếu</TableHead>
-                {show("type") && <TableHead>Loại</TableHead>}
-                {show("status") && <TableHead>Trạng thái</TableHead>}
-                {show("creator") && <TableHead>Người tạo</TableHead>}
-                {show("notes") && <TableHead>Ghi chú</TableHead>}
-                {show("date") && <TableHead>Ngày</TableHead>}
-                <TableHead className="w-20 text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((e) => {
-                const checked = selectedIds.has(e.id)
-                return (
-                  <TableRow
-                    key={e.id}
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => router.push(`/inventory/entries/${e.id}`)}
-                  >
-                    {canUpdate && (
-                      <TableCell onClick={(ev) => ev.stopPropagation()}>
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => toggleOne(e.id, !!v)}
-                          aria-label={`Chọn ${e.entry_code}`}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <Link
-                        href={`/inventory/entries/${e.id}`}
-                        className="font-mono text-sm text-primary font-bold hover:underline"
-                        onClick={(ev) => ev.stopPropagation()}
-                      >
-                        {e.entry_code}
-                      </Link>
-                    </TableCell>
-                    {show("type") && (
-                      <TableCell><Badge variant={getTypeVariant(e.type)}>{getTypeLabel(e.type)}</Badge></TableCell>
-                    )}
-                    {show("status") && (
-                      <TableCell>
-                        {(() => {
-                          const s = getStatusMeta(e.status || "posted")
-                          return <Badge variant={s.variant}>{s.label}</Badge>
-                        })()}
-                      </TableCell>
-                    )}
-                    {show("creator") && <TableCell>{e.creator?.full_name || "-"}</TableCell>}
-                    {show("notes") && <TableCell className="text-muted-foreground truncate max-w-xs">{e.notes || "-"}</TableCell>}
-                    {show("date") && <TableCell>{formatDate(e.created_at)}</TableCell>}
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={(ev) => ev.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(ev) => {
-                              ev.stopPropagation()
-                              router.push(`/inventory/entries/${e.id}`)
-                            }}
-                          >
-                            <Eye className="mr-2 h-4 w-4" /> Xem / Sửa
-                          </DropdownMenuItem>
-                          {canUpdate && (e.status || "posted") === "draft" && e.type !== "stocktake" && (
-                            <DropdownMenuItem
-                              onClick={(ev) => {
-                                ev.stopPropagation()
-                                handleApprove(e)
-                              }}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt
-                            </DropdownMenuItem>
-                          )}
-                          {(e.status || "posted") === "draft" && e.type === "stocktake" && (
-                            <DropdownMenuItem
-                              onClick={(ev) => {
-                                ev.stopPropagation()
-                                router.push(`/inventory/adjustments`)
-                              }}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4 text-tertiary" /> Duyệt tại trang điều chỉnh
-                            </DropdownMenuItem>
-                          )}
-                          {canUpdate && (e.status || "posted") === "posted" && (
-                            <DropdownMenuItem
-                              onClick={(ev) => {
-                                ev.stopPropagation()
-                                handleCancel(e)
-                              }}
-                            >
-                              <CircleX className="mr-2 h-4 w-4 text-[#b54708]" /> Hủy phiếu
-                            </DropdownMenuItem>
-                          )}
-                          {canDelete && (e.status || "posted") === "draft" && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={(ev) => {
-                                  ev.stopPropagation()
-                                  setDeleteTarget(e)
-                                }}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" /> Xóa
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DocListLayout
+        toolbar={
+          <>
+            {filterActive("search") && (
+              <DocListSearch value={search} onChange={setSearch} placeholder="Tìm mã phiếu hoặc ghi chú..." />
+            )}
+            {filterActive("type") && typeSelect}
+            {filterActive("status") && statusSelect}
+            <XoaLocButton
+              show={!!search || statusFilter !== "all" || typeFilter !== "all"}
+              onClick={() => { setSearch(""); setStatusFilter("all"); setTypeFilter("all") }}
+            />
+          </>
+        }
+        toolbarEnd={
+          <>
+            <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} />
+            <FilterPicker available={STOCK_ENTRY_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
+            <ColumnPicker available={STOCK_ENTRY_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
+          </>
+        }
+        /* Phiếu kho là chứng từ số lượng, không mang tiền — dòng thống kê là số phiếu. */
+        totals={{ label: "Số phiếu kho", countText: `${draftCount} phiếu chờ duyệt`, total: `${filtered.length} phiếu` }}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
+            title={entries.length === 0 ? "Chưa có phiếu kho" : "Không tìm thấy phiếu"}
+            description={entries.length === 0 ? "Tạo phiếu đầu tiên bằng nút 'Tạo phiếu'" : "Thử đổi bộ lọc"}
+          />
+        }
+        pg={pg}
+        shownCount={trang.length}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} />}
+        cards={
+          <DocCardList
+            items={trang}
+            unit="phiếu"
+            getDate={(e) => (e.created_at ? vnDateKey(new Date(e.created_at)) : "")}
+            onOpen={(e) => setXemId(e.id)}
+            card={(e) => {
+              const s = getStatusMeta(trangThai(e))
+              return {
+                accent: TYPE_ACCENT[e.type] ?? "#98a2b3",
+                title: getTypeLabel(e.type),
+                total: s.label,
+                meta: [e.created_at ? vnTime(e.created_at) : null, e.entry_code].filter(Boolean).join(" · "),
+                payment: e.creator?.full_name ?? "",
+                summary: e.notes || undefined,
+                badge: trangThai(e) === "draft" ? { label: "Chờ duyệt", bg: "#fff4e0", fg: "#8a5a00" } : trangThai(e) === "cancelled" ? { label: "Đã hủy", bg: "#fdecec", fg: "#b00020" } : null,
+              }
+            }}
+          />
+        }
+      />
+
+      <DocQuickView
+        open={!!xem}
+        onClose={() => setXemId(null)}
+        title={xem?.entry_code ?? "Phiếu kho"}
+        subtitle={xem ? formatDate(xem.created_at) : undefined}
+        badge={xem ? (() => { const s = getStatusMeta(trangThai(xem)); return <Badge variant={s.variant}>{s.label}</Badge> })() : null}
+        fields={xem ? [
+          { label: "Loại", value: getTypeLabel(xem.type) },
+          { label: "Người tạo", value: xem.creator?.full_name },
+          { label: "Ghi chú", value: xem.notes, wide: true },
+        ] : []}
+        detailHref={xem ? `/inventory/entries/${xem.id}` : undefined}
+        actions={xem && xemHd ? (
+          <>
+            {xemHd.duyet && (
+              <Button variant="outline" className="h-11 flex-1" onClick={() => handleApprove(xem)}>
+                <CheckCircle2 className="mr-1.5 h-4 w-4 text-tertiary" /> Duyệt
+              </Button>
+            )}
+            {xemHd.huy && (
+              <Button variant="outline" className="h-11 flex-1" onClick={() => handleCancel(xem)}>
+                <CircleX className="mr-1.5 h-4 w-4 text-[#b54708]" /> Hủy phiếu
+              </Button>
+            )}
+            {xemHd.xoa && (
+              <Button variant="outline" className="h-11 flex-1 text-destructive" onClick={() => setDeleteTarget(xem)}>
+                <Trash2 className="mr-1.5 h-4 w-4" /> Xóa
+              </Button>
+            )}
+          </>
+        ) : null}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}

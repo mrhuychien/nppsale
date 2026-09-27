@@ -225,6 +225,8 @@ export default function CashReceiptsListPage() {
         .select(COT, dem ? { count: "exact" } : undefined)
         .order("receipt_date", { ascending: false })
         .order("created_at", { ascending: false })
+        /* ⚠ Mốc phụ duy nhất — hai phiếu cùng giờ tạo không được lặp / sót giữa hai trang. */
+        .order("id")
       q = locTrangThai(q, status)
       return applyFilters(q as never) as typeof q
     }

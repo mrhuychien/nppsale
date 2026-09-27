@@ -23,7 +23,7 @@ import {
 import { nhanVienPhieuTra, giaTriNiemYetDong } from "@/lib/analytics/hang-ban-nhan-vien"
 import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
-import type { DanhMucBC, DongBan } from "./cong"
+import type { DanhMucBC, DanhMucVao, DongBan } from "./cong"
 import { quyDoiTuDanhMuc } from "./nap-danh-muc"
 
 export interface HoaDonBC {
@@ -138,7 +138,7 @@ export function dungDongBan(p: {
   return { dong, hoaDon, phieuTra }
 }
 
-export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dm: DanhMucBC): Promise<SoBan> {
+export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dmVao: DanhMucVao): Promise<SoBan> {
   const range = { from: a, to: b }
   const [hd, tra, gv] = await Promise.all([
     fetchRevenueInvoicesDu(sb, orgId, range),
@@ -159,6 +159,7 @@ export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: 
     // ⚠ Số phiếu TH- chỉ đọc riêng qua `docMaPhieuTra` (sổ chưa chạy mig 193 thì chỉ mất số).
     docMaPhieuTra(sb, traIds),
   ])
+  const dm = await dmVao
   const tt = new Map(thongTinTra.map((r) => [r.id, r]))
   const traCoMa: TraCoMa[] = tra.rows.map((r) => {
     const x = tt.get(r.id)

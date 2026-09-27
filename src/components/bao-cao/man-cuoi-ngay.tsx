@@ -13,7 +13,7 @@ import { ThanhLoc } from "./thanh-loc"
 import { HangKpi, KhoiDanhSach, KhungCho, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type DongKhoi } from "./khoi"
 import { BangBaoCao, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo, type LoaiChungTu } from "./xem-nhanh"
-import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
+import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { congNgay, ngayDu, ngayThang, THU_VN, thu } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
@@ -40,15 +40,17 @@ export function ManCuoiNgay() {
     orgId
       ? async () => {
           const sb = createClient()
-          const { dm, thieu } = await layDanhMuc(orgId)
+          // Danh mục và số đọc SONG SONG — hàm nạp chỉ đợi danh mục lúc tính.
+          const dmP = layDanhMuc(orgId)
           const truoc = congNgay(d, -1)
           const [ban, don, thu, chi, quy] = await Promise.all([
-            napSoBan(sb, orgId, truoc, d, dm),
+            nhoTam(`ban|${orgId}|${truoc}|${d}`, () => napSoBan(sb, orgId, truoc, d, dmP.then((x) => x.dm))),
             fetchAllOrdersDu(sb, orgId, { from: truoc, to: d }),
             napKhoanThu(sb, d, d),
             napPhieuChi(sb, orgId, d, d),
             tonQuy(sb, orgId, d),
           ])
+          const { dm, thieu } = await dmP
           return { dm, ban, don: don.rows, thu: thu.ds, chi: chi.ds, quy, thieu: thieu || ban.thieu || don.truncated || thu.thieu || chi.thieu }
         }
       : null,

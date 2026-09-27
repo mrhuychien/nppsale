@@ -91,6 +91,12 @@ export interface DanhMucBC {
   ncc: Map<string, string>
 }
 
+/**
+ * Danh mục đưa vào hàm nạp số: có thể là LỜI HỨA — hàm nạp đọc mạng trước, chỉ đợi danh mục lúc
+ * tính (chủ nhà 27/09/2026 "rà cách đọc dữ liệu cho nhanh hơn": danh mục và số chạy song song).
+ */
+export type DanhMucVao = DanhMucBC | PromiseLike<DanhMucBC>
+
 export const danhMucRong = (): DanhMucBC => ({
   khach: new Map(),
   sp: new Map(),

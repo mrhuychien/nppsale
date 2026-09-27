@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { vnDateOf } from "@/lib/analytics/sales"
 import { congNgay, soNgay } from "./ky"
-import type { DanhMucBC } from "./cong"
+import type { DanhMucBC, DanhMucVao } from "./cong"
 
 type Trang = PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>
 
@@ -154,7 +154,7 @@ export interface SoCongNo {
   thieu: boolean
 }
 
-export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dm: DanhMucBC): Promise<SoCongNo> {
+export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dmVao: DanhMucVao): Promise<SoCongNo> {
   /** `tu` = null: mọi phiếu chưa tất toán; có `tu`: mọi phiếu tạo từ ngày đó (kể cả đã tất toán). */
   const docPhieu = (tu: string | null, ten: string) =>
     docDuHoacNem<PhieuNoTho>((from, to): Trang => {
@@ -182,6 +182,7 @@ export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dm
   const thuSau = thuTu.rows.filter((t) => vnDateOf(t.collected_at) > X)
   const thieu = mo.truncated || thuTu.truncated || gan90.truncated
   const thuTruoc = thuTu.rows.filter((t) => vnDateOf(t.collected_at) <= X)
+  const dm = await dmVao
   const { phieu, khach } = noTaiNgay({ X, phieu: mo.rows, thuSau, thuTruoc, dm })
   const thuThang = new Map<string, number>()
   for (const t of thuTruoc) {

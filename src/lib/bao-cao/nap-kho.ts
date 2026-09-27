@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { fetchRevenueInvoicesDu, fetchInvoiceLines, soLuongCoSoDongHd, soLuongCoSoDongKho, vnDateOf } from "@/lib/analytics/sales"
 import { congNgay, soNgay } from "./ky"
-import type { DanhMucBC } from "./cong"
+import type { DanhMucVao } from "./cong"
 import { quyDoiTuDanhMuc } from "./nap-danh-muc"
 
 type Trang = PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>
@@ -79,7 +79,7 @@ export function tinhTon(lo: readonly LoKho[], ban: ReadonlyMap<string, { sl30: n
   return out
 }
 
-export async function napTonKho(sb: SupabaseClient, orgId: string, homNay: string, dm: DanhMucBC) {
+export async function napTonKho(sb: SupabaseClient, orgId: string, homNay: string, dmVao: DanhMucVao) {
   const [lo, hd] = await Promise.all([
     docDuHoacNem<{ id: string; product_id: string; batch_code: string | null; qty_on_hand: number; unit_cost: number | null; expires_at: string | null; created_at: string | null }>(
       (from, to): Trang =>
@@ -96,6 +96,7 @@ export async function napTonKho(sb: SupabaseClient, orgId: string, homNay: strin
   ])
   const ngayHd = new Map(hd.rows.map((h) => [h.id, String(h.invoice_date).slice(0, 10)]))
   const dong = await fetchInvoiceLines(sb, hd.rows.map((h) => h.id))
+  const dm = await dmVao
   const ban = new Map<string, { sl30: number; cuoi: string }>()
   const moc30 = congNgay(homNay, -29)
   for (const l of dong) {

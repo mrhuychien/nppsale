@@ -14,7 +14,7 @@ import { KhungBaoCao } from "./khung"
 import { ThanhLoc } from "./thanh-loc"
 import { HangKpi, KhoiDanhSach, HangSoNhanh, CongTacDoan, KhungCho, KhongCoSo, LoiDocSo, ChuaDu, type TheKpi, type OSoNhanh } from "./khoi"
 import { BieuDoCot } from "./bieu-do"
-import { useNap, layDanhMuc, tenGiaTri } from "./dung-chung"
+import { useNap, nhoTam, layDanhMuc, tenGiaTri } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { kyTheoMa, soNgay, doHat, chiaThoiGian, khoaThoiGian, tenKy, congNgay } from "@/lib/bao-cao/ky"
 import { lienKetMan, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
@@ -47,13 +47,16 @@ export function ManTongQuan() {
     orgId
       ? async () => {
           const sb = createClient()
-          const { dm, thieu } = await layDanhMuc(orgId)
+          // Danh mục và số đọc SONG SONG — hàm nạp chỉ đợi danh mục lúc tính.
+          const dmP = layDanhMuc(orgId)
+          const dmV = dmP.then((x) => x.dm)
           const [ban, no, don, kho] = await Promise.all([
-            napSoBan(sb, orgId, cmp ? cmp[0] : a, b, dm),
-            napCongNo(sb, orgId, homNay, dm),
+            nhoTam(`ban|${orgId}|${cmp ? cmp[0] : a}|${b}`, () => napSoBan(sb, orgId, cmp ? cmp[0] : a, b, dmV)),
+            nhoTam(`no|${orgId}|${homNay}`, () => napCongNo(sb, orgId, homNay, dmV)),
             napDonChuaXuat(sb, orgId),
-            napTonKho(sb, orgId, homNay, dm),
+            nhoTam(`kho|${orgId}|${homNay}`, () => napTonKho(sb, orgId, homNay, dmV)),
           ])
+          const { dm, thieu } = await dmP
           return { dm, ban, no, don, kho, thieu: thieu || ban.thieu || no.thieu || don.thieu || kho.thieu }
         }
       : null,

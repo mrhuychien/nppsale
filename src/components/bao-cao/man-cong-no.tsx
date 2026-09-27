@@ -15,7 +15,7 @@ import { HangKpi, HangChon, DangTai, KhungCho, LoiDocSo, ChuaDu, GhiChu, type Th
 import { BieuDoChong } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
-import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
+import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { ngayDu, ngayThang } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
@@ -42,8 +42,9 @@ export function ManCongNo() {
   const nap = useNap(
     orgId
       ? async () => {
-          const { dm, thieu } = await layDanhMuc(orgId)
-          const so = await napCongNo(createClient(), orgId, X, dm)
+          const dmP = layDanhMuc(orgId)
+          const so = await nhoTam(`no|${orgId}|${X}`, () => napCongNo(createClient(), orgId, X, dmP.then((x) => x.dm)))
+          const { dm, thieu } = await dmP
           return { dm, ...so, thieu: thieu || so.thieu }
         }
       : null,

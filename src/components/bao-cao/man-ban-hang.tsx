@@ -16,7 +16,7 @@ import { HangKpi, HangChon, CongTacDoan, BangHoPhach, KhoiGap, KhungCho, KhongCo
 import { BieuDoCot, BieuDoNgang, type CotBD } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
-import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
+import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, type Ky } from "@/lib/bao-cao/ky"
@@ -72,7 +72,6 @@ interface DuLieu {
   hoaDon: Awaited<ReturnType<typeof napSoBan>>["hoaDon"]
   phieuTra: Awaited<ReturnType<typeof napSoBan>>["phieuTra"]
   don: Awaited<ReturnType<typeof napDonDat>>["don"]
-  no: Record<string, number> | null
   /** Mức doanh số chung A / tháng (cài đặt lương), 0 = chưa đặt. */
   chiTieuThang: number
   thieu: boolean
@@ -97,11 +96,11 @@ export function ManBanHang() {
     orgId
       ? async () => {
           const sb = createClient()
-          const { dm, thieu } = await layDanhMuc(orgId)
-          const [sb1, sd, no, chiTieuThang] = await Promise.all([
-            nguon === "inv" ? napSoBan(sb, orgId, tu, b, dm) : null,
+          // Danh mục và số đọc SONG SONG — `napSoBan` chỉ đợi danh mục lúc tính.
+          const dmP = layDanhMuc(orgId)
+          const [sb1, sd, chiTieuThang] = await Promise.all([
+            nguon === "inv" ? nhoTam(`ban|${orgId}|${tu}|${b}`, () => napSoBan(sb, orgId, tu, b, dmP.then((x) => x.dm))) : null,
             nguon === "ord" ? napDonDat(sb, orgId, tu, b) : null,
-            nguon === "inv" ? loadDebtByCustomer().catch(() => null) : null,
             // Mức doanh số chung A (hr_salary_config) — qua RPC một số (mig 196); lỗi thì ẩn cột chỉ tiêu.
             nguon === "inv"
               ? Promise.resolve(sb.rpc("my_sales_target")).then(
@@ -110,6 +109,7 @@ export function ManBanHang() {
                 )
               : 0,
           ])
+          const { dm, thieu } = await dmP
           return {
             dm,
             ban: sb1?.dong || [],
@@ -117,7 +117,6 @@ export function ManBanHang() {
             phieuTra: sb1?.phieuTra || [],
             dat: sd?.dong || [],
             don: sd?.don || new Map(),
-            no,
             chiTieuThang,
             thieu: thieu || !!sb1?.thieu || !!sd?.thieu,
           }
@@ -126,6 +125,13 @@ export function ManBanHang() {
     `${orgId}|${nguon}|${tu}|${b}`
   )
   const dm = nap.data?.dm || null
+  // Công nợ hiện tại chỉ là cột phụ của chế độ Khách — đọc riêng khi mở chế độ đó, không bắt mọi
+  // lượt mở Bán hàng đọc cả sổ công nợ.
+  const view0 = (E.xem as Xem) || "time"
+  const noKhach = useNap<Record<string, number> | null>(
+    orgId && nguon === "inv" && view0 === "cust" ? () => loadDebtByCustomer().catch(() => null) : null,
+    `${orgId}|no|${nguon === "inv" && view0 === "cust"}`
+  )
   const [ct, setCt] = useState<ChungTuMo | null>(null)
   const [batThem, setBatThem] = useState<string[]>([])
   const xuatRef = useRef<(() => (string | number)[][]) | null>(null)
@@ -263,7 +269,7 @@ export function ManBanHang() {
               phu(M.share),
               phu(M.ret),
               M.gp,
-              { k: "debt", label: "Công nợ hiện tại", f: "money", v: (x) => (x.k ? d.no?.[x.k] ?? null : d.no ? Object.values(d.no).reduce((s, v) => s + v, 0) : null), opt: true },
+              { k: "debt", label: "Công nợ hiện tại", f: "money", v: (x) => (x.k ? noKhach.data?.[x.k] ?? null : noKhach.data ? Object.values(noKhach.data).reduce((s, v) => s + v, 0) : null), opt: true },
               { k: "owner", label: "NV phụ trách", f: "text", v: (x) => (x.k ? tenGiaTri(dm, "staff", dm.khach.get(x.k)?.nv || "") : ""), opt: true },
             ]
             break
@@ -507,7 +513,7 @@ export function ManBanHang() {
     }
     return { kpis, bang, bieuDo: view === "docs" ? null : bieuDo, tenXuat, rong: cur.length === 0, phu: null, thieuGV: null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nap.data, dm, a, b, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
+  }, [nap.data, noKhach.data, dm, a, b, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
 
   // Đường đào sâu
   const tenGoc = `Bán hàng · Theo ${CHIEU[xemGoc as Exclude<Xem, "docs">].label.toLowerCase()}`

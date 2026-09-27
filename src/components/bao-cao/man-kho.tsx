@@ -14,7 +14,7 @@ import { ThanhLoc } from "./thanh-loc"
 import { HangKpi, HangChon, DangTai, KhungCho, LoiDocSo, ChuaDu, GhiChu, type TheKpi } from "./khoi"
 import { BieuDoCot } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
-import { useNap, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
+import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
 import { kyTheoMa, congNgay, soNgay, ngayDu, ngayThang, nhanKhoang, chiaThoiGian, tenKy } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
@@ -41,8 +41,9 @@ export function ManKho() {
   const nap = useNap(
     orgId
       ? async () => {
-          const { dm, thieu } = await layDanhMuc(orgId)
-          const t = await napTonKho(createClient(), orgId, homNay, dm)
+          const dmP = layDanhMuc(orgId)
+          const t = await nhoTam(`kho|${orgId}|${homNay}`, () => napTonKho(createClient(), orgId, homNay, dmP.then((x) => x.dm)))
+          const { dm, thieu } = await dmP
           return { dm, ...t, thieu: thieu || t.thieu }
         }
       : null,

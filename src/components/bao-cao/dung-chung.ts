@@ -58,6 +58,7 @@ export function useNap<T>(chay: (() => Promise<T>) | null, khoa: string): Nap<T>
   }, [khoa, lan, coChay])
   const taiLai = useCallback(() => {
     boNhoDanhMuc.clear()
+    boNhoTam.clear()
     setLan((n) => n + 1)
   }, [])
   return { data, loi, dangTai, capNhat, taiLai }
@@ -72,6 +73,23 @@ export function layDanhMuc(orgId: string): Promise<KetQuaDanhMuc> {
   const p = napDanhMuc(createClient(), orgId)
   p.catch(() => boNhoDanhMuc.delete(orgId))
   boNhoDanhMuc.set(orgId, { luc: Date.now(), p })
+  return p
+}
+
+/**
+ * NHỚ TẠM một lượt đọc số trong `NHO_TAM_MS` — chủ nhà 27/09/2026 "rà cách đọc dữ liệu cho nhanh
+ * hơn". Tổng quan, Bán hàng, Cuối ngày, Kho, Công nợ đọc chung một số bộ số (số bán của cùng kỳ,
+ * công nợ hôm nay, tồn kho hôm nay): chuyển màn trong 1 phút thì dùng lại, không đọc lại từ đầu.
+ * Nút tải lại (↻) xoá bộ nhớ này. Lượt đọc hỏng thì bỏ khỏi bộ nhớ ngay (lần sau đọc lại).
+ */
+export const NHO_TAM_MS = 60_000
+const boNhoTam = new Map<string, { luc: number; p: Promise<unknown> }>()
+export function nhoTam<T>(khoa: string, doc: () => Promise<T>): Promise<T> {
+  const c = boNhoTam.get(khoa)
+  if (c && Date.now() - c.luc < NHO_TAM_MS) return c.p as Promise<T>
+  const p = doc()
+  p.catch(() => boNhoTam.get(khoa)?.p === p && boNhoTam.delete(khoa))
+  boNhoTam.set(khoa, { luc: Date.now(), p })
   return p
 }
 

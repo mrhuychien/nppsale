@@ -82,8 +82,7 @@ export function ManTaiChinh() {
             ])
             return { loai: "cash" as const, nay, truoc, cot, luong }
           }
-          const { dm } = await layDanhMuc(orgId)
-          const [bs, no] = await Promise.all([fetchBalanceSheet(sb, orgId, X), napCongNo(sb, orgId, X, dm)])
+          const [bs, no] = await Promise.all([fetchBalanceSheet(sb, orgId, X), napCongNo(sb, orgId, X, layDanhMuc(orgId).then((x) => x.dm))])
           return { loai: "bs" as const, bs, phaiThu: no.khach.reduce((s, k) => s + k.no, 0) }
         }
       : null,

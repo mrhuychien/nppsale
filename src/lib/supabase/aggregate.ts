@@ -181,17 +181,31 @@ export async function docTheoLoId<T>(
   dung: (lo: string[], from: number, to: number) => Trang,
   ten: string
 ): Promise<T[]> {
-  const out: T[] = []
   const duy = Array.from(new Set(ids))
-  for (let i = 0; i < duy.length; i += ID_MOI_LO) {
-    const lo = duy.slice(i, i + ID_MOI_LO)
-    const res = await fetchAllForAggregate<T>((from, to) => dung(lo, from, to))
-    if (res.error) throw new Error(`${ten}: ${res.error}`)
-    if (res.truncated) {
-      throw new Error(`${ten}: một lô vượt trần ${AGGREGATE_ROW_CAP} dòng — con số sẽ thiếu`)
+  const cacLo: string[][] = []
+  for (let i = 0; i < duy.length; i += ID_MOI_LO) cacLo.push(duy.slice(i, i + ID_MOI_LO))
+  /* ⚠ CÁC LÔ CHẠY SONG SONG (tối đa LO_SONG_SONG lượt cùng lúc) — chủ nhà 27/09/2026 "rà cách
+     đọc dữ liệu cho nhanh hơn". Chạy lần lượt thì một tháng 1.500 hoá đơn là 10 lượt đọc nối
+     đuôi nhau (mỗi lượt một vòng VN ↔ Singapore) chỉ để lấy dòng hoá đơn. Kết quả vẫn giữ đúng
+     thứ tự lô; một lô hỏng / vượt trần thì cả hàm vẫn NÉM như cũ. */
+  const kq: T[][] = new Array(cacLo.length)
+  let tiep = 0
+  const chay = async () => {
+    while (tiep < cacLo.length) {
+      const i = tiep++
+      const lo = cacLo[i]
+      const res = await fetchAllForAggregate<T>((from, to) => dung(lo, from, to))
+      if (res.error) throw new Error(`${ten}: ${res.error}`)
+      if (res.truncated) {
+        throw new Error(`${ten}: một lô vượt trần ${AGGREGATE_ROW_CAP} dòng — con số sẽ thiếu`)
+      }
+      kq[i] = res.rows
     }
-    out.push(...res.rows)
   }
-  return out
+  await Promise.all(Array.from({ length: Math.min(LO_SONG_SONG, cacLo.length) }, chay))
+  return ([] as T[]).concat(...kq)
 }
+
+/** Số lô `docTheoLoId` đọc cùng lúc — đủ lấp độ trễ mạng, không dội cả trăm lượt vào máy chủ. */
+export const LO_SONG_SONG = 6
 

@@ -171,6 +171,12 @@
     (A4 ≈ 1,41 × A5, A3 = 2 × A5) để chữ đầy trang chứ không co một góc.
   ⚠ Luôn viết `html .lớp` (không phải `.lớp`): phải thắng `text-[12px]` của Tailwind
     ở bản xem trước trên màn hình.
+  ⚠ Ô "TỶ LỆ" CỦA HỘP THOẠI IN CŨNG ĐỔI `width` (đo trên Chromium: vùng in ÷ tỷ lệ — A5
+    ở 80% báo ~165mm, không có tín hiệu nào khác cho biết khổ). Mốc cũ 160mm nằm ngay
+    trên A5 ở 82% → chủ nhà 28/09/2026: "tỷ lệ 80% chữ đột nhiên to ra như 100%, tỷ lệ
+    80% lại to hơn 81-82% rất nhiều". Mốc đặt GIỮA hai khổ: 185mm (A5 co đều từ ~72%,
+    A4 tới ~104%), 275mm (A4 từ ~71%, A3 tới ~102%). Ngoài khoảng ấy vẫn nhảy cỡ —
+    chủ nhà đã chọn hướng này (giữ chữ tự giãn theo khổ).
 */
 @media print {
   @page { margin: 8mm; }
@@ -220,8 +226,8 @@
   html .a4-doc .h-16 { height: 2.2rem; }
 }
 
-/* Khổ A4 / Letter (vùng in ≥ 160mm) — ≈ 1,41 × A5. */
-@media print and (min-width: 160mm) {
+/* Khổ A4 / Letter (vùng in ≥ 185mm) — ≈ 1,41 × A5. */
+@media print and (min-width: 185mm) {
   html .print-page,
   html .a5-doc { font-size: 11pt; }
   html .print-page table,
@@ -238,8 +244,8 @@
   html .a4-doc .h-16 { height: 3.1rem; }
 }
 
-/* Khổ A3 (vùng in ≥ 250mm) — 2 × A5. */
-@media print and (min-width: 250mm) {
+/* Khổ A3 (vùng in ≥ 275mm) — 2 × A5. */
+@media print and (min-width: 275mm) {
   html .print-page,
   html .a5-doc { font-size: 16pt; }
   html .print-page table,

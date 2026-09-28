@@ -34,8 +34,8 @@ type Kho = "A5" | "A4" | "A3"
  */
 const MO: Record<Kho, string> = {
   A5: "@media print {\n  @page { margin: 8mm; }",
-  A4: "@media print and (min-width: 160mm) {",
-  A3: "@media print and (min-width: 250mm) {",
+  A4: "@media print and (min-width: 185mm) {",
+  A3: "@media print and (min-width: 275mm) {",
 }
 function khoi(kho: Kho): string {
   const i = CSS.indexOf(MO[kho])

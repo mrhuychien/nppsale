@@ -1,5 +1,6 @@
 "use client"
 
+import { BrandMark } from "@/components/brand/brand-mark"
 import { mucDangMo } from "@/lib/nav/muc-dang-mo"
 import { useState, useEffect } from "react"
 import Link from "@/components/ui/link"
@@ -250,9 +251,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
       <div className="flex w-full flex-col">
         <div className="flex items-center justify-between px-4 pb-3">
           <Link href="/home" onClick={onNavigate} className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-sm font-bold text-white shadow-brand">
-              N
-            </span>
+            <BrandMark className="h-8 w-8 shrink-0" />
             <span className="text-sm font-bold text-on-surface">npp.sale</span>
           </Link>
           <button
@@ -325,9 +324,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
         onClick={onNavigate}
         className="px-5 py-5 flex items-center gap-3 hover:bg-surface-container/40 transition-colors"
       >
-        <div className="w-9 h-9 bg-gradient-primary rounded-xl flex items-center justify-center text-white font-bold text-base shadow-brand shrink-0">
-          N
-        </div>
+        <BrandMark className="h-9 w-9 shrink-0" />
         <div className="min-w-0">
           <h1 className="text-base font-bold text-on-surface leading-tight">npp.sale</h1>
           <p className="text-[10px] text-on-surface-variant font-semibold tracking-[0.05em] uppercase mt-0.5">PHÂN PHỐI FMCG</p>

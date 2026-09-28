@@ -5,7 +5,7 @@
 //   - TUYỆT ĐỐI không cache: /api, /login, /qr-login, và mọi request
 //     khác origin (Supabase). Chỉ cache GET trả về 200.
 // Bump CACHE_VERSION mỗi lần đổi logic SW để dọn cache cũ.
-const CACHE_VERSION = "npp-v1"
+const CACHE_VERSION = "npp-v2" // v2 (28/09/2026): logo mới — bỏ bản /logo.svg cũ trong bộ nhớ
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const PAGE_CACHE = `${CACHE_VERSION}-pages`
 
@@ -41,7 +41,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return // bỏ qua Supabase & CDN ngoài
 
   // Tài sản tĩnh bất biến — cache-first (tên file có hash, an toàn).
-  if (url.pathname.startsWith("/_next/static") || url.pathname === "/logo.svg") {
+  if (url.pathname.startsWith("/_next/static")) {
     event.respondWith(
       caches.match(req).then(
         (hit) =>

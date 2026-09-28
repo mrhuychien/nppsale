@@ -38,6 +38,12 @@ export const metadata: Metadata = {
   title: "npp.sale - Mini ERP cho Nhà Phân Phối",
   description: "Quản lý đơn hàng, kho, khách hàng, công nợ, hoa hồng trong một hệ thống duy nhất",
   manifest: "/manifest.webmanifest",
+  /* Logo mới (chủ nhà 28/09/2026) — sinh bằng `node scripts/tao-icon.mjs`. iPhone "Thêm vào MH chính"
+     đọc apple-touch-icon (nền tràn viền, máy tự bo góc); favicon.ico nằm ở src/app. */
+  icons: {
+    icon: [{ url: "/icons/logo.svg", type: "image/svg+xml" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "npp.sale" },
   // iOS tự bôi xanh và biến số như "26.400.000" thành link gọi điện.
   formatDetection: { telephone: false },

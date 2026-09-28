@@ -1,5 +1,6 @@
 "use client"
 
+import { BrandMark } from "@/components/brand/brand-mark"
 import { trangSauDangNhap } from "@/lib/nav/trang-dau"
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -115,9 +116,7 @@ function LoginForm() {
         <div className="absolute inset-0 bg-brand-mesh opacity-70" aria-hidden />
         <div className="relative">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-2xl font-bold backdrop-blur">
-              N
-            </div>
+            <BrandMark dao className="h-11 w-11 shrink-0" title="npp.sale" />
             <div>
               <p className="text-lg font-bold leading-tight">npp.sale</p>
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/70">
@@ -160,9 +159,7 @@ function LoginForm() {
         <div className="w-full max-w-sm">
           {/* Brand — chỉ hiện trên mobile */}
           <div className="mb-8 flex flex-col items-center lg:hidden">
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-2xl font-bold text-white shadow-brand">
-              N
-            </div>
+            <BrandMark className="mb-3 h-14 w-14 shadow-brand rounded-2xl" title="npp.sale" />
             <h1 className="text-2xl font-bold text-on-surface">npp.sale</h1>
             <p className="mt-1 text-sm text-muted-foreground">Mini ERP cho Nhà Phân Phối</p>
           </div>

@@ -1,5 +1,6 @@
 "use client"
 
+import { BrandMark } from "@/components/brand/brand-mark"
 import { UserMenu } from "@/components/layout/user-menu"
 import { vnDateKey } from "@/lib/orders/status-tone"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -357,10 +358,10 @@ export default function HomeLauncherPage() {
             setTimKiem(false)
             setSearch("")
           }}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-zinc-700 transition-colors hover:bg-zinc-300"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-90"
           title="Trang chủ"
         >
-          <span className="text-lg font-black">N</span>
+          <BrandMark className="h-9 w-9" />
         </Link>
 
         <form onSubmit={handleSearchSubmit} className="relative mx-3 w-full max-w-xl sm:mx-4">

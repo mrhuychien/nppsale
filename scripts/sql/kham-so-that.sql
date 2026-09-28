@@ -428,4 +428,11 @@ SELECT 48, 'Mig 209 (Số phiên danh mục bán hàng)',
        WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_phien_danh_muc_ban') < 3
        THEN 'LỆCH — thiếu trigger trên products / price_lists / product_units, chạy lại mig 209'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 49. Mig 210 — sửa hóa đơn có phiếu trả đã nhập kho (hỏi huỷ phiếu nhập / giữ nguyên)
+SELECT 49, 'Mig 210 (Sửa HĐ có phiếu trả đã nhập kho)',
+  CASE WHEN to_regprocedure('public._tra_da_nhap_truoc_lap_lai(uuid, jsonb)') IS NULL
+         OR position('(mig 210)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — hóa đơn có phiếu trả đã nhập kho không sửa được (LOCKED_RETURN_DONE)'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

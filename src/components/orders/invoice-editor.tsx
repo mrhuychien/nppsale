@@ -50,6 +50,11 @@ import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import { vatLabel } from "@/lib/constants"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { useAuth } from "@/hooks/use-auth"
+import { hasPermission } from "@/lib/permissions"
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
+import { phieuDaNhapCuaHoaDon, type CheDoTraDaNhap, type PhieuTraCuaDon } from "@/lib/returns/tra-da-nhap"
+import { HoiTraDaNhap } from "@/components/returns/hoi-tra-da-nhap"
 
 /**
  * Phần ĐẦU ĐƠN — thứ người xuất hàng phải đọc trước khi quyết định.
@@ -93,6 +98,14 @@ export function InvoiceEditor({
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
+  /** Phiếu tự sinh đã nhập kho của tờ đang sửa — hỏi Có / Không trước khi lập lại (mig 210). */
+  const [phieuDaNhap, setPhieuDaNhap] = useState<string[]>([])
+  const [cheDoTra, setCheDoTra] = useState<CheDoTraDaNhap | null>(null)
+  const [hoiTra, setHoiTra] = useState(false)
+  const [daNhapIds, setDaNhapIds] = useState<Set<string>>(new Set())
+  /** Dòng của phiếu đã nhập kho chỉ sửa được khi chọn "Có" — "Không" thì máy chủ giữ nguyên. */
+  const khoaTra = (returnId: string) => daNhapIds.has(returnId) && cheDoTra !== "lam_lai"
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -231,16 +244,13 @@ export function InvoiceEditor({
     supabase
       .from("returns")
       .select(
-        "id, status, invoice_id, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(name))"
+        "id, status, invoice_id, credit_with_invoice, credit_note_amount, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, product:products(name))"
       )
       .eq("order_id", orderId)
       .neq("status", "cancelled")
       .then(({ data }) => {
         if (cancelled) return
-        const rs = ((data as unknown) as Array<{
-          id: string
-          status: string
-          invoice_id: string | null
+        const rs = ((data as unknown) as Array<PhieuTraCuaDon & {
           credit_note_amount: number | null
           lines?: Array<{
             id: string; product_id: string; unit_name: string; quantity: number
@@ -248,6 +258,13 @@ export function InvoiceEditor({
             is_exchange?: boolean | null; product?: { name?: string | null } | null
           }> | null
         }>) ?? []
+        const daNhap = phieuDaNhapCuaHoaDon(rs, reissueOf?.invoiceId ?? null)
+        /* Số TH- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
+        const ids = daNhap.map((r) => r.id)
+        setPhieuDaNhap(ids.map(() => tenPhieuTra(null)))
+        if (ids.length > 0) void docMaPhieuTra(supabase, ids).then((m) => { if (!cancelled) setPhieuDaNhap(ids.map((id) => tenPhieuTra(m.get(id)))) })
+        setDaNhapIds(new Set(daNhap.map((r) => r.id)))
+        if (daNhap.length > 0) setHoiTra(true)
         setRetCredit(rs.reduce((s2, r) => s2 + Math.max(0, Number(r.credit_note_amount || 0)), 0))
         setRetLines(
           rs.flatMap((r) =>
@@ -332,7 +349,8 @@ export function InvoiceEditor({
 
   const shortRows = rows.filter((r) => r.qty > 0 && r.stockKnown && shortageOf(r, r.qty) > 0)
   /** Số lượng trả ĐANG hiện của một dòng — phần sửa thắng số gốc. */
-  const retQty = (l: { id: string; qty: number }) => retEdits[l.id] ?? l.qty
+  const retQty = (l: { id: string; qty: number; returnId?: string }) =>
+    l.returnId && khoaTra(l.returnId) ? l.qty : retEdits[l.id] ?? l.qty
   /**
    * Khoản trừ của một dòng trả theo số lượng ĐANG hiện.
    *
@@ -355,7 +373,7 @@ export function InvoiceEditor({
    *   cầu sửa.
    */
   const returnEdits = retLines
-    .filter((l) => retEdits[l.id] !== undefined && retEdits[l.id] !== l.qty)
+    .filter((l) => !khoaTra(l.returnId) && retEdits[l.id] !== undefined && retEdits[l.id] !== l.qty)
     .map((l) => ({ lineId: l.id, quantity: retEdits[l.id] }))
 
   /**
@@ -446,6 +464,7 @@ export function InvoiceEditor({
 
   const submit = async () => {
     if (picked.length === 0) return
+    if (reissueOf && phieuDaNhap.length > 0 && !cheDoTra) { setHoiTra(true); return }
     setSaving(true)
     try {
       const r: PostInvoiceResult = reissueOf
@@ -453,6 +472,7 @@ export function InvoiceEditor({
             lines: draft, notes: notes.trim() || null,
             /* ⚠ ĐI CÙNG MỘT GIAO DỊCH — xem `return_edits`, mig 149. */
             returnEdits: returnEdits,
+            traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
             returnAdds: retAdds.map((a) => ({
               productId: a.productId, unitName: a.unit, quantity: a.qty,
               unitPrice: a.price, vatRate: a.vatRate, isExchange: a.isExchange,
@@ -794,6 +814,26 @@ export function InvoiceEditor({
               mới ra khỏi kho và KHÔNG trừ tiền; trộn chung một danh sách
               không nhãn là người xuất hàng cộng nhầm số khách phải trả.
           */}
+          {phieuDaNhap.length > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700" data-testid="dai-tra-da-nhap">
+              {phieuDaNhap.join(", ")} đã nhập kho —{" "}
+              {cheDoTra === "lam_lai"
+                ? "sẽ huỷ phiếu nhập; cập nhật xong nhập lại đúng kho cũ."
+                : cheDoTra === "giu"
+                  ? "giữ nguyên phiếu nhập, gắn sang hoá đơn mới."
+                  : "chưa chọn cách xử lý."}{" "}
+              <button type="button" onClick={() => setHoiTra(true)} className="font-semibold underline">
+                Đổi
+              </button>
+            </p>
+          )}
+          <HoiTraDaNhap
+            open={hoiTra}
+            maPhieu={phieuDaNhap}
+            coQuyenDuyet={!!user && hasPermission(user.role, "returns", "approve")}
+            onChon={(c) => { setCheDoTra(c); setHoiTra(false) }}
+            onDong={() => setHoiTra(false)}
+          />
           {retLines.length > 0 && (
             <Card className="border-l-4 border-l-amber-400">
               <CardHeader className="pb-2">
@@ -846,6 +886,7 @@ export function InvoiceEditor({
                         min={0}
                         step="any"
                         value={q}
+                        disabled={khoaTra(l.returnId)}
                         aria-label={`Số lượng trả ${l.name}`}
                         onChange={(e) =>
                           setRetEdits((prev) => ({

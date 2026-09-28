@@ -71,6 +71,10 @@ import { inTaiCho, trangInHoaDon } from "@/lib/pos/print-window"
 import { tachPhaiTra } from "@/lib/pos/totals"
 import { assignDocSeller } from "@/lib/pos/save"
 import { useAuth } from "@/hooks/use-auth"
+import { hasPermission } from "@/lib/permissions"
+import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
+import { laDaNhapTuSinh, phieuDaNhapCuaHoaDon, traSuaDuoc, type CheDoTraDaNhap, type PhieuTraCuaDon } from "@/lib/returns/tra-da-nhap"
+import { HoiTraDaNhap } from "@/components/returns/hoi-tra-da-nhap"
 
 export interface InvoiceScreenProps {
   /** Xuất hàng: đơn cần lập hóa đơn. */
@@ -101,6 +105,8 @@ interface DongTraCu {
   reason: string | null
   /** Sửa được qua `return_edits` không — xem `_apply_return_edits` (mig 149). */
   suaDuoc: boolean
+  /** Thuộc phiếu tự sinh ĐÃ NHẬP KHO của tờ này — sửa được khi chọn "Có" (mig 210). */
+  daNhap: boolean
 }
 
 /** Dòng hàng đổi / trả VỪA THÊM, chưa ghi sổ. */
@@ -146,7 +152,16 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [ngay, setNgay] = useState(homNay)
 
   const [rows, setRows] = useState<EditorRow[]>([])
-  const [traCu, setTraCu] = useState<DongTraCu[]>([])
+  const [traCuGoc, setTraCu] = useState<DongTraCu[]>([])
+  /** Phiếu tự sinh đã nhập kho của tờ đang sửa — phải hỏi Có / Không (mig 210). */
+  const [phieuDaNhap, setPhieuDaNhap] = useState<string[]>([])
+  const [cheDoTra, setCheDoTra] = useState<CheDoTraDaNhap | null>(null)
+  const [hoiTra, setHoiTra] = useState(false)
+  /** "Có" = máy chủ huỷ phiếu nhập trước khi áp phần sửa → dòng của nó mở khoá. */
+  const traCu = useMemo(
+    () => (cheDoTra === "lam_lai" ? traCuGoc.map((l) => (l.daNhap ? { ...l, suaDuoc: true } : l)) : traCuGoc),
+    [traCuGoc, cheDoTra]
+  )
   const [traSua, setTraSua] = useState<Record<string, number>>({})
   /** Quy cách mới của dòng trả đã có (mig 181) — theo `id` dòng. */
   const [traDv, setTraDv] = useState<Record<string, string>>({})
@@ -155,7 +170,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
    * (dữ liệu trước khi hai nơi được nối) — giữ nguyên để hàng đã rời kho
    * không bị "hoàn" lặng lẽ khi lập lại.
    */
-  const [hangDoiCu, setHangDoiCu] = useState<EditorRow[]>([])
+  const [hangDoiCuGoc, setHangDoiCu] = useState<EditorRow[]>([])
+  /** Mặt hàng ĐỔI của phiếu đã nhập kho — "Có" thì chúng đi theo dòng phiếu (sửa được), không lặp ở đây. */
+  const [doiDaNhap, setDoiDaNhap] = useState<Set<string>>(new Set())
+  const hangDoiCu = useMemo(
+    () => (cheDoTra === "lam_lai" ? hangDoiCuGoc.filter((r) => !doiDaNhap.has(r.productId)) : hangDoiCuGoc),
+    [hangDoiCuGoc, doiDaNhap, cheDoTra]
+  )
   const [traMoi, setTraMoi] = useState<DongTraMoi[]>([])
   /** Ghi chú / lý do đã sửa của dòng trả CÓ SẴN — theo `id` dòng (mig 183). */
   const [traGhi, setTraGhi] = useState<Record<string, { note?: string; reason?: string }>>({})
@@ -305,7 +326,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             .eq("id", oid).maybeSingle(),
           loadInvoiceableLines(sb, oid),
           sb.from("returns")
-            .select("id, status, invoice_id, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))")
+            .select("id, status, invoice_id, credit_with_invoice, lines:return_lines(id, product_id, unit_name, quantity, unit_price, vat_rate, is_exchange, note, reason, product:products(name, sku))")
             /* ⚠ Theo đơn VÀ theo tờ đang sửa — phiếu trả độc lập chỉ có `invoice_id`. */
             .or(invoiceId ? `order_id.eq.${oid},invoice_id.eq.${invoiceId}` : `order_id.eq.${oid}`)
             .neq("status", "cancelled"),
@@ -370,6 +391,15 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             .flatMap((r) => (r.lines ?? []).filter((l) => l.is_exchange).map((l) => l.product_id))
         )
         setHangDoiCu(seed ? tatCa.filter((r) => r.isExchange && !doiTuPhieu.has(r.productId)) : [])
+        {
+          const daNhapDs = phieuDaNhapCuaHoaDon((rt.data as unknown as Array<PhieuTraCuaDon & { lines?: Array<{ product_id: string; is_exchange: boolean | null }> | null }>) ?? [], invoiceId ?? null)
+          /* Số TH- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
+          const ids = daNhapDs.map((r) => r.id)
+          setPhieuDaNhap(ids.map(() => tenPhieuTra(null)))
+          if (ids.length > 0) void docMaPhieuTra(sb, ids).then((m) => { if (!huy) setPhieuDaNhap(ids.map((id) => tenPhieuTra(m.get(id)))) })
+          setDoiDaNhap(new Set(daNhapDs.flatMap((r) => (r.lines ?? []).filter((l) => l.is_exchange).map((l) => l.product_id))))
+          if (daNhapDs.length > 0) setHoiTra(true)
+        }
 
         /**
          * ⚠ PHIẾU TRẢ ĐỌC HỎNG THÌ NÓI RA, KHÔNG CHẶN XUẤT HÀNG — và KHÔNG
@@ -383,7 +413,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             note?: string | null; reason?: string | null
             product?: { name?: string | null; sku?: string | null } | null
           }
-          type RR = { id: string; status: string; invoice_id: string | null; lines?: RL[] | null }
+          type RR = PhieuTraCuaDon & { lines?: RL[] | null }
           setTraCu(
             ((rt.data as unknown as RR[]) ?? []).flatMap((r) =>
               (r.lines ?? []).map((l) => ({
@@ -408,9 +438,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                  *   Ngoài điều kiện ấy máy chủ BỎ QUA lặng lẽ — cho sửa ở đây
                  *   là người dùng gõ số rồi sổ không đổi.
                  */
-                suaDuoc:
-                  (r.status === "draft" || r.status === "submitted") &&
-                  (invoiceId ? r.invoice_id === invoiceId : r.invoice_id === null),
+                suaDuoc: traSuaDuoc(r, invoiceId ?? null, null),
+                daNhap: laDaNhapTuSinh(r, invoiceId ?? null),
               }))
             )
           )
@@ -429,8 +458,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   /* TIỀN                                                                */
   /* ------------------------------------------------------------------ */
 
-  const soTraCu = (l: DongTraCu) => traSua[l.id] ?? l.qty
-  const dvTraCu = (l: DongTraCu) => traDv[l.id] ?? l.unit
+  /* Dòng khoá (vd. phiếu đã nhập kho, chọn "Không") luôn hiện đúng số trong sổ — máy chủ không áp phần sửa. */
+  const soTraCu = (l: DongTraCu) => (l.suaDuoc ? traSua[l.id] ?? l.qty : l.qty)
+  const dvTraCu = (l: DongTraCu) => (l.suaDuoc ? traDv[l.id] ?? l.unit : l.unit)
   /** Hệ số theo danh mục (đơn vị cơ sở = 1). */
   const heSo = useCallback(
     (productId: string, unit: string) => {
@@ -636,6 +666,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
   const luu = useCallback(async () => {
     if (dangLuu || khoa || soDong === 0 || !orderId) return
+    /* (mig 210) Phiếu trả đã nhập kho: chưa chọn Có / Không thì hỏi lại, không đoán. */
+    if (invoiceId && phieuDaNhap.length > 0 && !cheDoTra) { setHoiTra(true); return }
     {
       const loi = kiemGiamGia(
         rows.map((r) => ({ giam: discountAmount(giamDong[r.key] ?? { value: 0, unit: "vnd" }, lineGross(r.qty, r.price)), tienHang: lineGross(r.qty, r.price) })),
@@ -672,6 +704,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         ? await reissueInvoice(createClient(), invoiceId, {
             lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
             paymentTerms: dieuKhoan, returnEdits, returnAdds, discount: tong.discount,
+            traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
           })
         : await postInvoice(createClient(), {
             orderId, lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
@@ -716,7 +749,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     } finally {
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
+  }, [dangLuu, khoa, soDong, orderId, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
 
   usePosKeys({
     F2: () => { setMoThemTra(false); focusPosPicker() },
@@ -769,6 +802,28 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             <span className="n text-[11px] opacity-70">({khoa.code})</span>
           </DocBanner>
         )}
+        {phieuDaNhap.length > 0 && (
+          <DocBanner tone="warn">
+            <span data-testid="dai-tra-da-nhap">
+              {phieuDaNhap.join(", ")} đã nhập kho —{" "}
+              {cheDoTra === "lam_lai"
+                ? "sẽ huỷ phiếu nhập, sửa được hàng trả; cập nhật xong nhập lại đúng kho cũ."
+                : cheDoTra === "giu"
+                  ? "giữ nguyên phiếu nhập, gắn sang hoá đơn mới."
+                  : "chưa chọn cách xử lý."}{" "}
+              <button type="button" onClick={() => setHoiTra(true)} className="font-bold underline">
+                Đổi
+              </button>
+            </span>
+          </DocBanner>
+        )}
+        <HoiTraDaNhap
+          open={hoiTra}
+          maPhieu={phieuDaNhap}
+          coQuyenDuyet={!!user && hasPermission(user.role, "returns", "approve")}
+          onChon={(c) => { setCheDoTra(c); setHoiTra(false) }}
+          onDong={() => setHoiTra(false)}
+        />
 
 
         <LineTableFrame

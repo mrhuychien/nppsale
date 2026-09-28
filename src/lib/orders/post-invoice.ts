@@ -19,6 +19,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import type { CheDoTraDaNhap } from "@/lib/returns/tra-da-nhap"
 
 /**
  * Một dòng có thể xuất, do `get_invoiceable_lines` trả về.
@@ -218,6 +219,10 @@ export function explainInvoiceError(message: string): string {
   }
   if (m.includes("LOCKED_RETURN_DONE")) {
     return m.replace(/^.*LOCKED_RETURN_DONE:\s*/, "")
+  }
+  // (mig 210) Có phiếu trả đã nhập kho mà màn hình chưa hỏi Có / Không.
+  if (m.includes("REISSUE_RETURN_STOCKED")) {
+    return m.replace(/^.*REISSUE_RETURN_STOCKED:\s*/, "")
   }
   if (m.includes("REISSUE_BREAKS_RETURN")) {
     return m.replace(/^.*REISSUE_BREAKS_RETURN:\s*/, "")
@@ -517,6 +522,8 @@ export async function reissueInvoice(
   payload: Omit<PostInvoicePayload, "orderId"> & {
     returnEdits?: ReturnLineEdit[]
     returnAdds?: ReturnLineAdd[]
+    /** Phiếu trả tự sinh đã nhập kho: Có = 'lam_lai', Không = 'giu' (mig 210). */
+    traDaNhap?: CheDoTraDaNhap | null
   }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
@@ -543,6 +550,7 @@ export async function reissueInvoice(
           }
         : {}),
       ...returnAddsPayload(payload.returnAdds),
+      ...(payload.traDaNhap ? { tra_da_nhap: payload.traDaNhap } : {}),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))

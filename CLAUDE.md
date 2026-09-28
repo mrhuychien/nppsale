@@ -67,6 +67,9 @@ Chủ nhà chốt 25/09/2026 (mig 191).
 - **Tự sinh** (`returns.credit_with_invoice`, đơn có hàng đổi trả khi xuất hóa đơn): công nợ trừ vào
   hóa đơn **ngay lúc xuất**; phiếu chỉ treo nhập kho ở **Chờ xử lý**. Không sửa ở phiếu — sửa từ hóa
   đơn. Chờ xử lý thì **không huỷ**; đã nhập kho thì huỷ = đảo kho, phiếu **về Chờ xử lý**, nợ giữ nguyên.
+- Sửa hóa đơn có phiếu tự sinh đã nhập kho → hỏi "Cần huỷ phiếu nhập trước?" (mig 210). **Có** = huỷ
+  phiếu nhập, sửa, lập lại → phiếu **về Chờ xử lý** (không tự nhập kho lại — chủ nhà 28/09/2026, mig 216);
+  **Không** = giữ phiếu nhập, gắn sang tờ mới.
 - **"Chờ xử lý" chỉ có ở phiếu tự sinh.** Phiếu tự lập đi Nháp → Hoàn thành → Đã huỷ.
 - **Tự lập**: hoàn thành = nhập kho **và** trừ nợ cùng lúc (gắn HĐ → trừ vào HĐ; không gắn → dòng công nợ
   âm `receivables.return_id`, `_cong_no_phieu_tra`). Sửa / huỷ luôn được — kể cả khi tiền đã thu /

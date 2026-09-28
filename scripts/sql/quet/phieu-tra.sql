@@ -411,9 +411,16 @@ BEGIN
   SELECT * INTO r FROM reissue_invoice(v_inv, jsonb_build_object('lines', pg_temp.dong_hd(v_inv), 'allow_oversell', true, 'tra_da_nhap', 'lam_lai',
      'return_edits', jsonb_build_array(jsonb_build_object('line_id', v_line, 'quantity', 2))));
   e := pg_temp.kiem('S1.11a', d);
-  PERFORM pg_temp.ket('S1.11a', e = 0 AND (SELECT status FROM returns WHERE id = v_ret) = 'completed' AND pg_temp.ton(d.p1, 'date') = 24
+  -- (mig 216) Chủ nhà 28/09/2026: sửa HĐ chọn huỷ phiếu nhập → phiếu về CHỜ XỬ LÝ theo tờ mới,
+  --   kho đã đảo (date 0), nợ trừ theo số mới; thủ kho nhập kho lại sau.
+  PERFORM pg_temp.ket('S1.11a', e = 0 AND (SELECT status FROM returns WHERE id = v_ret) = 'submitted'
+      AND (SELECT invoice_id FROM returns WHERE id = v_ret) = r.invoice_id AND pg_temp.ton(d.p1, 'date') = 0
       AND pg_temp.no_hd(r.invoice_id) = 460000,
-    format('lam_lai: phiếu %s, tồn date %s (24), nợ tờ mới %s (460000)', (SELECT status FROM returns WHERE id = v_ret), pg_temp.ton(d.p1, 'date'), pg_temp.no_hd(r.invoice_id)));
+    format('lam_lai: phiếu %s (submitted), tồn date %s (0), nợ tờ mới %s (460000)', (SELECT status FROM returns WHERE id = v_ret), pg_temp.ton(d.p1, 'date'), pg_temp.no_hd(r.invoice_id)));
+  -- Thủ kho nhập kho lại (2 thùng = 24 hộp) — bước sau cần phiếu đã nhập.
+  PERFORM complete_return(v_ret, 'date');
+  PERFORM pg_temp.ket('S1.11a2', (SELECT status FROM returns WHERE id = v_ret) = 'completed' AND pg_temp.ton(d.p1, 'date') = 24,
+    format('nhập kho lại sau khi sửa HĐ: phiếu %s, tồn date %s (24)', (SELECT status FROM returns WHERE id = v_ret), pg_temp.ton(d.p1, 'date')));
   v_inv := r.invoice_id;
   -- giu: đổi giá bán P2 trên HĐ (20 gói × 6.000) — phiếu giữ nguyên nhập kho
   SELECT * INTO r FROM reissue_invoice(v_inv, jsonb_build_object('lines',

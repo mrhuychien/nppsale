@@ -810,7 +810,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             <span data-testid="dai-tra-da-nhap">
               {phieuDaNhap.join(", ")} đã nhập kho —{" "}
               {cheDoTra === "lam_lai"
-                ? "sẽ huỷ phiếu nhập, sửa được hàng trả; cập nhật xong nhập lại đúng kho cũ."
+                ? "sẽ huỷ phiếu nhập, sửa được hàng trả; cập nhật xong phiếu về Chờ xử lý để nhập kho lại."
                 : cheDoTra === "giu"
                   ? "giữ nguyên phiếu nhập, gắn sang hoá đơn mới."
                   : "chưa chọn cách xử lý."}{" "}

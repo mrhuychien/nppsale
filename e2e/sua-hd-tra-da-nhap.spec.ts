@@ -69,7 +69,7 @@ test("sửa HĐ có phiếu trả đã nhập kho: Có → sửa được hàng 
   expect((await nhatKy()).filter((r) => r.path.endsWith("/rpc/reissue_invoice")).length, "chưa chọn mà đã lập lại").toBe(truoc)
 
   await hoi.getByRole("button", { name: /Có, huỷ phiếu nhập/ }).click()
-  await expect(page.getByTestId("dai-tra-da-nhap")).toContainText("nhập lại đúng kho cũ")
+  await expect(page.getByTestId("dai-tra-da-nhap")).toContainText("phiếu về Chờ xử lý")
   await soLuongTra(page).click()
   await page.getByLabel("số lượng trả dòng 1", { exact: true }).fill("1")
   await page.getByLabel("số lượng trả dòng 1", { exact: true }).press("Enter")

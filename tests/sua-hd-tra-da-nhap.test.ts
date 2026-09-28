@@ -48,6 +48,13 @@ describe("mig 210 + màn hình", () => {
     expect(mig).toMatch(/REVOKE EXECUTE ON FUNCTION public\._tra_da_nhap_sau_lap_lai\(uuid\) FROM PUBLIC, anon, authenticated/)
     expect(readFileSync("scripts/sql/kham-so-that.sql", "utf8")).toContain("Mig 210")
   })
+  it("mig 216: chọn Có thì phiếu về Chờ xử lý — bước sau lập lại KHÔNG nhập kho lại", () => {
+    const m216 = readFileSync("supabase/migrations/216_sua_hd_phieu_tra_ve_cho_xu_ly.sql", "utf8")
+    const than = m216.slice(m216.indexOf("CREATE OR REPLACE FUNCTION public._tra_da_nhap_sau_lap_lai"), m216.indexOf("$fn$;"))
+    expect(than).not.toContain("complete_return")
+    expect(than).toContain("UPDATE returns SET invoice_id = p_new_invoice_id WHERE id = x.id")
+    expect(readFileSync("src/components/returns/hoi-tra-da-nhap.tsx", "utf8")).toContain("Chờ xử lý")
+  })
   it("POS và màn điện thoại đều hỏi trước khi lập lại và gửi lựa chọn", () => {
     for (const f of ["src/components/pos/invoice-screen.tsx", "src/components/orders/invoice-editor.tsx"]) {
       const s = readFileSync(f, "utf8")

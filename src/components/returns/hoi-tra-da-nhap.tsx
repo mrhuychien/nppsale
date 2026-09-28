@@ -33,7 +33,8 @@ export function HoiTraDaNhap({
         <ul className="space-y-2 text-sm">
           <li className="rounded-lg border p-3">
             <b>Có</b> — huỷ phiếu nhập để sửa được cả hàng trả. Bấm cập nhật thì hoá đơn, công nợ và phiếu trả
-            cập nhật lại hết, hàng nhập lại đúng kho cũ theo số mới.
+            cập nhật theo số mới; phiếu trả về <b>Chờ xử lý</b> để nhập kho lại (chọn kho, ngày nhập) như lúc
+            tạo hoá đơn.
           </li>
           <li className="rounded-lg border p-3">
             <b>Không</b> — giữ nguyên phiếu nhập (không sửa dòng hàng trả của phiếu đó), phiếu gắn sang hoá đơn mới.

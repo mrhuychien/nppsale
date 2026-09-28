@@ -9,7 +9,10 @@
  * `tra_da_nhap` của tải trọng). Ở đây chỉ là luật để màn hình hỏi và mở khoá dòng.
  */
 
-/** 'lam_lai' = Có (huỷ phiếu nhập, sửa, nhập lại cùng kho); 'giu' = Không. */
+/**
+ * 'lam_lai' = Có (huỷ phiếu nhập, sửa; phiếu về Chờ xử lý để nhập kho lại — mig 216, chủ nhà 28/09/2026);
+ * 'giu' = Không (giữ phiếu nhập, gắn tờ mới).
+ */
 export type CheDoTraDaNhap = "lam_lai" | "giu"
 
 export interface PhieuTraCuaDon {

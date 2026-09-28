@@ -659,8 +659,11 @@ BEGIN
   -- lam_lai: SL trả 5 → 2
   SELECT * INTO r FROM reissue_invoice(h, jsonb_build_object('lines', pg_temp.dong_cua_hd(h), 'invoice_date', current_date, 'tra_da_nhap', 'lam_lai',
      'return_edits', jsonb_build_array(jsonb_build_object('line_id', rl, 'quantity', 2))));
-  PERFORM pg_temp.dat((SELECT status FROM returns WHERE id = ret) = 'completed' AND (SELECT invoice_id FROM returns WHERE id = ret) = r.invoice_id, 'S09 lam_lai: phiếu không hoàn thành lại / không bám tờ mới');
-  PERFORM pg_temp.dat((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date') = 2, format('S09 lam_lai: tồn kho date P03 = %s ≠ 2', (SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date')));
+  -- (mig 216) phiếu về Chờ xử lý theo tờ mới, kho đã đảo; thủ kho nhập kho lại sau.
+  PERFORM pg_temp.dat((SELECT status FROM returns WHERE id = ret) = 'submitted' AND (SELECT invoice_id FROM returns WHERE id = ret) = r.invoice_id, 'S09 lam_lai: phiếu không về Chờ xử lý / không bám tờ mới');
+  PERFORM pg_temp.dat(COALESCE((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date'), 0) = 0, format('S09 lam_lai: tồn kho date P03 = %s ≠ 0 (chưa nhập lại)', (SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date')));
+  PERFORM complete_return(ret, 'date');
+  PERFORM pg_temp.dat((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date') = 2, format('S09 nhập kho lại: tồn kho date P03 = %s ≠ 2', (SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'date')));
   PERFORM pg_temp.dat((SELECT amount FROM receivables WHERE invoice_id = r.invoice_id) = 360000, 'S09 lam_lai: công nợ ≠ 400000 − 40000');
   PERFORM pg_temp.kiem(kh, d, 'S09.1');
   -- giu: đổi SL bán 40 → 35, giữ phiếu nhập

@@ -818,7 +818,7 @@ export function InvoiceEditor({
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700" data-testid="dai-tra-da-nhap">
               {phieuDaNhap.join(", ")} đã nhập kho —{" "}
               {cheDoTra === "lam_lai"
-                ? "sẽ huỷ phiếu nhập; cập nhật xong nhập lại đúng kho cũ."
+                ? "sẽ huỷ phiếu nhập; cập nhật xong phiếu về Chờ xử lý để nhập kho lại."
                 : cheDoTra === "giu"
                   ? "giữ nguyên phiếu nhập, gắn sang hoá đơn mới."
                   : "chưa chọn cách xử lý."}{" "}

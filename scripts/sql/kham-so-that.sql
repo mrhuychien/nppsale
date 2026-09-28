@@ -480,4 +480,10 @@ SELECT 54, 'Mig 215 (Đơn đã đóng, phiếu thu trùng, quyền)',
                 AND rp.module = 'returns' AND rp.action = 'approve' AND rp.allowed))
        THEN 'LỆCH — thủ kho chưa có quyền nhập kho phiếu trả, chạy lại mig 215'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 55. Mig 216 — sửa HĐ chọn "huỷ phiếu nhập": phiếu trả về Chờ xử lý, không tự nhập kho lại
+SELECT 55, 'Mig 216 (Sửa HĐ: phiếu trả về Chờ xử lý)',
+  CASE WHEN position('complete_return' IN pg_get_functiondef('public._tra_da_nhap_sau_lap_lai(uuid)'::regprocedure)) > 0
+       THEN 'CHƯA — sửa HĐ chọn huỷ phiếu nhập vẫn tự nhập kho lại'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

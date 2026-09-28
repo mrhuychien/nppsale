@@ -131,6 +131,10 @@ test("sửa hóa đơn trên POS: giữ hàng đổi, hiện và sửa được 
     expect(lines[0], "mất hệ số / mất liên kết dòng đơn").toMatchObject({ order_line_id: "sol9", unit_name: "thùng", quantity: 2, conversion_factor: 24 })
     expect(lines[1], "hàng ĐỔI thành dòng bán").toMatchObject({ unit_name: "gói", is_exchange: true })
     expect((p.p as { return_edits: unknown[] }).return_edits).toEqual([{ line_id: "rl-hd1", quantity: 1 }])
+    /* Quét luồng 28/09/2026 (mig 213): sửa HĐ giữ NGÀY tờ gốc và gửi giảm giá đơn TƯỜNG MINH
+       (kể cả 0) — vắng khoá thì máy chủ giữ giảm giá của tờ cũ. */
+    expect((p.p as { invoice_date?: string }).invoice_date, "sửa HĐ dời sang ngày hôm nay").toBe("2026-09-23")
+    expect(p.p, "không gửi discount — máy chủ giữ giảm giá cũ dù người dùng bỏ").toHaveProperty("discount")
 
     /* Chi tiết hóa đơn: có đơn gốc, phiếu trả và hàng đổi trả (chủ nhà 23/09/2026). */
     await page.goto(`/pos/hoa-don/${HOA_DON}`)

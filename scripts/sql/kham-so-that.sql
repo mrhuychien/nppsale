@@ -453,4 +453,11 @@ SELECT 51, 'Mig 212 (Sửa nhóm sai tiền)',
                      WHERE r.status <> 'cancelled' AND r.customer_id IS DISTINCT FROM si.customer_id)
        THEN 'LỆCH — có phiếu trả gắn hoá đơn của khách khác, phải xem tay'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 52. Mig 213 — sửa HĐ giữ ngày / giảm giá; phiếu trả tự lập không bị biến thành tự sinh
+SELECT 52, 'Mig 213 (Sửa HĐ giữ ngày, giảm giá; phiếu tự lập)',
+  CASE WHEN position('(mig 213)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+         OR position('(mig 213)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — sửa HĐ có thể mất giảm giá đơn / dời ngày; phiếu tự lập bị biến thành tự sinh'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

@@ -159,7 +159,7 @@ describe("giao diện theo luật mới", () => {
 
   it("màn chi tiết web: luật đi qua hanhDongPhieuTra", () => {
     const P = read("src/app/(dashboard)/returns/[id]/page.tsx")
-    expect(P).toContain("const hd = hanhDongPhieuTra(ret)")
+    expect(P).toContain("const hd = hanhDongPhieuTra(ret, lines.length)")
     expect(P).toContain("{hd.hoanThanh && (")
     expect(P).toContain("canEdit && hd.sua && !editMode")
     expect(P).not.toContain("khoản có này đem cấn trừ ở màn Phiếu thu")

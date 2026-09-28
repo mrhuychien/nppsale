@@ -243,7 +243,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         if (invoiceId) {
           const [h, l, e, rc] = await Promise.all([
             sb.from("sales_invoices")
-              .select("id, invoice_code, status, order_id, notes, payment_terms, posted_by, sales_user_id, subtotal")
+              .select("id, invoice_code, status, order_id, notes, payment_terms, posted_by, sales_user_id, subtotal, invoice_date")
               .eq("id", invoiceId).maybeSingle(),
             sb.from("sales_invoice_lines")
               .select("order_line_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_discount, vat_rate, is_exchange, note, product:products(name, sku)")
@@ -264,7 +264,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           const hd = h.data as unknown as {
             invoice_code: string; status: string; order_id: string; notes: string | null
             payment_terms: string | null; posted_by: string | null; sales_user_id: string | null
-            subtotal: number | null
+            subtotal: number | null; invoice_date: string | null
           } | null
           if (!hd) throw new Error("Không tìm thấy hóa đơn này, hoặc bạn không có quyền xem nó.")
           if (hd.status !== "posted") {
@@ -274,6 +274,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           setInvoiceCode(hd.invoice_code)
           setGhiChu(hd.notes ?? "")
           setDieuKhoan(hd.payment_terms)
+          /* ⚠ SỬA HÓA ĐƠN GIỮ NGÀY TỜ GỐC (quét luồng 28/09/2026) — mặc định hôm nay là doanh
+             thu tờ tháng trước nhảy sang tháng này. Người sửa vẫn đổi được. */
+          if (hd.invoice_date) setNgay(hd.invoice_date)
           setNguoi({ taoId: hd.posted_by, ganId: hd.sales_user_id })
           type L = {
             order_line_id: string | null; product_id: string; unit_name: string

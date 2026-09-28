@@ -362,7 +362,7 @@ export default function ReturnDetailPage() {
   const canApprove = !!user && hasPermission(user.role, "returns", "approve")
   const canDelete = !!user && duocXoaPhieuTra(user.role, user.id, ret) && hanhDongPhieuTra(ret).sua
   /* ⚠ Luật phiếu tự sinh / tự lập (chủ nhà 25/09/2026, mig 191) — xem `hanhDongPhieuTra`. */
-  const hd = hanhDongPhieuTra(ret)
+  const hd = hanhDongPhieuTra(ret, lines.length)
   const tuSinh = laPhieuTuSinh(ret)
 
   return (

@@ -342,10 +342,16 @@ export function dongGuiLen(l: InvoiceDraftLine) {
   }
 }
 
-/** Khoá `discount` chỉ đi lên khi có giảm thật — vắng khoá = không giảm. */
-function giamGiaDonPayload(discount?: number) {
-  const d = Math.round(Number(discount) || 0)
-  return d > 0 ? { discount: d } : {}
+/**
+ * Khoá `discount` của tải trọng.
+ *
+ * ⚠ (mig 213) VẮNG KHOÁ ≠ KHÔNG GIẢM KHI SỬA HÓA ĐƠN: `reissue_invoice` thấy vắng khoá
+ *   thì GIỮ giảm giá đơn của tờ cũ. Màn biết giảm giá (POS) gửi số, kể cả 0 — bỏ giảm là
+ *   gửi `discount: 0`; màn không biết (sửa trên điện thoại) không gửi.
+ */
+export function giamGiaDonPayload(discount?: number) {
+  if (discount === undefined || discount === null) return {}
+  return { discount: Math.max(0, Math.round(Number(discount) || 0)) }
 }
 
 /**

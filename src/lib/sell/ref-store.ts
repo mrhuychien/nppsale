@@ -42,6 +42,8 @@ interface Memo {
   at: number
   /** Lúc DANH MỤC (sản phẩm / giá / khách) được đọc. */
   catalogAt: number
+  /** Số phiên danh mục của bản này (mig 209). */
+  phien: number | null
 }
 
 let memo: Memo | null = null
@@ -101,7 +103,49 @@ export function addSellCustomer(c: SellRefData["customers"][number]): void {
 
 /** Ghi bản danh mục đọc từ máy (IndexedDB) làm gốc, để làm mới TỒN KHO trên nó. */
 export function seedSellRefData(data: SellRefData, catalogAt: number): void {
-  if (!memo) memo = { data, at: 0, catalogAt }
+  if (!memo) memo = { data, at: 0, catalogAt, phien: phienTrenMay() }
+}
+
+/* Số phiên của bản lưu trên máy (IndexedDB không giữ trường này) — ghi cạnh nó ở localStorage. */
+const KHOA_PHIEN = "sell-phien-danh-muc"
+function phienTrenMay(): number | null {
+  try {
+    const n = Number(localStorage.getItem(KHOA_PHIEN))
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+function ghiPhienTrenMay(p: number | null | undefined) {
+  try {
+    if (typeof p === "number") localStorage.setItem(KHOA_PHIEN, String(p))
+  } catch {
+    /* bỏ qua */
+  }
+}
+
+/** Lúc danh mục đang dùng được đọc (ms) — hiện "Cập nhật HH:mm" cạnh nút làm mới. */
+export function sellCatalogAt(): number | null {
+  return memo && memo.catalogAt > 0 ? memo.catalogAt : null
+}
+
+let inflightPhien: Promise<boolean | null> | null = null
+/**
+ * ⚠ SẢN PHẨM / GIÁ VỪA ĐỔI? (chủ nhà 28/09/2026, mig 209). Hỏi số phiên (một dòng) và so với bản
+ *   đang dùng: `true` = đã đổi → tải lại danh mục; `false` = chưa đổi; `null` = không biết (sổ
+ *   chưa chạy 209, mất mạng, bản đang dùng không có số) → giữ luật `CATALOG_FRESH_MS` cũ.
+ */
+export function kiemPhienDanhMucShared(loader: () => Promise<number | null>): Promise<boolean | null> {
+  if (inflightPhien) return inflightPhien
+  inflightPhien = loader()
+    .then((p) => {
+      if (p === null || !memo || memo.phien === null) return null
+      return p !== memo.phien
+    })
+    .finally(() => {
+      inflightPhien = null
+    })
+  return inflightPhien
 }
 
 let inflightStock: Promise<Record<string, number> | null> | null = null
@@ -141,7 +185,10 @@ export function loadSellRefDataShared(
   if (inflight) return inflight
   inflight = loader()
     .then((data) => {
-      if (data.source === "server") memo = { data, at: now(), catalogAt: now() }
+      if (data.source === "server") {
+        memo = { data, at: now(), catalogAt: now(), phien: data.phien ?? null }
+        ghiPhienTrenMay(data.phien)
+      }
       return data
     })
     .finally(() => {
@@ -155,4 +202,5 @@ export function resetSellRefData(): void {
   memo = null
   inflight = null
   inflightStock = null
+  inflightPhien = null
 }

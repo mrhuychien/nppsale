@@ -81,6 +81,8 @@ export function tables() {
     ],
     suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
     role_permissions: [],
+    /* Số phiên danh mục bán hàng (mig 209) — bài e2e tăng tay (máy chủ giả không có trigger). */
+    danh_muc_ban_phien: [{ id: 1, phien: 1, luc: "2026-09-28T00:00:00Z" }],
     /* Ba đơn: hai đơn tháng này, một đơn NĂM NGOÁI — máy tính chọn "Tất cả"
        phải thấy cả ba (lỗi cũ: lọc ngầm còn tháng này). */
     sales_orders: [

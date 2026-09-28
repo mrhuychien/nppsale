@@ -38,7 +38,7 @@ trống, trong một transaction.
 
 | | |
 |---|---|
-| Bảng trong `public` | **75** |
+| Bảng trong `public` | **76** |
 | Policy RLS | **167** |
 | Storage bucket | **3** (`customer-photos`, `pod-photos`, `visit-photos`) |
 | Lỗi | **0** |
@@ -83,7 +83,7 @@ Auth, chèn tay vào `auth.users` sẽ ra tài khoản không đăng nhập đư
 SQL Editor → dán `supabase/bootstrap_owner.sql` → **sửa 3 dòng đầu**
 (số điện thoại chủ NPP, tên NPP, slug) → **Run**.
 
-**Không bỏ được bước này.** Sau bước 2 database có đủ 75 bảng nhưng *không
+**Không bỏ được bước này.** Sau bước 2 database có đủ 76 bảng nhưng *không
 có org nào và không có người dùng nào*, và dự án **không có trigger nào
 trên `auth.users`** — nên tạo tài khoản ở bước 3 cũng không tự sinh dòng
 trong `public.users`. Thiếu bước 4 thì đăng nhập xong app đá về `/login`

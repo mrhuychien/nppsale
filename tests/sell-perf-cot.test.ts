@@ -85,8 +85,8 @@ describe("làm mới: tồn kho 2 phút, danh mục 30 phút", () => {
   })
   it("màn /sell: danh mục còn mới thì chỉ làm mới tồn; 'Tải lại' vẫn tải đủ", () => {
     const H = readFileSync("src/hooks/use-sell-data.tsx", "utf8")
-    expect(H).toContain("if (tick === 0 && isSellCatalogFresh()) {")
-    expect(H).toContain("const stock = await refreshSellStockShared(() => loadSellStock(createClient()))")
+    expect(H).toContain("if (!force && isSellCatalogFresh()) {")
+    expect(H).toContain("refreshSellStockShared(() => loadSellStock(sb)),")
   })
 })
 

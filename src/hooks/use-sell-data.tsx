@@ -17,6 +17,7 @@ import {
   type SellProduct,
   type SellRefData,
   loadSellStock,
+  docPhienDanhMuc,
 } from "@/lib/sell/ref-data"
 import {
   isSellRefDataFresh,
@@ -27,6 +28,8 @@ import {
   isCachedCatalogFresh,
   seedSellRefData,
   refreshSellStockShared,
+  kiemPhienDanhMucShared,
+  sellCatalogAt,
 } from "@/lib/sell/ref-store"
 import { locXepHang, taoMucTim, viQueryWords } from "@/lib/search"
 import type { Customer } from "@/types"
@@ -70,6 +73,10 @@ interface SellDataValue {
   offline: boolean
   /** Tải lại danh mục. Màn hình rỗng phải có đường đi tiếp, không phải ngõ cụt. */
   reload: () => void
+  /** Đang tải lại danh mục theo nút "Làm mới sản phẩm". */
+  refreshing: boolean
+  /** Lúc danh mục đang hiện được đọc từ máy chủ (ms) — `null` = chưa biết. */
+  catalogAt: number | null
   productById: (id: string) => SellProduct | undefined
   customerById: (id: string | null) => Customer | undefined
   /** Thêm khách đọc riêng từ máy chủ (không có trong danh mục đã tải) — xem `loadOneSellCustomer`. */
@@ -101,12 +108,40 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
    * "phần mềm hỏng".
    */
   const [tick, setTick] = useState(0)
-  const reload = useCallback(() => setTick((t) => t + 1), [])
+  /* ⚠ BẤM "LÀM MỚI" = BẮT BUỘC tải đủ; quay lại app = chỉ KIỂM (tồn + số phiên), đổi mới tải. */
+  const batBuoc = useRef(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [catalogAt, setCatalogAt] = useState<number | null>(null)
+  const reload = useCallback(() => {
+    batBuoc.current = true
+    setRefreshing(true)
+    setTick((t) => t + 1)
+  }, [])
+
+  /**
+   * ⚠ QUAY LẠI APP THÌ KIỂM LẠI (chủ nhà 28/09/2026: sản phẩm / giá đổi mà NVBH ở yên trong /sell
+   *   thì trước đây không bao giờ thấy). Chỉ khi quá `FRESH_MS` — mở / tắt màn hình liên tục không
+   *   gửi gì thêm.
+   */
+  useEffect(() => {
+    const khiHien = () => {
+      if (document.visibilityState === "visible" && !isSellRefDataFresh()) setTick((t) => t + 1)
+    }
+    document.addEventListener("visibilitychange", khiHien)
+    return () => document.removeEventListener("visibilitychange", khiHien)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     /** Đã có gì trên màn chưa — quyết định có được thay bằng bản kém hơn không. */
     let shown = false
+    const force = batBuoc.current
+    batBuoc.current = false
+    const xong = () => {
+      if (cancelled) return
+      setCatalogAt(sellCatalogAt())
+      setRefreshing(false)
+    }
 
     const apply = (d: SellRefData, fromNetwork: boolean) => {
       setProducts(d.products)
@@ -126,7 +161,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
         apply(mem, false)
         // Còn tươi và không phải người dùng bấm "Tải lại" → xong, không
         // gửi gì cả. Đây là đường đi của "quay lại /sell từ /orders".
-        if (isSellRefDataFresh() && tick === 0) return
+        if (isSellRefDataFresh() && !force) return xong()
       } else {
         const cached = await peekCachedSellRefData()
         if (cancelled) return
@@ -142,14 +177,20 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
        *   chốt vượt-tồn xét trên nó; sản phẩm / giá / khách thì 30 phút một lần là
        *   đủ. Bấm "Tải lại danh mục" (`tick > 0`) vẫn tải đủ.
        */
-      if (tick === 0 && isSellCatalogFresh()) {
-        const stock = await refreshSellStockShared(() => loadSellStock(createClient()))
+      if (!force && isSellCatalogFresh()) {
+        /* Số phiên (mig 209) hỏi CÙNG LÚC với tồn — sản phẩm / giá đổi thì tải lại đủ ngay, khỏi
+           đợi hết 30 phút. Không biết (sổ chưa có 209) → như cũ. */
+        const sb = createClient()
+        const [stock, daDoi] = await Promise.all([
+          refreshSellStockShared(() => loadSellStock(sb)),
+          kiemPhienDanhMucShared(() => docPhienDanhMuc(sb)),
+        ])
         if (cancelled) return
-        if (stock) {
+        if (stock && daDoi !== true) {
           setStockByProduct(stock)
-          return
+          return xong()
         }
-        // Đọc tồn hỏng → rơi xuống tải đủ như cũ (có sẵn nhánh báo lỗi / bản lưu).
+        // Đọc tồn hỏng, hoặc danh mục đã đổi → tải đủ như cũ (có sẵn nhánh báo lỗi / bản lưu).
       }
 
       const data = await loadSellRefDataShared(() => loadSellRefData(createClient()))
@@ -159,6 +200,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       // xoá sạch danh sách người ta đang gõ dở.
       if (data.source === "server" || !shown) apply(data, true)
       else setWarnings(data.warnings)
+      xong()
     })()
 
     return () => {
@@ -223,6 +265,8 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       warnings,
       offline,
       reload,
+      refreshing,
+      catalogAt,
       productById: (id) => productIndex.get(id),
       customerById: (id) => (id ? customerIndex.get(id) : undefined),
       addCustomer,
@@ -238,6 +282,8 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       warnings,
       offline,
       reload,
+      refreshing,
+      catalogAt,
       productIndex,
       customerIndex,
       addCustomer,

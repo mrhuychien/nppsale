@@ -52,6 +52,8 @@ export interface SellRefData {
   source: "server" | "cache" | "empty"
   /** Thời điểm bản cache được ghi (ISO), chỉ có khi `source === "cache"`. */
   cachedAt?: string
+  /** Số phiên danh mục lúc đọc (mig 209) — `null` = sổ chưa có / đọc hỏng. */
+  phien?: number | null
   /**
    * Chuyện cần nói với người dùng. RỖNG nghĩa là mọi thứ bình thường —
    * đừng im lặng khi mảng này có phần tử.
@@ -234,6 +236,24 @@ function docLoBan(sb: Client) {
  * CHỈ TỒN KHO (tối ưu /sell di động, 25/09/2026) — ~1/8 dữ liệu của `loadSellRefData`.
  * `null` = đọc hỏng / thiếu trang: giữ số đang hiện, đừng thay bằng tồn 0.
  */
+/**
+ * SỐ PHIÊN DANH MỤC BÁN HÀNG (mig 209) — tăng mỗi khi sản phẩm / bảng giá / đơn vị đổi. Một dòng,
+ * vài byte: máy NVBH hỏi nó để biết có phải tải lại danh mục không (chủ nhà 28/09/2026). `null` =
+ * sổ chưa chạy 209 / đọc hỏng → nơi gọi coi như không biết (giữ luật 30 phút cũ).
+ */
+export async function docPhienDanhMuc(supabase: unknown): Promise<number | null> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from("danh_muc_ban_phien").select("phien").eq("id", 1).maybeSingle()
+    if (error || !data) return null
+    const n = Number((data as { phien?: unknown }).phien)
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
+}
+
 export async function loadSellStock(supabase: unknown): Promise<Record<string, number> | null> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return null
   const res = await docLoBan(supabase as Client)
@@ -263,7 +283,7 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
       (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).order("id").range(from, to)) as any
     )
 
-  const [custRes0, prodRes0, batchRes] = await Promise.all([
+  const [custRes0, prodRes0, batchRes, phien] = await Promise.all([
     pageAll<Customer>(CUST_COLS, "customers", "store_name"),
     pageAll<SellProduct>(PROD_COLS, "products", "name"),
     /**
@@ -286,6 +306,8 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
      *   hạn (mig 028); muốn bán xả thì chuyển lô về vùng `sale` trước.
      */
     docLoBan(sb),
+    /* Số phiên ĐỌC CÙNG LƯỢT với danh mục — lần kiểm sau so với đúng bản đang có. */
+    docPhienDanhMuc(sb),
   ])
 
   let custRes = custRes0
@@ -337,5 +359,5 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   const stockByProduct = stockMapFrom(batchRes.rows)
   // Lưu lại để lần sau mất mạng vẫn soạn đơn được.
   void cacheOrderRefData({ customers, products, stockByProduct })
-  return { customers, products, stockByProduct, source: "server", warnings }
+  return { customers, products, stockByProduct, source: "server", warnings, phien }
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, ListChecks } from "lucide-react"
+import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, ListChecks, RefreshCw } from "lucide-react"
 import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
@@ -48,10 +48,19 @@ export default function SellPage() {
     loading,
     warnings: loadWarnings,
     reload,
+    refreshing,
+    catalogAt,
     customerById,
     filterProducts,
     listMemory,
   } = useSellData()
+  /* Bấm "Làm mới sản phẩm" xong thì báo giờ cập nhật (chủ nhà 28/09/2026). */
+  const vuaBamLamMoi = useRef(false)
+  useEffect(() => {
+    if (!vuaBamLamMoi.current || refreshing) return
+    vuaBamLamMoi.current = false
+    toast({ title: "Đã cập nhật sản phẩm", description: catalogAt ? `Danh mục lúc ${gioPhut(catalogAt)}` : undefined })
+  }, [refreshing, catalogAt])
   /**
    * ⚠ TỒN KHÔNG PHẢI SỐ ĐƯỢC PHÉP BÁN. Kho chỉ bị trừ lúc Xuất hàng, nên
    * phần đã hứa trong các Phiếu tạm khác vẫn nằm trong `stockByProduct`.
@@ -398,6 +407,21 @@ export default function SellPage() {
               </button>
             )}
           </div>
+          {/* ⚠ LÀM MỚI SẢN PHẨM (chủ nhà 28/09/2026) — tải lại cả danh mục (sản phẩm / giá / đơn vị)
+              ngay, khi chủ NPP báo vừa đổi giá. Tự động thì máy đã kiểm số phiên (mig 209). */}
+          <button
+            type="button"
+            onClick={() => {
+              vuaBamLamMoi.current = true
+              reload()
+            }}
+            disabled={refreshing}
+            aria-label="Làm mới sản phẩm"
+            title={catalogAt ? `Làm mới sản phẩm — danh mục lúc ${gioPhut(catalogAt)}` : "Làm mới sản phẩm"}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary disabled:opacity-60"
+          >
+            <RefreshCw className={cn("h-5 w-5", refreshing && "animate-spin")} />
+          </button>
           <button
             type="button"
             onClick={() => router.push("/sell/scan")}
@@ -551,4 +575,9 @@ export default function SellPage() {
       )}
     </div>
   )
+}
+
+/** "09:05" theo giờ VN. */
+function gioPhut(ms: number): string {
+  return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ms))
 }

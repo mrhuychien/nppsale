@@ -175,7 +175,8 @@ describe("Danh mục: hiện-cũ-tải-mới, không tải lại từ đầu ở
 
   it("provider: có RAM thì hiện ngay; còn tươi thì không gửi gì; cũ thì tải ngầm", () => {
     expect(HOOK).toContain("const mem = peekSellRefData()")
-    expect(HOOK).toContain("if (isSellRefDataFresh() && tick === 0) return")
+    /* Bấm "Làm mới sản phẩm" = `force` (chủ nhà 28/09/2026). */
+    expect(HOOK).toContain("if (isSellRefDataFresh() && !force) return xong()")
     expect(HOOK).toContain("const cached = await peekCachedSellRefData()")
     expect(HOOK).toContain("loadSellRefDataShared(() => loadSellRefData(createClient()))")
     // ⚠ Đang hiện bản tốt thì bản rỗng chỉ được gắn cảnh báo, không thay.

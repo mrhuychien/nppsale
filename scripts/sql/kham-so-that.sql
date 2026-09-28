@@ -420,4 +420,12 @@ SELECT 47, 'Mig 208 (NVBH xem trả hàng)',
                                           AND rp.module = 'returns' AND rp.action = 'read' AND rp.allowed))
        THEN 'CHƯA — NVBH chưa vào được màn Trả hàng của tôi'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 48. Mig 209 — số phiên danh mục bán hàng (máy NVBH thấy sản phẩm / giá mới trong ~2 phút)
+SELECT 48, 'Mig 209 (Số phiên danh mục bán hàng)',
+  CASE WHEN to_regclass('public.danh_muc_ban_phien') IS NULL
+       THEN 'CHƯA — NVBH thấy sản phẩm / giá mới chậm tới 30 phút'
+       WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_phien_danh_muc_ban') < 3
+       THEN 'LỆCH — thiếu trigger trên products / price_lists / product_units, chạy lại mig 209'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

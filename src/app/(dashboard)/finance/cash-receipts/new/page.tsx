@@ -274,7 +274,8 @@ export default function NewCashReceiptPage() {
         setAllDebts([])
         return
       }
-      setAllDebts(res.rows.map(toDebtRow))
+      /* (mig 212) Dòng trả dư / công nợ âm cũng 'open' — không phải khoản để thu. */
+      setAllDebts(res.rows.map(toDebtRow).filter((r) => outstandingOf(r) > 0))
     })()
     return () => {
       cancelled = true
@@ -353,7 +354,8 @@ export default function NewCashReceiptPage() {
         setLoadError(errorMessage(recRes.error ?? credRes.error ?? balRes.error))
         return
       }
-      const rows = ((recRes.data as unknown) as OpenReceivable[]) ?? []
+      /* (mig 212) Chỉ khoản CÒN phải thu — dòng âm / trả dư là dư có, nằm ở ô "Dùng số dư có". */
+      const rows = (((recRes.data as unknown) as OpenReceivable[]) ?? []).filter((r) => outstandingOf(r) > 0)
       setReceivables(rows)
       setCredits(((credRes.data as unknown) as StandaloneCredit[]) ?? [])
       setCreditRows(balRes.rows)

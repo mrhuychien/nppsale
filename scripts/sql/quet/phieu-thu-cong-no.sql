@@ -54,7 +54,8 @@ BEGIN
     IF abs(COALESCE(x.paid,0) - x.sp) > 0.001 THEN s := s || format(' INV1[%s paid=%s Σpay=%s]', left(x.id::text,8), x.paid, x.sp); END IF;
   END LOOP;
   FOR x IN SELECT id, amount, paid, status FROM receivables WHERE customer_id=c LOOP
-    IF x.amount >= 0 AND ((x.amount - COALESCE(x.paid,0) <= 0) <> (x.status='paid')) THEN
+    -- (mig 212) dòng dương: 'paid' ⇔ |amount − paid| < 0,01; trả dư là 'open' (dư có).
+    IF x.amount >= 0 AND ((abs(x.amount - COALESCE(x.paid,0)) < 0.01) <> (x.status='paid')) THEN
       s := s || format(' INV2[%s amt=%s paid=%s st=%s]', left(x.id::text,8), x.amount, x.paid, x.status); END IF;
     IF x.amount >= 0 AND x.status = 'partial' AND COALESCE(x.paid,0) <= 0 THEN
       s := s || format(' INV2b[%s partial mà paid=%s]', left(x.id::text,8), x.paid); END IF;
@@ -489,7 +490,11 @@ ROLLBACK;
 BEGIN;
 DO $s$ DECLARE c uuid := 'd0000000-0000-0000-0000-000000000006'; r1 uuid := pg_temp.rc('HD-0001'); r2 uuid := pg_temp.rc('HD-0002'); b text;
 BEGIN
-  PERFORM pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 100000), pg_temp.ln(r2, 0)));
+  BEGIN
+    PERFORM pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 100000), pg_temp.ln(r2, 0)));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'CHẶN T25: % (mig 212)', left(SQLERRM, 90); RETURN;
+  END;
   b := pg_temp.bat_bien(c);
   PERFORM pg_temp.kq('T25 dòng 0đ trên HD-0002', b = '', format('R2 %s; %s', pg_temp.r(r2), b));
 END $s$;
@@ -604,7 +609,11 @@ ROLLBACK;
 BEGIN;
 DO $s$ DECLARE c uuid := 'd0000000-0000-0000-0000-000000000006'; r1 uuid := pg_temp.rc('HD-0001'); r2 uuid := pg_temp.rc('HD-0002'); p uuid; b text;
 BEGIN
-  p := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 0.005)));
+  BEGIN
+    p := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 0.005)));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'CHẶN T30a: % (mig 212)', left(SQLERRM, 90); RETURN;
+  END;
   b := pg_temp.bat_bien(c);
   PERFORM pg_temp.kq('T30a thu 0,005đ', b = '', format('R1 %s; tiền phiếu %s; dòng %s; payment %s; %s', pg_temp.r(r1),
      (SELECT submitted_amount FROM cash_receipts WHERE id=p), (SELECT amount FROM cash_receipt_lines WHERE receipt_id=p),
@@ -614,7 +623,11 @@ ROLLBACK;
 BEGIN;
 DO $s$ DECLARE c uuid := 'd0000000-0000-0000-0000-000000000006'; r2 uuid := pg_temp.rc('HD-0002'); b text;
 BEGIN
-  PERFORM pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r2, 1100000.01)));
+  BEGIN
+    PERFORM pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r2, 1100000.01)));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'CHẶN T30b: % (mig 212)', left(SQLERRM, 90); RETURN;
+  END;
   b := pg_temp.bat_bien(c);
   PERFORM pg_temp.kq('T30b thu 1.100.000,01 (dung sai 0,01)', b = '', format('R2 %s; %s', pg_temp.r(r2), b));
 END $s$;

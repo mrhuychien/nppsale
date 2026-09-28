@@ -441,4 +441,16 @@ SELECT 50, 'Mig 211 (Ngày nhập kho phiếu trả tự sinh)',
   CASE WHEN to_regprocedure('public.complete_return(uuid, text, date)') IS NULL
        THEN 'CHƯA — phiếu trả tự sinh chưa chọn được ngày nhập kho'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 51. Mig 212 — nhóm sai tiền (dư có, huỷ phiếu thu, dòng âm, khách khác, hàng đổi)
+SELECT 51, 'Mig 212 (Sửa nhóm sai tiền)',
+  CASE WHEN position('(mig 212)' IN pg_get_functiondef('public.void_cash_receipt(uuid, text)'::regprocedure)) = 0
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_phieu_tra_dung_khach_hoa_don')
+       THEN 'CHƯA — dư có bị giấu khỏi tổng nợ, huỷ phiếu thu có thể mất tiền'
+       WHEN EXISTS (SELECT 1 FROM receivables WHERE status = 'paid' AND abs(COALESCE(paid, 0) - COALESCE(amount, 0)) >= 0.01)
+       THEN 'LỆCH — còn dòng công nợ ''đã trả'' mà số chưa khớp, chạy lại mig 212'
+       WHEN EXISTS (SELECT 1 FROM returns r JOIN sales_invoices si ON si.id = r.invoice_id
+                     WHERE r.status <> 'cancelled' AND r.customer_id IS DISTINCT FROM si.customer_id)
+       THEN 'LỆCH — có phiếu trả gắn hoá đơn của khách khác, phải xem tay'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

@@ -344,9 +344,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   /**
    * NẠP DÒNG TỪ HÓA ĐƠN GỐC.
    *
-   * ⚠ CHỈ TRẢ ĐƯỢC MÓN CÓ TRÊN TỜ GỐC. `enforce_return_line_cap` chặn
-   * thật ở máy chủ; nạp sẵn ở đây là chặn sớm và đỡ cho người nhập cả
-   * việc gõ lại tên hàng với giá đã bán.
+   * Nạp sẵn các món trên tờ gốc với giá đã bán cho đỡ gõ lại. KHÔNG còn là
+   * trần: khách trả / đổi được cả hàng không có trên tờ (chủ nhà 28/09/2026,
+   * máy chủ bỏ trần từ mig 158) — xem `mucHangTra`.
    */
   const napTuHoaDon = useCallback(
     async (id: string) => {
@@ -517,14 +517,15 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   )
 
   /**
-   * ⚠ ĐÃ GẮN HÓA ĐƠN GỐC THÌ Ô TÌM HÀNG TRẢ CHỈ TÌM TRONG TỜ ẤY.
-   * `enforce_return_line_cap` chặn thật ở máy chủ; đây là chặn sớm:
-   * một món không có trên tờ gốc không được hiện ra để chọn.
+   * ⚠ ĐỔI TRẢ TỰ DO, KỂ CẢ KHI ĐÃ GẮN HÓA ĐƠN GỐC — chủ nhà 28/09/2026: "tao muốn cho
+   *   đổi trả tự do, ko nhất thiết chỉ được trả hàng có trong đơn" (máy chủ đã bỏ trần
+   *   từ mig 158). Hàng CÓ trên tờ gốc chỉ được xếp lên đầu và đánh dấu để dễ chọn.
    */
-  const mucHangTra = useMemo<SearchItem[]>(
-    () => (invoiceId ? mucHang.filter((it) => giaGoc[it.id] != null) : mucHang),
-    [mucHang, invoiceId, giaGoc]
-  )
+  const mucHangTra = useMemo<SearchItem[]>(() => {
+    if (!invoiceId) return mucHang
+    const tren = mucHang.filter((it) => giaGoc[it.id] != null).map((it) => ({ ...it, meta: `Trên HĐ gốc · ${it.meta ?? ""}` }))
+    return [...tren, ...mucHang.filter((it) => giaGoc[it.id] == null)]
+  }, [mucHang, invoiceId, giaGoc])
 
   /**
    * ⚠ DANH MỤC ĐƯA LÊN Ô TÌM ĐỔI THEO GIỎ ĐÍCH. Giỏ HÀNG TRẢ khi đã gắn
@@ -552,7 +553,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     disabled: loading,
     placeholder:
       gioDich === "tra"
-        ? (invoiceId ? "Tìm trong hóa đơn gốc…" : "Tên hàng, mã hàng…")
+        ? (invoiceId ? "Tên hàng, mã hàng — hàng trên HĐ gốc xếp trước…" : "Tên hàng, mã hàng…")
         : "Thêm hàng đổi từ kho bán…",
   })
 

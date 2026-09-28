@@ -85,7 +85,8 @@ describe("chỗ chặn 1 — trigger lúc chèn dòng phiếu trả", () => {
 })
 
 describe("chỗ chặn 2 — complete_return", () => {
-  const BAN = banMoiNhat("complete_return")
+  /* Chữ ký 2 tham số — bản 3 tham số (mig 211, ngày nhập kho) chỉ bọc bản này. */
+  const BAN = banMoiNhat("complete_return(p_return_id uuid, p_zone text)")
   const CODE = boChuThich(BAN.sql)
 
   /** ⚠ Chốt mù là chốt nói dối — không đọc được hàm thì mọi phép dưới xanh. */

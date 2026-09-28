@@ -435,4 +435,10 @@ SELECT 49, 'Mig 210 (Sửa HĐ có phiếu trả đã nhập kho)',
          OR position('(mig 210)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
        THEN 'CHƯA — hóa đơn có phiếu trả đã nhập kho không sửa được (LOCKED_RETURN_DONE)'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 50. Mig 211 — chọn ngày nhập kho phiếu trả tự sinh
+SELECT 50, 'Mig 211 (Ngày nhập kho phiếu trả tự sinh)',
+  CASE WHEN to_regprocedure('public.complete_return(uuid, text, date)') IS NULL
+       THEN 'CHƯA — phiếu trả tự sinh chưa chọn được ngày nhập kho'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

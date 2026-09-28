@@ -11,6 +11,9 @@
  *   `returns.approve` — thiếu quyền thì nói rõ ai bấm, không hiện nút để RPC ném lỗi.
  */
 
+import { ONgayNhap } from "@/components/returns/o-ngay-nhap"
+import { loiNgayNhap } from "@/lib/returns/ngay-nhap"
+import { homNayVN } from "@/lib/bao-cao/ky"
 import { useEffect, useState } from "react"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,13 +41,13 @@ interface PhieuNgan {
   customer?: { store_name?: string | null } | null
   seller?: { full_name?: string | null } | null
   order?: { order_code?: string | null } | null
-  invoice?: { invoice_code?: string | null } | null
+  invoice?: { invoice_code?: string | null; invoice_date?: string | null } | null
 }
 
 const COT =
   "id, status, credit_with_invoice, invoice_id, order_id, reason, credit_note_amount, created_at, return_date, destination_zone, " +
   "customer:customers(store_name), seller:users!returns_sales_user_id_fkey(full_name), " +
-  "order:sales_orders(order_code), invoice:sales_invoices(invoice_code)"
+  "order:sales_orders(order_code), invoice:sales_invoices(invoice_code, invoice_date)"
 
 const tenKho = (z: string | null | undefined) => RETURN_ZONES.find((k) => k.value === z)?.label ?? null
 
@@ -75,6 +78,8 @@ export function MobileReturnSheet({
   const [ma, setMa] = useState<string | null>(null)
   const [loi, setLoi] = useState<string | null>(null)
   const [kho, setKho] = useState<ReturnZone>("sale")
+  /** Ngày nhập kho — phiếu tự sinh chọn được (mig 211). */
+  const [ngayNhap, setNgayNhap] = useState(() => homNayVN())
   const [dangHuy, setDangHuy] = useState(false)
   const [lyDoHuy, setLyDoHuy] = useState("")
   const [dangLam, setDangLam] = useState(false)
@@ -139,7 +144,7 @@ export function MobileReturnSheet({
     if (!r || dangLam) return
     setDangLam(true)
     try {
-      await completeReturn(createClient(), r.id, kho)
+      await completeReturn(createClient(), r.id, kho, tuSinh ? ngayNhap : null)
       const k = (tenKho(kho) ?? "").toLowerCase()
       /* Tự sinh: công nợ đã trừ vào hóa đơn lúc xuất — hoàn thành chỉ còn nhập kho. */
       onDone(tuSinh ? `${tenPhieu} đã nhập ${k}` : `${tenPhieu} đã nhập ${k} · công nợ giảm ${tienTra}`)
@@ -225,10 +230,13 @@ export function MobileReturnSheet({
                       </button>
                     ))}
                   </div>
+                  {tuSinh && (
+                    <ONgayNhap value={ngayNhap} onChange={setNgayNhap} homNay={homNayVN()} ngayHoaDon={r.invoice?.invoice_date} />
+                  )}
                   <button
                     type="button"
                     onClick={hoanThanh}
-                    disabled={dangLam}
+                    disabled={dangLam || (tuSinh && !!loiNgayNhap(ngayNhap, homNayVN(), r.invoice?.invoice_date))}
                     className="mt-1.5 h-14 rounded-2xl bg-primary text-base font-semibold text-primary-foreground active:opacity-90 disabled:opacity-60"
                   >
                     {dangLam ? "Đang xử lý…" : `Hoàn thành · nhập ${(tenKho(kho) ?? "").toLowerCase()}`}

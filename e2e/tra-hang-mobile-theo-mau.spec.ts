@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, nhatKy } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 27/09/2026: "Viết lại giao diện danh sách trả hàng trên mobile của nhân viên bán hàng
@@ -79,8 +79,12 @@ test("điện thoại: màn theo mẫu — thẻ chờ xử lý, chip có số, 
   await expect(ngan).toContainText("Hóa đơn gốc")
   await expect(ngan.getByRole("radio", { name: /Kho cận date/ })).toHaveAttribute("aria-checked", "true")
   await ngan.getByRole("radio", { name: /Kho bán/ }).click()
+  /* Phiếu tự lập: không chọn ngày nhập kho (chỉ phiếu tự sinh — mig 211). */
+  await expect(ngan.getByLabel("Ngày nhập kho")).toHaveCount(0)
   await ngan.getByRole("button", { name: "Hoàn thành · nhập kho bán" }).click()
   await expect(ngan).toBeHidden()
+  const goi = (await nhatKy()).filter((r) => r.path.endsWith("/rpc/complete_return")).at(-1)!
+  expect(goi.body as Record<string, unknown>, "phiếu tự lập gửi ngày nhập kho").not.toHaveProperty("p_ngay")
   await expect(page.getByText("TH-M001 đã nhập kho bán · công nợ giảm 148.000đ", { exact: true })).toBeVisible()
 
   // Phiếu rời tab Chờ xử lý, sang Đã nhập kho.

@@ -78,6 +78,9 @@ export function explainReturnError(message: string): string {
   if (m.includes("RETURN_FOLLOWS_INVOICE")) return m.replace(/^.*RETURN_FOLLOWS_INVOICE:\s*/, "")
   if (m.includes("RETURN_FOLLOWS_ORDER")) return m.replace(/^.*RETURN_FOLLOWS_ORDER:\s*/, "")
   if (m.includes("RETURN_CREDIT_USED")) return m.replace(/^.*RETURN_CREDIT_USED:\s*/, "")
+  /* Ngày nhập kho phiếu tự sinh (mig 211). */
+  const ngay = /NGAY_NHAP_[A-Z_]+:\s*(.*)$/.exec(m)
+  if (ngay) return ngay[1]
   /* Mã của `save_pos_return` (mig 190). */
   if (m.includes("RETURN_LOCKED")) return m.replace(/^.*RETURN_LOCKED:\s*/, "")
   if (m.includes("RETURN_COMPLETED")) return m.replace(/^.*RETURN_COMPLETED:\s*/, "")
@@ -95,11 +98,14 @@ export function explainReturnError(message: string): string {
 export async function completeReturn(
   supabase: SupabaseClient,
   returnId: string,
-  zone: ReturnZone
+  zone: ReturnZone,
+  /** Ngày nhập kho `YYYY-MM-DD` — chỉ phiếu tự sinh (mig 211); bỏ trống = hôm nay. */
+  ngayNhap?: string | null
 ): Promise<string | null> {
   const { data, error } = await supabase.rpc("complete_return", {
     p_return_id: returnId,
     p_zone: zone,
+    ...(ngayNhap ? { p_ngay: ngayNhap } : {}),
   })
   if (error) throw new Error(explainReturnError(error.message || String(error)))
   // ⚠ `RETURNS TABLE` nên `data` là MỘT MẢNG, không phải object.

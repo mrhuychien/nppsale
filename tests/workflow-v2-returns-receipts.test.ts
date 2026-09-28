@@ -76,7 +76,7 @@ describe("Phiếu trả ra đời ở Phiếu tạm, không phải Hoàn thành"
 
 describe("Hoàn thành / huỷ phiếu trả đi qua RPC", () => {
   it("màn chi tiết gọi RPC, không ghi thẳng trạng thái", () => {
-    expect(RET_DETAIL).toContain("completeReturn(supabase, ret.id, zone)")
+    expect(RET_DETAIL).toContain("completeReturn(supabase, ret.id, zone, laPhieuTuSinh(ret) ? ngayNhap : null)")
     expect(RET_DETAIL).toContain("cancelReturn(supabase, ret.id, reason)")
     expect(RET_DETAIL, "còn ghi thẳng trạng thái phiếu trả").not.toMatch(
       /\.update\(\{\s*status:/

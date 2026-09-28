@@ -1,5 +1,8 @@
 "use client"
 
+import { ONgayNhap } from "@/components/returns/o-ngay-nhap"
+import { loiNgayNhap } from "@/lib/returns/ngay-nhap"
+import { homNayVN } from "@/lib/bao-cao/ky"
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
@@ -52,6 +55,8 @@ export default function ReturnDetailPage() {
   const [actionLoading, setActionLoading] = useState(false)
   /** Kho nhận hàng trả — người duyệt phải chọn, không đoán hộ. */
   const [zone, setZone] = useState<ReturnZone>("sale")
+  /** Ngày nhập kho — phiếu tự sinh chọn được (mig 211). */
+  const [ngayNhap, setNgayNhap] = useState(() => homNayVN())
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   /**
@@ -255,7 +260,7 @@ export default function ReturnDetailPage() {
     if (!ret || actionLoading) return
     setActionLoading(true)
     try {
-      await completeReturn(supabase, ret.id, zone)
+      await completeReturn(supabase, ret.id, zone, laPhieuTuSinh(ret) ? ngayNhap : null)
       toast({
         title: "Đã hoàn thành phiếu trả",
         description: `Hàng đã nhập ${zone === "sale" ? "kho bán" : "kho cận date"}; công nợ đã trừ.`,
@@ -454,8 +459,13 @@ export default function ReturnDetailPage() {
                     ))}
                   </div>
                 </div>
+                {tuSinh && (
+                  <div className="max-w-[220px]">
+                    <ONgayNhap value={ngayNhap} onChange={setNgayNhap} homNay={homNayVN()} ngayHoaDon={inv.invoice?.invoice_date} />
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleComplete} disabled={actionLoading}>
+                  <Button onClick={handleComplete} disabled={actionLoading || (tuSinh && !!loiNgayNhap(ngayNhap, homNayVN(), inv.invoice?.invoice_date))}>
                     <PackageCheck className="mr-2 h-4 w-4" />
                     {actionLoading ? "Đang xử lý…" : tuSinh ? "Hoàn thành — nhập kho" : "Hoàn thành — nhập kho & trừ công nợ"}
                   </Button>

@@ -460,4 +460,13 @@ SELECT 52, 'Mig 213 (Sửa HĐ giữ ngày, giảm giá; phiếu tự lập)',
          OR position('(mig 213)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) = 0
        THEN 'CHƯA — sửa HĐ có thể mất giảm giá đơn / dời ngày; phiếu tự lập bị biến thành tự sinh'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 53. Mig 214 — khoá ghi thẳng tiền / phiếu trả / số đã xuất từ trình duyệt
+SELECT 53, 'Mig 214 (Khoá ghi thẳng tiền, phiếu trả)',
+  CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname IN (
+              'trg_khoa_ghi_thang_cong_no', 'trg_khoa_ghi_thang_payments', 'trg_khoa_ghi_thang_dong_phieu_thu',
+              'trg_khoa_ghi_thang_phieu_thu', 'trg_khoa_ghi_thang_phieu_tra', 'trg_khoa_ghi_thang_dong_tra',
+              'trg_khoa_ghi_thang_da_xuat')) < 7
+       THEN 'CHƯA — trình duyệt còn sửa thẳng được công nợ / phiếu thu / phiếu trả'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

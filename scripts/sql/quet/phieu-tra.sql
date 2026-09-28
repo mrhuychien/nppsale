@@ -307,7 +307,7 @@ BEGIN
   v_err3 := pg_temp.thu(format('DELETE FROM returns WHERE id = %L', (SELECT ret FROM _s16)));
   -- RLS có thể lọc im lặng (0 dòng) — coi như chặn nếu phiếu vẫn còn.
   IF v_err3 IS NULL AND EXISTS (SELECT 1 FROM returns WHERE id = (SELECT ret FROM _s16)) THEN v_err3 := 'RETURN_FOLLOWS_INVOICE'; END IF;
-  PERFORM pg_temp.ket('S1.6b', v_err = 'RETURN_FOLLOWS_INVOICE' AND v_err2 = 'RETURN_FOLLOWS_INVOICE' AND v_err3 = 'RETURN_FOLLOWS_INVOICE',
+  PERFORM pg_temp.ket('S1.6b', v_err IN ('RETURN_FOLLOWS_INVOICE', 'PHIEU_TRA_KHOA') AND v_err2 IN ('RETURN_FOLLOWS_INVOICE', 'PHIEU_TRA_KHOA') AND v_err3 IN ('RETURN_FOLLOWS_INVOICE', 'PHIEU_TRA_KHOA'),
     format('ghi thẳng (authenticated) vào phiếu tự sinh: đổi trạng thái → %s; sửa dòng → %s; xoá → %s', COALESCE(v_err, 'LỌT'), COALESCE(v_err2, 'LỌT'), COALESCE(v_err3, 'LỌT')));
 END $t$;
 RESET ROLE;
@@ -939,8 +939,11 @@ DECLARE v_err text; n int; v_cr_truoc numeric; v_cr_sau numeric;
 BEGIN
   -- NVBH sửa DÒNG của phiếu tự lập ĐÃ HOÀN THÀNH (không phải của mình)
   SELECT credit_note_amount INTO v_cr_truoc FROM returns WHERE id = (SELECT v FROM _s7 WHERE k = 'done');
-  UPDATE return_lines SET quantity = 10, line_total = 1200000 WHERE return_id = (SELECT v FROM _s7 WHERE k = 'done');
-  GET DIAGNOSTICS n = ROW_COUNT;
+  BEGIN
+    UPDATE return_lines SET quantity = 10, line_total = 1200000 WHERE return_id = (SELECT v FROM _s7 WHERE k = 'done');
+    GET DIAGNOSTICS n = ROW_COUNT;
+  EXCEPTION WHEN OTHERS THEN n := 0; RAISE NOTICE 'CHẶN S7.4a: % (mig 214)', left(SQLERRM, 90);
+  END;
   RESET ROLE;
   SELECT credit_note_amount INTO v_cr_sau FROM returns WHERE id = (SELECT v FROM _s7 WHERE k = 'done');
   PERFORM pg_temp.ket('S7.4a', n = 0,
@@ -954,12 +957,18 @@ DO $t$
 DECLARE n int; n2 int;
 BEGIN
   -- Quản lý đổi thẳng trạng thái Nháp → completed (không qua complete_return: không nhập kho, không trừ nợ)
-  UPDATE returns SET status = 'completed' WHERE id = (SELECT v FROM _s7 WHERE k = 'ql_draft');
-  GET DIAGNOSTICS n = ROW_COUNT;
+  BEGIN
+    UPDATE returns SET status = 'completed' WHERE id = (SELECT v FROM _s7 WHERE k = 'ql_draft');
+    GET DIAGNOSTICS n = ROW_COUNT;
+  EXCEPTION WHEN OTHERS THEN n := 0; RAISE NOTICE 'CHẶN S7.4b: % (mig 214)', left(SQLERRM, 90);
+  END;
   -- và INSERT thẳng một phiếu 'completed' qua create_return_with_lines (SECURITY INVOKER)
-  PERFORM create_return_with_lines(jsonb_build_object('customer_id', (SELECT v FROM _s7 WHERE k = 'cust'), 'reason', 'damaged', 'status', 'completed'),
-     jsonb_build_array(jsonb_build_object('product_id', (SELECT v FROM _s7 WHERE k = 'p1'), 'unit_name', 'thung', 'quantity', 1, 'unit_price', 120000, 'line_total', 999999)));
-  GET DIAGNOSTICS n2 = ROW_COUNT;
+  BEGIN
+    PERFORM create_return_with_lines(jsonb_build_object('customer_id', (SELECT v FROM _s7 WHERE k = 'cust'), 'reason', 'damaged', 'status', 'completed'),
+       jsonb_build_array(jsonb_build_object('product_id', (SELECT v FROM _s7 WHERE k = 'p1'), 'unit_name', 'thung', 'quantity', 1, 'unit_price', 120000, 'line_total', 999999)));
+    GET DIAGNOSTICS n2 = ROW_COUNT;
+  EXCEPTION WHEN OTHERS THEN n2 := 0; RAISE NOTICE 'CHẶN S7.4c: % (mig 214)', left(SQLERRM, 90);
+  END;
   RESET ROLE;
   PERFORM pg_temp.ket('S7.4b', n = 0,
     format('Quản lý (authenticated) UPDATE returns.status=completed trên Nháp tự lập: %s dòng — phiếu "hoàn thành" không nhập kho, không có dòng công nợ âm (%s dòng)',

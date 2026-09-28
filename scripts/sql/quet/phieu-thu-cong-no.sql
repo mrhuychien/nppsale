@@ -552,12 +552,21 @@ SELECT pg_temp.as_user(3);
 SET LOCAL ROLE authenticated;
 DO $s$ DECLARE n int; p uuid := (SELECT id FROM cash_receipts ORDER BY created_at DESC LIMIT 1);
 BEGIN
-  UPDATE receivables SET paid = 1100000, status = 'paid' WHERE id = pg_temp.rc('HD-0002'); GET DIAGNOSTICS n = ROW_COUNT;
-  PERFORM pg_temp.kq('T29a kế toán UPDATE thẳng receivables.paid', n = 0, format('%s dòng bị sửa (paid không qua RPC, không payment)', n));
-  UPDATE payments SET amount = 1 WHERE receivable_id = pg_temp.rc('HD-0001'); GET DIAGNOSTICS n = ROW_COUNT;
-  PERFORM pg_temp.kq('T29b kế toán UPDATE thẳng payments.amount', n = 0, format('%s dòng bị sửa', n));
-  UPDATE cash_receipts SET status = 'voided' WHERE id = p; GET DIAGNOSTICS n = ROW_COUNT;
-  PERFORM pg_temp.kq('T29c kế toán đổi thẳng cash_receipts.status=voided', n = 0, format('%s dòng bị sửa (bỏ qua void_cash_receipt)', n));
+  BEGIN
+    UPDATE receivables SET paid = 1100000, status = 'paid' WHERE id = pg_temp.rc('HD-0002'); GET DIAGNOSTICS n = ROW_COUNT;
+    PERFORM pg_temp.kq('T29a kế toán UPDATE thẳng receivables.paid', n = 0, format('%s dòng bị sửa (paid không qua RPC, không payment)', n));
+  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'CHẶN T29a: % (mig 214)', left(SQLERRM, 100);
+  END;
+  BEGIN
+    UPDATE payments SET amount = 1 WHERE receivable_id = pg_temp.rc('HD-0001'); GET DIAGNOSTICS n = ROW_COUNT;
+    PERFORM pg_temp.kq('T29b kế toán UPDATE thẳng payments.amount', n = 0, format('%s dòng bị sửa', n));
+  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'CHẶN T29b: % (mig 214)', left(SQLERRM, 100);
+  END;
+  BEGIN
+    UPDATE cash_receipts SET status = 'voided' WHERE id = p; GET DIAGNOSTICS n = ROW_COUNT;
+    PERFORM pg_temp.kq('T29c kế toán đổi thẳng cash_receipts.status=voided', n = 0, format('%s dòng bị sửa (bỏ qua void_cash_receipt)', n));
+  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'CHẶN T29c: % (mig 214)', left(SQLERRM, 100);
+  END;
 END $s$;
 RESET ROLE;
 DO $s$ BEGIN RAISE NOTICE '     → sau T29: %', pg_temp.bat_bien('d0000000-0000-0000-0000-000000000006'); END $s$;

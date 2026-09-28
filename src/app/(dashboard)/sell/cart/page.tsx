@@ -14,7 +14,7 @@ import {
 } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
-import { hasOverstock, isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
+import { isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
 import { availableMapFrom } from "@/lib/sell/committed"
 import { unitPriceFor, stockInUnit } from "@/lib/sell/pricing"
@@ -264,7 +264,6 @@ export default function SellCartPage() {
    * ⚠ Cảnh báo xét TỔNG, không phải "có dòng nào bị tô đỏ". Tồn 10, bán
    * 9, đổi 2 → từng dòng đều "gần đủ" mà tổng 11 > 10.
    */
-  const hasOver = hasOverstock(stockLines, stockReturns, products, availableByProduct)
   /**
    * ⚠ Dòng ĐỔI vượt tồn phải hiện được Ở ĐÂY. Băng vàng chỉ nói "có mặt
    * hàng vượt tồn" mà không dòng bán nào tô đỏ thì người dùng soi mãi danh
@@ -489,7 +488,9 @@ export default function SellCartPage() {
   return (
     <div className="flex min-h-screen flex-col bg-surface-container-low pb-[190px]">
       {/* ---------- ĐẦU MÀN (2b): bỏ ô tìm khỏi màn đơn → nút "Thêm hàng" ---------- */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-container-lowest px-4 pb-3 pt-3.5">
+      {/* ⚠ GHIM ĐẦU MÀN (chủ nhà 28/09/2026: "Cố định top header khi kéo xuống để luôn bấm được thêm
+          hàng") — đơn dài cuộn xuống vẫn bấm được "Thêm hàng". */}
+      <div className="sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b border-border bg-surface-container-lowest px-4 pb-3 pt-3.5">
         <button
           type="button"
           onClick={() => backFromOrder(router, !!editing)}
@@ -575,18 +576,9 @@ export default function SellCartPage() {
             {committedWarning}
           </div>
         )}
-        {/*
-          ⚠ CHỈ CẢNH BÁO, KHÔNG CHẶN (chủ nhà chốt 20/09/2026: "cho nhân viên đặt
-            hàng vượt số tồn và đặt, kèm cảnh báo (để tính được nhu cầu)"). Chốt
-            chặn thật vẫn là `post_stock_export` lúc xuất hàng.
-        */}
-        {hasOver && (
-          <div className="rounded-xl bg-[#fff7e6] px-3 py-2.5 text-[13px] font-semibold leading-snug text-[#7a4b00]">
-            Có mặt hàng vượt phần còn đặt được — tồn kho trừ đi hàng đã đặt ở các Phiếu tạm khác.{" "}
-            <strong>Vẫn gửi đơn được</strong> để nhà phân phối biết nhu cầu thật; khi xuất hàng sẽ chỉ
-            giao được phần có trong kho.
-          </div>
-        )}
+        {/* ⚠ Vượt phần còn đặt được: KHÔNG hiện khối cảnh báo / chữ đỏ ở từng dòng nữa (chủ nhà 28/09/2026:
+            "bỏ bớt các thông báo gây rối"). Vẫn chỉ cảnh báo, không chặn (chốt 20/09/2026); chốt chặn thật
+            là `post_stock_export` lúc xuất hàng. */}
 
         {/* ---------- DÒNG HÀNG (2b) ---------- */}
         <div className="flex flex-col rounded-[14px] bg-surface-container-lowest">
@@ -626,7 +618,6 @@ export default function SellCartPage() {
                         <span className="rounded-[5px] bg-primary/10 px-1.5 py-px font-semibold text-primary">Giá sửa</span>
                       )}
                       {r.priceBad && <span className="font-semibold text-error">Giá ngoài hạn mức</span>}
-                      {r.over && <span className="font-semibold text-error">Vượt phần còn đặt được ({r.stockText})</span>}
                       {r.line.note && <span className="italic">“{r.line.note}”</span>}
                     </span>
                   </button>

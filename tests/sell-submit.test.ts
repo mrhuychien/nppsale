@@ -207,10 +207,11 @@ describe("Màn giỏ hàng", () => {
     expect(CART_PAGE).toContain("hasPriceBad")
     expect(CART_PAGE).toContain('"Giá ngoài hạn mức"')
 
-    // Vượt tồn vẫn phải TÍNH và vẫn phải HIỆN — chỉ là không chặn.
-    expect(CART_PAGE).toContain("hasOver")
-    expect(CART_PAGE, "mất băng cảnh báo vượt tồn").toContain("{hasOver && (")
-    expect(CART_PAGE).toContain("vượt tồn kho")
+    // Chủ nhà 28/09/2026: vượt phần còn đặt được — KHÔNG chặn và KHÔNG hiện ("bỏ bớt các thông báo
+    // gây rối"). Dòng ĐỔI vượt tồn vẫn nói.
+    expect(CART_PAGE).not.toContain("Có mặt hàng vượt phần còn đặt được")
+    expect(CART_PAGE).not.toContain("Vượt phần còn đặt được (")
+    expect(CART_PAGE).toContain("dòng đổi hàng vượt tồn kho")
 
     // Và không được quay lại thành một nhãn chặn trên mặt nút.
     expect(CART_PAGE, "nút lại báo chặn vì vượt tồn").not.toContain('"Vượt tồn kho"')
@@ -290,13 +291,9 @@ describe("Màn giỏ hàng", () => {
       "org?.allow_oversell"
     )
 
-    /**
-     * ⚠ NHƯNG CẢNH BÁO PHẢI CÒN. Bỏ chặn mà bỏ luôn cảnh báo thì nhân
-     * viên không biết mình vừa hứa thứ chưa có, và NPP nhận một đơn
-     * không ai đánh dấu là thiếu hàng.
-     */
-    expect(FLAT, "mất băng cảnh báo vượt tồn").toContain("{hasOver && (")
-    expect(FLAT).toContain("Vẫn gửi đơn được")
+    /* Chủ nhà 28/09/2026 bỏ khối cảnh báo vượt tồn (gây rối); thiếu hàng lộ ra ở bước soạn / xuất
+       hàng — nơi kho kiểm thật. */
+    expect(FLAT).not.toContain("{hasOver && (")
     /**
      * ⚠ GIÁ DÒNG TRẢ cũng là thẩm quyền, không phải chuyện thời điểm — nên
      * CẢ HAI nút đều chặn. Trả cao hơn giá bảng là một đường rút tiền:

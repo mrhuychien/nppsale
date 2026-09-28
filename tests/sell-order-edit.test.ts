@@ -707,10 +707,11 @@ describe("Hàng ĐỔI cũng ăn tồn kho", () => {
    * dòng bán. Tồn 10, bán 9, đổi 2 thì cả hai phần đều "gần đủ" mà tổng 11
    * > 10, và thủ kho là người phát hiện ra lúc không còn hàng để lấy.
    */
-  it("điều kiện chặn lưu xét CẢ dòng bán lẫn dòng đổi", () => {
-    expect(CART).toContain(
-      "const hasOver = hasOverstock(stockLines, stockReturns, products, availableByProduct)"
-    )
+  it("dòng đổi vẫn xét tồn (chung với dòng bán); vượt tồn không còn khối cảnh báo chung", () => {
+    /* Chủ nhà 28/09/2026: "bỏ bớt các thông báo gây rối" — bỏ khối "Có mặt hàng vượt phần còn đặt
+       được…" và chữ đỏ ở từng dòng; dòng đổi vượt tồn vẫn nói (không khoanh). */
+    expect(CART).toContain("isReturnLineOverstock(i, stockReturns, stockLines, products, ")
+    expect(CART).not.toContain("hasOverstock(")
   })
 
   /**
@@ -725,7 +726,6 @@ describe("Hàng ĐỔI cũng ăn tồn kho", () => {
   it("mọi phép kiểm tồn ở màn giỏ so với phần CÒN ĐẶT ĐƯỢC", () => {
     for (const call of [
       "isSaleLineOverstock(i, stockLines, products, ",
-      "hasOverstock(stockLines, stockReturns, products, ",
       "isReturnLineOverstock(i, stockReturns, stockLines, products, ",
     ]) {
       const at = CART.indexOf(call)

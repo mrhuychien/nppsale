@@ -885,7 +885,9 @@ function InfoTab({
                 return (
                   <div
                     key={u.tempId}
-                    className="grid grid-cols-[1fr_140px_auto] items-center gap-2"
+                    /* ⚠ Cột giữa từng cố định 140px — tên ĐV cơ sở dài ("Hộp sắt hình hoa") ép ô số về
+                       gần 0, không thấy số (chủ nhà 28/09/2026). Ô số rộng cố định, tên dài thì cắt. */
+                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2"
                   >
                     <Input
                       value={u.unit_name}
@@ -895,7 +897,7 @@ function InfoTab({
                       placeholder="VD: thùng"
                       className="h-9"
                     />
-                    <div className="flex items-center gap-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       <span className="text-xs text-muted-foreground">=</span>
                       <Input
                         type="number"
@@ -906,9 +908,13 @@ function InfoTab({
                           setSecondaryUnit(u.tempId, "conversion", e.target.value)
                         }
                         placeholder="24"
-                        className="h-9 text-right tabular-nums"
+                        aria-label={`Số ${form.base_unit || "ĐV cơ sở"} trong 1 ${u.unit_name || "đơn vị"}`}
+                        className="h-9 w-24 shrink-0 text-right tabular-nums"
                       />
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      <span
+                        className="max-w-[9rem] truncate whitespace-nowrap text-xs text-muted-foreground"
+                        title={form.base_unit || "ĐV cơ sở"}
+                      >
                         {form.base_unit || "ĐV cơ sở"}
                       </span>
                     </div>

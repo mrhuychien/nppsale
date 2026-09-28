@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useKhoaGui } from "@/hooks/use-khoa-gui"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABEL } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -50,6 +51,8 @@ export default function ReceivableDetailPage() {
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+  /* Chống bấm Lưu hai lần (mig 215). */
+  const khoaGui = useKhoaGui()
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -113,7 +116,9 @@ export default function ReceivableDetailPage() {
         customer_id: receivable.customer_id,
         method: paymentForm.method,
         lines: [{ receivable_id: receivable.id, amount: amt }],
+        client_key: khoaGui.lay(),
       })
+      khoaGui.doi()
 
       toast({ title: `Đã ghi nhận thanh toán ${formatCurrency(amt)}` })
       setPaymentForm({ amount: "", method: "cash" })

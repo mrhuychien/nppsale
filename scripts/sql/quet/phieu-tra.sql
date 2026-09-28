@@ -925,8 +925,19 @@ BEGIN
   v_err := pg_temp.thu(format('SELECT save_pos_return(%L::jsonb)', jsonb_build_object('customer_id', d.cust, 'reason', 'damaged', 'lines', pg_temp.tra1(d))));
   PERFORM pg_temp.ket('S7.3a', v_err = 'FORBIDDEN', 'kế toán lập phiếu trả POS → ' || COALESCE(v_err, 'được') || ' (theo thiết kế vai)');
   PERFORM pg_temp.la(5);
-  v_err := pg_temp.thu(format('SELECT complete_return(%L, %L)', v_ql, 'sale'));
-  PERFORM pg_temp.ket('S7.3b', v_err = 'FORBIDDEN', 'thủ kho hoàn thành (nhập kho) phiếu trả → ' || COALESCE(v_err, 'được') || ' (không có returns.approve)');
+  -- Chủ nhà 28/09/2026 "ko, sửa lại" (mig 215): thủ kho ĐƯỢC nhập kho phiếu trả. Thử rồi lùi
+  -- lại (phiếu nháp còn dùng ở S7.4b).
+  DECLARE v_ok boolean := false;
+  BEGIN
+    BEGIN
+      PERFORM complete_return(v_ql, 'sale');
+      v_ok := (SELECT status FROM returns WHERE id = v_ql) = 'completed';
+      RAISE EXCEPTION 'THU_LUI';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM <> 'THU_LUI' THEN v_err := split_part(SQLERRM, ':', 1); ELSE v_err := NULL; END IF;
+    END;
+    PERFORM pg_temp.ket('S7.3b', v_ok AND v_err IS NULL, 'thủ kho hoàn thành (nhập kho) phiếu trả → ' || COALESCE(v_err, CASE WHEN v_ok THEN 'được' ELSE '?' END) || ' (mig 215 mở returns.approve)');
+  END;
   PERFORM pg_temp.la(1);
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S7 nổ: %', SQLERRM;
 END $t$;
@@ -1027,7 +1038,8 @@ BEGIN
   VALUES (v_ord, d.p3, 'chai', 105, 8000, 840000, 1, 0) RETURNING id INTO v_l;
   PERFORM pg_temp.xuat(v_ord, jsonb_build_array(jsonb_build_object('order_line_id', v_l, 'product_id', d.p3, 'unit_name', 'chai', 'quantity', 105, 'unit_price', 8000, 'vat_rate', 0)));
   v_err := pg_temp.thu(format('SELECT cancel_return(%L, %L)', v_ret, 'x'));
-  PERFORM pg_temp.ket('S8.1', v_err IS NOT NULL OR (SELECT min(qty_on_hand) FROM batches WHERE product_id = d.p3) >= 0,
+  -- Chủ nhà 28/09/2026 "ok cho": huỷ phiếu trả khi hàng đã bán hết vẫn cho huỷ (tồn âm).
+  PERFORM pg_temp.ket('S8.1', v_err IS NULL,
     format('huỷ phiếu trả khi hàng đã bán hết: %s; lô P3 thấp nhất %s', COALESCE(v_err, 'cho huỷ'), (SELECT min(qty_on_hand) FROM batches WHERE product_id = d.p3)));
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S8 nổ: %', SQLERRM;
 END $t$;

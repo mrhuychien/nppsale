@@ -56,6 +56,8 @@ export interface CashReceiptInput {
    * được bằng đúng vòng lặp sẵn có.
    */
   use_credit?: number
+  /** Khoá chống gửi trùng (mig 215) — xem `useKhoaGui`. */
+  client_key?: string
 }
 
 /**
@@ -105,6 +107,7 @@ export function explainReceiptError(message: string): string {
     return m.replace(/^.*RECEIPT_NOT_VOIDABLE:\s*/, "")
   }
   if (m.includes("REASON_REQUIRED")) return "Phải ghi lý do huỷ phiếu thu."
+  if (m.includes("BAD_AMOUNT")) return m.replace(/^.*BAD_AMOUNT:\s*/, "")
   if (m.includes("FORBIDDEN")) return m.replace(/^.*FORBIDDEN:\s*/, "")
   if (
     m.includes("does not exist") &&
@@ -129,6 +132,7 @@ export async function createCashReceipt(
       lines: input.lines,
       credits: input.credits ?? [],
       use_credit: input.use_credit ?? 0,
+      ...(input.client_key ? { client_key: input.client_key } : {}),
     },
   })
   if (error) throw new Error(explainReceiptError(error.message || String(error)))

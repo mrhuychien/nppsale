@@ -32,6 +32,8 @@ describe("5. phiếu trả tự lập không bị biến thành tự sinh; nháp
     expect(hanhDongPhieuTra({ status: "draft", credit_with_invoice: true }, 0).huy).toBe("huy")
     expect(hanhDongPhieuTra({ status: "draft", credit_with_invoice: true }, 1).huy).toBe(false)
     expect(hanhDongPhieuTra({ status: "draft", credit_with_invoice: true }).huy).toBe(false)
+    // Nháp tự lập rỗng vẫn theo luật thường (Hoàn thành / Huỷ / Sửa) — e2e phieu-tra-tu-sinh.
+    expect(hanhDongPhieuTra({ status: "draft", credit_with_invoice: false }, 0).hoanThanh).toBe(true)
     expect(m).toMatch(/IF r\.status = ''draft'' AND NOT EXISTS \(SELECT 1 FROM return_lines/)
   })
 })

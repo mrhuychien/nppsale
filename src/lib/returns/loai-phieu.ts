@@ -42,12 +42,13 @@ export const LY_DO_THEO_DON = "Hàng trả đang đi theo đơn hàng, chờ xu�
 export const LY_DO_RONG = "Phiếu nháp không còn dòng hàng nào — huỷ để dọn khỏi danh sách."
 
 /**
- * @param soDong số dòng hàng của phiếu, khi màn đã đọc. Nháp RỖNG (vd. tự sinh bị bỏ hết
+ * @param soDong số dòng hàng của phiếu, khi màn đã đọc. Phiếu TỰ SINH nháp RỖNG (bị bỏ hết
  *   dòng khi sửa hóa đơn) thì huỷ được — mig 213; bỏ trống = không biết, luật cũ.
  */
 export function hanhDongPhieuTra(r: PhieuTraXet, soDong?: number): HanhDongPhieuTra {
   if (r.status === "cancelled") return { hoanThanh: false, huy: false, sua: false, lyDo: null }
-  if (r.status === "draft" && soDong === 0) return { hoanThanh: false, huy: "huy", sua: false, lyDo: LY_DO_RONG }
+  /* Chỉ phiếu TỰ SINH bị kẹt (luật cũ khoá mọi nút của nó); nháp tự lập đã huỷ / sửa được sẵn. */
+  if (laPhieuTuSinh(r) && r.status === "draft" && soDong === 0) return { hoanThanh: false, huy: "huy", sua: false, lyDo: LY_DO_RONG }
   if (laPhieuTuSinh(r)) {
     if (r.status === "completed") return { hoanThanh: false, huy: "ve_cho", sua: false, lyDo: LY_DO_TU_SINH }
     return { hoanThanh: r.status === "submitted", huy: false, sua: false, lyDo: LY_DO_TU_SINH }

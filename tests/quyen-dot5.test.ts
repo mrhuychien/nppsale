@@ -58,11 +58,17 @@ describe("vào được màn tạo ⇒ RLS cho chèn", () => {
     }
   })
 
-  it("/receivables/collect: quản lý không vào (RPC đòi receivables.create)", () => {
-    expect(duocVaoTrang("manager", "/receivables/collect", "receivables")).toBe(false)
+  it("/receivables/collect: quản lý vào được (chủ nhà 28/09/2026, mig 215 mở receivables.create)", () => {
+    expect(duocVaoTrang("manager", "/receivables/collect", "receivables")).toBe(true)
     expect(duocVaoTrang("accountant", "/receivables/collect", "receivables")).toBe(true)
     // Chủ nhà 26/09/2026: NVBH chỉ XEM công nợ của mình — không lập phiếu thu.
     expect(duocVaoTrang("sales", "/receivables/collect", "receivables")).toBe(false)
+    // …nhưng công nợ NCC vẫn chỉ xem (RLS "Manage payables" không có quản lý).
+    expect(duocVaoTrang("manager", "/payables/new", "receivables")).toBe(false)
+    // Màn quyết toán chuyến giao cấm với mọi vai, kể cả chủ (chủ nhà 28/09/2026 "có cấm").
+    for (const v of ["owner", "manager", "accountant", "warehouse", "driver"] as const) {
+      expect(duocVaoTrang(v, "/deliveries/abc/settle", "deliveries"), v).toBe(false)
+    }
   })
 })
 

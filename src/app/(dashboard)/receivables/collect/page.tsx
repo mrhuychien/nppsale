@@ -17,6 +17,7 @@ import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { AlertTriangle, CheckCircle2, Printer } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { useKhoaGui } from "@/hooks/use-khoa-gui"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_METHODS, labelPaymentMethod } from "@/lib/constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -76,6 +77,8 @@ export default function CollectPaymentPage() {
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
+  /* Chống bấm Lưu hai lần (mig 215). */
+  const khoaGui = useKhoaGui()
 
   useEffect(() => {
     async function fetchData() {
@@ -190,7 +193,9 @@ export default function CollectPaymentPage() {
         customer_id: selected?.customer_id ?? customerIdParam ?? "",
         method,
         lines: [{ receivable_id: selectedId, amount: amountNum }],
+        client_key: khoaGui.lay(),
       })
+      khoaGui.doi()
 
       /* ⚠ ĐỌC HỎNG KHÔNG ĐƯỢC LÀM HỎNG VIỆC ĐÃ XONG. Tiền đã ghi trong
          một giao dịch rồi; không đọc ra mã thì hiện tạm theo id chứ

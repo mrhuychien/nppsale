@@ -40,6 +40,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
+import { useKhoaGui } from "@/hooks/use-khoa-gui"
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -159,6 +160,8 @@ export default function NewCashReceiptPage() {
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("receivables")
   const { toast } = useToast()
+  /* Chống bấm Lưu hai lần (mig 215). */
+  const khoaGui = useKhoaGui()
   const supabase = createClient()
 
   const [customers, setCustomers] = useState<
@@ -487,7 +490,9 @@ export default function NewCashReceiptPage() {
         lines,
         credits: Array.from(pickedCredits).map((return_id) => ({ return_id })),
         use_credit: useCredit,
+        client_key: khoaGui.lay(),
       })
+      khoaGui.doi()
       // ⚠ NÓI RÕ TỪNG NGUỒN. "Đã lập phiếu thu 500.000" khi khách chỉ đưa
       //   200.000 là câu dễ bị nhớ nhầm nhất lúc đối chiếu tiền mặt cuối
       //   ngày.

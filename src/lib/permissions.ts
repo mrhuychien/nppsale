@@ -114,7 +114,8 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
     inventory: ["read", "export"],
     products: ["read", "create", "update"],
     commissions: ["read", "export"],
-    receivables: ["read", "export"],
+    /* Chủ nhà 28/09/2026 (mig 215): quản lý lập / huỷ phiếu thu được. */
+    receivables: ["read", "create", "update", "export"],
     deliveries: ["read", "create", "update"],
     promotions: ["read", "create", "update"],
     invoices: ["read", "export"],
@@ -171,7 +172,8 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
     deliveries: ["read", "update"],
     promotions: [],
     invoices: [],
-    returns: ["read", "update"],
+    /* Chủ nhà 28/09/2026 (mig 215): thủ kho hoàn thành / huỷ nhập kho phiếu trả. */
+    returns: ["read", "update", "approve"],
     reports: ["read"],
     settings: [],
   },
@@ -206,9 +208,9 @@ function buildCacheFromMap(
     // của NVBH chỉ vì họ được đọc kho.
     for (const f of FEATURES) {
       if (!f.defaultRoles) continue
-      m[f.key] = f.defaultRoles.includes(role)
-        ? new Set(map[role]?.[f.module] ?? [])
-        : new Set<Action>()
+      m[f.key] = !f.defaultRoles.includes(role)
+        ? new Set<Action>()
+        : new Set(f.macDinhVai?.[role] ?? map[role]?.[f.module] ?? [])
     }
     out[role] = m
   }

@@ -54,6 +54,10 @@ không được kẹp về 0.
 - `receivables.amount < 0` là **dư có** của khách: vẫn `'open'` tới khi dùng hết (trigger
   `trg_cong_no_am_trang_thai`), được trừ vào tổng nợ, được rút ở phiếu thu (`paid − amount`).
 - **Không** kẹp từng dòng về 0 khi cộng nợ (`Math.max(0, amount − paid)` là sai).
+- Trạng thái công nợ do **một trigger** quyết (`_cong_no_am_trang_thai`, mig 212): `'paid'` chỉ khi
+  |amount − paid| < 0,01; khách **trả dư** (paid > amount) là `'open'` — dư có, được trừ vào tổng nợ.
+- Tiền / công nợ / phiếu thu / trạng thái phiếu trả **không ghi thẳng** được từ trình duyệt (mig 214) —
+  chỉ nợ đầu kỳ chưa thu, xác nhận phiếu thu, phiếu trả Nháp là ghi thẳng được.
 - Màn thu tiền không liệt kê dòng âm (không phải khoản để thu).
 - POS: "Khách cần trả" vẫn kẹp 0; phần vượt hiện dòng "Ghi có cho khách (công nợ âm)"
   (`tachPhaiTra` trong `src/lib/pos/totals.ts`).

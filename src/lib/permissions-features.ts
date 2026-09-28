@@ -25,6 +25,12 @@ export interface FeatureDef {
    * (no explicit per-feature defaults). All current features inherit. */
   inherits?: boolean
   /**
+   * Quyền MẶC ĐỊNH riêng của vài vai, thay cho bản chép từ mô-đun cha. Dùng khi mở
+   * thêm quyền ở mô-đun mà KHÔNG muốn tính năng con mở theo (vd. quản lý lập phiếu
+   * thu — mig 215 — nhưng công nợ NCC vẫn chỉ xem: RLS "Manage payables" không cho).
+   */
+  macDinhVai?: Partial<Record<Role, readonly Action[]>>
+  /**
    * Vai trò được thấy tính năng này theo MẶC ĐỊNH. Bỏ trống = thừa hưởng
    * mô-đun cha (mặc định cũ).
    *
@@ -79,7 +85,8 @@ export const FEATURES: FeatureDef[] = [
   { key: "purchasing.invoices", label: "Hoá đơn mua hàng (tra cứu)", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "purchasing.returns", label: "Trả hàng NCC", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE_AND_WAREHOUSE },
   { key: "suppliers", label: "Nhà cung cấp", module: "inventory", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
-  { key: "payables", label: "Công nợ NCC", module: "receivables", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "payables", label: "Công nợ NCC", module: "receivables", group: "Mua hàng", inherits: true, defaultRoles: BACK_OFFICE,
+    macDinhVai: { manager: ["read", "export"] } },
 
   // Kho vận
   { key: "inventory", label: "Kho hàng", module: "inventory", group: "Kho vận" },

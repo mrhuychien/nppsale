@@ -646,11 +646,12 @@ ROLLBACK;
 BEGIN;
 DO $s$ DECLARE c uuid := 'd0000000-0000-0000-0000-000000000006'; r1 uuid := pg_temp.rc('HD-0001'); p1 uuid; p2 uuid;
 BEGIN
-  p1 := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 300000)), '{"notes":"lần 1"}');
+  -- (mig 215) Màn hình gửi kèm client_key; bấm Lưu hai lần = cùng khoá.
+  p1 := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 300000)), '{"notes":"lần 1","client_key":"k-t32"}');
   BEGIN
-    p2 := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 300000)), '{"notes":"lần 1"}');
+    p2 := pg_temp.thu(c, jsonb_build_array(pg_temp.ln(r1, 300000)), '{"notes":"lần 1","client_key":"k-t32"}');
   EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'CHẶN T32: %', SQLERRM; RETURN; END;
-  PERFORM pg_temp.kq('T32 gửi trùng tạo 2 phiếu', false,
+  PERFORM pg_temp.kq('T32 gửi trùng tạo 2 phiếu', p1 = p2 AND (SELECT paid FROM receivables WHERE id = r1) = 300000,
      format('2 phiếu %s + %s, R1 %s — RPC không có khoá chống gửi trùng (idempotency)',
             (SELECT receipt_code FROM cash_receipts WHERE id=p1), (SELECT receipt_code FROM cash_receipts WHERE id=p2), pg_temp.r(r1)));
 END $s$;

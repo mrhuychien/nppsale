@@ -19,6 +19,19 @@ PGHOST=/tmp/pgtest PGPORT=55432 PGUSER=postgres psql -d <db> -f scripts/sql/quet
 | Phiếu trả | 84 phép kiểm | 70 | nhiều | 9 |
 | Phiếu thu ↔ Công nợ | 36 kịch bản (66 kết quả) | 25 | 19 | 19 (6 nhóm) |
 
+## Đã sửa (chủ nhà chốt 28/09/2026)
+
+| Nhóm | Migration | Kết quả chạy lại bộ quét |
+|---|---|---|
+| Sai tiền 1, 2, 3, 6, 7 (+ tiền lẻ, màn phiếu thu không liệt kê dòng dư) | 212 | — |
+| Sai tiền 4, 5 (+ phiếu nháp rỗng huỷ được) | 213 | — |
+| Khoá ghi thẳng 8–11 | 214 | — |
+| Điểm chốt: 12 sửa HĐ đơn đã đóng; 15 chống gửi trùng phiếu thu; 18 cấm quyết toán chuyến giao (đã chặn cửa vào + mig 214 khoá ghi); 20 quản lý lập phiếu thu, thủ kho nhập kho phiếu trả | 215 | Đơn–HĐ 0 lỗi · Phiếu trả 0 lỗi · Phiếu thu 0 lỗi (bản chưa vá: 8 / 14 / 19) |
+| 13 huỷ phiếu trả khi hàng đã bán hết → **cho** (tồn âm) — chủ nhà "ok cho" | — | kịch bản đổi kỳ vọng |
+
+Còn để ngỏ: 16 tiền lẻ đã chặn ở phiếu thu (mig 212); 17 giá vốn hàng trả tự sinh theo ngày nhập kho (mig 211
+cho chọn ngày nhập kho); 21 các RPC chưa có (mở lại đơn đã đóng, sửa phần chưa giao, hoàn tiền mặt phần dư).
+
 ## Chạy đúng (xuôi và ngược)
 
 - Xuất HĐ đủ / một phần / nhiều HĐ một đơn / xuất vượt; FIFO chẻ lô; quy đổi thùng–hộp; VAT nhiều mức;

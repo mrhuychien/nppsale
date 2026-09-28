@@ -469,4 +469,15 @@ SELECT 53, 'Mig 214 (Khoá ghi thẳng tiền, phiếu trả)',
               'trg_khoa_ghi_thang_da_xuat')) < 7
        THEN 'CHƯA — trình duyệt còn sửa thẳng được công nợ / phiếu thu / phiếu trả'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 54. Mig 215 — đơn đã đóng sửa HĐ được; phiếu thu chống gửi trùng; quyền QL / thủ kho
+SELECT 54, 'Mig 215 (Đơn đã đóng, phiếu thu trùng, quyền)',
+  CASE WHEN position('(mig 215)' IN pg_get_functiondef('public.create_cash_receipt(jsonb)'::regprocedure)) = 0
+         OR position('(mig 215)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — bấm Lưu phiếu thu hai lần ra hai phiếu; không sửa được HĐ của đơn đã đóng'
+       WHEN EXISTS (SELECT 1 FROM organizations o WHERE NOT EXISTS (
+              SELECT 1 FROM role_permissions rp WHERE rp.org_id = o.id AND rp.role = 'warehouse'
+                AND rp.module = 'returns' AND rp.action = 'approve' AND rp.allowed))
+       THEN 'LỆCH — thủ kho chưa có quyền nhập kho phiếu trả, chạy lại mig 215'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

@@ -131,3 +131,22 @@ describe("giảm giá phiếu TRƯỚC thuế, VAT một mức cho cả phiếu 
     expect(K).toContain('aria-label="Giảm giá phiếu theo"')
   })
 })
+
+import { chamTheHang } from "@/lib/sell/pick-mode"
+
+describe("chạm thẻ hàng — chủ nhà 30/09/2026: đổi quy cách bấm 1 cái phải vào đơn", () => {
+  it("chọn từng mã: chạm thẻ / quy cách là sang phiếu; chưa có thì thêm 1, có rồi không cộng", () => {
+    expect(chamTheHang({ chonNhieu: false, daCo: false })).toEqual({ them: true, sangPhieu: true })
+    expect(chamTheHang({ chonNhieu: false, daCo: false, laQuyCach: true })).toEqual({ them: true, sangPhieu: true })
+    expect(chamTheHang({ chonNhieu: false, daCo: true })).toEqual({ them: false, sangPhieu: true })
+  })
+  it("chọn nhiều: chạm thẻ +1 ở lại; chạm quy cách chỉ đổi quy cách", () => {
+    expect(chamTheHang({ chonNhieu: true, daCo: true })).toEqual({ them: true, sangPhieu: false })
+    expect(chamTheHang({ chonNhieu: true, daCo: false, laQuyCach: true })).toEqual({ them: false, sangPhieu: false })
+  })
+  it("thẻ: −/+ chỉ khi chọn nhiều", () => {
+    const S = readFileSync("src/components/purchasing/phieu-ncc-mobile.tsx", "utf8")
+    expect(S).toContain("{co && chonNhieu && (")
+    expect(S).toContain("cham(p, u, true)")
+  })
+})

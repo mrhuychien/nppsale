@@ -54,3 +54,14 @@ function khoLuu(): Storage | null {
     return null
   }
 }
+
+/**
+ * CHẠM THẺ HÀNG Ở PHIẾU NHẬP / TRẢ NCC — chủ nhà 30/09/2026: "chọn sản phẩm đổi quy cách bấm 1 cái phải
+ * vào đơn chứ sao lại cho điều chỉnh số lượng (cái này chỉ dành cho chọn nhiều sản phẩm 1 lúc)".
+ * Chọn từng mã: chạm thẻ / chạm một quy cách = sang phiếu (chưa có dòng đó thì thêm 1, có rồi thì chỉ
+ * sang). Chọn nhiều: chạm thẻ = +1 và ở lại; chạm quy cách chỉ đổi quy cách.
+ */
+export function chamTheHang(o: { chonNhieu: boolean; daCo: boolean; laQuyCach?: boolean }): { them: boolean; sangPhieu: boolean } {
+  if (o.chonNhieu) return { them: !o.laQuyCach, sangPhieu: false }
+  return { them: !o.daCo, sangPhieu: true }
+}

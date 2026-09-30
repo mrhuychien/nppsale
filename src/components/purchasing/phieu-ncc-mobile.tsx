@@ -17,7 +17,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, ChevronUp, ListChecks, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
-import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
+import { chamTheHang, docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -162,6 +162,16 @@ export function PhieuNccMobile({
     [lines, onChange, seq, chonNhieu] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
+  /* Chạm thẻ / chạm quy cách — luật ở `chamTheHang`. */
+  const cham = (p: ReceiptProduct, unit: string, laQuyCach: boolean) => {
+    const kq = chamTheHang({ chonNhieu, daCo: soLuongTrenPhieu(lines, p.id, unit) > 0, laQuyCach })
+    if (kq.them) {
+      setSeq((s) => s + 1)
+      onChange({ lines: buocSoLuong(lines, p, unit, 1, seq) })
+    }
+    if (kq.sangPhieu) moPhieu()
+  }
+
   const hopLe = validReceiptLines(lines)
   /**
    * GIẢM GIÁ PHIẾU TRƯỚC THUẾ + VAT MỘT MỨC CHO CẢ PHIẾU (chủ nhà 30/09/2026). Số gõ (đ / %) và
@@ -265,7 +275,12 @@ export function PhieuNccMobile({
                   unit={unitOf(p)}
                   qty={soLuongTrenPhieu(lines, p.id, unitOf(p))}
                   extra={extras[p.id]}
-                  onPickUnit={(u) => setUnitSel((m) => ({ ...m, [p.id]: u }))}
+                  chonNhieu={chonNhieu}
+                  onPickUnit={(u) => {
+                    setUnitSel((m) => ({ ...m, [p.id]: u }))
+                    cham(p, u, true)
+                  }}
+                  onTap={() => cham(p, unitOf(p), false)}
                   onStep={(d) => step(p, unitOf(p), d)}
                 />
               ))
@@ -533,13 +548,15 @@ export function PhieuNccMobile({
 
 /** Thẻ hàng — như `ProductCard` của /sell; giá là giá nhập gợi ý, tồn là tồn kho. */
 function TheHangNcc({
-  product, unit, qty, extra, onPickUnit, onStep,
+  product, unit, qty, extra, chonNhieu, onPickUnit, onTap, onStep,
 }: {
   product: ReceiptProduct
   unit: string
   qty: number
   extra?: PickerExtra
+  chonNhieu: boolean
   onPickUnit: (u: string) => void
+  onTap: () => void
   onStep: (d: number) => void
 }) {
   const units = donViNhap(product)
@@ -555,12 +572,12 @@ function TheHangNcc({
       role="button"
       tabIndex={0}
       aria-label={`Thêm ${product.name}`}
-      onClick={() => onStep(1)}
+      onClick={onTap}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
-          onStep(1)
+          onTap()
         }
       }}
       className={cn(
@@ -603,7 +620,13 @@ function TheHangNcc({
           ))}
         </div>
         <div className="flex-1" />
-        {co && (
+        {/* Chọn từng mã: không có −/+ (chạm là sang phiếu, sửa số lượng ở phiếu) — chỉ báo đã có. */}
+        {co && !chonNhieu && (
+          <span data-testid="da-co-tren-phieu" className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[12px] font-semibold text-primary">
+            Đã có {formatInt(qty)} {unit}
+          </span>
+        )}
+        {co && chonNhieu && (
           <div className="flex h-9 shrink-0 items-center rounded-[10px] bg-primary text-primary-foreground [&>button]:active:bg-black/10">
             <button type="button" aria-label={`Bớt ${product.name}`} onClick={rieng(() => onStep(-1))} className="h-9 w-9 text-[18px]">
               −

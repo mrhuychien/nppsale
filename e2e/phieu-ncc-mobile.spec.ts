@@ -25,12 +25,19 @@ test("nhập hàng trên điện thoại: chạm thẻ thêm hàng, đổi thùn
   await chonNcc(page)
 
   const sua = page.getByTestId("the-hang-ncc").filter({ hasText: "Sữa hộp" })
-  await sua.getByRole("button", { name: "thùng", exact: true }).click()
-  await expect(sua).toContainText("360.000")
-  // Mặc định CHỌN TỪNG MÃ: chạm một mã là sang phiếu ngay.
+  // Mặc định CHỌN TỪNG MÃ: chạm một quy cách là vào phiếu ngay với 1 đơn vị đó — chủ nhà 30/09/2026:
+  // "chọn sản phẩm đổi quy cách bấm 1 cái phải vào đơn chứ sao lại cho điều chỉnh số lượng".
   await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
+  await sua.getByRole("button", { name: "thùng", exact: true }).click()
+  await expect(page.getByTestId("buoc-phieu")).toBeVisible()
+  await expect(page.getByTestId("dong-phieu-ncc")).toContainText("360.000đ / thùng")
+  await page.getByRole("button", { name: "Thêm hàng" }).click()
+  // Chọn từng mã: thẻ không có −/+, chỉ báo đã có; chạm lại chỉ sang phiếu, không cộng thêm.
+  await expect(sua.getByTestId("da-co-tren-phieu")).toHaveText("Đã có 1 thùng")
+  await expect(sua.getByRole("button", { name: "Tăng Sữa hộp" })).toHaveCount(0)
   await sua.click()
   await expect(page.getByTestId("buoc-phieu")).toBeVisible()
+  await expect(page.getByTestId("tong-phieu-ncc")).toHaveText("360.000đ")
   await page.getByRole("button", { name: "Thêm hàng" }).click()
   // Bật CHỌN NHIỀU: thêm xong vẫn ở lại; nút chỉ đổi khi bấm, tải lại trang vẫn giữ.
   await page.getByTestId("chon-nhieu").click()

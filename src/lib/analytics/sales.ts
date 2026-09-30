@@ -195,6 +195,9 @@ export interface InvoiceLineRow {
   line_total: number
   /** Dòng hàng đổi (trả hàng ngay trên hoá đơn) — không phải hàng bán. */
   is_exchange?: boolean | null
+  /** Chiết khấu so với giá của khách (của CẢ dòng đơn) — chênh lệch theo giá lúc bán (mig 218). */
+  line_discount?: number | null
+  order_line_id?: string | null
 }
 
 /** Trạng thái hóa đơn được tính doanh thu — như `is_revenue_invoice_status`. */
@@ -264,7 +267,7 @@ export async function fetchInvoiceLines(
     (lo, from, to) =>
       supabase
         .from("sales_invoice_lines")
-        .select("id, invoice_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total, is_exchange", {
+        .select("id, invoice_id, product_id, unit_name, conversion_factor, quantity, unit_price, line_total, is_exchange, line_discount, order_line_id", {
           count: "exact",
         })
         .in("invoice_id", lo)
@@ -436,6 +439,8 @@ export interface ReturnLineRow {
   unit_name?: string | null
   quantity: number
   line_total: number
+  /** Đơn giá TRƯỚC thuế — `line_total` của dòng trả đã gồm VAT (mig 214). */
+  unit_price?: number | null
 }
 
 /** Cột dòng phiếu kho đủ để quy về đơn vị cơ sở. */
@@ -549,7 +554,7 @@ export async function fetchReturnLines(
     (lo, from, to) =>
       supabase
         .from("return_lines")
-        .select("return_id, product_id, unit_name, quantity, line_total", { count: "exact" })
+        .select("return_id, product_id, unit_name, quantity, line_total, unit_price", { count: "exact" })
         .in("return_id", lo)
         /* ⚠ HÀNG ĐỔI KHÔNG TRỪ DOANH SỐ (mig 055: `credit_note_amount` bỏ nó) — cộng
            nó vào ở cấp dòng là số theo mặt hàng lệch với số tổng. */

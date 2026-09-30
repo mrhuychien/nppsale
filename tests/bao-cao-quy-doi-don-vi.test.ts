@@ -195,7 +195,7 @@ describe("báo cáo không dùng SL thô", () => {
     const s = code(readFileSync(join(ROOT, "src/lib/analytics/sales.ts"), "utf-8"))
     expect(s).toMatch(/COT_DONG_KHO =\s*"[^"]*qty_in_base_uom[^"]*conversion_factor_snapshot/)
     expect(s.match(/\.select\(COT_DONG_KHO/g)?.length).toBe(2)
-    expect(s).toContain('"return_id, product_id, unit_name, quantity, line_total"')
+    expect(s).toContain('"return_id, product_id, unit_name, quantity, line_total, unit_price"')
     expect(s).not.toMatch(/Math\.abs\(Number\(l\.quantity\)\)/)
   })
 

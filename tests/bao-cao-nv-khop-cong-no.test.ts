@@ -10,7 +10,7 @@ import { chotTienChungTu, type HangBanNhanVien } from "@/lib/analytics/hang-ban-
  */
 const dong = (id: string, over: Partial<HangBanNhanVien> = {}): HangBanNhanVien => ({
   id, qty: 0, qtyTheoDv: {}, listed: 100_000, revenue: 95_000, diff: -5_000,
-  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, products: [], ...over,
+  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, returnListed: 0, diffReturn: 0, diffNet: -5_000, docDiscount: 0, products: [], ...over,
 })
 
 describe("báo cáo nhân viên khớp công nợ", () => {
@@ -19,7 +19,8 @@ describe("báo cáo nhân viên khớp công nợ", () => {
     expect(r.revenue).toBe(97_000) // có giảm giá đơn / VAT của HĐ
     expect(r.returnValue).toBe(10_000) // credit_note_amount, không phải Σ dòng trả
     expect(r.netRevenue).toBe(87_000) // = công nợ phát sinh của nhân viên
-    expect(r.diff).toBe(-3_000)
+    // ⚠ Chênh lệch KHÔNG tính lại từ tiền HĐ (gồm VAT) — chủ nhà 30/09/2026: chênh là trước thuế.
+    expect(r.diff).toBe(-5_000)
   })
   it("nhân viên chỉ có hàng trả vẫn ra số âm đúng", () => {
     const [r] = chotTienChungTu([dong("nv2")], new Map(), new Map([["nv2", 5_000]]))

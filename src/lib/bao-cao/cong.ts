@@ -33,8 +33,15 @@ export interface DongBan {
   giaVon: number
   /** Số lượng đơn vị cơ sở, dương. */
   sl: number
-  /** Giá trị niêm yết của dòng bán (SL dòng × giá niêm yết của đơn vị dòng) — như báo cáo cũ. */
+  /**
+   * Giá trị niêm yết LÚC BÁN của dòng (bán hoặc trả) — `chenh-lech.ts` (chủ nhà 30/09/2026).
+   * Chênh = `tienTT − niemYet`; dòng không có `niemYet` (HĐ không dòng) không tính chênh.
+   */
   niemYet?: number
+  /** Tiền theo giá sửa, TRƯỚC thuế và TRƯỚC giảm giá cả đơn: SL × đơn giá dòng. */
+  tienTT?: number
+  /** Giảm giá cả đơn của hoá đơn — chỉ ghi ở dòng đầu mỗi HĐ (chủ nhà: "tính riêng, tính theo đơn"). */
+  giamDon?: number
   /** Dòng bán của mặt hàng CHƯA CÓ GIÁ VỐN trong kỳ (giá vốn đang tính = 0 → lãi gộp phồng). */
   thieuGV?: true
 }
@@ -217,8 +224,13 @@ export interface NhomBan extends TongBan {
   /** SL theo từng đơn vị cơ sở ("640 hộp · 120 chai") — bán ra / trả về. */
   qtyDv: SLTheoDonVi
   rqtyDv: SLTheoDonVi
-  /** Σ giá trị niêm yết của dòng bán; chênh lệch = rev − listed. */
+  /** Σ niêm yết lúc bán của dòng bán / dòng trả, và tiền trước thuế tương ứng (`chenh-lech.ts`). */
   listed: number
+  revTT: number
+  rlisted: number
+  retTT: number
+  /** Σ giảm giá cả đơn của các HĐ trong nhóm. */
+  giamDon: number
   /** Ngày bán gần nhất. */
   last: string
 }
@@ -234,23 +246,31 @@ export function gomBan(ls: readonly DongBan[], khoa: (l: DongBan) => string, dm?
   const out = new Map<string, NhomBan>()
   for (const { k, ls: gl } of Array.from(m.values())) {
     const t = congBan(gl)
-    let qty = 0, rqty = 0, last = "", listed = 0
+    let qty = 0, rqty = 0, last = "", listed = 0, revTT = 0, rlisted = 0, retTT = 0, giamDon = 0
     const qtyDv: SLTheoDonVi = {}, rqtyDv: SLTheoDonVi = {}
     const sp = new Set<string>()
     for (const l of gl) {
       const dv = dm?.sp.get(l.sp)?.donViCoSo
       if (l.loai > 0) {
         qty += l.sl
-        listed += l.niemYet || 0
+        if (l.niemYet != null) {
+          listed += l.niemYet
+          revTT += l.tienTT || 0
+        }
+        giamDon += l.giamDon || 0
         congSL(qtyDv, dv, l.sl)
         if (l.sp) sp.add(l.sp)
         if (l.ngay > last) last = l.ngay
       } else {
         rqty += l.sl
+        if (l.niemYet != null) {
+          rlisted += l.niemYet
+          retTT += l.tienTT || 0
+        }
         congSL(rqtyDv, dv, l.sl)
       }
     }
-    out.set(k, { ...t, k, nProd: sp.size, qty, rqty, last, qtyDv, rqtyDv, listed })
+    out.set(k, { ...t, k, nProd: sp.size, qty, rqty, last, qtyDv, rqtyDv, listed, revTT, rlisted, retTT, giamDon })
   }
   return out
 }

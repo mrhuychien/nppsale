@@ -11,12 +11,16 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
+import { chenhDongBan, chenhDongTra, giaNyCoSoTrenHd, type DongDonGoc, type DongHdGia } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
 
 export interface DongBanHangBan {
   product_id: string
+  /** (mig 218) giá niêm yết lúc bán — `chenh-lech.ts`. */
+  line_discount?: number | null
+  order_line_id?: string | null
   unit_name: string
   /** Hệ số chụp trên dòng hóa đơn — ưu tiên hơn danh mục. */
   conversion_factor?: number | null
@@ -30,6 +34,8 @@ export interface DongTraHangBan {
   unit_name?: string | null
   quantity: number
   line_total: number
+  /** Đơn giá trước thuế — chênh trả. */
+  unit_price?: number | null
 }
 
 export interface HangBanSanPham {
@@ -43,11 +49,16 @@ export interface HangBanSanPham {
   qtyTheoDv: SLTheoDonVi
   listed: number
   revenue: number
+  /** Chênh lệch BÁN — trước thuế, sau giảm giá cả đơn, so với niêm yết lúc bán (`chenh-lech.ts`). */
   diff: number
   returnQty: number
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
+  /** Niêm yết lúc bán của hàng trả · chênh trả · chênh thuần = diff − diffReturn (chủ nhà 30/09/2026). */
+  returnListed: number
+  diffReturn: number
+  diffNet: number
 }
 
 export interface HangBanNhanVien {
@@ -63,6 +74,11 @@ export interface HangBanNhanVien {
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
+  returnListed: number
+  diffReturn: number
+  diffNet: number
+  /** Giảm giá cả đơn — cột RIÊNG theo hoá đơn, không trộn vào chênh (chủ nhà 30/09/2026). */
+  docDiscount: number
   products: HangBanSanPham[]
 }
 
@@ -85,8 +101,14 @@ export function giaTriNiemYetDong(l: DongBanHangBan, sp: SanPhamQuyDoi | null | 
  */
 export function congHangBanNhanVien(input: {
   ban: ReadonlyArray<{ uid: string; line: DongBanHangBan }>
-  tra: ReadonlyArray<{ uid: string; line: DongTraHangBan }>
+  /** `invoiceId` = hoá đơn gốc của phiếu trả — chênh trả theo giá lúc bán. */
+  tra: ReadonlyArray<{ uid: string; line: DongTraHangBan; invoiceId?: string | null }>
   sanPham: ReadonlyMap<string, SanPhamHangBan>
+  /** (mig 218) dòng đơn gốc / dòng hoá đơn gốc của phiếu trả — thiếu thì lùi về bảng giá chung hiện tại. */
+  dongDon?: ReadonlyMap<string, DongDonGoc>
+  dongHdGoc?: ReadonlyMap<string, readonly DongHdGia[]>
+  /** Giảm giá cả đơn theo hoá đơn — cộng riêng cho nhân viên của HĐ. */
+  giamDon?: ReadonlyArray<{ uid: string; tien: number }>
 }): HangBanNhanVien[] {
   const m = new Map<string, HangBanNhanVien & { _sp: Map<string, HangBanSanPham> }>()
   const dong = (uid: string) => {
@@ -94,7 +116,8 @@ export function congHangBanNhanVien(input: {
     if (!r) {
       r = {
         id: uid, qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
-        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, products: [], _sp: new Map(),
+        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, returnListed: 0, diffReturn: 0, diffNet: 0,
+        docDiscount: 0, products: [], _sp: new Map(),
       }
       m.set(uid, r)
     }
@@ -110,7 +133,7 @@ export function congHangBanNhanVien(input: {
         name: sp?.name || "—",
         unit: sp?.base_unit || "",
         qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
-        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0,
+        returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, returnListed: 0, diffReturn: 0, diffNet: 0,
       }
       r._sp.set(pid, p)
       r.products.push(p)
@@ -121,44 +144,60 @@ export function congHangBanNhanVien(input: {
   for (const { uid, line } of input.ban) {
     const sp = input.sanPham.get(line.product_id)
     if (!sp) continue
-    // SL quy về đơn vị cơ sở; niêm yết theo đơn vị dòng.
-    const qty = soLuongCoSo(line.quantity, heSoQuyDoi(sp, line.unit_name, line.conversion_factor))
-    const listed = giaTriNiemYetDong(line, sp)
+    // SL quy về đơn vị cơ sở; niêm yết LÚC BÁN (lùi về bảng giá chung hiện tại) — `chenh-lech.ts`.
+    const heSo = heSoQuyDoi(sp, line.unit_name, line.conversion_factor)
+    const qty = soLuongCoSo(line.quantity, heSo)
+    const c = chenhDongBan(
+      { ...line, unit_price: Number(line.unit_price || 0) }, sp, 1, input.dongDon, giaNiemYetDonVi(sp, line.unit_name, heSo)
+    )
     const revenue = Number(line.line_total || 0)
     const r = dong(uid)
     r.qty += qty
     congSL(r.qtyTheoDv, sp.base_unit, qty)
-    r.listed += listed
+    r.listed += c.niemYet
     r.revenue += revenue
+    r.diff += c.chenh
     const p = matHang(r, line.product_id)
     p.qty += qty
     congSL(p.qtyTheoDv, p.unit, qty)
-    p.listed += listed
+    p.listed += c.niemYet
     p.revenue += revenue
+    p.diff += c.chenh
   }
 
-  for (const { uid, line } of input.tra) {
+  for (const { uid, line, invoiceId } of input.tra) {
     const sp = input.sanPham.get(line.product_id)
     // Dòng trả không có hệ số chụp → tra danh mục.
-    const qty = soLuongCoSo(line.quantity, heSoQuyDoi(sp, line.unit_name || ""))
+    const heSo = heSoQuyDoi(sp, line.unit_name || "")
+    const qty = soLuongCoSo(line.quantity, heSo)
     const value = Number(line.line_total || 0)
+    // Chênh trả: "lúc đi đã ăn chênh, lúc về phải trả chênh" — giá lúc bán trên hoá đơn gốc.
+    const goc = invoiceId ? input.dongHdGoc?.get(invoiceId) : undefined
+    const gia = goc ? giaNyCoSoTrenHd(line.product_id, goc, sp, input.dongDon) : null
+    const c = chenhDongTra(line, sp, gia, giaNiemYetDonVi(sp, line.unit_name || "", heSo))
     const r = dong(uid)
     r.returnQty += qty
     congSL(r.returnQtyTheoDv, sp?.base_unit, qty)
     r.returnValue += value
+    r.returnListed += c.niemYet
+    r.diffReturn += c.chenh
     const p = matHang(r, line.product_id)
     p.returnQty += qty
     congSL(p.returnQtyTheoDv, p.unit, qty)
     p.returnValue += value
+    p.returnListed += c.niemYet
+    p.diffReturn += c.chenh
   }
+
+  for (const g of input.giamDon ?? []) if (g.tien > 0) dong(g.uid).docDiscount += g.tien
 
   const out: HangBanNhanVien[] = []
   for (const r of Array.from(m.values())) {
-    r.diff = r.revenue - r.listed
     r.netRevenue = r.revenue - r.returnValue
+    r.diffNet = r.diff - r.diffReturn
     for (const p of r.products) {
-      p.diff = p.revenue - p.listed
       p.netRevenue = p.revenue - p.returnValue
+      p.diffNet = p.diff - p.diffReturn
     }
     r.products.sort((a, b) => b.revenue - a.revenue)
     const { _sp, ...rest } = r
@@ -370,7 +409,8 @@ export function chotTienChungTu<T extends HangBanNhanVien>(
   return rows.map((r) => {
     const revenue = tienHoaDon.get(r.id) ?? 0
     const returnValue = tienTra.get(r.id) ?? 0
-    return { ...r, revenue, returnValue, diff: revenue - r.listed, netRevenue: revenue - returnValue }
+    /* ⚠ KHÔNG tính lại `diff` từ tiền chứng từ — tiền HĐ gồm VAT; chênh lệch là trước thuế (30/09/2026). */
+    return { ...r, revenue, returnValue, netRevenue: revenue - returnValue }
   })
 }
 

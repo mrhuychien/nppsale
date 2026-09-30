@@ -1,5 +1,6 @@
 "use client"
 
+import { napGiaLucBan } from "@/lib/bao-cao/nap-ban-hang"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -12,6 +13,7 @@ import { ReportTable, TotalsRow } from "@/components/analytics/report-table"
 import {
   fetchRevenueInvoicesDu,
   fetchInvoiceLines,
+  giamGiaHoaDon,
   fetchReturnsRowsDu,
   fetchPostedStockEntries,
   fetchOrgRows,
@@ -80,6 +82,16 @@ interface StockEntry {
   type: string
 }
 
+/** Số chênh có dấu: + xanh (bán trên giá), − đỏ (bán dưới giá). */
+function hienChenh(v: number) {
+  const t = Math.round(v)
+  return (
+    <span className={t > 0 ? "text-tertiary" : t < 0 ? "text-error" : "text-muted-foreground"}>
+      {t === 0 ? "0" : `${t > 0 ? "+" : "−"}${formatCurrency(Math.abs(t))}`}
+    </span>
+  )
+}
+
 const ROLE_LABEL: Record<string, string> = {
   owner: "Chủ DN",
   manager: "Quản lý",
@@ -116,6 +128,8 @@ export default function EmployeesReportPage() {
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
+  /** (mig 218) dòng đơn gốc + dòng hoá đơn gốc của phiếu trả — chênh lệch theo giá lúc bán. */
+  const [giaLucBan, setGiaLucBan] = useState<Awaited<ReturnType<typeof napGiaLucBan>>>({ dongDon: new Map(), dongHdGoc: new Map() })
   // Giá vốn hàng trả ĐÃ NHẬP LẠI KHO theo phiếu — trừ khỏi giá vốn (mig 192).
   const [returnCosts, setReturnCosts] = useState<Awaited<ReturnType<typeof fetchReturnCosts>>>(new Map())
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -181,6 +195,9 @@ export default function EmployeesReportPage() {
       setStockLines(stockLinesList)
       setReturnLines(returnLinesList)
       setReturnCosts(returnCostMap)
+      setGiaLucBan(
+        await napGiaLucBan(supabase, linesList, returnsRows.map((r) => r.invoice_id).filter((x): x is string => !!x))
+      )
     } catch (err) {
       setLoadError(errorMessage(err))
       toast({
@@ -730,10 +747,14 @@ export default function EmployeesReportPage() {
 
   const employeeSummaryRows: SummaryRow[] = useMemo(() => {
     const ban: { uid: string; line: InvoiceLineRow }[] = []
+    const giamDon: { uid: string; tien: number }[] = []
     for (const o of invoices) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
-      for (const l of linesByInvoice.get(o.id) || []) {
+      const dongHd = linesByInvoice.get(o.id) || []
+      // Giảm giá cả đơn tính RIÊNG theo hoá đơn (chủ nhà 30/09/2026), không trộn vào chênh.
+      giamDon.push({ uid: o.sales_user_id, tien: giamGiaHoaDon(o, dongHd) })
+      for (const l of dongHd) {
         if (!productPasses(l.product_id)) continue
         ban.push({ uid: o.sales_user_id, line: l })
       }
@@ -748,9 +769,9 @@ export default function EmployeesReportPage() {
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
-    const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line }))
+    const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line, invoiceId: returnById.get(line.return_id)?.invoice_id ?? null }))
 
-    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap })
+    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap, dongDon: giaLucBan.dongDon, dongHdGoc: giaLucBan.dongHdGoc, giamDon })
     /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — xem `chotTienChungTu`. */
     const coLocHang = productFilter.length > 0 || categoryFilter.length > 0 || brandFilter.length > 0
     if (!coLocHang) {
@@ -769,7 +790,7 @@ export default function EmployeesReportPage() {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
+  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, returnById, giaLucBan, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -818,12 +839,15 @@ export default function EmployeesReportPage() {
           "Tên hàng",
           "Đơn vị",
           "SL bán",
-          "Giá trị niêm yết",
+          "Niêm yết lúc bán",
           "Doanh thu",
-          "Chênh lệch",
+          "Chênh lệch bán",
+          "Giảm giá đơn",
           "SL trả",
           "Giá trị trả",
+          "Chênh lệch trả",
           "Doanh thu thuần",
+          "Chênh lệch thuần",
         ],
       ]
       for (const r of employeeSummaryRows) {
@@ -837,10 +861,13 @@ export default function EmployeesReportPage() {
           hienSLTheoDonVi(r.qtyTheoDv),
           r.listed,
           r.revenue,
-          r.diff,
+          Math.round(r.diff),
+          -r.docDiscount,
           hienSLTheoDonVi(r.returnQtyTheoDv),
           -r.returnValue,
+          Math.round(r.diffReturn),
           r.netRevenue,
+          Math.round(r.diffNet),
         ])
         for (const p of r.products) {
           out.push([
@@ -851,10 +878,13 @@ export default function EmployeesReportPage() {
             p.qty,
             p.listed,
             p.revenue,
-            p.diff,
+            Math.round(p.diff),
+            "",
             p.returnQty,
             -p.returnValue,
+            Math.round(p.diffReturn),
             p.netRevenue,
+            Math.round(p.diffNet),
           ])
         }
       }
@@ -1208,7 +1238,7 @@ export default function EmployeesReportPage() {
             },
             {
               key: "listed",
-              label: "Giá trị niêm yết",
+              label: "Niêm yết lúc bán",
               align: "right",
               render: (r) => formatCurrency(r.listed),
             },
@@ -1219,22 +1249,17 @@ export default function EmployeesReportPage() {
               render: (r) => formatCurrency(r.revenue),
             },
             {
+              /* Chênh = SL × (giá sửa − giá gốc lúc bán); giảm giá cả đơn là cột riêng (chủ nhà 30/09/2026). */
               key: "diff",
-              label: "Chênh lệch",
+              label: "Chênh lệch bán",
               align: "right",
-              render: (r) => (
-                <span
-                  className={
-                    r.diff > 0
-                      ? "text-tertiary"
-                      : r.diff < 0
-                        ? "text-error"
-                        : "text-muted-foreground"
-                  }
-                >
-                  {r.diff === 0 ? "0" : formatCurrency(Math.abs(r.diff))}
-                </span>
-              ),
+              render: (r) => hienChenh(r.diff),
+            },
+            {
+              key: "docDiscount",
+              label: "Giảm giá đơn",
+              align: "right",
+              render: (r) => (r.docDiscount > 0 ? <span className="text-error">-{formatCurrency(r.docDiscount)}</span> : "0"),
             },
             {
               key: "rqty",
@@ -1254,6 +1279,12 @@ export default function EmployeesReportPage() {
                 ),
             },
             {
+              key: "diffReturn",
+              label: "Chênh lệch trả",
+              align: "right",
+              render: (r) => hienChenh(r.diffReturn),
+            },
+            {
               key: "net",
               label: "Doanh thu thuần",
               align: "right",
@@ -1262,6 +1293,12 @@ export default function EmployeesReportPage() {
                   {formatCurrency(r.netRevenue)}
                 </span>
               ),
+            },
+            {
+              key: "diffNet",
+              label: "Chênh lệch thuần",
+              align: "right",
+              render: (r) => <span className="font-semibold">{hienChenh(r.diffNet)}</span>,
             },
           ]}
           totalsRow={
@@ -1282,11 +1319,14 @@ export default function EmployeesReportPage() {
                   ),
                   align: "right",
                 },
+                { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.diff, 0)), align: "right" },
                 {
-                  content: formatCurrency(
-                    employeeSummaryRows.reduce((s, r) => s + r.diff, 0)
-                  ),
+                  content: (() => {
+                    const v = employeeSummaryRows.reduce((s, r) => s + r.docDiscount, 0)
+                    return v > 0 ? `-${formatCurrency(v)}` : "0"
+                  })(),
                   align: "right",
+                  className: "text-error",
                 },
                 { content: hienSLTheoDonVi(totalsSummaryReturnQty), align: "right" },
                 {
@@ -1297,6 +1337,7 @@ export default function EmployeesReportPage() {
                   align: "right",
                   className: "text-error",
                 },
+                { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.diffReturn, 0)), align: "right" },
                 {
                   content: formatCurrency(
                     employeeSummaryRows.reduce((s, r) => s + r.netRevenue, 0)
@@ -1304,6 +1345,7 @@ export default function EmployeesReportPage() {
                   align: "right",
                   className: "text-primary",
                 },
+                { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.diffNet, 0)), align: "right" },
               ]}
             />
           }
@@ -1316,19 +1358,21 @@ export default function EmployeesReportPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Đơn vị</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL bán</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị niêm yết</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Niêm yết lúc bán</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch bán</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">DT thuần</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh thuần</th>
                   </tr>
                 </thead>
                 <tbody>
                   {r.products.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={12}
                         className="px-3 py-2 text-center text-xs text-muted-foreground"
                       >
                         Không có dòng hàng
@@ -1349,18 +1393,7 @@ export default function EmployeesReportPage() {
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {formatCurrency(p.revenue)}
                         </td>
-                        <td
-                          className={
-                            "px-3 py-1.5 text-right tabular-nums " +
-                            (p.diff > 0
-                              ? "text-tertiary"
-                              : p.diff < 0
-                                ? "text-error"
-                                : "text-muted-foreground")
-                          }
-                        >
-                          {p.diff === 0 ? "0" : formatCurrency(Math.abs(p.diff))}
-                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diff)}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {p.returnQty > 0 ? p.returnQty.toLocaleString("vi-VN") : "0"}
                         </td>
@@ -1373,9 +1406,11 @@ export default function EmployeesReportPage() {
                             "0"
                           )}
                         </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diffReturn)}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
                           {formatCurrency(p.netRevenue)}
                         </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{hienChenh(p.diffNet)}</td>
                       </tr>
                     ))
                   )}

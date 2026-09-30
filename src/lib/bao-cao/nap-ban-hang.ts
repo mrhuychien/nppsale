@@ -20,7 +20,9 @@ import {
   giaVonBinhQuanCoSo, soLuongCoSoDongHd, soLuongCoSoDongTra, giamGiaHoaDon,
   type RevenueInvoiceRow, type InvoiceLineRow, type ReturnSummaryRow, type ReturnLineRow,
 } from "@/lib/analytics/sales"
-import { nhanVienPhieuTra, giaTriNiemYetDong } from "@/lib/analytics/hang-ban-nhan-vien"
+import { nhanVienPhieuTra } from "@/lib/analytics/hang-ban-nhan-vien"
+import { chenhDongBan, chenhDongTra, giaNyCoSoTrenHd, type DongDonGoc } from "@/lib/analytics/chenh-lech"
+import { giaNiemYetDonVi, heSoQuyDoi } from "@/lib/analytics/units"
 import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import type { DanhMucBC, DanhMucVao, DongBan } from "./cong"
@@ -71,6 +73,10 @@ export function dungDongBan(p: {
   giaVonTra: ReadonlyMap<string, { total: number; byProduct: ReadonlyMap<string, number> }>
   nvTra: ReadonlyMap<string, string>
   dm: DanhMucBC
+  /** (mig 218) dòng đơn gốc — giá niêm yết lúc bán. Thiếu thì lùi về bảng giá chung hiện tại. */
+  dongDon?: ReadonlyMap<string, DongDonGoc>
+  /** (mig 218) dòng hoá đơn gốc của phiếu trả, theo id hoá đơn — chênh trả. */
+  dongHdGoc?: ReadonlyMap<string, readonly InvoiceLineRow[]>
 }): { dong: DongBan[]; hoaDon: Map<string, HoaDonBC>; phieuTra: PhieuTraBC[] } {
   const { dm } = p
   const dong: DongBan[] = []
@@ -101,8 +107,13 @@ export function dungDongBan(p: {
       const qd = quyDoiTuDanhMuc(dm, l.product_id)
       const sl = soLuongCoSoDongHd(l, qd)
       const gvCoSo = p.giaVonCoSo.get(l.product_id) || 0
-      const niemYet = giaTriNiemYetDong(l, qd)
-      dong.push({ ...base, sp: l.product_id, tien, giaVon: sl * gvCoSo, sl, niemYet, ...(sl > 0 && !(gvCoSo > 0) ? { thieuGV: true as const } : {}) })
+      // Chênh = SL × (giá sửa − giá gốc lúc bán); giảm giá cả đơn tính RIÊNG (`giamDon`) — chenh-lech.ts.
+      const c = chenhDongBan(l, qd, 1, p.dongDon, giaNiemYetDonVi(qd, l.unit_name, heSoQuyDoi(qd, l.unit_name, l.conversion_factor)))
+      dong.push({
+        ...base, sp: l.product_id, tien, giaVon: sl * gvCoSo, sl, niemYet: c.niemYet, tienTT: c.tien,
+        ...(i === 0 ? { giamDon: giamGiaHoaDon(h, ls) } : {}),
+        ...(sl > 0 && !(gvCoSo > 0) ? { thieuGV: true as const } : {}),
+      })
     })
   }
   const theoTra = new Map<string, ReturnLineRow[]>()
@@ -134,7 +145,12 @@ export function dungDongBan(p: {
       conLai -= t
       const gvSp = gv?.byProduct.get(x.l.product_id) || 0
       const tong = slTheoSp.get(x.l.product_id) || 0
-      dong.push({ ...base, sp: x.l.product_id, tien: t, giaVon: tong ? (gvSp * x.sl) / tong : 0, sl: x.sl })
+      // Chênh trả: giá niêm yết lúc bán của đúng mặt hàng trên hoá đơn gốc (chủ nhà 30/09/2026).
+      const qd = quyDoiTuDanhMuc(dm, x.l.product_id)
+      const goc = r.invoice_id ? p.dongHdGoc?.get(r.invoice_id) : undefined
+      const gia = goc ? giaNyCoSoTrenHd(x.l.product_id, goc, qd, p.dongDon) : null
+      const c = chenhDongTra(x.l, qd, gia, giaNiemYetDonVi(qd, x.l.unit_name || "", heSoQuyDoi(qd, x.l.unit_name || "")))
+      dong.push({ ...base, sp: x.l.product_id, tien: t, giaVon: tong ? (gvSp * x.sl) / tong : 0, sl: x.sl, niemYet: c.niemYet, tienTT: c.tien })
     })
   }
   return { dong, hoaDon, phieuTra }
@@ -150,6 +166,8 @@ interface SoBanTho {
   giaVonCoSo: Map<string, number>
   giaVonTra: Map<string, { total: number; byProduct: Map<string, number> }>
   thieu: boolean
+  dongDon: Map<string, DongDonGoc>
+  dongHdGoc: Map<string, InvoiceLineRow[]>
 }
 
 interface SoBanMotLuot {
@@ -163,6 +181,9 @@ interface SoBanMotLuot {
   dong_tra: ReturnLineRow[]
   gv: { product_id: string; sl: number; tien: number }[]
   gv_tra: { return_id: string; product_id: string; tien: number }[]
+  /** (mig 218) — sổ chưa chạy thì không có, chênh lệch lùi về bảng giá chung hiện tại. */
+  dong_hd_goc?: InvoiceLineRow[]
+  dong_don?: DongDonGoc[]
 }
 
 /** Chuyển kết quả hàm máy chủ về đúng dạng dòng mà cách đọc cũ trả ra (cùng phép chuẩn hoá). */
@@ -194,7 +215,46 @@ export function tuMotLuot(x: SoBanMotLuot): SoBanTho {
     o.byProduct.set(g.product_id, (o.byProduct.get(g.product_id) ?? 0) + Number(g.tien || 0))
     giaVonTra.set(g.return_id, o)
   }
-  return { hd, dongHd: x.dong_hd, tra, traThem, dongTra: x.dong_tra, giaVonCoSo, giaVonTra, thieu: false }
+  return {
+    hd, dongHd: x.dong_hd, tra, traThem, dongTra: x.dong_tra, giaVonCoSo, giaVonTra, thieu: false,
+    dongDon: new Map((x.dong_don ?? []).map((d) => [d.id, d])),
+    dongHdGoc: nhomTheoHd(x.dong_hd_goc ?? []),
+  }
+}
+
+function nhomTheoHd(ls: readonly InvoiceLineRow[]): Map<string, InvoiceLineRow[]> {
+  const m = new Map<string, InvoiceLineRow[]>()
+  for (const l of ls) {
+    if (l.is_exchange) continue
+    const a = m.get(l.invoice_id)
+    if (a) a.push(l)
+    else m.set(l.invoice_id, [l])
+  }
+  return m
+}
+
+/**
+ * Dòng đơn gốc + dòng hoá đơn gốc của phiếu trả — cho chênh lệch theo giá lúc bán, khi đọc từng
+ * bảng (không qua hàm máy chủ). Dùng chung với Báo cáo › Nhân viên.
+ */
+export async function napGiaLucBan(
+  sb: SupabaseClient,
+  dongHd: readonly InvoiceLineRow[],
+  hdCuaTra: readonly string[]
+): Promise<{ dongDon: Map<string, DongDonGoc>; dongHdGoc: Map<string, InvoiceLineRow[]> }> {
+  const daCo = new Set(dongHd.map((l) => l.invoice_id))
+  const canDoc = Array.from(new Set(hdCuaTra.filter((id) => id && !daCo.has(id))))
+  const them = canDoc.length ? await fetchInvoiceLines(sb, canDoc) : []
+  const tatCa = [...dongHd, ...them]
+  const idDon = Array.from(new Set(tatCa.map((l) => l.order_line_id).filter((x): x is string => !!x)))
+  const don = await docTheoLoId<DongDonGoc>(
+    idDon,
+    (lo, from, to) =>
+      sb.from("sales_order_lines").select("id, unit_name, conversion_factor, quantity, unit_price, line_discount", { count: "exact" }).in("id", lo).order("id").range(from, to),
+    "đọc dòng đơn (giá lúc bán)"
+  )
+  const goc = nhomTheoHd(tatCa.filter((l) => hdCuaTra.includes(l.invoice_id)))
+  return { dongDon: new Map(don.map((d) => [d.id, d])), dongHdGoc: goc }
 }
 
 /** Cách đọc cũ: từng bảng từ trình duyệt (khi sổ chưa chạy mig 204). */
@@ -221,7 +281,9 @@ async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: stri
   ])
   const traThem = new Map(thongTinTra.map((r) => [r.id, { ma: maTra.get(r.id), lyDo: r.reason || "", tuSinh: !!r.credit_with_invoice }]))
   for (const id of traIds) if (!traThem.has(id)) traThem.set(id, { ma: maTra.get(id), lyDo: "", tuSinh: false })
+  const gia = await napGiaLucBan(sb, dongHd, tra.rows.map((r) => r.invoice_id).filter((x): x is string => !!x))
   return {
+    ...gia,
     hd: hd.rows,
     dongHd,
     tra: tra.rows,
@@ -251,6 +313,8 @@ export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: 
     giaVonTra: tho.giaVonTra,
     nvTra: nhanVienPhieuTra(tho.tra, tho.hd),
     dm,
+    dongDon: tho.dongDon,
+    dongHdGoc: tho.dongHdGoc,
   })
   return { ...out, thieu: tho.thieu }
 }

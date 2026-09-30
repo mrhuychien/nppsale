@@ -221,7 +221,7 @@ export function ManBanHang() {
       } else {
         const kf = view === "time" ? (l: DongBan) => khoaThoiGian(g, l.ngay) : khoaChieu(view as Exclude<Xem, "docs" | "time">, dm)
         const m = gomBan(cur, kf, dm)
-        const rong = (): NhomBan => ({ k: "", rev: 0, ret: 0, net: 0, cost: 0, gp: 0, nInv: 0, nCust: 0, avg: 0, nProd: 0, qty: 0, rqty: 0, last: "", qtyDv: {}, rqtyDv: {}, listed: 0 })
+        const rong = (): NhomBan => ({ k: "", rev: 0, ret: 0, net: 0, cost: 0, gp: 0, nInv: 0, nCust: 0, avg: 0, nProd: 0, qty: 0, rqty: 0, last: "", qtyDv: {}, rqtyDv: {}, listed: 0, revTT: 0, rlisted: 0, retTT: 0, giamDon: 0 })
         const nhom: NhomBC[] =
           view === "time"
             ? dsThoiGian.map((t, i) => ({ ...(m.get(t.k) || rong()), k: t.k, _n: t.label, _sub: t.sub, _s: i, r: t.r }))
@@ -230,7 +230,7 @@ export function ManBanHang() {
                 return { ...x, _n: n.n, _sub: n.s }
               })
         const tatCa = gomBan(cur, () => "", dm).get("")
-        const tong: NhomBC = { _n: "Tổng", ...T, nProd: new Set(cur.filter((l) => l.loai > 0 && l.sp).map((l) => l.sp)).size, qty: 0, rqty: 0, last: "", qtyDv: tatCa?.qtyDv || {}, rqtyDv: tatCa?.rqtyDv || {}, listed: tatCa?.listed || 0 }
+        const tong: NhomBC = { _n: "Tổng", ...T, nProd: new Set(cur.filter((l) => l.loai > 0 && l.sp).map((l) => l.sp)).size, qty: 0, rqty: 0, last: "", qtyDv: tatCa?.qtyDv || {}, rqtyDv: tatCa?.rqtyDv || {}, listed: tatCa?.listed || 0, revTT: tatCa?.revTT || 0, rlisted: tatCa?.rlisted || 0, retTT: tatCa?.retTT || 0, giamDon: tatCa?.giamDon || 0 }
         // Chỉ tiêu mỗi nhân viên = mức doanh số chung A (cài đặt lương) quy theo số ngày của kỳ.
         const chiTieu = d.chiTieuThang ? chiTieuKy(d.chiTieuThang, a, b) : 0
         const M = {
@@ -285,12 +285,18 @@ export function ManBanHang() {
             // Như báo cáo cũ "Hàng bán theo nhân viên" (chủ nhà 27/09/2026) + chỉ tiêu từ cài đặt lương.
             cot = [
               { k: "slBan", label: "SL bán", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.qtyDv), sub: "" }), coTong: true, wrap: true },
-              { k: "listed", label: "Giá trị niêm yết", f: "money", v: (x) => x.listed },
+              /* ⚠ CHÊNH (chủ nhà 30/09/2026): "Nhân viên sửa giá loại nào -> tính phần chênh số lượng X (giá
+                 sửa - giá gốc)", cả hàng đi lẫn hàng trả; "Phần giảm giá cả đơn tính riêng (tính theo đơn)". */
+              { k: "listed", label: "Niêm yết lúc bán", f: "money", v: (x) => x.listed },
+              { k: "revTT", label: "Tiền theo giá sửa", f: "money", v: (x) => x.revTT, opt: true },
               M.rev,
-              { k: "diff", label: "Chênh lệch", f: "money", v: (x) => (x.rev || 0) - (x.listed || 0) },
+              { k: "diff", label: "Chênh lệch bán", f: "money", v: (x) => (x.revTT || 0) - (x.listed || 0) },
+              { k: "giamDon", label: "Giảm giá đơn", f: "money", v: (x) => (x.giamDon ? -x.giamDon : 0) },
               { k: "slTra", label: "SL trả", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.rqtyDv), sub: "" }), coTong: true, wrap: true },
               { ...M.ret, label: "Giá trị trả", v: (x: NhomBC) => (x.ret ? -x.ret : 0) },
+              { k: "diffTra", label: "Chênh lệch trả", f: "money", v: (x) => (x.retTT || 0) - (x.rlisted || 0) },
               M.net,
+              { k: "diffNet", label: "Chênh lệch thuần", f: "money", v: (x) => (x.revTT || 0) - (x.listed || 0) - ((x.retTT || 0) - (x.rlisted || 0)) },
               ...(chiTieu
                 ? [
                     { k: "target", label: "Chỉ tiêu", f: "money", v: (x: NhomBC) => (x.k ? chiTieu : null), noTot: true } as CotBang<NhomBC>,

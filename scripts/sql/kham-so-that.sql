@@ -498,4 +498,10 @@ SELECT 56, 'Mig 217 (Huỷ HĐ = huỷ đơn, một đơn một HĐ)',
        ELSE 'OK — đã vá' END,
   'Trước khi chạy mig: đơn nhiều HĐ = ' || (SELECT count(*) FROM (SELECT order_id FROM sales_invoices WHERE status = 'posted' AND order_id IS NOT NULL
      GROUP BY order_id HAVING count(*) > 1) x)
+UNION ALL
+-- 57. Mig 218 — chênh lệch theo giá lúc bán + chênh trả (báo cáo bán theo nhân viên)
+SELECT 57, 'Mig 218 (Chênh lệch giá lúc bán, chênh trả)',
+  CASE WHEN position('dong_hd_goc' IN pg_get_functiondef('public.bao_cao_so_ban(date, date)'::regprocedure)) = 0
+       THEN 'CHƯA — chênh lệch báo cáo nhân viên lùi về bảng giá chung hiện tại, chưa có chênh trả'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

@@ -25,13 +25,14 @@ import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import { timXepHang } from "@/lib/search"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import {
-  lineDiscountAmountOf, lineNetOf, receiptTotals, validReceiptLines,
+  lineDiscountAmountOf, lineNetOf, validReceiptLines,
   type ReceiptLine, type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { inSupplierScope, linesOutOfSupplierScope } from "@/lib/purchasing/return-form"
 import type { PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
-  buocSoLuong, datSoLuong, dongChuaCoGia, doiDonViDong, donViNhap, giaGoiY, soLuongTrenPhieu, tongSoLuong,
+  buocSoLuong, datSoLuong, dongChuaCoGia, doiDonViDong, donViNhap, giaGoiY, MUC_VAT, soLuongTrenPhieu, tongPhieuNcc, tongSoLuong, vatMacDinh,
+  type GiamGiaPhieu,
 } from "@/lib/purchasing/phieu-mobile"
 
 /** Trần số thẻ vẽ một lúc — như /sell. */
@@ -162,7 +163,20 @@ export function PhieuNccMobile({
   )
 
   const hopLe = validReceiptLines(lines)
-  const t = receiptTotals(hopLe, value.discount, value.vatOverride)
+  /**
+   * GIẢM GIÁ PHIẾU TRƯỚC THUẾ + VAT MỘT MỨC CHO CẢ PHIẾU (chủ nhà 30/09/2026). Số gõ (đ / %) và
+   * mức VAT sống ở đây; phiếu nhận SỐ TIỀN: `discount` = tiền giảm, `vatOverride` = tiền VAT —
+   * máy chủ cộng `subtotal + vat − discount` ra đúng tổng này (xem `tongPhieuNcc`).
+   */
+  const [giam, setGiam] = useState<GiamGiaPhieu>(() => ({ value: value.discount, mode: "amount" }))
+  const [vatChon, setVatChon] = useState<number | null>(null)
+  const vatPct = vatChon ?? vatMacDinh(hopLe, byId)
+  const t = tongPhieuNcc(hopLe, giam, vatPct)
+  useEffect(() => {
+    const d = String(t.discount)
+    const v = String(t.vat)
+    if (value.discount !== d || value.vatOverride !== v) onChange({ discount: d, vatOverride: v })
+  }, [t.discount, t.vat]) // eslint-disable-line react-hooks/exhaustive-deps
   const ngoaiNcc = value.supplierId ? linesOutOfSupplierScope(lines, products as Array<{ id: string; primary_supplier_id?: string | null }>, value.supplierId) : []
   const chuaGia = dongChuaCoGia(lines)
   const chuaXong = !value.supplierId ? "Chọn NCC" : hopLe.length === 0 ? "Chưa có hàng" : null
@@ -339,7 +353,6 @@ export function PhieuNccMobile({
                                 Giảm {l.discount_mode === "percent" ? `${l.line_discount.replace(".", ",")}%` : formatCurrency(giam)}
                               </span>
                             )}
-                            {so(l.vat_percent) > 0 && <span className="whitespace-nowrap">VAT {l.vat_percent}%</span>}
                             {l.note && <span className="italic">“{l.note}”</span>}
                           </span>
                         </button>
@@ -376,14 +389,59 @@ export function PhieuNccMobile({
             {/* ---------- THÔNG TIN PHIẾU ---------- */}
             <div className="flex flex-col gap-3 rounded-[14px] bg-surface-container-lowest p-3">
               {fields}
-              <div className="grid grid-cols-2 gap-2">
-                <OTruong label="Giảm giá phiếu (đ)">
-                  <OTien id="phieu-ncc-giam" value={value.discount} onChange={(v) => onChange({ discount: v })} placeholder="0" />
-                </OTruong>
-                <OTruong label="Tiền VAT (gõ theo HĐ)">
-                  <OTien id="phieu-ncc-vat" value={value.vatOverride} onChange={(v) => onChange({ vatOverride: v })} placeholder={`Tự cộng ${formatInt(Math.round(t.vatComputed))}`} />
-                </OTruong>
-              </div>
+              <OTruong label="Giảm giá phiếu (trước thuế)">
+                <span className="flex gap-1.5">
+                  <span role="group" aria-label="Giảm giá phiếu theo" className="flex shrink-0 rounded-[10px] bg-surface-container-low p-[3px]">
+                    {(["amount", "percent"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={giam.mode === m}
+                        onClick={() => setGiam({ mode: m, value: "" })}
+                        className={cn(
+                          "h-[38px] rounded-lg px-3 text-[13px]",
+                          giam.mode === m ? "bg-surface-container-lowest font-semibold text-primary" : "font-medium text-on-surface-variant"
+                        )}
+                      >
+                        {m === "amount" ? "đ" : "%"}
+                      </button>
+                    ))}
+                  </span>
+                  {giam.mode === "amount" ? (
+                    <OTien id="phieu-ncc-giam" value={giam.value} onChange={(v) => setGiam({ mode: "amount", value: v })} placeholder="0" />
+                  ) : (
+                    <input
+                      id="phieu-ncc-giam"
+                      inputMode="decimal"
+                      value={giam.value}
+                      onChange={(e) => setGiam({ mode: "percent", value: e.target.value.replace(",", ".").replace(/[^\d.]/g, "") })}
+                      placeholder="0"
+                      className="h-11 w-full min-w-0 rounded-[10px] border border-border bg-surface-container-lowest px-3 text-right text-[15px] tabular-data outline-none focus:border-primary"
+                    />
+                  )}
+                </span>
+                {giam.mode === "percent" && t.discount > 0 && (
+                  <span className="text-[12px] text-muted-foreground">= {formatCurrency(t.discount)}</span>
+                )}
+              </OTruong>
+              <OTruong label="VAT cả phiếu">
+                <span role="group" aria-label="VAT cả phiếu" className="flex w-fit gap-0.5 rounded-[10px] bg-surface-container-low p-[3px]">
+                  {MUC_VAT.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={vatPct === m}
+                      onClick={() => setVatChon(m)}
+                      className={cn(
+                        "h-[36px] rounded-lg px-3.5 text-[13px]",
+                        vatPct === m ? "bg-surface-container-lowest font-semibold text-primary shadow-[0_1px_2px_rgba(0,0,0,.1)]" : "font-medium text-on-surface-variant"
+                      )}
+                    >
+                      {m}%
+                    </button>
+                  ))}
+                </span>
+              </OTruong>
               <OTruong label="Ghi chú">
                 <textarea
                   id="phieu-ncc-ghi-chu"
@@ -402,8 +460,8 @@ export function PhieuNccMobile({
             {chiTiet && (
               <div className="flex flex-col gap-3 border-b border-border pb-3 text-[15px] text-on-surface-variant">
                 <Hang label={`Tiền hàng · ${hopLe.length} mặt hàng`} value={formatCurrency(t.subtotal)} />
-                <Hang label={t.vatOverridden ? "VAT (gõ theo HĐ)" : "VAT"} value={`+${formatCurrency(t.vat)}`} />
                 {t.discount > 0 && <Hang label="Giảm giá phiếu" value={`−${formatCurrency(t.discount)}`} />}
+                <Hang label={`VAT ${vatPct}%`} value={`+${formatCurrency(t.vat)}`} />
                 <p className="text-[12px] text-muted-foreground">{chu.goiY}</p>
               </div>
             )}
@@ -687,7 +745,7 @@ function ChonNccSheet({
   )
 }
 
-/** Sửa dòng (như 3a): số lượng, đơn vị, giá nhập, giảm giá (đ / %), VAT %, ghi chú. */
+/** Sửa dòng (như 3a): số lượng, đơn vị, giá nhập, giảm giá (đ / %), ghi chú — VAT đặt ở cả phiếu. */
 function SuaDongSheet({
   line, product, onPatch, onUnit, onRemove, onClose,
 }: {
@@ -748,7 +806,7 @@ function SuaDongSheet({
                   <OTien id="sua-dong-gia" value={line.unit_price} onChange={(v) => onPatch({ unit_price: v })} placeholder="Gõ theo HĐ NCC" />
                 </OTruong>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2">
                 <OTruong label="Giảm giá dòng">
                   <span className="flex gap-1.5">
                     <span className="flex shrink-0 rounded-[10px] bg-surface-container-low p-[3px]">
@@ -776,15 +834,6 @@ function SuaDongSheet({
                       className="h-11 w-full min-w-0 rounded-[10px] border border-border bg-surface-container-lowest px-3 text-right text-[15px] tabular-data outline-none focus:border-primary"
                     />
                   </span>
-                </OTruong>
-                <OTruong label="VAT (%)">
-                  <input
-                    id="sua-dong-vat"
-                    inputMode="decimal"
-                    value={line.vat_percent}
-                    onChange={(e) => onPatch({ vat_percent: e.target.value.replace(",", ".").replace(/[^\d.]/g, "") })}
-                    className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-right text-[15px] tabular-data outline-none focus:border-primary"
-                  />
                 </OTruong>
               </div>
               <OTruong label="Ghi chú dòng">

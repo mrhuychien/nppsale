@@ -5,7 +5,8 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import {
-  buocSoLuong, datSoLuong, dongChuaCoGia, doiDonViDong, donViNhap, giaGoiY, heSoDonVi, soLuongTrenPhieu, tongSoLuong,
+  buocSoLuong, datSoLuong, dongChuaCoGia, doiDonViDong, donViNhap, giaGoiY, heSoDonVi, MUC_VAT, soLuongTrenPhieu, tongPhieuNcc,
+  tongSoLuong, vatMacDinh,
 } from "@/lib/purchasing/phieu-mobile"
 import { receiptTotals, validReceiptLines, type ReceiptProduct } from "@/lib/purchasing/receipt-form"
 import { hidesMobileAppBar, showsBottomNav } from "@/lib/nav/mobile-chrome"
@@ -29,7 +30,7 @@ describe("giỏ phiếu NCC — như thẻ hàng của /sell", () => {
   it("chạm thẻ = +1; lần nữa cộng dồn cùng dòng; khác đơn vị là dòng khác; về 0 là bỏ", () => {
     let l = buocSoLuong([], SUA, "thùng", 1, 1)
     expect(l).toHaveLength(1)
-    expect(l[0]).toMatchObject({ unit_name: "thùng", conversion_factor: "24", quantity: "1", unit_price: "360000", vat_percent: "8" })
+    expect(l[0]).toMatchObject({ unit_name: "thùng", conversion_factor: "24", quantity: "1", unit_price: "360000", vat_percent: "0" })
     l = buocSoLuong(l, SUA, "thùng", 1, 2)
     expect(l).toHaveLength(1)
     expect(soLuongTrenPhieu(l, "sua", "thùng")).toBe(2)
@@ -43,11 +44,11 @@ describe("giỏ phiếu NCC — như thẻ hàng của /sell", () => {
     expect(datSoLuong(l, 0, 7)[0].quantity).toBe("7")
   })
 
-  it("tiền phiếu tính bằng đúng phép của phiếu nhập (receiptTotals)", () => {
+  it("tiền phiếu: dòng không mang VAT (VAT ở cả phiếu)", () => {
     const l = buocSoLuong(buocSoLuong([], SUA, "thùng", 2, 1), MI, "gói", 1, 2)
     const t = receiptTotals(validReceiptLines(l), "", "")
     expect(t.subtotal).toBe(720000)
-    expect(t.vat).toBeCloseTo(57600)
+    expect(t.vat, "bỏ VAT từng dòng").toBe(0)
     expect(dongChuaCoGia(l), "dòng Mì chưa có giá").toBe(1)
   })
 
@@ -94,5 +95,39 @@ describe("chọn từng mã mặc định, chọn nhiều là tuỳ chọn (ch�
     expect(KHUNG).toContain("const [chonNhieu, setChonNhieu] = useState(false)")
     expect(KHUNG).toContain("if (roiManSauKhiThem({ chonNhieu, delta: d, dongMoi })) moPhieu()")
     expect(KHUNG.match(/setChonNhieu\(/g), "chỉ đọc bộ nhớ lúc mở + nút bấm").toHaveLength(2)
+  })
+})
+
+describe("giảm giá phiếu TRƯỚC thuế, VAT một mức cho cả phiếu (chủ nhà 30/09/2026)", () => {
+  const l = buocSoLuong([], SUA, "thùng", 1, 1) // 360.000
+  it("giảm theo đ: thuế tính trên phần còn lại", () => {
+    expect(tongPhieuNcc(l, { value: "60000", mode: "amount" }, 10)).toEqual({ subtotal: 360000, discount: 60000, base: 300000, vat: 30000, total: 330000 })
+  })
+  it("giảm theo %: % của tiền hàng, rồi mới tính thuế", () => {
+    expect(tongPhieuNcc(l, { value: "10", mode: "percent" }, 8)).toEqual({ subtotal: 360000, discount: 36000, base: 324000, vat: 25920, total: 349920 })
+  })
+  it("kẹp: giảm quá tiền hàng / quá 100% / âm / rác", () => {
+    expect(tongPhieuNcc(l, { value: "999999", mode: "amount" }, 10).total).toBe(0)
+    expect(tongPhieuNcc(l, { value: "150", mode: "percent" }, 10).discount).toBe(360000)
+    expect(tongPhieuNcc(l, { value: "-5", mode: "amount" }, 0).discount).toBe(0)
+    expect(tongPhieuNcc(l, { value: "abc", mode: "percent" }, 0).total).toBe(360000)
+  })
+  it("máy chủ cộng subtotal + vat_override − discount ra ĐÚNG tổng này", () => {
+    const t = tongPhieuNcc(l, { value: "10", mode: "percent" }, 10)
+    const may = receiptTotals(validReceiptLines(l), String(t.discount), String(t.vat))
+    expect(may.total).toBe(t.total)
+  })
+  it("mức VAT 0/5/8/10; mặc định theo thuế suất mặt hàng đầu tiên", () => {
+    expect([...MUC_VAT]).toEqual([0, 5, 8, 10])
+    const byId = new Map([["sua", SUA], ["mi", MI]])
+    expect(vatMacDinh(l, byId)).toBe(8)
+    expect(vatMacDinh([], byId)).toBe(0)
+  })
+  it("sheet sửa dòng không còn ô VAT; phiếu có nhóm nút VAT + giảm giá đ/%", () => {
+    const K = readFileSync("src/components/purchasing/phieu-ncc-mobile.tsx", "utf8")
+    expect(K).not.toContain("sua-dong-vat")
+    expect(K).not.toContain("phieu-ncc-vat")
+    expect(K).toContain('aria-label="VAT cả phiếu"')
+    expect(K).toContain('aria-label="Giảm giá phiếu theo"')
   })
 })

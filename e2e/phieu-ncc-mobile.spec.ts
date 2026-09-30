@@ -61,12 +61,17 @@ test("nhập hàng trên điện thoại: chạm thẻ thêm hàng, đổi thùn
   await expect(page.getByTestId("tong-phieu-ncc")).toHaveText("700.000đ")
 
   await page.locator("#pn-so-hd").fill("HD-NCC-9")
+  // Giảm giá phiếu TRƯỚC thuế (10% của 700.000) + VAT một mức cho cả phiếu (chủ nhà 30/09/2026).
+  await page.getByRole("group", { name: "Giảm giá phiếu theo" }).getByRole("button", { name: "%" }).click()
+  await page.locator("#phieu-ncc-giam").fill("10")
+  await page.getByRole("group", { name: "VAT cả phiếu" }).getByRole("button", { name: "10%" }).click()
+  await expect(page.getByTestId("tong-phieu-ncc")).toHaveText("693.000đ")
   await page.getByRole("button", { name: "Hoàn thành" }).click()
   await expect.poll(async () => !!(await goiCuoi("/rpc/complete_purchase_invoice"))).toBe(true)
   const dau = (await goiCuoi("/rest/v1/purchase_invoices"))!.body as Record<string, unknown>
-  expect(dau).toMatchObject({ invoice_number: "HD-NCC-9", status: "draft", total: 700000 })
+  expect(dau).toMatchObject({ invoice_number: "HD-NCC-9", status: "draft", subtotal: 700000, discount: 70000, vat_override: 63000, total: 693000 })
   const dong = (await goiCuoi("/rest/v1/purchase_invoice_lines"))!.body as Array<Record<string, unknown>>
-  expect(dong[0]).toMatchObject({ unit_name: "thùng", quantity: 2, unit_price: 350000, conversion_factor: 24 })
+  expect(dong[0]).toMatchObject({ unit_name: "thùng", quantity: 2, unit_price: 350000, conversion_factor: 24, vat_rate: 0 })
 })
 
 test("trả hàng NCC trên điện thoại: màn riêng, chọn lý do + kho, gửi phiếu", async ({ page }) => {

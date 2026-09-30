@@ -12,7 +12,7 @@
  *   là giá của đúng đơn vị đó").
  */
 
-import { lineFromProduct, unitPatch, type ReceiptLine, type ReceiptProduct } from "./receipt-form"
+import { lineFromProduct, lineNetOf, unitPatch, type ReceiptLine, type ReceiptProduct } from "./receipt-form"
 
 const so = (s: string | number | null | undefined): number => {
   const n = Number(s)
@@ -75,6 +75,8 @@ export function buocSoLuong(
         ...unitPatch(moi, unit),
         quantity: String(delta),
         unit_price: gia > 0 ? String(gia) : "",
+        /* VAT đặt ở CẢ PHIẾU (chủ nhà 30/09/2026: "Bỏ VAT từng dòng") — dòng mang 0, như POS. */
+        vat_percent: "0",
       },
     ]
   }
@@ -125,4 +127,52 @@ export function tongSoLuong(lines: readonly ReceiptLine[]): number {
 /** Dòng chưa có giá — phiếu nhập hoàn thành với giá 0 là ghi giá vốn 0. */
 export function dongChuaCoGia(lines: readonly ReceiptLine[]): number {
   return lines.filter((l) => so(l.quantity) > 0 && !(so(l.unit_price) > 0)).length
+}
+
+/** Các mức VAT cả phiếu (%), như nút VAT của màn làm đơn. */
+export const MUC_VAT = [0, 5, 8, 10] as const
+
+export interface GiamGiaPhieu {
+  /** Số người dùng gõ: tiền (đ) hoặc phần trăm tuỳ `mode`. */
+  value: string
+  mode: "amount" | "percent"
+}
+
+export interface TongPhieuNcc {
+  /** Σ tiền dòng (đã trừ giảm giá dòng), chưa thuế. */
+  subtotal: number
+  /** Tiền giảm giá phiếu (đ). */
+  discount: number
+  /** Tiền tính thuế = tiền hàng − giảm giá phiếu. */
+  base: number
+  vat: number
+  total: number
+}
+
+/**
+ * Tiền phiếu NCC trên điện thoại — chủ nhà 30/09/2026: "Giảm giá phiếu phải trước thuế. Bỏ VAT
+ * từng dòng, chỉ dùng VAT cho tổng đơn theo các mức".
+ *
+ *     base  = tiền hàng − giảm giá phiếu   (giảm % tính trên tiền hàng; kẹp [0, tiền hàng])
+ *     vat   = round(base × mức VAT)
+ *     total = base + vat
+ *
+ * ⚠ MÁY CHỦ TÍNH `subtotal + vat − discount` với `vat = vat_override` khi có — nên gửi
+ *   `discount` = tiền giảm và `vat_override` = `vat` ở đây là máy chủ ra đúng `total` này
+ *   (y cách màn POS nhập hàng, `purchaseTotals`). Không cần đổi RPC.
+ */
+export function tongPhieuNcc(lines: readonly ReceiptLine[], giam: GiamGiaPhieu, vatPct: number): TongPhieuNcc {
+  const subtotal = lines.reduce((s, l) => s + (so(l.quantity) > 0 ? lineNetOf(l) : 0), 0)
+  const raw = Math.max(0, so(giam.value))
+  const discount = Math.min(subtotal, Math.round(giam.mode === "percent" ? (subtotal * Math.min(100, raw)) / 100 : raw))
+  const base = Math.max(0, subtotal - discount)
+  const vat = Math.round((base * Math.max(0, vatPct)) / 100)
+  return { subtotal, discount, base, vat, total: base + vat }
+}
+
+/** Mức VAT mặc định khi người dùng chưa bấm: thuế suất của mặt hàng đầu tiên trên phiếu (%). */
+export function vatMacDinh(lines: readonly ReceiptLine[], byId: ReadonlyMap<string, Pick<ReceiptProduct, "vat_rate">>): number {
+  const p = lines[0] ? byId.get(lines[0].product_id) : undefined
+  const pct = Math.round(so(p?.vat_rate) * 100 * 100) / 100
+  return (MUC_VAT as readonly number[]).includes(pct) ? pct : 0
 }

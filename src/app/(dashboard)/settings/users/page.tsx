@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useCallback } from "react"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCellText, type DocColumn } from "@/components/ui/doc-table"
-import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
 import { viMatchAllWords } from "@/lib/search"
@@ -25,6 +24,8 @@ import { Users, Pencil, Lock, Unlock, Plus, Trash2, QrCode } from "lucide-react"
 import type { User } from "@/types"
 import { QrLoginDialog } from "@/components/users/qr-login-dialog"
 import { NutDangNhapNhanVien } from "@/components/users/nut-dang-nhap-nhan-vien"
+import { DsNhanVienDienThoai } from "@/components/users/ds-nhan-vien-dien-thoai"
+import { LOC_NV_MAC_DINH, chipNhanVien, dongPhuNhanVien, khopLocNv, sapXepNhanVien } from "@/lib/users/mobile-list"
 import { laThietBiApple } from "@/lib/users/mo-trinh-duyet"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
@@ -83,14 +84,14 @@ export default function UsersPage() {
       .then((d) => d.links && setLinkDn(d.links))
       .catch((e) => console.error("[settings/users] link đăng nhập:", e))
   }, [coNutDangNhap])
-  const nutDangNhap = (u: User, lon = false) =>
+  const nutDangNhap = (u: User, chiIcon = false) =>
     coNutDangNhap && u.is_active && u.id !== currentUser?.id ? (
       <NutDangNhapNhanVien
         userId={u.id}
         userName={u.full_name}
         loginUrl={linkDn[u.id]}
         onTaoMa={(id, url) => setLinkDn((m) => ({ ...m, [id]: url }))}
-        lon={lon}
+        chiIcon={chiIcon}
       />
     ) : null
 
@@ -154,6 +155,12 @@ export default function UsersPage() {
     [locRows, status]
   )
   const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([status, search]))
+
+  /* Điện thoại (thiết kế "ds-nhan-vien"): lọc riêng — mặc định "Đang hoạt động", chip theo vai. Danh sách
+     nhân viên ngắn → hiện hết, không phân trang. */
+  const [locDt, setLocDt] = useState(LOC_NV_MAC_DINH)
+  const chipsDt = useMemo(() => chipNhanVien(locRows, locDt), [locRows, locDt])
+  const dsDt = useMemo(() => sapXepNhanVien(locRows.filter((u) => khopLocNv(u, locDt))), [locRows, locDt])
 
   /** Nút thao tác của MỘT người — dùng chung cho cột Thao tác và ngăn xem nhanh. */
   const thaoTac = (u: User, rong = false) =>
@@ -250,6 +257,20 @@ export default function UsersPage() {
       <StatusChips className="max-lg:hidden" active={status} onPick={setStatus} chips={chips} />
 
 
+      <DsNhanVienDienThoai
+        subtitle={dongPhuNhanVien(users)}
+        search={search}
+        onSearch={setSearch}
+        canCreate={!!isOwner}
+        chips={chipsDt}
+        loc={locDt}
+        onPickLoc={setLocDt}
+        items={dsDt}
+        loading={loading}
+        nutDangNhap={(u) => nutDangNhap(u, true)}
+        onOpen={(u) => setXemId(u.id)}
+      />
+
       <DocListLayout
         toolbar={
           <>
@@ -270,30 +291,9 @@ export default function UsersPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        mobileCountUnit="người dùng"
-        mobileHead={{
-          title: "Nhân viên",
-          search,
-          onSearch: setSearch,
-          searchPlaceholder: "Tìm họ tên, SĐT, vai trò…",
-          chips: { chips, active: status, onPick: setStatus },
-          actions: nutTao || undefined,
-        }}
         table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(u) => setXemId(u.id)} />}
-        cards={
-          <DocCardList
-            items={trang}
-            onOpen={(u) => setXemId(u.id)}
-            aside={(u) => nutDangNhap(u, true)}
-            card={(u) => ({
-              accent: u.is_active ? "#22c55e" : "#98a2b3",
-              title: u.full_name,
-              total: "",
-              meta: [ROLE_LABELS[u.role] || u.role, u.phone ? `SĐT: ${u.phone}` : null].filter(Boolean).join(" · "),
-              badge: u.is_active ? null : { label: "Tạm khóa", bg: "#eef1f5", fg: "#565a67" },
-            })}
-          />
-        }
+        /* Điện thoại: màn riêng theo thiết kế "ds-nhan-vien" (`DsNhanVienDienThoai`). */
+        cards={null}
       />
 
       <DocQuickView

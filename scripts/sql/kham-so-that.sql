@@ -504,4 +504,10 @@ SELECT 57, 'Mig 218 (Chênh lệch giá lúc bán, chênh trả)',
   CASE WHEN position('dong_hd_goc' IN pg_get_functiondef('public.bao_cao_so_ban(date, date)'::regprocedure)) = 0
        THEN 'CHƯA — chênh lệch báo cáo nhân viên lùi về bảng giá chung hiện tại, chưa có chênh trả'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 58. Mig 219 — nhập kho chọn kho nhận (kho bán / kho date)
+SELECT 58, 'Mig 219 (Nhập kho chọn Kho bán / Kho date)',
+  CASE WHEN position('v_zone' IN pg_get_functiondef('public.post_stock_import(jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — phiếu nhập kho luôn vào kho bán dù chọn Kho date'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

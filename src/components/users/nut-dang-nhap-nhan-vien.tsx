@@ -20,20 +20,30 @@ export function NutDangNhapNhanVien({
   loginUrl,
   onTaoMa,
   lon = false,
+  chiIcon = false,
 }: {
   userId: string
   userName: string
   loginUrl: string | null | undefined
   onTaoMa: (userId: string, loginUrl: string) => void
   lon?: boolean
+  /** Nút vuông chỉ có icon — thẻ nhân viên trên điện thoại (thiết kế "ds-nhan-vien"). */
+  chiIcon?: boolean
 }) {
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
-  const cls = cn(
-    "inline-flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 px-2 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50",
-    lon ? "h-9 text-xs" : "h-7 text-[11px]"
-  )
-  const nhan = (
+  const cls = chiIcon
+    ? "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-primary/10 text-primary active:bg-primary/20 disabled:opacity-50"
+    : cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-lg border border-primary/40 px-2 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50",
+        lon ? "h-9 text-xs" : "h-7 text-[11px]"
+      )
+  const nhan = chiIcon ? (
+    <>
+      <LogIn className="h-[18px] w-[18px]" aria-hidden />
+      <span className="sr-only">Đăng nhập</span>
+    </>
+  ) : (
     <>
       <LogIn className="h-3.5 w-3.5" />
       Đăng nhập

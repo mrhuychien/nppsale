@@ -28,11 +28,21 @@ export interface DongNhapKho {
   base_cost: number
 }
 
+/** Kho nhận của phiếu nhập — chủ nhà 30/09/2026: "làm migrate kho bán / kho date". */
+export type KhoNhan = "sale" | "date"
+export const KHO_NHAN: ReadonlyArray<{ v: KhoNhan; nhan: string }> = [
+  { v: "sale", nhan: "Kho bán" },
+  { v: "date", nhan: "Kho date" },
+]
+export const nhanKhoNhan = (v: KhoNhan) => KHO_NHAN.find((k) => k.v === v)?.nhan ?? "Kho bán"
+
 export interface PhieuNhapKho {
   entry_code: string
   posted_at: string
   notes?: string | null
   supplier_id?: string | null
+  /** Kho nhận (mig 219): kho bán / kho date — ghi vào phiếu và từng lô. Bỏ trống = kho bán. */
+  warehouse_zone?: KhoNhan
   /** Có NCC và số tiền > 0 thì máy chủ ghi công nợ NCC cùng giao dịch. */
   payable?: { amount: number; invoice_number?: string | null } | null
   lines: DongNhapKho[]

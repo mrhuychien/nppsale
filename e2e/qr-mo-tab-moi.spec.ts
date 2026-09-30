@@ -21,7 +21,7 @@ test("hộp mã QR trên iPhone: link, mở bằng Safari / Chrome, đóng đư�
   await dangNhap(page)
   await page.goto("/settings/users")
   // Điện thoại: chạm thẻ nhân viên → ngăn xem nhanh → nút QR (hộp QR mở CHỒNG lên ngăn đó).
-  await page.getByText(/SĐT: 0900000000/).first().click()
+  await page.getByTestId("nv-the").filter({ hasText: "0900 000 000" }).click()
   await page.getByRole("button", { name: "Mã QR đăng nhập" }).last().click()
   const hop = page.getByRole("dialog").filter({ hasText: "Mã QR đăng nhập" })
   await expect(hop.getByTestId("qr-link-mo")).toHaveAttribute("target", "_blank")
@@ -62,6 +62,7 @@ test("danh sách nhân viên trên iPhone: nút Đăng nhập cạnh tên mở S
     const the = (ten: string) => page.locator("div", { has: page.getByText(ten, { exact: true }) }).filter({ has: nut }).last().locator(nut)
     const coMa = the("NV Có Mã")
     await expect(coMa).toHaveAttribute("href", "x-safari-http://127.0.0.1:3000/qr-login?t=abcdefabcdefabcdefabcdef")
+    // Thẻ điện thoại (thiết kế "ds-nhan-vien"): nút vuông chỉ icon, chữ "Đăng nhập" cho trình đọc màn hình.
     await expect(coMa).toHaveText("Đăng nhập")
     // Không có nút cho chính mình và người đang khoá.
     await expect(nut).toHaveCount(2)

@@ -10,6 +10,7 @@
  * ⚠ Màn có thanh đáy riêng → route phải nằm trong OWN_ACTION_BAR_ROUTES và ẩn app bar chuẩn.
  */
 
+import { KHO_NHAN, type KhoNhan } from "@/lib/inventory/post-import"
 import { CompactSelect } from "@/components/ui/compact-select"
 import { useState, type ReactNode } from "react"
 import { ScanBarcode, Tag, Trash2 } from "lucide-react"
@@ -47,8 +48,9 @@ export interface StockInMobileProps {
   summary: { subtotal: number; vat: number; total: number }
   entryDate: string
   onEntryDate: (v: string) => void
-  warehouse: string
-  onWarehouse: (v: string) => void
+  /** Kho nhận (mig 219) — kho bán / kho date. */
+  zone: KhoNhan
+  onZone: (v: KhoNhan) => void
   invoiceNo: string
   onInvoiceNo: (v: string) => void
   /** Ô chọn NCC (SearchSelect) + dòng nhắc có / không sinh công nợ NCC. */
@@ -137,18 +139,27 @@ export function StockInMobile(p: StockInMobileProps) {
                 className={O_NHAP}
               />
             </label>
-            <label className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <Nhan>Kho nhận</Nhan>
-              {/* ⚠ Ô CHỮ, không phải hai nút Kho bán / Kho date của ảnh: `post_stock_import` không nhận
-                  vùng kho — chữ này chỉ vào ghi chú phiếu và vị trí mặc định của lô. */}
-              <input
-                id="nk-m-kho"
-                value={p.warehouse}
-                onChange={(e) => p.onWarehouse(e.target.value)}
-                placeholder="Kho chính"
-                className={O_NHAP}
-              />
-            </label>
+              {/* Hai nút như bản thiết kế — hàng vào đúng kho đã chọn (mig 219: post_stock_import nhận vùng kho). */}
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-container-low p-1" role="group" aria-label="Kho nhận">
+                {KHO_NHAN.map((k) => (
+                  <button
+                    key={k.v}
+                    type="button"
+                    aria-pressed={p.zone === k.v}
+                    data-testid={`nk-m-kho-${k.v}`}
+                    onClick={() => p.onZone(k.v)}
+                    className={cn(
+                      "h-9 rounded-lg text-[14px] font-semibold",
+                      p.zone === k.v ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+                    )}
+                  >
+                    {k.nhan}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex min-w-0 flex-col gap-1.5">
               <Nhan>Nhà cung cấp</Nhan>
               {p.nccField}
@@ -352,7 +363,7 @@ export function StockInMobile(p: StockInMobileProps) {
                         <input
                           value={l.location}
                           onChange={(e) => p.onPatch(l.id, { location: e.target.value })}
-                          placeholder={p.warehouse || "Kệ A1"}
+                          placeholder="Kệ A1"
                           className={O_NHO}
                         />
                       </label>

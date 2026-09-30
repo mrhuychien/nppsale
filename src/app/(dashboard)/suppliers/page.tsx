@@ -5,11 +5,10 @@ import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_NHA_CUNG_CAP } from "@/lib/search/list-filter-fields"
 import { useEffect, useMemo, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
-import { usePagination } from "@/hooks/use-pagination"
+import { usePagination, MAC_DINH_MOI_TRANG } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
-import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -34,6 +33,11 @@ import {
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { SupplierImportDialog } from "@/components/suppliers/supplier-import-dialog"
+import { MobileSuppliersScreen } from "@/components/suppliers/mobile-suppliers-screen"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { timTrungTen, nhanTrungTen, nhanSoNcc, type NccTen } from "@/lib/suppliers/mobile-list"
+import { nhanXemThem } from "@/lib/products/mobile-list"
 import { useToast } from "@/hooks/use-toast"
 import { Plus, Factory, CheckCircle2, Power, PowerOff, Upload } from "lucide-react"
 import type { Supplier } from "@/types"
@@ -64,6 +68,10 @@ export default function SuppliersPage() {
   const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("suppliers", LOC_NHA_CUNG_CAP)
+  /** Toàn bộ tên NCC — để phát hiện trùng tên (thiết kế "ds-ncc", 30/09/2026). */
+  const [tatCaTen, setTatCaTen] = useState<NccTen[]>([])
+  /** Bấm "Gộp" ở băng trùng tên → lọc về các NCC trùng tên (app chưa có luồng gộp NCC). */
+  const [locTrung, setLocTrung] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(t)
@@ -101,10 +109,25 @@ export default function SuppliersPage() {
     loadCats()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tên của MỌI NCC (chỉ id, name) — trùng tên phải so trên cả bảng, không chỉ trang đang hiện.
+  useEffect(() => {
+    let huy = false
+    fetchAllForAggregate<NccTen>((from, to) =>
+      supabase.from("suppliers").select("id, name", { count: "exact" }).order("id").range(from, to)
+    ).then((r) => {
+      if (r.error) console.warn("[app/suppliers] tải tên NCC lỗi:", r.error)
+      if (!huy) setTatCaTen(r.rows)
+    })
+    return () => { huy = true }
+  }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  const trungTen = useMemo(() => timTrungTen(tatCaTen), [tatCaTen])
+  const idsTrung = locTrung && trungTen.ids.length > 0 ? trungTen.ids : null
+  const khoaIdsTrung = idsTrung ? idsTrung.join(",") : ""
+
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, categoryFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, statusFilter, activeFilters, khoaIdsTrung]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function fetchData() {
@@ -125,6 +148,7 @@ export default function SuppliersPage() {
         for (const f of locNC.menhDe) q = q.or(f)
         if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         if (statusFilter !== "all") q = q.eq("is_active", statusFilter === "active")
+        if (idsTrung) q = q.in("id", idsTrung)
         return q
       }
       const res = await taiHaiNhip<Supplier, ResilientResult<Supplier>>(
@@ -147,7 +171,7 @@ export default function SuppliersPage() {
       setLoading(false)
     }
     fetchData()
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick, khoaIdsTrung]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
   const categories = allCategories
@@ -227,6 +251,7 @@ export default function SuppliersPage() {
         for (const f of locNC.menhDe) q = q.or(f)
         if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         if (st) q = q.eq("is_active", st === "active")
+        if (idsTrung) q = q.in("id", idsTrung)
         const { count, error } = await q
         if (error) console.warn("[app/suppliers] đếm lỗi:", error.message)
         return count ?? 0
@@ -235,7 +260,7 @@ export default function SuppliersPage() {
       if (!huy) setCounts({ active, inactive, all })
     })()
     return () => { huy = true }
-  }, [debouncedSearch, locNC.key, categoryFilter, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, refreshTick, khoaIdsTrung]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [xemId, setXemId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
@@ -319,6 +344,35 @@ export default function SuppliersPage() {
     { key: "all", label: "Tất cả", count: counts.all ?? 0, accent: "#181c1e" },
   ]
   const coQuyenTao = !!user && hasPermission(user.role, "inventory", "create")
+  const statusSelect = (
+    <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <SelectTrigger aria-label="Trạng thái" className="h-10 w-44 rounded-xl font-semibold">
+        <SelectValue placeholder="Trạng thái" />
+      </SelectTrigger>
+      <SelectContent>
+        {chips.map((c) => (
+          <SelectItem key={c.key} value={c.key}>
+            {c.label} ({c.count})
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const soLocDienThoai = (categoryFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0) + locNC.soDangAp
+  const bangTrung = nhanTrungTen(trungTen)
+  const canhBao = loadError && !loading && (
+    <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+      <p className="font-semibold">Không tải được danh sách nhà cung cấp</p>
+      <p className="mt-0.5 break-words">{loadError}</p>
+    </div>
+  )
+  const rong = (
+    <EmptyState
+      icon={<Factory className="h-8 w-8 text-muted-foreground" />}
+      title={loadError ? "Không tải được dữ liệu" : pg.total === 0 && !search ? "Chưa có nhà cung cấp" : "Không tìm thấy NCC phù hợp"}
+      description={loadError ? "Xem thông báo lỗi phía trên." : pg.total === 0 && !search ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên" : "Thử điều chỉnh bộ lọc"}
+    />
+  )
   const nutTao = coQuyenTao && (
     <Button onClick={() => router.push("/suppliers/new")}>
       <Plus className="mr-2 h-4 w-4" /> Tạo mới
@@ -342,13 +396,43 @@ export default function SuppliersPage() {
         <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
       )}
 
-      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
-      {loadError && !loading && (
-        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
-          <p className="font-semibold">Không tải được danh sách nhà cung cấp</p>
-          <p className="mt-0.5 break-words">{loadError}</p>
-        </div>
-      )}
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. Điện thoại hiện trong màn riêng. */}
+      {canhBao && <div className="max-lg:hidden">{canhBao}</div>}
+
+      <MobileSuppliersScreen
+        subtitle={nhanSoNcc(pg.total)}
+        search={search}
+        onSearch={setSearch}
+        canCreate={coQuyenTao}
+        filter={{ activeCount: soLocDienThoai, onOpen: () => setFilterSheet(true) }}
+        trung={bangTrung ? { ...bangTrung, khoa: trungTen.khoa } : null}
+        locTrung={!!idsTrung}
+        onLocTrung={setLocTrung}
+        items={filtered}
+        loading={loading}
+        empty={rong}
+        moreLabel={nhanXemThem(pg.from + filtered.length, pg.total)}
+        onMore={() => pg.setPageSize(pg.pageSize + MAC_DINH_MOI_TRANG)}
+        onOpen={(s) => setXemId(s.id)}
+        notice={canhBao}
+      />
+      <div className="lg:hidden">
+        <MobileFilterBar
+          chiNganLoc
+          value={search}
+          onChange={setSearch}
+          activeCount={soLocDienThoai}
+          onClear={() => { setCategoryFilter("all"); setStatusFilter("all"); locNC.xoa() }}
+          open={filterSheet}
+          onOpenChange={setFilterSheet}
+        >
+          <div className="grid gap-4">
+            {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+            {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
+            <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+          </div>
+        </MobileFilterBar>
+      </div>
 
       <DocListLayout
         toolbar={
@@ -367,55 +451,14 @@ export default function SuppliersPage() {
         }
         /* Danh mục, không phải chứng từ — không có tiền để cộng. */
         totals={null}
-        mobileCountUnit="nhà cung cấp"
-        mobileHead={{
-          title: "Nhà cung cấp",
-          search,
-          onSearch: setSearch,
-          searchPlaceholder: "Tìm tên, mã NCC...",
-          chips: filterActive("status") ? { chips, active: statusFilter, onPick: setStatusFilter } : undefined,
-          filter: {
-            activeCount: (categoryFilter !== "all" ? 1 : 0) + locNC.soDangAp,
-            onClear: () => { setCategoryFilter("all"); locNC.xoa() },
-            open: filterSheet,
-            onOpenChange: setFilterSheet,
-            sheet: (
-              <div className="grid gap-4">
-                {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
-                <AdvancedFilter truong={LOC_NHA_CUNG_CAP} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-              </div>
-            ),
-          },
-          actions: nutTao || undefined,
-        }}
         loading={loading}
         isEmpty={filtered.length === 0}
-        empty={
-          <EmptyState
-            icon={<Factory className="h-8 w-8 text-muted-foreground" />}
-            title={loadError ? "Không tải được dữ liệu" : pg.total === 0 && !search ? "Chưa có nhà cung cấp" : "Không tìm thấy NCC phù hợp"}
-            description={loadError ? "Xem thông báo lỗi phía trên." : pg.total === 0 && !search ? "Bắt đầu bằng cách thêm nhà cung cấp đầu tiên" : "Thử điều chỉnh bộ lọc"}
-          />
-        }
+        empty={rong}
         pg={pg}
         shownCount={filtered.length}
         table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(s) => setXemId(s.id)} />}
-        cards={
-          <DocCardList
-            items={filtered}
-            onOpen={(s) => setXemId(s.id)}
-            select={canEdit ? { checked: (s) => selectedIds.has(s.id), onChange: (s, v) => toggleOne(s.id, v) } : undefined}
-            card={(s) => ({
-              accent: s.is_active ? "#2563eb" : "#ef5350",
-              title: s.name,
-              total: s.is_verified ? "Xác minh" : "",
-              meta: [s.code, s.contact_name].filter(Boolean).join(" · "),
-              payment: s.phone ?? "",
-              summary: s.address || undefined,
-              badge: s.is_active ? null : { label: "Ngưng", bg: "#fdecec", fg: "#b00020" },
-            })}
-          />
-        }
+        /* Điện thoại: màn riêng `MobileSuppliersScreen` (thiết kế "ds-ncc"). */
+        cards={null}
       />
 
       <DocQuickView

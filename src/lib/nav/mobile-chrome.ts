@@ -70,8 +70,6 @@ export const DOC_LIST_MOBILE_ROUTES = [
   "/purchasing/invoices",
   "/purchasing/receipts",
   "/receivables",
-  "/settings/users",
-  "/suppliers",
 ] as const
 
 export const DAU_TRANG_RIENG_ROUTES = [
@@ -82,6 +80,8 @@ export const DAU_TRANG_RIENG_ROUTES = [
   "/inventory/adjustments",
   "/inventory",
   "/inventory/entries",
+  "/settings/users",
+  "/suppliers",
 ] as const
 
 export function hidesMobileAppBar(pathname: string): boolean {

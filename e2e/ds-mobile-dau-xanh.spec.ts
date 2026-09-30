@@ -10,7 +10,8 @@ test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true
 const DS = [
   "/finance/cash-receipts", "/finance/expenses", "/payables", "/purchase-returns",
   "/purchasing/receipts", "/purchasing/invoices", "/inventory/batches",
-  "/suppliers", "/promotions", "/commissions/policies", "/invoices", "/receivables", "/settings/users",
+  "/promotions", "/commissions/policies", "/invoices", "/receivables",
+  // /settings/users: màn riêng theo thiết kế "ds-nhan-vien" — e2e/ds-nhan-vien-mobile-thiet-ke.spec.ts.
 ]
 
 test("mọi danh sách: đầu trang xanh có ☰ và ô tìm, không có app bar chuẩn", async ({ page }) => {

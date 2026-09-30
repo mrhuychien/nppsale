@@ -26,7 +26,9 @@ describe("nút Đăng nhập cạnh tên nhân viên", () => {
   it("chỉ Chủ NPP trên iPhone / iPad; không cho chính mình và người đang khoá", () => {
     expect(TRANG).toContain("const coNutDangNhap = isOwner && apple")
     expect(TRANG).toContain("coNutDangNhap && u.is_active && u.id !== currentUser?.id ?")
-    expect(TRANG).toContain("aside={(u) => nutDangNhap(u, true)}")
+    // Điện thoại (thiết kế "ds-nhan-vien"): nút vuông chỉ icon trên thẻ — cùng luật.
+    expect(TRANG).toContain("nutDangNhap={(u) => nutDangNhap(u, true)}")
+    expect(TRANG).toContain("chiIcon={chiIcon}")
     expect(TRANG).toMatch(/font-bold">\{u\.full_name\}<\/span>\s*\{nutDangNhap\(u\)\}/)
   })
   it("API link hàng loạt: chỉ Chủ sở hữu, chỉ nhân viên cùng tổ chức", () => {

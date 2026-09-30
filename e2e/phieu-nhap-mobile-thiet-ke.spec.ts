@@ -18,6 +18,10 @@ test("phiếu nhập kho điện thoại: trống thì khoá nút, thêm hàng �
   await expect(man.getByTestId("dau-trang")).toContainText("Phiếu mới · nháp")
   await expect(man.getByRole("button", { name: "Huỷ nháp" })).toBeVisible()
   await expect(man.getByText("Thông tin chung")).toBeVisible()
+  // Kho nhận: hai nút như thiết kế (mig 219) — mặc định kho bán, chọn Kho date.
+  await expect(man.getByTestId("nk-m-kho-sale")).toHaveAttribute("aria-pressed", "true")
+  await man.getByTestId("nk-m-kho-date").click()
+  await expect(man.getByTestId("nk-m-kho-date")).toHaveAttribute("aria-pressed", "true")
   await expect(man.getByTestId("nk-m-trong")).toHaveText("Chưa có mặt hàng. Tìm hoặc quét mã để thêm.")
 
   const bar = page.getByTestId("nk-m-thanh-day")
@@ -49,7 +53,9 @@ test("phiếu nhập kho điện thoại: trống thì khoá nút, thêm hàng �
     .poll(async () => (await nhatKy()).filter((r) => r.method === "POST" && r.path.includes("post_stock_import")).length)
     .toBeGreaterThan(0)
   const goi = (await nhatKy()).filter((r) => r.method === "POST" && r.path.includes("post_stock_import")).at(-1)
-  const p = (goi?.body as { p: { lines: Array<Record<string, unknown>> } }).p
+  const p = (goi?.body as { p: { lines: Array<Record<string, unknown>>; warehouse_zone?: string; notes?: string } }).p
+  expect(p.warehouse_zone, "chọn Kho date thì phiếu gửi đúng kho nhận").toBe("date")
+  expect(p.notes).toContain("Kho: Kho date")
   expect(p.lines).toHaveLength(1)
   expect(p.lines[0]).toMatchObject({ unit_name: "thùng", qty_tx: 2, conv: 24, base_qty: 48, batch_code: "L-E2E" })
 })

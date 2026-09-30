@@ -53,7 +53,8 @@ import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { ProductForm } from "@/components/products/product-form"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 import { errorMessage } from "@/lib/errors"
-import { ghiPhieuNhapKho, type DongNhapKho } from "@/lib/inventory/post-import"
+import { cn } from "@/lib/utils"
+import { ghiPhieuNhapKho, KHO_NHAN, nhanKhoNhan, type DongNhapKho, type KhoNhan } from "@/lib/inventory/post-import"
 import { moneyDisplay } from "@/lib/inventory/stock-in-mobile"
 import { StockInMobile } from "@/components/inventory/stock-in-mobile"
 
@@ -135,7 +136,8 @@ export default function StockInPage() {
   // Lịch Việt Nam, không phải lịch UTC: từ 0h đến 7h sáng giờ Việt thì
   // `toISOString()` trả về ngày HÔM QUA — sai đúng vào ca nhập hàng sớm.
   const [entryDate, setEntryDate] = useState<string>(vnToday(new Date()))
-  const [warehouse, setWarehouse] = useState("Kho chính")
+  /* Kho nhận: kho bán / kho date (mig 219) — thay ô chữ "Kho chính" cũ (chỉ vào ghi chú, hàng luôn vào kho bán). */
+  const [zone, setZone] = useState<KhoNhan>("sale")
   const [lines, setLines] = useState<LineItem[]>([newLine()])
   const [productSearch, setProductSearch] = useState("")
   const [barcodeOpen, setBarcodeOpen] = useState(false)
@@ -297,9 +299,7 @@ export default function StockInPage() {
       batch_code: "",
       manufactured_at: "",
       expires_at: "",
-      // Default per-line location to the entry-level warehouse note so
-      // single-location imports only need to type it once at the top.
-      location: warehouse.trim(),
+      location: "",
       available_units: availableUnits,
     }
     setLines((prev) => {
@@ -366,7 +366,7 @@ export default function StockInPage() {
     setSupplierId("")
     setInvoiceNo("")
     setEntryDate(vnToday(new Date()))
-    setWarehouse("Kho chính")
+    setZone("sale")
     setLines([newLine()])
     setProductSearch("")
     toast({ title: "Đã hủy bản nháp" })
@@ -400,7 +400,7 @@ export default function StockInPage() {
       const notesParts: string[] = []
       if (supplier.trim()) notesParts.push(`NCC: ${supplier.trim()}`)
       if (invoiceNo.trim()) notesParts.push(`HĐ: ${invoiceNo.trim()}`)
-      if (warehouse.trim()) notesParts.push(`Kho: ${warehouse.trim()}`)
+      notesParts.push(`Kho: ${nhanKhoNhan(zone)}`)
       const notes = notesParts.join(" • ") || null
       // Một mốc duy nhất cho cả phiếu lẫn mọi lô của nó. Tính hai lần thì
       // lô và phiếu lệch nhau vài mili giây — đủ để thứ tự FIFO không
@@ -427,7 +427,7 @@ export default function StockInPage() {
           batch_code: l.batch_code.trim() || null,
           manufactured_at: l.manufactured_at || null,
           expires_at: l.expires_at || null,
-          location: l.location.trim() || warehouse.trim() || null,
+          location: l.location.trim() || null,
           unit_name: unit,
           qty_tx: qty,
           conv,
@@ -446,6 +446,7 @@ export default function StockInPage() {
         posted_at: postedAt,
         notes,
         supplier_id: supplierId || null,
+        warehouse_zone: zone,
         payable: supplierId && summary.total > 0
           ? { amount: summary.total, invoice_number: invoiceNo.trim() || null }
           : null,
@@ -578,8 +579,8 @@ export default function StockInPage() {
           summary={summary}
           entryDate={entryDate}
           onEntryDate={setEntryDate}
-          warehouse={warehouse}
-          onWarehouse={setWarehouse}
+          zone={zone}
+          onZone={setZone}
           invoiceNo={invoiceNo}
           onInvoiceNo={setInvoiceNo}
           nccField={nccField("stockin-supplier-m")}
@@ -681,11 +682,19 @@ export default function StockInPage() {
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Kho nhận
                 </Label>
-                <Input
-                  value={warehouse}
-                  onChange={(e) => setWarehouse(e.target.value)}
-                  placeholder="Kho chính"
-                />
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1" role="group" aria-label="Kho nhận">
+                  {KHO_NHAN.map((k) => (
+                    <button
+                      key={k.v}
+                      type="button"
+                      aria-pressed={zone === k.v}
+                      onClick={() => setZone(k.v)}
+                      className={cn("h-8 rounded-md text-sm font-semibold", zone === k.v ? "bg-card text-primary shadow-sm" : "text-muted-foreground")}
+                    >
+                      {k.nhan}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -911,7 +920,7 @@ export default function StockInPage() {
                       <Input
                         value={line.location}
                         onChange={(e) => updateLine(line.id, { location: e.target.value })}
-                        placeholder={warehouse || "VD: A1-B3"}
+                        placeholder="VD: A1-B3"
                         className="text-xs h-9"
                         disabled={!hasProduct}
                       />

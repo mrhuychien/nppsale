@@ -115,6 +115,8 @@ export function SearchSelect({
   /* Điện thoại: danh sách xổ không được chui xuống dưới bàn phím — đo phần màn còn nhìn thấy, thiếu chỗ
      thì cuộn ô lên đầu khung nhìn (chủ nhà 30/09/2026, ô tìm NCC). */
   const vp = useViewportInsets(open)
+  const vpH = vp?.height ?? 0
+  const vpDay = vp?.bottomInset ?? 0
   const [xoMax, setXoMax] = useState<number | null>(null)
   useEffect(() => {
     if (!open) return setXoMax(null)
@@ -132,7 +134,7 @@ export function SearchSelect({
     window.addEventListener("scroll", onScroll, { passive: true })
     if (dau.canCuon && window.matchMedia?.("(pointer: coarse)").matches) el.scrollIntoView({ block: "start" })
     return () => window.removeEventListener("scroll", onScroll)
-  }, [open, vp]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, vpH, vpDay]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Chữ hiện trong ô khi đang đóng: tên đã chọn, hoặc chữ gõ tay. */
   const closedText = picked?.label ?? (allowFreeText ? freeText ?? "" : "")

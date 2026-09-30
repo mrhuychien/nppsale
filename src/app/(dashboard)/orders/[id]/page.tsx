@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyInput } from "@/components/ui/money-input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { orderTone } from "@/lib/orders/status-tone"
@@ -27,7 +26,6 @@ import {
 import { CustomerQuickView } from "@/components/customers/customer-quick-view"
 import { PaymentStatusBadge } from "@/components/ui/status-badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { closeOrder } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -36,7 +34,7 @@ import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { misaStatusBadge } from "@/lib/misa/labels"
 import { timXepHang } from "@/lib/search"
 import { ORDER_STATUS_MAP, PAYMENT_TERMS } from "@/lib/constants"
-import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Archive, Printer } from "lucide-react"
+import { Package2, XCircle, Pencil, Trash2, X, CreditCard, ExternalLink, Clock, FileText, RefreshCw, AlertCircle, Lock, Plus, MoreVertical, Phone, Send, Undo2, PackageCheck, Printer } from "lucide-react"
 import { StickyActionBar } from "@/components/ui/sticky-action-bar"
 import { MobileOrderDetail } from "@/components/orders/mobile-order-detail"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
@@ -129,7 +127,7 @@ type OrderStockEntry = {
  * trả lời đúng chứ không phải chỗ chưa làm xong. `partially_invoiced`,
  * `completed`, `closed` trừ kho và đụng công nợ, nên chỉ RPC của
  * migration 125 mới đặt được; trigger ở 124 chặn mọi lệnh ghi thẳng.
- * Nút của chúng (Xuất hàng · Đóng đơn) dựng riêng, không đi qua bảng
+ * Nút của chúng (Xuất hàng) dựng riêng, không đi qua bảng
  * này.
  *
  * ⚠ ĐƠN ĐÃ XUẤT KHÔNG HUỶ ĐƯỢC TỪ ĐÂY NỮA. Hàng đã rời kho thuộc về một
@@ -319,9 +317,6 @@ export default function OrderDetailPage() {
     }>
   >([])
   const [addLineDialogOpen, setAddLineDialogOpen] = useState(false)
-  const [closeOpen, setCloseOpen] = useState(false)
-  const [closeReason, setCloseReason] = useState("")
-  const [closing, setClosing] = useState(false)
   const [addLineSearch, setAddLineSearch] = useState("")
   const supabase = createClient()
   const router = useRouter()
@@ -1123,11 +1118,10 @@ export default function OrderDetailPage() {
    * không ai biết vì sao hỏng.
    */
   /**
-   * XUẤT HÀNG — hành động chính của đơn chưa giao xong.
+   * XUẤT HÀNG — hành động chính của đơn chưa xuất.
    *
-   * ⚠ ĐƠN ĐÃ XUẤT MỘT PHẦN VẪN CÒN NÚT NÀY. Bỏ đi là đơn giao đợt một
-   * xong thì không còn đường nào giao nốt phần còn lại, và người dùng
-   * phải quay ra danh sách tìm lại chính đơn vừa mở.
+   * (mig 217) Một đơn một hóa đơn: xuất xong (kể cả thiếu) là Hoàn thành,
+   * không còn đợt hai. `partially_invoiced` chỉ còn ở dữ liệu cũ.
    */
   const canInvoice =
     !!user &&
@@ -1136,18 +1130,7 @@ export default function OrderDetailPage() {
   const invoiceAction = canInvoice
     ? { label: "Xuất hàng", icon: PackageCheck, onClick: () => diHoacMoPos(router.push, `/sales-invoices/new?order=${order.id}`), busy: false }
     : null
-  /**
-   * ĐÓNG ĐƠN — chốt không giao nốt phần còn lại.
-   *
-   * ⚠ KHÁC HUỶ ĐƠN, và chỉ hiện khi đã xuất một phần. Đơn chưa xuất gì
-   * mà "đóng" thì đúng ra là HUỶ, và huỷ có đường riêng. Đây cũng là chỗ
-   * DUY NHẤT trong ứng dụng gọi `close_order` — bỏ nút là hàm đó thành
-   * mã chết, và đơn giao thiếu kẹt ở "Xuất một phần" vĩnh viễn.
-   */
-  const closeAction =
-    canInvoice && order.status === "partially_invoiced"
-      ? { label: "Đóng đơn", icon: Archive, onClick: () => setCloseOpen(true), busy: false }
-      : null
+  /* (mig 217) Không còn Đóng đơn — chủ nhà 30/09/2026: "đơn nào xuất xong coi như xong". */
   const deliveredNext =
     order.status === "completed" && !invoice
       ? { label: misaLoading ? "Đang xuất hóa đơn..." : "Xuất hóa đơn", icon: FileText, onClick: handleXuatHoaDon, busy: misaLoading }
@@ -1172,7 +1155,7 @@ export default function OrderDetailPage() {
     ? null
     : invoiceAction ?? deliveredNext ?? editAction ?? reorderAction
   // Nút nào không làm nút chính thì vào menu ⋮.
-  const mobileExtras = [closeAction, editAction, reorderAction].filter(
+  const mobileExtras = [editAction, reorderAction].filter(
     (a): a is NonNullable<typeof a> => !!a && a !== mobilePrimary
   )
   const hasMobileActions =
@@ -1279,11 +1262,6 @@ export default function OrderDetailPage() {
       {editAction && (
         <Button variant="outline" onClick={editAction.onClick}>
           <Pencil className="mr-1.5 h-4 w-4" /> {editAction.label}
-        </Button>
-      )}
-      {closeAction && (
-        <Button variant="outline" onClick={closeAction.onClick}>
-          <Archive className="mr-1.5 h-4 w-4" /> {closeAction.label}
         </Button>
       )}
       {/* ⚠ BƯỚC LÙI KHÔNG BAO GIỜ LÀ NÚT ĐẶC. Nút xanh đậm là chỗ mắt rơi
@@ -3018,44 +2996,6 @@ export default function OrderDetailPage() {
       </Dialog>
 
 
-      <ConfirmDialog
-        open={closeOpen}
-        onOpenChange={(o) => !closing && setCloseOpen(o)}
-        title="Đóng đơn, không giao phần còn lại?"
-        description="Phần đã xuất vẫn tính doanh thu và công nợ như cũ. Phần chưa xuất sẽ thôi, và đơn không mở lại được trừ khi huỷ một hóa đơn."
-        confirmLabel="Đóng đơn"
-        loading={closing}
-        onConfirm={async () => {
-          setClosing(true)
-          try {
-            await closeOrder(supabase, order.id, closeReason.trim())
-            toast({ title: `Đã đóng đơn ${order.order_code}` })
-            setCloseOpen(false)
-            setCloseReason("")
-            fetchData()
-          } catch (e) {
-            toast({ title: "Không đóng được đơn", description: errorMessage(e), variant: "destructive" })
-          } finally {
-            setClosing(false)
-          }
-        }}
-      >
-        <div>
-          <Label
-            htmlFor="close-reason"
-            className="text-xs uppercase tracking-wider text-muted-foreground"
-          >
-            Lý do
-          </Label>
-          <Textarea
-            id="close-reason"
-            rows={2}
-            value={closeReason}
-            onChange={(e) => setCloseReason(e.target.value)}
-            placeholder="Ví dụ: khách không lấy nốt, hàng ngừng kinh doanh"
-          />
-        </div>
-      </ConfirmDialog>
 
       {/* Modal thông tin khách — mở từ tên khách ở đầu trang. */}
       <CustomerQuickView

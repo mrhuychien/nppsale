@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, nhatKy, FAKE } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 24/09/2026: "Phần xem nhanh Hoá đơn từ Danh sách hoá đơn: thêm nút
@@ -42,4 +42,22 @@ test("Thu tiền từ hóa đơn: phiếu thu mở sẵn khách và điền số
   } finally {
     for (const id of ["rc-x1", "rc-x2"]) await fetch(`${FAKE}/rest/v1/receivables?id=eq.${id}`, { method: "DELETE" })
   }
+})
+
+/**
+ * ⚠ CHỦ NHÀ 30/09/2026 (mig 217): "Khi hủy hóa đơn -> coi như đóng đơn hàng -> Chuyển luôn đơn
+ *   hàng về trạng thái Đã hủy … trả hàng cũng hủy theo luôn ko cần nháp".
+ */
+test("huỷ hóa đơn từ xem nhanh: hộp xác nhận nói rõ đơn + phiếu trả huỷ theo, báo đã huỷ cả đơn", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/sales-invoices")
+  await page.getByRole("row").filter({ hasText: "HD-E2E-1" }).first().getByText("Tạp hoá Cô Ba").first().click()
+  await page.getByRole("dialog").getByRole("button", { name: "Huỷ đơn", exact: true }).click()
+  const hoi = page.getByRole("alertdialog").or(page.getByRole("dialog").filter({ hasText: "Huỷ hóa đơn HD-E2E-1?" })).last()
+  await expect(hoi).toContainText("Đơn hàng của hóa đơn và phiếu trả chưa nhập kho kèm theo cũng bị huỷ luôn")
+  await hoi.getByLabel("Lý do (bắt buộc)").fill("khách không lấy")
+  await hoi.getByRole("button", { name: "Huỷ hóa đơn" }).click()
+  await expect(page.getByText("Đã huỷ hóa đơn HD-E2E-1 và đơn hàng của nó").first()).toBeVisible()
+  const goi = (await nhatKy()).filter((r) => r.path.endsWith("/rpc/cancel_invoice")).at(-1)
+  expect((goi!.body as { p_reason: string }).p_reason).toBe("khách không lấy")
 })

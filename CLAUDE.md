@@ -45,6 +45,14 @@ Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL
 - `unit_cost` (kho) là giá **mỗi đơn vị cơ sở**.
 - Doanh số theo hóa đơn; báo cáo Đặt hàng theo đơn hàng.
 
+### Một đơn một hóa đơn; huỷ HĐ = huỷ đơn
+Chủ nhà chốt 30/09/2026 (mig 217): *"Khi hủy hóa đơn -> coi như đóng đơn hàng -> Chuyển luôn đơn hàng về
+trạng thái Đã hủy … đơn nào xuất xong coi như xong (hoàn thành) -> ko còn trạng thái Xuất 1 phần và đã đóng"*.
+- Xuất HĐ (kể cả giao thiếu) → đơn **Hoàn thành**; không có HĐ thứ hai (chỉ mục `uq_sales_invoices_mot_don_mot_hd`).
+  Không còn `partially_invoiced` / `closed` / Đóng đơn (`close_order` → `ORDER_CLOSE_REMOVED`).
+- **Huỷ HĐ** → đơn **Đã huỷ**, phiếu trả Nháp / Chờ xử lý của đơn và HĐ **Đã huỷ** (không về Nháp).
+- **Sửa HĐ** (`reissue_invoice`) KHÔNG huỷ đơn — cờ `npp.reissue_chuyen_thu` phân biệt hai đường.
+
 ### Chuyến giao
 Chủ nhà 24/09/2026: không dùng chuyến giao nữa — không làm thêm gì cho luồng chuyến giao.
 

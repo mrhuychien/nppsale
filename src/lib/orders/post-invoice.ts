@@ -243,7 +243,10 @@ export function explainInvoiceError(message: string): string {
   }
   if (m.includes("USE_RPC")) {
     // Ai đó ghi thẳng vào cột status thay vì gọi RPC — trigger 124 chặn.
-    return "Bước này phải đi qua nút Xuất hàng / Huỷ hóa đơn / Đóng đơn, không đổi trạng thái trực tiếp được."
+    return "Bước này phải đi qua nút Xuất hàng / Huỷ hóa đơn, không đổi trạng thái trực tiếp được."
+  }
+  if (m.includes("ORDER_CLOSE_REMOVED")) {
+    return "Không còn đóng đơn — đơn xuất hóa đơn xong là Hoàn thành."
   }
   return m
 }
@@ -417,7 +420,24 @@ export interface CancelInvoiceResult {
 }
 
 /**
- * Huỷ hóa đơn — hoàn hàng về ĐÚNG các lô đã lấy, xoá công nợ của nó.
+ * Lời cảnh báo trong hộp xác nhận huỷ hóa đơn (mig 217, chủ nhà 30/09/2026: "Khi hủy hóa đơn
+ * -> coi như đóng đơn hàng -> Chuyển luôn đơn hàng về trạng thái Đã hủy … trả hàng cũng hủy
+ * theo luôn ko cần nháp").
+ */
+export const MO_TA_HUY_HOA_DON =
+  "Hàng hoàn về đúng các lô đã lấy, công nợ của hóa đơn bị xoá. Đơn hàng của hóa đơn và phiếu trả " +
+  "chưa nhập kho kèm theo cũng bị huỷ luôn. Không hoàn tác được — muốn sửa số liệu thì dùng Sửa HĐ."
+
+/** Lời báo sau khi huỷ: nói rõ đơn cũng đã huỷ theo. */
+export function baoDaHuyHoaDon(maHoaDon: string, orderStatus: string | null): string {
+  return orderStatus === "cancelled"
+    ? `Đã huỷ hóa đơn ${maHoaDon} và đơn hàng của nó`
+    : `Đã huỷ hóa đơn ${maHoaDon}`
+}
+
+/**
+ * Huỷ hóa đơn — hoàn hàng về ĐÚNG các lô đã lấy, xoá công nợ của nó; đơn và phiếu trả
+ * chưa nhập kho huỷ theo (mig 217).
  *
  * ⚠ KHÔNG CÓ "SỬA HÓA ĐƠN" TRỰC TIẾP. Hàng đã rời kho theo lô nào thì
  * phải về đúng lô ấy; phép tính chênh lệch tổng số không làm được điều
@@ -580,23 +600,4 @@ export async function reissueInvoice(
     nearExpirySkipped: Number(row?.near_expiry_skipped ?? 0),
     orderStatus: row?.order_status ?? null,
   }
-}
-
-/**
- * Đóng đơn — thôi không giao phần còn lại.
- *
- * ⚠ KHÁC HUỶ ĐƠN. Huỷ là "đơn này không có thật"; đóng là "phần đã giao
- * vẫn tính, phần còn lại thì thôi". Gộp hai nút vào một là mất luôn câu
- * trả lời cho "đơn này có giao thiếu không".
- */
-export async function closeOrder(
-  supabase: SupabaseClient,
-  orderId: string,
-  reason: string
-): Promise<void> {
-  const { error } = await supabase.rpc("close_order", {
-    p_order_id: orderId,
-    p_reason: reason,
-  })
-  if (error) throw new Error(explainInvoiceError(error.message || String(error)))
 }

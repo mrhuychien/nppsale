@@ -288,5 +288,7 @@ export const rpc = {
   create_return_with_lines: () => "00000000-0000-4000-8000-00000000f002",
   /* Lập phiếu thu (mig 119/215) — trả id phiếu; chốt chỉ đọc tải trọng. */
   create_cash_receipt: () => "00000000-0000-4000-8000-00000000f0c1",
+  /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
+  cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],
   reissue_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f003", invoice_code: "HD-E2E-1-1", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "completed" }],
 }

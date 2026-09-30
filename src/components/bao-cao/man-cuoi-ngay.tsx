@@ -25,7 +25,8 @@ import { fetchAllOrdersDu } from "@/lib/analytics/sales"
 import { nhanTrangThaiDon } from "@/lib/bao-cao/nap-don-dat"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
-const TRANG_THAI = ["Nháp", "Phiếu tạm", "Hoàn thành", "Đã đóng", "Đã hủy"]
+/* (mig 217) Không còn "Đã đóng" — đơn xuất xong là Hoàn thành. */
+const TRANG_THAI = ["Nháp", "Phiếu tạm", "Hoàn thành", "Đã hủy"]
 
 export function ManCuoiNgay() {
   const bc = useBaoCao("reports", MAC_DINH_MAN["/bao-cao/cuoi-ngay"])

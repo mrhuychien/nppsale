@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { toast } from "@/hooks/use-toast"
-import { cancelInvoice } from "@/lib/orders/post-invoice"
+import { baoDaHuyHoaDon, cancelInvoice, MO_TA_HUY_HOA_DON } from "@/lib/orders/post-invoice"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -399,15 +399,15 @@ export function InvoiceDrawer({
           open={cancelOpen}
           onOpenChange={(o) => !cancelling && setCancelOpen(o)}
           title={`Huỷ hóa đơn ${invoice.invoice_code}?`}
-          description="Hàng hoàn về đúng các lô đã lấy, công nợ của hóa đơn này bị xoá, và đơn quay lại trạng thái tương ứng. Không hoàn tác được."
+          description={MO_TA_HUY_HOA_DON}
           confirmLabel="Huỷ hóa đơn"
           variant="destructive"
           loading={cancelling}
           onConfirm={async () => {
             setCancelling(true)
             try {
-              await cancelInvoice(createClient(), invoice.id, cancelReason.trim())
-              toast({ title: `Đã huỷ hóa đơn ${invoice.invoice_code}` })
+              const kq = await cancelInvoice(createClient(), invoice.id, cancelReason.trim())
+              toast({ title: baoDaHuyHoaDon(invoice.invoice_code, kq.orderStatus) })
               setCancelOpen(false)
               setCancelReason("")
               onChanged?.()

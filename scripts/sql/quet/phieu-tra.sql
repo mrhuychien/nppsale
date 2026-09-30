@@ -361,7 +361,7 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S1.7-8 nổ: %', SQLERRM;
 END $t$;
 ROLLBACK;
 
--- S1.9 huỷ hóa đơn có phiếu tự sinh Chờ xử lý → phiếu về Nháp, gỡ HĐ, công nợ HĐ xoá; xuất lại → phiếu bám lại
+-- S1.9 huỷ hóa đơn có phiếu tự sinh Chờ xử lý → (mig 217) phiếu + đơn ĐÃ HUỶ, công nợ HĐ xoá; không xuất lại
 BEGIN;
 DO $t$
 DECLARE d pg_temp.bo; v_inv uuid; v_inv2 uuid; v_ret uuid; e int; v_err text;
@@ -371,22 +371,22 @@ BEGIN
   SELECT id INTO v_ret FROM returns WHERE invoice_id = v_inv;
   PERFORM cancel_invoice(v_inv, 'thử huỷ');
   e := pg_temp.kiem('S1.9a', d);
-  PERFORM pg_temp.ket('S1.9a', e = 0 AND (SELECT status FROM returns WHERE id = v_ret) = 'draft' AND (SELECT invoice_id FROM returns WHERE id = v_ret) IS NULL
+  PERFORM pg_temp.ket('S1.9a', e = 0 AND (SELECT status FROM returns WHERE id = v_ret) = 'cancelled' AND (SELECT invoice_id FROM returns WHERE id = v_ret) IS NULL
+      AND (SELECT status FROM sales_orders WHERE id = d.ord) = 'cancelled'
       AND pg_temp.no(d.cust) = 0 AND pg_temp.ton(d.p1) = 1000 AND (SELECT revenue_date FROM returns WHERE id = v_ret) IS NULL,
-    format('huỷ HĐ: phiếu %s (draft), nợ khách %s (0), tồn P1 %s (1000), revenue_date %s',
-      (SELECT status FROM returns WHERE id = v_ret), pg_temp.no(d.cust), pg_temp.ton(d.p1), (SELECT revenue_date FROM returns WHERE id = v_ret)));
-  -- phiếu nháp theo đơn: không huỷ / không hoàn thành được ở phiếu
-  v_err := pg_temp.thu(format('SELECT cancel_return(%L, %L)', v_ret, 'x'));
-  PERFORM pg_temp.ket('S1.9b', v_err = 'RETURN_FOLLOWS_ORDER', 'huỷ phiếu nháp theo đơn → ' || COALESCE(v_err, 'KHÔNG CHẶN'));
+    format('huỷ HĐ: phiếu %s (cancelled), đơn %s (cancelled), nợ khách %s (0), tồn P1 %s (1000), revenue_date %s',
+      (SELECT status FROM returns WHERE id = v_ret), (SELECT status FROM sales_orders WHERE id = d.ord), pg_temp.no(d.cust), pg_temp.ton(d.p1),
+      (SELECT revenue_date FROM returns WHERE id = v_ret)));
+  -- phiếu đã huỷ theo đơn: không hoàn thành được (nhập khống)
   v_err := pg_temp.thu(format('SELECT complete_return(%L, %L)', v_ret, 'sale'));
-  PERFORM pg_temp.ket('S1.9c', v_err IS NOT NULL, 'hoàn thành phiếu nháp theo đơn chưa có HĐ → ' || COALESCE(v_err, 'KHÔNG CHẶN (nhập khống)'));
-  -- xuất lại
-  v_inv2 := pg_temp.xuat(d.ord, pg_temp.dong_don(d));
-  e := pg_temp.kiem('S1.9d', d);
-  PERFORM pg_temp.ket('S1.9d', e = 0 AND (SELECT status FROM returns WHERE id = v_ret) = 'submitted' AND (SELECT invoice_id FROM returns WHERE id = v_ret) = v_inv2
-      AND (SELECT credit_with_invoice FROM returns WHERE id = v_ret) AND pg_temp.no_hd(v_inv2) = 580000,
-    format('xuất lại: phiếu %s bám HĐ mới? %s, nợ %s (580000)', (SELECT status FROM returns WHERE id = v_ret),
-      (SELECT invoice_id FROM returns WHERE id = v_ret) = v_inv2, pg_temp.no_hd(v_inv2)));
+  PERFORM pg_temp.ket('S1.9c', v_err IS NOT NULL, 'hoàn thành phiếu đã huỷ theo đơn → ' || COALESCE(v_err, 'KHÔNG CHẶN (nhập khống)'));
+  -- đơn đã huỷ: không xuất lại
+  v_err := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d.ord, 'lines', pg_temp.dong_don(d), 'allow_oversell', true)));
+  PERFORM pg_temp.ket('S1.9d', v_err LIKE 'ORDER_NOT_INVOICEABLE%', 'xuất lại đơn đã huỷ → ' || COALESCE(v_err, 'KHÔNG CHẶN'));
+  -- đơn mới cho S1.10 / S1.12
+  d := pg_temp.moi('S19b');
+  v_inv2 := pg_temp.xuat(d.ord, pg_temp.dong_don(d), pg_temp.tra1(d));
+  SELECT id INTO v_ret FROM returns WHERE invoice_id = v_inv2;
   -- S1.10 hoàn thành rồi huỷ HĐ → CHẶN LOCKED_RETURN_DONE
   PERFORM complete_return(v_ret, 'sale');
   v_err := pg_temp.thu(format('SELECT cancel_invoice(%L, %L)', v_inv2, 'x'));

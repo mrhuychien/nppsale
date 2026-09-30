@@ -1,6 +1,6 @@
 -- KIỂM TOÀN LUỒNG (chủ nhà 28/09/2026 "test logic lại cho tao 1 lần nữa cho chắc"):
 -- xuất HĐ kèm hàng trả → nhập kho → thu tiền → sửa HĐ "Có" → nhập kho lại → sửa HĐ "Không"
--- → huỷ nhập → huỷ HĐ. Mọi RPC gọi dưới vai `authenticated` (chủ NPP) như từ trình duyệt.
+-- → huỷ nhập → huỷ HĐ (mig 217: đơn + phiếu trả Đã huỷ). Mọi RPC gọi dưới vai `authenticated` (chủ NPP) như từ trình duyệt.
 -- Sau MỖI bước kiểm: trạng thái phiếu, tồn kho (kho bán Coca, kho cận date Pepsi), công nợ,
 -- tổng nợ khách, doanh số thuần. psql -f trên Postgres ở máy; in 'ĐẠT'/'LỖI' từng bước.
 \set ON_ERROR_STOP on
@@ -196,9 +196,10 @@ BEGIN
   PERFORM cancel_invoice(h, 'huỷ thử');
   PERFORM pg_temp.ghi(9, 'huỷ phiếu thu rồi huỷ HĐ',
     pg_temp.hd() IS NULL AND pg_temp.no_khach() = 0
-    AND (SELECT status FROM returns WHERE id = r) = 'draft' AND (SELECT invoice_id FROM returns WHERE id = r) IS NULL
+    AND (SELECT status FROM returns WHERE id = r) = 'cancelled' AND (SELECT invoice_id FROM returns WHERE id = r) IS NULL
     AND pg_temp.ton('c0000000-0000-0000-0000-000000000001', 'sale') = m.coca
-    AND (SELECT status FROM sales_orders WHERE id = (SELECT v FROM ctx WHERE k = 'don')) = 'submitted',
+    -- (mig 217) huỷ HĐ = huỷ đơn, phiếu trả huỷ theo
+    AND (SELECT status FROM sales_orders WHERE id = (SELECT v FROM ctx WHERE k = 'don')) = 'cancelled',
     format('HĐ còn hiệu lực %s; nợ khách %s (0); phiếu trả %s gắn HĐ %s; Coca về đủ %s; đơn %s',
       pg_temp.hd() IS NOT NULL, pg_temp.no_khach(), (SELECT status FROM returns WHERE id = r), (SELECT invoice_id FROM returns WHERE id = r) IS NOT NULL,
       pg_temp.ton('c0000000-0000-0000-0000-000000000001', 'sale') = m.coca, (SELECT status FROM sales_orders WHERE id = (SELECT v FROM ctx WHERE k = 'don'))));

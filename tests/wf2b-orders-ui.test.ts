@@ -439,19 +439,13 @@ describe("Màn chi tiết đơn", () => {
   const CODE = strip(DETAIL)
 
   /**
-   * ⚠ ĐÂY LÀ CHỖ DUY NHẤT TRONG ỨNG DỤNG GỌI `close_order`. Bỏ nút là
-   * hàm đó thành mã chết, và đơn giao thiếu kẹt ở "Xuất một phần" vĩnh
-   * viễn — không nút nào đưa nó ra được.
+   * (mig 217) Chủ nhà 30/09/2026: "Nhà phân phối không dùng chức năng xuất 1 phần đơn, đơn nào
+   * xuất xong coi như xong" — không còn nút Đóng đơn, `close_order` trả ORDER_CLOSE_REMOVED.
    */
-  /**
-   * ⚠ NEO CẢ BIỂU THỨC. Chuỗi `order.status === "partially_invoiced"`
-   * còn nằm trong điều kiện của nút Xuất hàng, nên hỏi trống không thì
-   * gỡ hẳn điều kiện của nút Đóng đơn mà chốt vẫn xanh — và khi đó đơn
-   * chưa xuất gì cũng "đóng" được, trong khi đúng ra là HUỶ.
-   */
-  it("có nút Đóng đơn, và chỉ cho đơn đã xuất một phần", () => {
-    expect(CODE).toContain("closeOrder(supabase, order.id, closeReason.trim())")
-    expect(CODE).toContain('canInvoice && order.status === "partially_invoiced"')
+  it("không còn nút Đóng đơn", () => {
+    expect(CODE).not.toContain("closeOrder(")
+    expect(CODE).not.toContain("closeAction")
+    expect(CODE).not.toContain('"Đóng đơn"')
   })
 
   it("có nút Xuất hàng cho cả phiếu tạm lẫn đơn xuất một phần", () => {

@@ -763,7 +763,7 @@ describe("màn chi tiết đơn hàng theo mẫu", () => {
      * không, nên đổi `{invoiceAction && (` thành `{false && invoiceAction
      * && (` vẫn xanh — nút biến mất mà chốt không biết.
      */
-    for (const a of ["invoiceAction", "editAction", "reorderAction", "closeAction", "cancelTransition"]) {
+    for (const a of ["invoiceAction", "editAction", "reorderAction", "cancelTransition"]) {
       expect(block, `thiếu nút ${a} ở hàng nút đầu trang`).toContain(`{${a} && (`)
     }
     // Không có nhánh nào bị tắt cứng.

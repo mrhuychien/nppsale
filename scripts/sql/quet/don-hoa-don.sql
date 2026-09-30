@@ -6,7 +6,8 @@
 -- Bất biến kiểm sau mỗi bước:
 --   INV-1 mỗi HĐ posted có đúng 1 công nợ = total − Σ khoản có phiếu trả tính cho nó; HĐ huỷ không còn công nợ.
 --   INV-2 Δ Σ batches.qty_on_hand = Δ Σ dòng phiếu kho posted (nhập − xuất, đơn vị cơ sở).
---   INV-3 trạng thái đơn khớp hoá đơn; invoiced_qty = Σ SL hoá đơn posted (quy đơn vị dòng đơn).
+--   INV-3 trạng thái đơn khớp hoá đơn (mig 217: có HĐ posted = completed, không còn xuất một phần /
+--         đóng đơn); invoiced_qty = Σ SL hoá đơn posted (quy đơn vị dòng đơn); một đơn tối đa 1 HĐ posted.
 --   INV-4 nợ khách = Σ HĐ posted − Σ khoản có − Σ tiền đã thu (+ đầu kỳ / dòng âm phiếu trả).
 --   INV-5 doanh thu = Σ total HĐ posted theo invoice_date; tờ bị thay không đếm hai lần.
 \set ON_ERROR_STOP off
@@ -166,9 +167,10 @@ BEGIN
   SELECT status INTO v_cur FROM sales_orders WHERE id = p_don;
   SELECT count(*) INTO v_inv FROM sales_invoices WHERE order_id = p_don AND status = 'posted';
   SELECT count(*) INTO v_open FROM sales_order_lines WHERE order_id = p_don AND invoiced_qty < quantity;
+  -- (mig 217) Xuất thiếu cũng là xong.
   v_st := CASE WHEN v_cur IN ('draft', 'cancelled') THEN v_cur
-               WHEN v_inv = 0 THEN 'submitted' WHEN v_open = 0 THEN 'completed'
-               WHEN v_cur = 'closed' THEN 'closed' ELSE 'partially_invoiced' END;
+               WHEN v_inv = 0 THEN 'submitted' ELSE 'completed' END;
+  PERFORM pg_temp.dat(v_inv <= 1, format('%s đơn có %s HĐ posted (mig 217: tối đa 1)', p_tag, v_inv));
   PERFORM pg_temp.dat(v_cur = v_st, format('%s INV-3 đơn %s, mong %s', p_tag, v_cur, v_st));
   PERFORM pg_temp.dat(NOT (v_cur = 'cancelled' AND v_inv > 0), format('%s đơn huỷ còn HĐ posted', p_tag));
 END $f$;
@@ -256,26 +258,24 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S01 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S02 XUÔI: xuất một phần rồi xuất nốt (đơn 2 HĐ, 2 công nợ).
+-- S02 XUÔI (mig 217): xuất THIẾU là xong — đơn completed ngay, không xuất thêm HĐ thứ hai.
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; n int;
+DECLARE kh uuid; d uuid; h1 uuid; n int; e text;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
   d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(1, 'Thung 24', 2, 240000, 0.1), pg_temp.dl(2, 'lon', 40, 10000, 0.08)));
   h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[1, 20]::numeric[]));
-  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'partially_invoiced', 'S02 sau HĐ1 đơn không partially_invoiced');
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S02 xuất thiếu: đơn không completed');
   PERFORM pg_temp.dat((SELECT total FROM sales_invoices WHERE id = h1) = 480000, format('S02 HĐ1 total %s ≠ 480000', (SELECT total FROM sales_invoices WHERE id = h1)));
-  PERFORM pg_temp.dat((SELECT sum(remaining_qty) FROM get_invoiceable_lines(d)) = 21, 'S02 phần còn lại ≠ 1 + 20');
   PERFORM pg_temp.kiem(kh, d, 'S02.1');
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d));
-  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S02 sau HĐ2 đơn không completed');
+  e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d))));
+  PERFORM pg_temp.dat(e LIKE 'ORDER_NOT_INVOICEABLE%', 'S02 HĐ thứ hai không bị chặn: ' || COALESCE(e, 'chạy được'));
   SELECT count(*) INTO n FROM receivables WHERE order_id = d;
-  PERFORM pg_temp.dat(n = 2, 'S02 số phiếu công nợ ≠ 2');
+  PERFORM pg_temp.dat(n = 1, 'S02 số phiếu công nợ ≠ 1');
   PERFORM pg_temp.kiem(kh, d, 'S02.2');
-  PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 960000, 'S02 nợ ≠ 960000');
-  PERFORM pg_temp.dat((SELECT sum(remaining_qty) FROM get_invoiceable_lines(d)) = 0, 'S02 còn phần chưa xuất');
-  PERFORM pg_temp.ket('S02', 'xuất 1 phần (480.000) + xuất nốt (480.000) → 2 công nợ, completed');
+  PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 480000, 'S02 nợ ≠ 480000');
+  PERFORM pg_temp.ket('S02', 'xuất thiếu (480.000) → completed; HĐ thứ hai bị chặn; 1 công nợ');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S02 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
@@ -329,7 +329,7 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S03B (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S03C: xuất đổi đơn vị so với đơn (đơn 2 thùng; HĐ 24 lon) → invoiced_qty = 1 thùng, đơn partially.
+-- S03C: xuất đổi đơn vị so với đơn (đơn 2 thùng; HĐ 24 lon) → invoiced_qty = 1 thùng, đơn completed (mig 217).
 BEGIN;
 DO $s$
 DECLARE kh uuid; d uuid; h uuid; v_line uuid;
@@ -341,7 +341,7 @@ BEGIN
         'conversion_factor', 999, 'quantity', 24, 'unit_price', 10000)));
   PERFORM pg_temp.dat((SELECT conversion_factor FROM sales_invoice_lines WHERE invoice_id = h) = 1, 'S03C hệ số tải trọng (999) không bị máy chủ ghi đè');
   PERFORM pg_temp.dat((SELECT invoiced_qty FROM sales_order_lines WHERE id = v_line) = 1, format('S03C invoiced_qty %s ≠ 1 thùng', (SELECT invoiced_qty FROM sales_order_lines WHERE id = v_line)));
-  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'partially_invoiced', 'S03C đơn không partially');
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S03C đơn không completed');
   PERFORM pg_temp.dat((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(1)) = 2000 - 24, 'S03C kho P01 không trừ 24');
   PERFORM pg_temp.kiem(kh, d, 'S03C');
   PERFORM pg_temp.ket('S03C', 'HĐ lon cho dòng đơn thùng: quy đổi đúng, hệ số do máy chủ tra');
@@ -349,7 +349,7 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S03C (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S04 NGƯỢC: huỷ HĐ duy nhất → đơn về submitted, kho về ĐÚNG lô, công nợ xoá, dòng xuất được mở lại, doanh thu 0.
+-- S04 NGƯỢC: huỷ HĐ → đơn ĐÃ HUỶ (mig 217), kho về ĐÚNG lô, công nợ xoá, doanh thu 0; không xuất lại được.
 BEGIN;
 DO $s$
 DECLARE kh uuid; d uuid; h uuid; lo0 jsonb; lo1 jsonb; r record; e text;
@@ -363,9 +363,9 @@ BEGIN
   SELECT * INTO r FROM cancel_invoice(h, 'khách không nhận');
   lo1 := pg_temp.lo();
   PERFORM pg_temp.dat(lo0 = lo1, 'S04 tồn từng lô sau huỷ ≠ trước khi xuất');
-  PERFORM pg_temp.dat(r.order_status = 'submitted' AND (SELECT status FROM sales_orders WHERE id = d) = 'submitted', 'S04 đơn không về submitted');
+  PERFORM pg_temp.dat(r.order_status = 'cancelled' AND (SELECT status FROM sales_orders WHERE id = d) = 'cancelled', 'S04 đơn không bị huỷ theo HĐ');
   PERFORM pg_temp.dat(NOT EXISTS (SELECT 1 FROM receivables WHERE invoice_id = h), 'S04 còn công nợ');
-  PERFORM pg_temp.dat((SELECT sum(remaining_qty) FROM get_invoiceable_lines(d)) = 42, 'S04 phần xuất được không mở lại 2 + 40');
+  PERFORM pg_temp.dat((SELECT sum(invoiced_qty) FROM sales_order_lines WHERE order_id = d) = 0, 'S04 invoiced_qty không về 0');
   PERFORM pg_temp.dat(pg_temp.dt(kh) = 0, 'S04 doanh thu ≠ 0');
   PERFORM pg_temp.dat((SELECT count(*) FROM sales_invoice_lines WHERE invoice_id = h AND order_line_id IS NOT NULL) = 0, 'S04 dòng HĐ huỷ còn móc dòng đơn');
   PERFORM pg_temp.kiem(kh, d, 'S04');
@@ -373,41 +373,30 @@ BEGIN
   -- huỷ lần 2
   e := pg_temp.thu(format('SELECT cancel_invoice(%L, %L)', h, 'lần 2'));
   PERFORM pg_temp.dat(e LIKE 'INVOICE_NOT_POSTED%', 'S04 huỷ lần 2 không bị chặn');
-  -- xuất lại sau huỷ
-  h := pg_temp.hd(d, pg_temp.dong_hd(d));
-  PERFORM pg_temp.kiem(kh, d, 'S04.xuất-lại');
-  PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 960000, 'S04 xuất lại nợ ≠ 960000');
-  PERFORM pg_temp.ket('S04', 'huỷ HĐ duy nhất: lô về đúng chỗ, nợ 0, đơn submitted; huỷ lần 2 chặn; xuất lại OK');
+  -- đơn đã huỷ: không xuất lại
+  e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[2, 40]::numeric[]))));
+  PERFORM pg_temp.dat(e LIKE 'ORDER_NOT_INVOICEABLE%', 'S04 xuất lại đơn đã huỷ không bị chặn: ' || COALESCE(e, 'chạy được'));
+  PERFORM pg_temp.ket('S04', 'huỷ HĐ: lô về đúng chỗ, nợ 0, đơn Đã huỷ; huỷ lần 2 chặn; không xuất lại');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S04 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S05 NGƯỢC: đơn 2 HĐ — huỷ HĐ1 → đơn partially, HĐ2 & công nợ HĐ2 giữ nguyên; huỷ nốt HĐ2 → submitted.
+-- S05 (mig 217): một đơn một HĐ — chỉ mục duy nhất chặn HĐ posted thứ hai kể cả khi lách trạng thái đơn.
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; lo0 jsonb; lo1 jsonb; r record; v_r2 numeric;
+DECLARE kh uuid; d uuid; h1 uuid; e text;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
-  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(1, 'Thung 24', 2, 240000, 0.1), pg_temp.dl(2, 'lon', 40, 10000, 0.08)));
-  lo0 := pg_temp.lo();
-  -- HĐ1 lấy 30 lon lô A + 0 lô B... HĐ1 = 20 lon (lô A), HĐ2 = 20 lon (10 lô A + 10 lô B)
-  h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[1, 20]::numeric[]));
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d));
-  SELECT amount INTO v_r2 FROM receivables WHERE invoice_id = h2;
-  SELECT * INTO r FROM cancel_invoice(h1, 'sai');
-  PERFORM pg_temp.dat(r.order_status = 'partially_invoiced', 'S05 sau huỷ HĐ1 đơn ' || r.order_status);
-  PERFORM pg_temp.dat((SELECT amount FROM receivables WHERE invoice_id = h2) = v_r2, 'S05 công nợ HĐ2 bị đụng');
-  PERFORM pg_temp.dat((SELECT sum(remaining_qty) FROM get_invoiceable_lines(d)) = 21, 'S05 phần còn lại ≠ 21');
-  -- HĐ1 lấy 20 lon từ lô A → phải hoàn về lô A
-  PERFORM pg_temp.dat((SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-02A') = 20, format('S05 lô A sau huỷ HĐ1 = %s, mong 20', (SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-02A')));
-  PERFORM pg_temp.kiem(kh, d, 'S05.1');
-  PERFORM pg_temp.dat(pg_temp.no_kh(kh) = v_r2, 'S05 nợ ≠ công nợ HĐ2');
-  SELECT * INTO r FROM cancel_invoice(h2, 'sai nốt');
-  PERFORM pg_temp.dat(r.order_status = 'submitted', 'S05 sau huỷ hết đơn ' || r.order_status);
-  lo1 := pg_temp.lo();
-  PERFORM pg_temp.dat(lo0 = lo1, 'S05 tồn từng lô ≠ ban đầu');
-  PERFORM pg_temp.kiem(kh, d, 'S05.2');
-  PERFORM pg_temp.ket('S05', 'huỷ 1 trong 2 HĐ → partially; huỷ nốt → submitted; lô về đúng chỗ');
+  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
+  h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[20]::numeric[]));
+  -- giả một đơn bị kẹt ở submitted (dữ liệu hỏng) rồi xuất tiếp → chỉ mục phải chặn
+  PERFORM set_config('npp.via_rpc', 'on', false);
+  UPDATE sales_orders SET status = 'submitted' WHERE id = d;
+  PERFORM set_config('npp.via_rpc', '', false);
+  e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[20]::numeric[]))));
+  PERFORM pg_temp.dat(e LIKE '%uq_sales_invoices_mot_don_mot_hd%', 'S05 HĐ posted thứ hai không bị chỉ mục chặn: ' || COALESCE(e, 'chạy được'));
+  PERFORM pg_temp.dat((SELECT count(*) FROM sales_invoices WHERE order_id = d AND status = 'posted') = 1, 'S05 > 1 HĐ posted');
+  PERFORM pg_temp.ket('S05', 'một đơn một HĐ posted — chỉ mục chặn cả khi trạng thái đơn bị lách');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S05 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
@@ -437,7 +426,7 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S05B (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S05C NGƯỢC: huỷ HĐ có phiếu trả kèm đơn đang Chờ xử lý → phiếu về Nháp, gỡ HĐ; có phiếu đã nhập kho → chặn.
+-- S05C NGƯỢC: huỷ HĐ có phiếu trả kèm đơn đang Chờ xử lý → phiếu HUỶ theo đơn (mig 217); có phiếu đã nhập kho → chặn.
 BEGIN;
 DO $s$
 DECLARE kh uuid; d uuid; h uuid; ret uuid; e text; r record;
@@ -460,14 +449,11 @@ BEGIN
   PERFORM pg_temp.dat((SELECT status FROM returns WHERE id = ret) = 'submitted', 'S05C huỷ nhập không về submitted');
   PERFORM cancel_invoice(h, 'x');
   SELECT * INTO r FROM returns WHERE id = ret;
-  PERFORM pg_temp.dat(r.status = 'draft' AND r.invoice_id IS NULL AND NOT r.credit_with_invoice, format('S05C phiếu sau huỷ HĐ: %s/%s/%s', r.status, r.invoice_id, r.credit_with_invoice));
+  PERFORM pg_temp.dat(r.status = 'cancelled' AND r.invoice_id IS NULL, format('S05C phiếu sau huỷ HĐ: %s/%s', r.status, r.invoice_id));
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'cancelled', 'S05C đơn không huỷ theo HĐ');
   PERFORM pg_temp.kiem(kh, d, 'S05C.2');
   PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 0, 'S05C nợ ≠ 0');
-  -- xuất lại: phiếu trả lại đi theo HĐ mới
-  h := pg_temp.hd(d, pg_temp.dong_hd(d));
-  PERFORM pg_temp.dat((SELECT invoice_id FROM returns WHERE id = ret) = h AND (SELECT amount FROM receivables WHERE invoice_id = h) = 300000, 'S05C xuất lại: phiếu trả không bám HĐ mới / công nợ ≠ 300000');
-  PERFORM pg_temp.kiem(kh, d, 'S05C.3');
-  PERFORM pg_temp.ket('S05C', 'phiếu trả tự sinh: chờ → trừ nợ 100k; đã nhập → chặn huỷ HĐ; huỷ nhập → huỷ HĐ → phiếu về nháp; xuất lại bám HĐ mới');
+  PERFORM pg_temp.ket('S05C', 'phiếu trả tự sinh: chờ → trừ nợ 100k; đã nhập → chặn huỷ HĐ; huỷ nhập → huỷ HĐ → đơn + phiếu Đã huỷ');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S05C (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
@@ -496,7 +482,7 @@ BEGIN
   PERFORM pg_temp.dat((SELECT total FROM sales_invoices WHERE id = r.invoice_id) = 253000 + 200000, format('S06 total tờ mới %s ≠ 453000', (SELECT total FROM sales_invoices WHERE id = r.invoice_id)));
   PERFORM pg_temp.dat(pg_temp.dt(kh, d_old) = 0 AND pg_temp.dt(kh, d_new) = 453000, format('S06 doanh thu: ngày cũ %s (mong 0), ngày mới %s (mong 453000)', pg_temp.dt(kh, d_old), pg_temp.dt(kh, d_new)));
   PERFORM pg_temp.dat((SELECT due_date FROM receivables WHERE invoice_id = r.invoice_id) = d_new + 30, 'S06 hạn nợ không theo ngày mới');
-  PERFORM pg_temp.dat(r.order_status = 'partially_invoiced', 'S06 đơn sau sửa ' || r.order_status || ' (P01 1/2, P02 0/40, P03 10/10 → partially)');
+  PERFORM pg_temp.dat(r.order_status = 'completed', 'S06 đơn sau sửa ' || r.order_status || ' (xuất thiếu vẫn completed — mig 217)');
   -- kho: so với trước khi xuất, P01 −24, P02 0, P03 −10; lô P02 về đúng
   PERFORM pg_temp.dat((pg_temp.lo()->>(SELECT id::text FROM batches WHERE batch_code = 'Q-02A')) = (lo0->>(SELECT id::text FROM batches WHERE batch_code = 'Q-02A')), 'S06 lô A P02 không về đủ');
   PERFORM pg_temp.dat((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(1)) = 2000 - 24 AND (SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(3) AND warehouse_zone = 'sale') = 990, 'S06 kho P01/P03 sai');
@@ -679,106 +665,49 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S09 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S10 NGƯỢC: huỷ đơn khi còn HĐ posted (chặn) → huỷ hết HĐ → huỷ đơn được; phiếu trả nháp kèm đơn bị huỷ theo.
+-- S10 NGƯỢC (mig 217): huỷ đơn khi còn HĐ (chặn) → huỷ HĐ = đơn tự huỷ, phiếu trả kèm đơn huỷ theo.
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; e text;
+DECLARE kh uuid; d uuid; h1 uuid; e text;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
   d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)), true,
         jsonb_build_array(jsonb_build_object('product_id', pg_temp.p(3), 'unit_name', 'chai', 'quantity', 1, 'unit_price', 20000, 'line_total', 20000)));
   h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
   e := pg_temp.thu(format('SELECT cancel_order(%L, %L)', d, 'x'));
   PERFORM pg_temp.dat(e LIKE 'HAS_INVOICE%', 'S10 huỷ đơn có HĐ không bị chặn: ' || COALESCE(e, 'chạy được'));
-  PERFORM cancel_invoice(h1, 'x');
-  e := pg_temp.thu(format('SELECT cancel_order(%L, %L)', d, 'x'));
-  PERFORM pg_temp.dat(e LIKE 'HAS_INVOICE%', 'S10 huỷ đơn còn 1 HĐ không bị chặn');
-  PERFORM cancel_invoice(h2, 'x');
-  PERFORM pg_temp.kiem(kh, d, 'S10.0');
-  PERFORM cancel_order(d, 'khách bỏ');
-  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'cancelled', 'S10 đơn không cancelled');
+  PERFORM cancel_invoice(h1, 'khách bỏ');
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'cancelled', 'S10 huỷ HĐ: đơn không huỷ theo');
   PERFORM pg_temp.dat(NOT EXISTS (SELECT 1 FROM returns WHERE order_id = d AND status <> 'cancelled'), 'S10 phiếu trả kèm đơn còn sống: ' || (SELECT string_agg(status, ',') FROM returns WHERE order_id = d));
+  e := pg_temp.thu(format('SELECT cancel_order(%L, %L)', d, 'x'));
+  PERFORM pg_temp.dat(e IS NULL, 'S10 huỷ đơn đã huỷ không êm: ' || COALESCE(e, ''));
   e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[1]::numeric[]))));
   PERFORM pg_temp.dat(e LIKE 'ORDER_NOT_INVOICEABLE%', 'S10 xuất HĐ cho đơn huỷ không bị chặn');
   PERFORM pg_temp.kiem(kh, d, 'S10');
   PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 0 AND pg_temp.dt(kh) = 0, 'S10 nợ/doanh thu ≠ 0');
-  PERFORM pg_temp.ket('S10', 'huỷ đơn: chặn khi còn HĐ; huỷ hết HĐ → huỷ đơn được, phiếu trả nháp huỷ theo');
+  PERFORM pg_temp.ket('S10', 'huỷ đơn: chặn khi còn HĐ; huỷ HĐ → đơn + phiếu trả kèm đơn Đã huỷ');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S10 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S11 NGƯỢC: đóng đơn (thôi giao phần còn lại) → xuất tiếp (chặn) → huỷ HĐ duy nhất (đơn mở lại, xoá dấu đóng).
+-- S11 (mig 217): không còn đóng đơn.
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h uuid; e text; o record;
+DECLARE kh uuid; d uuid; h uuid; e text;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
   d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
-  e := pg_temp.thu(format('SELECT close_order(%L, %L)', d, 'x'));
-  PERFORM pg_temp.dat(e LIKE 'ORDER_NOT_PARTIAL%', 'S11 đóng đơn chưa xuất không bị chặn');
   h := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  PERFORM close_order(d, 'hết hàng');
-  PERFORM pg_temp.kiem(kh, d, 'S11.0');
-  e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[5]::numeric[]))));
-  PERFORM pg_temp.dat(e LIKE 'ORDER_NOT_INVOICEABLE%', 'S11 xuất tiếp đơn đã đóng không bị chặn');
-  PERFORM cancel_invoice(h, 'x');
-  SELECT * INTO o FROM sales_orders WHERE id = d;
-  PERFORM pg_temp.dat(o.status = 'submitted' AND o.closed_at IS NULL, format('S11 đơn sau huỷ HĐ: %s closed_at %s', o.status, o.closed_at));
+  e := pg_temp.thu(format('SELECT close_order(%L, %L)', d, 'x'));
+  PERFORM pg_temp.dat(e LIKE 'ORDER_CLOSE_REMOVED%', 'S11 đóng đơn không bị chặn: ' || COALESCE(e, 'chạy được'));
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S11 đơn không completed');
   PERFORM pg_temp.kiem(kh, d, 'S11');
-  PERFORM pg_temp.ket('S11', 'đóng đơn: chưa xuất → chặn; đã đóng → chặn xuất; huỷ HĐ cuối → đơn mở lại');
+  PERFORM pg_temp.ket('S11', 'đóng đơn ngừng dùng; xuất thiếu đã là completed');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S11 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S11B NGƯỢC: SỬA HĐ của đơn ĐÃ ĐÓNG — (a) đơn đóng có 2 HĐ, (b) đơn đóng có 1 HĐ.
-BEGIN;
-DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; e text; r record;
-BEGIN
-  PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
-  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
-  h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  PERFORM close_order(d, 'thôi');
-  e := pg_temp.thu(format('SELECT reissue_invoice(%L, %L::jsonb)', h2, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(h2), '{0,unit_price}', '9000'), 'invoice_date', current_date)));
-  PERFORM pg_temp.dat(e IS NULL, 'S11B(a) sửa giá HĐ2 của đơn đã đóng (2 HĐ) bị lỗi: ' || COALESCE(e, ''));
-  PERFORM pg_temp.kiem(kh, d, 'S11B.a');
-  -- (b)
-  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
-  h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  PERFORM close_order(d, 'thôi');
-  SELECT * INTO r FROM reissue_invoice(h1, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(h1), '{0,unit_price}', '9000'), 'invoice_date', current_date));
-  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'closed',
-    format('S11B(b) sửa giá HĐ duy nhất của đơn đã đóng: đơn thành %s (mất quyết định đóng đơn, closed_at %s)', (SELECT status FROM sales_orders WHERE id = d), (SELECT closed_at FROM sales_orders WHERE id = d)));
-  PERFORM pg_temp.kiem(kh, d, 'S11B.b');
-  PERFORM pg_temp.ket('S11B', 'sửa HĐ trên đơn đã đóng');
-EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S11B (ngoại lệ) %', SQLERRM;
-END $s$;
-ROLLBACK;
-
--- S11C: đóng đơn có 2 HĐ, huỷ 1 HĐ → vẫn closed; huỷ nốt → submitted.
-BEGIN;
-DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; r record;
-BEGIN
-  PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
-  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
-  h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  PERFORM close_order(d, 'thôi');
-  SELECT * INTO r FROM cancel_invoice(h1, 'x');
-  PERFORM pg_temp.dat(r.order_status = 'closed', 'S11C huỷ 1/2 HĐ: đơn ' || r.order_status);
-  PERFORM pg_temp.kiem(kh, d, 'S11C.1');
-  SELECT * INTO r FROM cancel_invoice(h2, 'x');
-  PERFORM pg_temp.dat(r.order_status = 'submitted' AND (SELECT closed_at FROM sales_orders WHERE id = d) IS NULL, 'S11C huỷ hết: đơn ' || r.order_status);
-  PERFORM pg_temp.kiem(kh, d, 'S11C.2');
-  PERFORM pg_temp.ket('S11C', 'đơn đóng: huỷ 1/2 HĐ giữ closed; huỷ hết → submitted');
-EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S11C (ngoại lệ) %', SQLERRM;
-END $s$;
-ROLLBACK;
-
--- S12 NGƯỢC: sửa dòng đơn sau khi đã xuất một phần (từ trình duyệt, vai authenticated) → chặn; đơn chưa xuất → sửa được.
+-- S12 NGƯỢC: sửa dòng đơn sau khi đã xuất (từ trình duyệt, vai authenticated) → chặn; đơn chưa xuất → sửa được.
 BEGIN;
 DO $s$
 DECLARE kh uuid; d uuid; d2 uuid; h uuid; e text; v_line uuid;
@@ -792,11 +721,13 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.la(1);
   e := pg_temp.thu(format('UPDATE sales_order_lines SET quantity = 5 WHERE order_id = %L', d));
-  PERFORM pg_temp.dat(e LIKE 'ORDER_LOCKED%', 'S12 sửa dòng đơn đã xuất 1 phần không bị chặn: ' || COALESCE(e, 'chạy được'));
+  -- (mig 217) đơn xuất thiếu là 'completed': RLS có thể lọc mất dòng (0 dòng đổi) thay vì nổ ORDER_LOCKED — kiểm cả số liệu.
+  PERFORM pg_temp.dat(e LIKE 'ORDER_LOCKED%' OR (SELECT quantity FROM sales_order_lines WHERE order_id = d) = 40,
+    'S12 sửa dòng đơn đã xuất không bị chặn: ' || COALESCE(e, 'chạy được'));
   e := pg_temp.thu(format('DELETE FROM sales_order_lines WHERE order_id = %L', d));
-  PERFORM pg_temp.dat(e LIKE 'ORDER_LOCKED%', 'S12 xoá dòng đơn đã xuất không bị chặn');
-  e := pg_temp.thu(format('UPDATE sales_orders SET status = %L WHERE id = %L', 'completed', d));
-  PERFORM pg_temp.dat(e LIKE 'USE_RPC%', 'S12 đổi trạng thái đơn thẳng không bị chặn: ' || COALESCE(e, 'chạy được'));
+  PERFORM pg_temp.dat(e LIKE 'ORDER_LOCKED%' OR EXISTS (SELECT 1 FROM sales_order_lines WHERE order_id = d), 'S12 xoá dòng đơn đã xuất không bị chặn');
+  e := pg_temp.thu(format('UPDATE sales_orders SET status = %L WHERE id = %L', 'submitted', d));
+  PERFORM pg_temp.dat(e LIKE 'USE_RPC%' OR (SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S12 đổi trạng thái đơn thẳng không bị chặn: ' || COALESCE(e, 'chạy được'));
   e := pg_temp.thu(format('UPDATE sales_order_lines SET quantity = 30 WHERE order_id = %L', d2));
   PERFORM pg_temp.dat(e IS NULL, 'S12 sửa dòng đơn chưa xuất bị lỗi: ' || COALESCE(e, ''));
   e := pg_temp.thu(format('UPDATE sales_order_lines SET invoiced_qty = 30 WHERE order_id = %L', d2));
@@ -839,8 +770,11 @@ BEGIN
   h := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[1]::numeric[]), jsonb_build_object('discount', 999999));
   SELECT * INTO r FROM sales_invoices WHERE id = h;
   PERFORM pg_temp.dat(r.subtotal = 0 AND r.total = 267, format('S13B giảm > tiền hàng: %s/%s/%s (mong 0/267/267 — VAT vẫn tính trên giá dòng)', r.subtotal, r.vat, r.total));
+  -- (mig 217) một đơn một HĐ: mỗi phép thử một đơn riêng
+  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 3, 3333, 0.08)));
   h := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[1]::numeric[]), jsonb_build_object('discount', 'abc'));
   PERFORM pg_temp.dat((SELECT total FROM sales_invoices WHERE id = h) = 3600, 'S13B giảm "abc" không về 0: ' || (SELECT total FROM sales_invoices WHERE id = h));
+  d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 3, 3333, 0.08)));
   h := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[1]::numeric[]), jsonb_build_object('discount', -5000));
   PERFORM pg_temp.dat((SELECT total FROM sales_invoices WHERE id = h) = 3600, 'S13B giảm âm làm tăng tiền: ' || (SELECT total FROM sales_invoices WHERE id = h));
   PERFORM pg_temp.kiem(kh, d, 'S13B');
@@ -886,7 +820,7 @@ BEGIN
   e := pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[1]::numeric[]))));
   PERFORM pg_temp.dat(e LIKE 'FORBIDDEN%', 'S14 sales xuất HĐ: ' || COALESCE(e, 'chạy được'));
   e := pg_temp.thu(format('SELECT close_order(%L, %L)', d, 'x'));
-  PERFORM pg_temp.dat(e LIKE 'FORBIDDEN%', 'S14 sales đóng đơn: ' || COALESCE(e, 'chạy được'));
+  PERFORM pg_temp.dat(e LIKE 'ORDER_CLOSE_REMOVED%', 'S14 sales đóng đơn (mig 217 ngừng dùng): ' || COALESCE(e, 'chạy được'));
   e := pg_temp.thu(format('SELECT public._wf2b_recompute_receivable(%L)', h));
   PERFORM pg_temp.dat(e LIKE 'permission denied%', 'S14 sales gọi hàm nội bộ _wf2b_recompute_receivable: ' || COALESCE(e, 'chạy được'));
   e := pg_temp.thu(format('SELECT public._wf2b_sync_order_status(%L)', d));
@@ -935,7 +869,7 @@ BEGIN
   e := pg_temp.thu(format('SELECT get_invoiceable_lines(%L)', d));
   PERFORM pg_temp.dat(e LIKE 'ORG_MISMATCH%', 'S14B đọc dòng xuất tổ chức khác');
   e := pg_temp.thu(format('SELECT close_order(%L, %L)', d, 'x'));
-  PERFORM pg_temp.dat(e LIKE 'ORG_MISMATCH%', 'S14B đóng đơn tổ chức khác');
+  PERFORM pg_temp.dat(e LIKE 'ORDER_CLOSE_REMOVED%', 'S14B đóng đơn tổ chức khác (mig 217 ngừng dùng)');
   e := pg_temp.thu(format('SELECT cancel_order(%L, %L)', d, 'x'));
   PERFORM pg_temp.dat(e LIKE 'ORG_MISMATCH%', 'S14B huỷ đơn tổ chức khác');
   PERFORM pg_temp.ket('S14B', 'khác tổ chức: mọi RPC trả ORG_MISMATCH');
@@ -946,7 +880,7 @@ ROLLBACK;
 -- S15 XUÔI+NGƯỢC: hàng ĐỔI kèm đơn, đơn xuất HAI đợt — dòng đổi có bị mời xuất lần nữa ở đợt 2 không?
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; x record; v_lines jsonb;
+DECLARE kh uuid; d uuid; h1 uuid; x record; v_lines jsonb;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
   d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)), true,
@@ -961,14 +895,13 @@ BEGIN
   SELECT * INTO x FROM get_invoiceable_lines(d) g WHERE g.is_exchange;
   PERFORM pg_temp.dat(x IS NULL OR x.remaining_qty = 0,
     format('S15 sau đợt 1 get_invoiceable_lines vẫn mời xuất hàng đổi %s chai (đã xuất ở HĐ1) — đợt 2 dựng theo remaining_qty sẽ trừ kho lần nữa', x.remaining_qty));
-  -- đợt 2 dựng giống màn hình
-  SELECT jsonb_agg(jsonb_build_object('order_line_id', g.order_line_id, 'product_id', g.product_id, 'unit_name', g.unit_name,
-           'quantity', g.remaining_qty, 'unit_price', g.unit_price, 'is_exchange', g.is_exchange))
-    INTO v_lines FROM get_invoiceable_lines(d) g;
-  h2 := pg_temp.hd(d, v_lines);
-  PERFORM pg_temp.dat((SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-03A') = 998, format('S15 đợt 2 trừ kho hàng đổi thêm lần nữa: lô P03 = %s (mong 998)', (SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-03A')));
+  -- (mig 217) đợt 2 không còn: xuất thiếu là xong
+  PERFORM pg_temp.dat((SELECT status FROM sales_orders WHERE id = d) = 'completed', 'S15 xuất thiếu kèm hàng đổi: đơn không completed');
+  PERFORM pg_temp.dat(pg_temp.thu(format('SELECT post_invoice(%L::jsonb)', jsonb_build_object('order_id', d, 'lines', pg_temp.dong_hd(d, ARRAY[1]::numeric[])))) LIKE 'ORDER_NOT_INVOICEABLE%',
+    'S15 đợt 2 không bị chặn');
+  PERFORM pg_temp.dat((SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-03A') = 998, format('S15 hàng đổi trừ kho %s (mong 998)', (SELECT qty_on_hand FROM batches WHERE batch_code = 'Q-03A')));
   PERFORM pg_temp.kiem(kh, d, 'S15');
-  PERFORM pg_temp.ket('S15', 'hàng đổi kèm đơn xuất 2 đợt');
+  PERFORM pg_temp.ket('S15', 'hàng đổi kèm đơn: trừ kho một lần, không có đợt 2');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S15 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
@@ -1070,24 +1003,23 @@ EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S19 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;
 
--- S20 NGƯỢC: sửa HĐ1 của đơn 2 HĐ, tăng SL cho đủ đơn → completed; sửa HĐ trên đơn completed; kho & nợ.
+-- S20 NGƯỢC (mig 217): sửa HĐ tăng SL cho đủ đơn / giảm SL → đơn luôn completed; kho & nợ.
 BEGIN;
 DO $s$
-DECLARE kh uuid; d uuid; h1 uuid; h2 uuid; r record;
+DECLARE kh uuid; d uuid; h1 uuid; r record;
 BEGIN
   PERFORM pg_temp.bat_dau(); kh := pg_temp.dung();
   d := pg_temp.don(kh, jsonb_build_array(pg_temp.dl(2, 'lon', 40, 10000)));
   h1 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  h2 := pg_temp.hd(d, pg_temp.dong_hd(d, ARRAY[10]::numeric[]));
-  SELECT * INTO r FROM reissue_invoice(h1, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(h1), '{0,quantity}', '30'), 'invoice_date', current_date));
+  SELECT * INTO r FROM reissue_invoice(h1, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(h1), '{0,quantity}', '40'), 'invoice_date', current_date));
   PERFORM pg_temp.dat(r.order_status = 'completed', 'S20 sau sửa tăng đủ: đơn ' || r.order_status);
   PERFORM pg_temp.kiem(kh, d, 'S20.1');
-  SELECT * INTO r FROM reissue_invoice(h2, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(h2), '{0,quantity}', '5'), 'invoice_date', current_date));
-  PERFORM pg_temp.dat(r.order_status = 'partially_invoiced', 'S20 sau sửa giảm: đơn ' || r.order_status);
+  SELECT * INTO r FROM reissue_invoice(r.invoice_id, jsonb_build_object('lines', jsonb_set(pg_temp.dong_cua_hd(r.invoice_id), '{0,quantity}', '35'), 'invoice_date', current_date));
+  PERFORM pg_temp.dat(r.order_status = 'completed', 'S20 sau sửa giảm: đơn ' || r.order_status);
   PERFORM pg_temp.dat((SELECT sum(qty_on_hand) FROM batches WHERE product_id = pg_temp.p(2)) = 1030 - 35, 'S20 kho P02 ≠ −35');
   PERFORM pg_temp.kiem(kh, d, 'S20.2');
   PERFORM pg_temp.dat(pg_temp.no_kh(kh) = 350000, 'S20 nợ ≠ 350000');
-  PERFORM pg_temp.ket('S20', 'sửa HĐ trên đơn nhiều HĐ: completed ↔ partially đúng');
+  PERFORM pg_temp.ket('S20', 'sửa HĐ tăng / giảm SL: đơn vẫn completed, không huỷ đơn');
 EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'LỖI S20 (ngoại lệ) %', SQLERRM;
 END $s$;
 ROLLBACK;

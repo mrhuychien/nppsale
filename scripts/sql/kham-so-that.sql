@@ -486,4 +486,16 @@ SELECT 55, 'Mig 216 (Sửa HĐ: phiếu trả về Chờ xử lý)',
   CASE WHEN position('complete_return' IN pg_get_functiondef('public._tra_da_nhap_sau_lap_lai(uuid)'::regprocedure)) > 0
        THEN 'CHƯA — sửa HĐ chọn huỷ phiếu nhập vẫn tự nhập kho lại'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 56. Mig 217 — huỷ HĐ = huỷ đơn; một đơn một HĐ; bỏ xuất một phần / đóng đơn
+SELECT 56, 'Mig 217 (Huỷ HĐ = huỷ đơn, một đơn một HĐ)',
+  CASE WHEN position('(mig 217)' IN pg_get_functiondef('public.cancel_invoice(uuid, text)'::regprocedure)) = 0
+       THEN 'CHƯA — huỷ HĐ vẫn đưa đơn về Phiếu tạm, phiếu trả về Nháp'
+       WHEN EXISTS (SELECT 1 FROM sales_orders WHERE status IN ('partially_invoiced', 'closed'))
+       THEN 'LỖI — còn ' || (SELECT count(*) FROM sales_orders WHERE status IN ('partially_invoiced', 'closed')) || ' đơn Xuất một phần / Đã đóng'
+       WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_sales_invoices_mot_don_mot_hd')
+       THEN 'LỖI — có đơn nhiều HĐ ghi sổ, chưa dựng được chỉ mục một-đơn-một-HĐ'
+       ELSE 'OK — đã vá' END,
+  'Trước khi chạy mig: đơn nhiều HĐ = ' || (SELECT count(*) FROM (SELECT order_id FROM sales_invoices WHERE status = 'posted' AND order_id IS NOT NULL
+     GROUP BY order_id HAVING count(*) > 1) x)
 ) t ORDER BY stt;

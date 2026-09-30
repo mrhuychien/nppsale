@@ -37,7 +37,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { cancelInvoice } from "@/lib/orders/post-invoice"
+import { baoDaHuyHoaDon, cancelInvoice, MO_TA_HUY_HOA_DON } from "@/lib/orders/post-invoice"
 import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
@@ -614,15 +614,15 @@ export default function SalesInvoiceDetailPage() {
         open={cancelOpen}
         onOpenChange={(o) => !cancelling && setCancelOpen(o)}
         title={`Huỷ hóa đơn ${inv.invoice_code}?`}
-        description="Hàng hoàn về đúng các lô đã lấy, công nợ của hóa đơn này bị xoá, và đơn quay lại trạng thái tương ứng. Không hoàn tác được."
+        description={MO_TA_HUY_HOA_DON}
         confirmLabel="Huỷ hóa đơn"
         variant="destructive"
         loading={cancelling}
         onConfirm={async () => {
           setCancelling(true)
           try {
-            await cancelInvoice(supabase, inv.id, cancelReason.trim())
-            toast({ title: `Đã huỷ hóa đơn ${inv.invoice_code}` })
+            const kq = await cancelInvoice(supabase, inv.id, cancelReason.trim())
+            toast({ title: baoDaHuyHoaDon(inv.invoice_code, kq.orderStatus) })
             setCancelOpen(false)
             fetchData()
           } catch (e) {

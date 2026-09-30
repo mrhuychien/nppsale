@@ -115,7 +115,8 @@ export function luaChonLoc(dm: DanhMucBC | null, k: LoaiLoc): [string, string][]
     case "ncc":
       return [...Array.from(dm.ncc.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen), [CHUA_CO, CHUA_CO]]
     case "ostatus":
-      return ["Nháp", "Phiếu tạm", "Hoàn thành", "Đã đóng"].map((x): [string, string] => [x, x])
+      /* (mig 217) không còn "Đã đóng" */
+      return ["Nháp", "Phiếu tạm", "Hoàn thành"].map((x): [string, string] => [x, x])
     case "pay":
       return [["Tiền mặt", "Tiền mặt"], ["Chuyển khoản", "Chuyển khoản"], ["Ví điện tử", "Ví điện tử"]]
     case "dstatus":

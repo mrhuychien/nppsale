@@ -9,6 +9,7 @@ import {
 } from "@/lib/purchasing/phieu-mobile"
 import { receiptTotals, validReceiptLines, type ReceiptProduct } from "@/lib/purchasing/receipt-form"
 import { hidesMobileAppBar, showsBottomNav } from "@/lib/nav/mobile-chrome"
+import { khoaChonNhieu } from "@/lib/sell/pick-mode"
 
 const SUA = {
   id: "sua", name: "Sữa hộp", sku: "SUA1", base_unit: "hộp", cost_price: 15000, vat_rate: 0.08,
@@ -79,5 +80,19 @@ describe("hai màn riêng, cùng khung di động", () => {
       expect(hidesMobileAppBar(r), r).toBe(true)
       expect(showsBottomNav(r), r).toBe(false)
     }
+  })
+})
+
+describe("chọn từng mã mặc định, chọn nhiều là tuỳ chọn (chủ nhà 30/09/2026)", () => {
+  const KHUNG = readFileSync("src/components/purchasing/phieu-ncc-mobile.tsx", "utf8")
+  it("nhớ riêng cho nhập / trả NCC, không lẫn với bán / trả khách", () => {
+    const k = new Set((["ban", "tra", "nhap", "tra-ncc"] as const).map((l) => khoaChonNhieu(l)))
+    expect(k.size).toBe(4)
+    expect(khoaChonNhieu("tra")).toBe("npp.sell.chon-nhieu.tra")
+  })
+  it("mặc định tắt, chỉ đổi khi bấm; thêm mã mới ở chế độ từng mã thì sang phiếu", () => {
+    expect(KHUNG).toContain("const [chonNhieu, setChonNhieu] = useState(false)")
+    expect(KHUNG).toContain("if (roiManSauKhiThem({ chonNhieu, delta: d, dongMoi })) moPhieu()")
+    expect(KHUNG.match(/setChonNhieu\(/g), "chỉ đọc bộ nhớ lúc mở + nút bấm").toHaveLength(2)
   })
 })

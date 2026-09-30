@@ -16,7 +16,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, ChevronUp, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronUp, ListChecks, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
+import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -102,6 +103,20 @@ export function PhieuNccMobile({
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [chiTiet, setChiTiet] = useState(false)
   const [seq, setSeq] = useState(0)
+  /**
+   * CHỌN TỪNG MÃ là mặc định; CHỌN NHIỀU là tuỳ chọn (chủ nhà 30/09/2026: "cho chọn 1 sản phẩm 1
+   * lần là mặc định, nút tùy chọn chọn nhiều sản phẩm 1 lúc (bật tắt khi ấn, ko tự thay đổi trạng
+   * thái)") — như /sell (`pick-mode.ts`). Chỉ đổi khi bấm nút; nhớ trên máy, nhập và trả NCC riêng.
+   * ⚠ Đọc bộ nhớ SAU khi gắn màn: server không có localStorage.
+   */
+  const loaiChon = kind === "nhap" ? "nhap" : "tra-ncc"
+  const [chonNhieu, setChonNhieu] = useState(false)
+  useEffect(() => { setChonNhieu(docChonNhieu(loaiChon)) }, [loaiChon])
+  const doiCheDoChon = () => {
+    const v = !chonNhieu
+    ghiChonNhieu(v, loaiChon)
+    setChonNhieu(v)
+  }
 
   const lines = value.lines
   const supplier = suppliers.find((s) => s.id === value.supplierId) ?? null
@@ -137,10 +152,13 @@ export function PhieuNccMobile({
   const unitOf = (p: ReceiptProduct) => unitSel[p.id] ?? p.base_unit
   const step = useCallback(
     (p: ReceiptProduct, unit: string, d: number) => {
+      const dongMoi = soLuongTrenPhieu(lines, p.id, unit) === 0
       setSeq((s) => s + 1)
       onChange({ lines: buocSoLuong(lines, p, unit, d, seq) })
+      /* Chọn từng mã: thêm một mã mới là sang phiếu ngay (như /sell). */
+      if (roiManSauKhiThem({ chonNhieu, delta: d, dongMoi })) moPhieu()
     },
-    [lines, onChange, seq]
+    [lines, onChange, seq, chonNhieu] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const hopLe = validReceiptLines(lines)
@@ -175,6 +193,20 @@ export function PhieuNccMobile({
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <h1 className="min-w-0 flex-1 text-[19px] font-bold text-on-surface">{chu.them}</h1>
+              <button
+                type="button"
+                aria-pressed={chonNhieu}
+                aria-label={chonNhieu ? "Đang chọn nhiều mã — bấm để chọn từng mã" : "Chọn nhiều mã"}
+                title={chonNhieu ? "Đang chọn nhiều mã: thêm xong vẫn ở lại màn. Bấm để tắt." : "Chọn nhiều mã (đang chọn từng mã: thêm một mã là sang phiếu)"}
+                onClick={doiCheDoChon}
+                data-testid="chon-nhieu"
+                className={cn(
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border transition-colors",
+                  chonNhieu ? "border-primary bg-primary text-primary-foreground" : "border-border text-on-surface-variant"
+                )}
+              >
+                <ListChecks className="h-[18px] w-[18px]" />
+              </button>
             </div>
             {nccButton}
             <div className="relative">

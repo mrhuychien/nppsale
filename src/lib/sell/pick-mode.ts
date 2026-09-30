@@ -16,9 +16,10 @@
  * ⚠ LƯU TRÊN MÁY (localStorage). Bộ nhớ bị chặn thì về mặc định: chọn từng mã.
  */
 
-export type LoaiChon = "ban" | "tra"
+/** "nhap" / "tra-ncc": phiếu nhập hàng / trả hàng NCC trên điện thoại (chủ nhà 30/09/2026). */
+export type LoaiChon = "ban" | "tra" | "nhap" | "tra-ncc"
 export const KHOA_CHON_NHIEU = "npp.sell.chon-nhieu"
-export const khoaChonNhieu = (loai: LoaiChon = "ban") => (loai === "tra" ? `${KHOA_CHON_NHIEU}.tra` : KHOA_CHON_NHIEU)
+export const khoaChonNhieu = (loai: LoaiChon = "ban") => (loai === "ban" ? KHOA_CHON_NHIEU : `${KHOA_CHON_NHIEU}.${loai}`)
 
 export function docChonNhieu(loai: LoaiChon = "ban", store: Pick<Storage, "getItem"> | null = khoLuu()): boolean {
   try {

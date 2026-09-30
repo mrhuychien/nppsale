@@ -27,8 +27,19 @@ test("nhập hàng trên điện thoại: chạm thẻ thêm hàng, đổi thùn
   const sua = page.getByTestId("the-hang-ncc").filter({ hasText: "Sữa hộp" })
   await sua.getByRole("button", { name: "thùng", exact: true }).click()
   await expect(sua).toContainText("360.000")
+  // Mặc định CHỌN TỪNG MÃ: chạm một mã là sang phiếu ngay.
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
   await sua.click()
+  await expect(page.getByTestId("buoc-phieu")).toBeVisible()
+  await page.getByRole("button", { name: "Thêm hàng" }).click()
+  // Bật CHỌN NHIỀU: thêm xong vẫn ở lại; nút chỉ đổi khi bấm, tải lại trang vẫn giữ.
+  await page.getByTestId("chon-nhieu").click()
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "true")
   await sua.getByRole("button", { name: "Tăng Sữa hộp" }).click()
+  await page.getByTestId("the-hang-ncc").filter({ hasText: "Mì tôm" }).click()
+  await expect(page.getByTestId("buoc-them-hang")).toBeVisible()
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "true")
+  await page.getByTestId("the-hang-ncc").filter({ hasText: "Mì tôm" }).getByRole("button", { name: "Bớt Mì tôm" }).click()
   await expect(sua.getByLabel("Số lượng Sữa hộp")).toHaveText("2")
   await expect(page.getByText("1 mặt hàng · 2 đơn vị")).toBeVisible()
 
@@ -63,8 +74,8 @@ test("trả hàng NCC trên điện thoại: màn riêng, chọn lý do + kho, g
   await page.goto("/purchase-returns/new")
   await expect(page.getByRole("heading", { name: "Trả hàng NCC" })).toBeVisible()
   // Chưa chọn NCC mà xem phiếu: nút chính nói thiếu gì.
+  // Chọn từng mã (mặc định): chạm là sang phiếu.
   await page.getByTestId("the-hang-ncc").filter({ hasText: "Mì tôm" }).click()
-  await page.getByRole("button", { name: "Xem phiếu" }).click()
   await expect(page.getByRole("button", { name: "Chọn NCC" })).toBeDisabled()
   await page.getByRole("button", { name: "Thêm hàng" }).click()
   await chonNcc(page)
@@ -77,4 +88,20 @@ test("trả hàng NCC trên điện thoại: màn riêng, chọn lý do + kho, g
   await expect.poll(async () => !!(await goiCuoi("/rpc/complete_supplier_return"))).toBe(true)
   const dau = (await goiCuoi("/rest/v1/supplier_returns"))!.body as Record<string, unknown>
   expect(dau).toMatchObject({ reason: "damaged", warehouse_zone: "sale", status: "draft" })
+})
+
+test("nút chọn nhiều chỉ đổi khi bấm, nhớ qua lần mở sau; nhập và trả NCC nhớ riêng", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/purchasing/receipts/new")
+  const nut = page.getByTestId("chon-nhieu")
+  await expect(nut).toHaveAttribute("aria-pressed", "false")
+  await nut.click()
+  await page.reload()
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "true")
+  await page.goto("/purchase-returns/new")
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
+  await page.goto("/purchasing/receipts/new")
+  await page.getByTestId("chon-nhieu").click()
+  await page.reload()
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
 })

@@ -18,10 +18,10 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
-import { DocCardList } from "@/components/ui/doc-card-list"
+import { PhieuKhoDienThoai } from "@/components/inventory/phieu-kho-dien-thoai"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
-import { vnDateKey, vnTime } from "@/lib/orders/status-tone"
+import { vnTime } from "@/lib/orders/status-tone"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -212,6 +212,8 @@ export default function StockEntriesPage() {
   }, [entries, search, typeFilter, statusFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length
+  /** Băng "N phiếu kiểm kê chờ duyệt" của màn điện thoại — duyệt ở /inventory/adjustments. */
+  const choDuyetKiemKe = entries.filter((e) => e.type === "stocktake" && (e.status || "posted") === "draft").length
 
   /**
    * DẢI VIÊN THUỐC THEO LOẠI PHIẾU — bấm được, thay cho bốn thẻ số to.
@@ -540,8 +542,43 @@ export default function StockEntriesPage() {
     </DropdownMenu>
   )
 
+  const trongRong = (
+    <EmptyState
+      icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
+      title={entries.length === 0 ? "Chưa có phiếu kho" : "Không tìm thấy phiếu"}
+      description={entries.length === 0 ? "Tạo phiếu đầu tiên bằng nút 'Tạo phiếu'" : "Thử đổi bộ lọc"}
+    />
+  )
+
   return (
     <div className="space-y-4">
+      <PhieuKhoDienThoai
+        rows={filtered}
+        chips={typeChips}
+        activeType={typeFilter}
+        onType={setTypeFilter}
+        search={search}
+        onSearch={setSearch}
+        canCreate={!!canCreate}
+        choDuyetKiemKe={choDuyetKiemKe}
+        loading={loading}
+        loadError={loadError}
+        truncatedNote={truncated ? truncationWarning() : null}
+        onOpen={(e) => setXemId(e.id)}
+        filter={{
+          activeCount: (statusFilter !== "all" ? 1 : 0) + locNC.soDangAp,
+          onClear: () => { setStatusFilter("all"); locNC.xoa() },
+          open: filterSheet,
+          onOpenChange: setFilterSheet,
+          sheet: (
+            <>
+              {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+              <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+            </>
+          ),
+        }}
+        empty={trongRong}
+      />
       <PageHeader
         className="max-lg:hidden"
         title="Phiếu kho"
@@ -554,13 +591,13 @@ export default function StockEntriesPage() {
 
       {/* Lỗi tải / số thiếu — nói ra, không để danh sách trông như đủ. */}
       {loadError && (
-        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+        <div className="max-lg:hidden rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách phiếu kho</p>
           <p className="mt-0.5 break-words">{loadError}</p>
         </div>
       )}
       {truncated && (
-        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+        <div className="max-lg:hidden rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
           <p className="font-semibold">Danh sách phiếu chưa đầy đủ</p>
           <p className="mt-0.5 break-words">{truncationWarning()}</p>
         </div>
@@ -595,60 +632,15 @@ export default function StockEntriesPage() {
             <ColumnPicker available={STOCK_ENTRY_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
           </>
         }
-        /* Phiếu kho là chứng từ số lượng, không mang tiền — dòng thống kê là số phiếu. */
-        mobileHead={{
-          title: "Phiếu kho",
-          search,
-          onSearch: setSearch,
-          searchPlaceholder: "Tìm mã phiếu hoặc ghi chú...",
-          chips: { chips: typeChips, active: typeFilter, onPick: setTypeFilter },
-          filter: {
-            activeCount: (statusFilter !== "all" ? 1 : 0) + locNC.soDangAp,
-            onClear: () => { setStatusFilter("all"); locNC.xoa() },
-            open: filterSheet,
-            onOpenChange: setFilterSheet,
-            sheet: (
-              <div className="grid gap-4">
-                {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
-                <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-              </div>
-            ),
-          },
-          actions: nutTao || undefined,
-        }}
+        /* Điện thoại: `PhieuKhoDienThoai` ở đầu trang (thiết kế 30/09/2026) — không dùng đầu xanh chung. */
         totals={{ label: "Số phiếu kho", countText: `${draftCount} phiếu chờ duyệt`, total: `${filtered.length} phiếu` }}
         loading={loading}
         isEmpty={filtered.length === 0}
-        empty={
-          <EmptyState
-            icon={<ClipboardList className="h-8 w-8 text-muted-foreground" />}
-            title={entries.length === 0 ? "Chưa có phiếu kho" : "Không tìm thấy phiếu"}
-            description={entries.length === 0 ? "Tạo phiếu đầu tiên bằng nút 'Tạo phiếu'" : "Thử đổi bộ lọc"}
-          />
-        }
+        empty={trongRong}
         pg={pg}
         shownCount={trang.length}
         table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} />}
-        cards={
-          <DocCardList
-            items={trang}
-            unit="phiếu"
-            getDate={(e) => (e.created_at ? vnDateKey(new Date(e.created_at)) : "")}
-            onOpen={(e) => setXemId(e.id)}
-            card={(e) => {
-              const s = getStatusMeta(trangThai(e))
-              return {
-                accent: TYPE_ACCENT[e.type] ?? "#98a2b3",
-                title: getTypeLabel(e.type),
-                total: s.label,
-                meta: [e.created_at ? vnTime(e.created_at) : null, e.entry_code].filter(Boolean).join(" · "),
-                payment: e.creator?.full_name ?? "",
-                summary: e.notes || undefined,
-                badge: trangThai(e) === "draft" ? { label: "Chờ duyệt", bg: "#fff4e0", fg: "#8a5a00" } : trangThai(e) === "cancelled" ? { label: "Đã hủy", bg: "#fdecec", fg: "#b00020" } : null,
-              }
-            }}
-          />
-        }
+        cards={null}
       />
 
       <DocQuickView

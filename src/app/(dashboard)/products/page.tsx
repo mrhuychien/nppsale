@@ -5,7 +5,7 @@ import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_SAN_PHAM } from "@/lib/search/list-filter-fields"
 import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
-import { usePagination } from "@/hooks/use-pagination"
+import { usePagination, MAC_DINH_MOI_TRANG } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
@@ -20,7 +20,7 @@ import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ProductTable, ProductCards, giaMacDinh, type ProductRow } from "@/components/products/product-table"
+import { ProductTable, giaMacDinh, type ProductRow } from "@/components/products/product-table"
 import { ProductImportDialog } from "@/components/products/product-import-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -40,6 +40,23 @@ import {
   type BulkAction,
 } from "@/components/ui/bulk-actions-bar"
 import { useToast } from "@/hooks/use-toast"
+import { useKhoMay } from "@/hooks/use-is-desktop"
+import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
+import { MobileProductsScreen } from "@/components/products/mobile-products-screen"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import {
+  NCC_CHUA_GAN,
+  NHAN_SAP_XEP_SP,
+  chipNcc,
+  demNccTuDong,
+  docDemNcc,
+  nhanSoSanPham,
+  nhanXemThem,
+  sapXepTiepTheo,
+  soDangBan,
+  type DemNccDong,
+  type SapXepSanPham,
+} from "@/lib/products/mobile-list"
 import { Plus, Package, PackageCheck, PackageX, Upload } from "lucide-react"
 import type { Product } from "@/types"
 import {
@@ -67,6 +84,13 @@ export default function ProductsPage() {
   const [allCategories, setAllCategories] = useState<string[]>([])
   const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [importOpen, setImportOpen] = useState(false)
+  /** Điện thoại: "Tên A–Z" / "Tên Z–A" (máy tính luôn A–Z). */
+  const [sapXep, setSapXep] = useState<SapXepSanPham>("name_asc")
+  /** Điện thoại: chế độ "Chọn" nhiều thẻ (thao tác hàng loạt Đang bán / Ngừng bán). */
+  const [dangChon, setDangChon] = useState(false)
+  const laMay = useKhoMay()
+  /** Tăng sau khi đổi trạng thái hàng loạt / nhập Excel — đếm lại chip NCC. */
+  const [taiLaiDem, setTaiLaiDem] = useState(0)
   const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("products", LOC_SAN_PHAM)
@@ -116,11 +140,11 @@ export default function ProductsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, activeFilters, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchProducts()
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
@@ -132,7 +156,7 @@ export default function ProductsPage() {
       let q = supabase
         .from("products")
         .select(select, dem ? { count: "exact" } : undefined)
-        .order("name")
+        .order("name", { ascending: sapXep === "name_asc" })
         .range(from, to)
       if (debouncedSearch) {
         q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
@@ -140,7 +164,8 @@ export default function ProductsPage() {
       /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
       for (const f of locNC.menhDe) q = q.or(f)
       if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
-      if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
+      if (supplierFilter === NCC_CHUA_GAN) q = q.is("primary_supplier_id", null)
+      else if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
       if (statusFilter !== "all") q = q.eq("status", statusFilter)
       return q
     }
@@ -209,6 +234,7 @@ export default function ProductsPage() {
       prev.map((p) => (selectedIds.has(p.id) ? { ...p, status: next } : p))
     )
     clearSelection()
+    setTaiLaiDem((n) => n + 1)
     toast({
       title:
         next === "active"
@@ -250,7 +276,8 @@ export default function ProductsPage() {
         if (debouncedSearch) q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
         for (const f of locNC.menhDe) q = q.or(f)
         if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
-        if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
+        if (supplierFilter === NCC_CHUA_GAN) q = q.is("primary_supplier_id", null)
+        else if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
         if (st) q = q.eq("status", st)
         const { count, error } = await q
         if (error) console.warn("[app/products] đếm lỗi:", error.message)
@@ -261,6 +288,38 @@ export default function ProductsPage() {
     })()
     return () => { huy = true }
   }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ĐIỆN THOẠI — SỐ TRÊN CHIP NCC (thiết kế "ds-san-pham" 30/09/2026): theo NCC chính của SP, cùng
+   * ô tìm / lọc nâng cao / danh mục nhưng BỎ NCC (chip là bộ lọc NCC) và BỎ trạng thái (lọc ở máy
+   * khách để còn đếm "N đang bán"). Một lượt gom nhóm (mig 206); máy chủ chưa gom được thì tải hết
+   * hai cột rồi đếm.
+   */
+  const [demNcc, setDemNcc] = useState<DemNccDong[] | null>(null)
+  useEffect(() => {
+    if (laMay !== false) return
+    let huy = false
+    ;(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const loc = (q: any) => {
+        if (debouncedSearch) q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
+        for (const f of locNC.menhDe) q = q.or(f)
+        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
+        return q
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let d = docDemNcc(await loc(supabase.from("products").select("primary_supplier_id, status, count()" as string) as any))
+      if (!d) {
+        const kq = await fetchAllForAggregate<{ primary_supplier_id: string | null; status: string }>((from, to) =>
+          loc(supabase.from("products").select("primary_supplier_id, status", { count: "exact" })).range(from, to)
+        )
+        if (kq.error) console.warn("[app/products] đếm theo NCC lỗi:", kq.error)
+        d = kq.error ? null : demNccTuDong(kq.rows)
+      }
+      if (!huy) setDemNcc(d)
+    })()
+    return () => { huy = true }
+  }, [laMay, debouncedSearch, locNC.key, categoryFilter, taiLaiDem]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [xemId, setXemId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
@@ -312,24 +371,9 @@ export default function ProductsPage() {
     </Button>
   )
 
-  return (
-    <div className="space-y-4">
-      <PageHeader className="max-lg:hidden" title="Sản phẩm" descriptionDesktopOnly description={`${pg.total} sản phẩm`}>
-        {coQuyenTao && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" /> Nhập Excel
-            </Button>
-            {nutTao}
-          </div>
-        )}
-      </PageHeader>
-
-      {filterActive("status") && (
-        <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
-      )}
-
-      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
+  /* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */
+  const canhBao = (
+    <>
       {loadError && !loading && (
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách sản phẩm</p>
@@ -355,6 +399,98 @@ export default function ProductsPage() {
           </p>
         </div>
       )}
+    </>
+  )
+  /* Điện thoại: NCC đã là hàng chip — nút lọc đếm danh mục + lọc nâng cao. */
+  const soLocDienThoai = (categoryFilter !== "all" ? 1 : 0) + locNC.soDangAp
+  const chipsNcc = demNcc ? chipNcc(demNcc, allSuppliers, statusFilter) : [{ key: "all", label: "Tất cả", count: pg.total }]
+
+  const rong = (
+    <EmptyState
+      icon={<Package className="h-8 w-8 text-muted-foreground" />}
+      title={loadError ? "Không tải được dữ liệu" : "Không có sản phẩm phù hợp"}
+      description={
+        loadError
+          ? "Xem thông báo lỗi phía trên."
+          : products.length === 0
+            ? user?.role === "sales"
+              ? "Bạn chưa được gán nhà cung cấp nào, hoặc chưa có sản phẩm. NV bán hàng chỉ thấy sản phẩm thuộc NCC được gán — liên hệ quản lý để được gán NCC."
+              : "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
+            : "Thử điều chỉnh bộ lọc"
+      }
+    >
+      {products.length === 0 &&
+        user &&
+        hasPermission(user.role, "products", "create") && (
+          <Button onClick={() => router.push("/products/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
+          </Button>
+        )}
+    </EmptyState>
+  )
+
+  return (
+    <div className="space-y-4">
+      <PageHeader className="max-lg:hidden" title="Sản phẩm" descriptionDesktopOnly description={`${pg.total} sản phẩm`}>
+        {coQuyenTao && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Nhập Excel
+            </Button>
+            {nutTao}
+          </div>
+        )}
+      </PageHeader>
+
+      {filterActive("status") && (
+        <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
+      )}
+
+      {/* Lỗi tải / cảnh báo migration — điện thoại hiện trong màn riêng (ngay trên danh sách). */}
+      <div className="space-y-4 max-lg:hidden empty:hidden">{canhBao}</div>
+
+      <MobileProductsScreen
+        subtitle={demNcc ? `${soDangBan(demNcc).toLocaleString("vi-VN")} đang bán` : `${pg.total.toLocaleString("vi-VN")} sản phẩm`}
+        search={search}
+        onSearch={setSearch}
+        canCreate={coQuyenTao}
+        filter={{ activeCount: soLocDienThoai, onOpen: () => setFilterSheet(true) }}
+        status={filterActive("status") && (counts.inactive ?? 0) > 0 ? { chips, active: statusFilter, onPick: setStatusFilter } : null}
+        chips={chipsNcc}
+        ncc={supplierFilter}
+        onPickNcc={setSupplierFilter}
+        countText={nhanSoSanPham(pg.total)}
+        sortLabel={NHAN_SAP_XEP_SP[sapXep]}
+        onToggleSort={() => setSapXep(sapXepTiepTheo)}
+        selectable={canEdit}
+        selecting={dangChon}
+        onToggleSelecting={() => { setDangChon((v) => !v); clearSelection() }}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleOne}
+        items={filtered as ProductRow[]}
+        loading={loading}
+        empty={rong}
+        moreLabel={nhanXemThem(pg.from + filtered.length, pg.total)}
+        onMore={() => pg.setPageSize(pg.pageSize + MAC_DINH_MOI_TRANG)}
+        onOpen={(p) => setXemId(p.id)}
+        notice={canhBao}
+      />
+      <div className="lg:hidden">
+        <MobileFilterBar
+          chiNganLoc
+          value={search}
+          onChange={setSearch}
+          activeCount={soLocDienThoai}
+          onClear={() => { setCategoryFilter("all"); locNC.xoa() }}
+          open={filterSheet}
+          onOpenChange={setFilterSheet}
+        >
+          <div className="grid gap-4">
+            {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
+            <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+          </div>
+        </MobileFilterBar>
+      </div>
 
       <DocListLayout
         toolbar={
@@ -374,53 +510,9 @@ export default function ProductsPage() {
         }
         /* Danh mục hàng, không phải chứng từ — không có tiền để cộng. */
         totals={null}
-        mobileCountUnit="sản phẩm"
-        mobileHead={{
-          title: "Sản phẩm",
-          search,
-          onSearch: setSearch,
-          searchPlaceholder: "Tìm theo tên, SKU, nhãn hàng...",
-          chips: filterActive("status") ? { chips, active: statusFilter, onPick: setStatusFilter } : undefined,
-          filter: {
-            activeCount: soLocKhac + locNC.soDangAp,
-            onClear: () => { xoaLocKhac(); locNC.xoa() },
-            open: filterSheet,
-            onOpenChange: setFilterSheet,
-            sheet: (
-              <div className="grid gap-4">
-                {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
-                {filterActive("supplier") && <LocNhanhField label="Nhà cung cấp">{supplierSelect}</LocNhanhField>}
-                <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-              </div>
-            ),
-          },
-          actions: nutTao || undefined,
-        }}
         loading={loading}
         isEmpty={filtered.length === 0}
-        empty={
-          <EmptyState
-            icon={<Package className="h-8 w-8 text-muted-foreground" />}
-            title={loadError ? "Không tải được dữ liệu" : "Không có sản phẩm phù hợp"}
-            description={
-              loadError
-                ? "Xem thông báo lỗi phía trên."
-                : products.length === 0
-                  ? user?.role === "sales"
-                    ? "Bạn chưa được gán nhà cung cấp nào, hoặc chưa có sản phẩm. NV bán hàng chỉ thấy sản phẩm thuộc NCC được gán — liên hệ quản lý để được gán NCC."
-                    : "Bắt đầu bằng cách thêm sản phẩm đầu tiên"
-                  : "Thử điều chỉnh bộ lọc"
-            }
-          >
-            {products.length === 0 &&
-              user &&
-              hasPermission(user.role, "products", "create") && (
-                <Button onClick={() => router.push("/products/new")}>
-                  <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
-                </Button>
-              )}
-          </EmptyState>
-        }
+        empty={rong}
         pg={pg}
         shownCount={filtered.length}
         table={
@@ -437,15 +529,8 @@ export default function ProductsPage() {
             onOpen={(p) => setXemId(p.id)}
           />
         }
-        cards={
-          <ProductCards
-            products={filtered}
-            selectable={canEdit}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleOne}
-            onOpen={(p) => setXemId(p.id)}
-          />
-        }
+        /* Điện thoại: màn riêng theo thiết kế "ds-san-pham" (`MobileProductsScreen`). */
+        cards={null}
       />
 
       <DocQuickView
@@ -479,6 +564,7 @@ export default function ProductsPage() {
           pg.reset()
           fetchProducts()
           loadMeta()
+          setTaiLaiDem((n) => n + 1)
         }}
       />
     </div>

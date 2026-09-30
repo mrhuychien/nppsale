@@ -133,8 +133,9 @@ test("đơn hàng: tìm không dấu theo tên hàng và tên khách", async ({ 
 test("hàng hoá: gõ không dấu ra tên có dấu", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/products")
-  await expect(page.getByText("Sữa hộp").first()).toBeVisible()
+  // Bản điện thoại (ẩn trên máy tính) cũng có trong DOM — chỉ xét phần tử đang hiện.
+  await expect(page.getByText("Sữa hộp").filter({ visible: true }).first()).toBeVisible()
   await page.getByPlaceholder("Tìm theo tên, SKU, nhãn hàng...").locator("visible=true").first().fill("sua hop")
-  await expect(page.getByText("Mì tôm")).toHaveCount(0)
-  await expect(page.getByText("Sữa hộp").first()).toBeVisible()
+  await expect(page.getByText("Mì tôm").filter({ visible: true })).toHaveCount(0)
+  await expect(page.getByText("Sữa hộp").filter({ visible: true }).first()).toBeVisible()
 })

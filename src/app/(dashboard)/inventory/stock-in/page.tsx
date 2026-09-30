@@ -54,6 +54,8 @@ import { ProductForm } from "@/components/products/product-form"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhieuNhapKho, type DongNhapKho } from "@/lib/inventory/post-import"
+import { moneyDisplay } from "@/lib/inventory/stock-in-mobile"
+import { StockInMobile } from "@/components/inventory/stock-in-mobile"
 
 interface LineItem {
   id: string
@@ -70,20 +72,6 @@ interface LineItem {
   expires_at: string
   location: string
   available_units: string[]
-}
-
-/**
- * Giá trị đưa vào MoneyInput từ chuỗi đang giữ trong state.
- *
- * ⚠ ĐỪNG ĐƯA THẲNG CHUỖI CÓ PHẦN LẺ. Giá vốn gợi sẵn (`seedUnitCost`) có
- * thể là "29629.6"; MoneyInput bỏ mọi ký tự không phải số nên sẽ đọc
- * thành 296296 — gấp mười. Làm tròn tới đồng để HIỂN THỊ; state vẫn giữ
- * số gốc cho tới khi người dùng gõ lại.
- */
-function moneyDisplay(raw: string): number | "" {
-  if (raw === "") return ""
-  const n = parseFloat(raw)
-  return Number.isFinite(n) ? Math.round(n) : ""
 }
 
 function newLine(): LineItem {
@@ -491,8 +479,120 @@ export default function StockInPage() {
     }
   }
 
+  /** Ô chọn NCC — dùng chung cho màn máy tính và màn điện thoại (hai `id` khác nhau). */
+  const nccField = (id: string) => (
+    <SearchSelect
+      id={id}
+      options={supplierOptions}
+      valueId={supplierId}
+      freeText={supplier}
+      allowFreeText
+      placeholder={
+        suppliers.length > 0
+          ? "Gõ tên hoặc mã NCC…"
+          : "Chưa có NCC nào — gõ tên tự do"
+      }
+      onPick={(opt, text) => {
+        setSupplierId(opt?.id ?? "")
+        setSupplier(text)
+      }}
+      footer={
+        <Link
+          href="/suppliers/new"
+          target="_blank"
+          className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:bg-surface-low"
+        >
+          <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
+          <ExternalLink className="ml-auto h-3 w-3" />
+        </Link>
+      }
+    />
+  )
+
+  const nccHint = (
+    <>
+      {/* ⚠ NÓI RÕ ĐANG ĐI ĐƯỜNG NÀO. Đây là chỗ quyết định có
+          sinh công nợ NCC hay không; im lặng thì người nhập kho
+          chỉ biết khi đi đối chiếu công nợ cuối tháng. */}
+      {supplierId ? (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Khi lưu, hệ thống sẽ ghi <strong>công nợ NCC</strong> bằng tổng tiền nhập
+          ({formatCurrency(summary.total)}) — xem ở mục Hoá đơn mua hàng / Công nợ NCC.
+        </p>
+      ) : supplier.trim() ? (
+        <p className="mt-1.5 text-[11px] text-[#b54708]">
+          “{supplier.trim()}” không có trong danh mục — chỉ ghi vào ghi chú phiếu,{" "}
+          <strong>không sinh công nợ NCC</strong>.
+        </p>
+      ) : null}
+    </>
+  )
+
+  /** Ô tìm mặt hàng — một bản cho cả hai màn; điện thoại ẩn nhãn, đổi chữ gợi ý theo thiết kế. */
+  const productPicker = (mobile: boolean) => (
+    <ProductPicker
+      closeOnPick
+      id={mobile ? "si-add-product-m" : "si-add-product"}
+      label="Thêm mặt hàng"
+      hideLabel={mobile}
+      placeholder={mobile ? "Thêm mặt hàng: tên hoặc mã SKU" : undefined}
+      term={productSearch}
+      onTermChange={setProductSearch}
+      items={filteredProducts.map((p) => ({
+        ...p,
+        title: p.name,
+        subtitle: `SKU: ${p.sku} • ${p.base_unit}`,
+      }))}
+      onPick={(p) => addProductLine(p.id)}
+      emptyHint="Không tìm thấy mã nào khớp."
+      hint={catTruncated ? <CatalogueShortNote /> : null}
+      footer={
+        <div className="border-t border-border/50 p-2">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingProductSearch(productSearch)
+              setCreateProductOpen(true)
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-low"
+          >
+            <Plus className="h-3 w-3" /> Tạo sản phẩm mới
+          </button>
+        </div>
+      }
+    />
+  )
+
   return (
-    <div className="space-y-6">
+    <>
+      {/* ĐIỆN THOẠI — theo thiết kế "phieu-nhap" (chủ nhà 30/09/2026); cùng state, cùng lệnh ghi. */}
+      <div className="lg:hidden">
+        <StockInMobile
+          lines={lines}
+          onPatch={updateLine}
+          onRemove={removeLine}
+          heSo={(l) => {
+            const product = productMap.get(l.product_id)
+            return product ? conversionFor(product, l.unit_name) : 1
+          }}
+          summary={summary}
+          entryDate={entryDate}
+          onEntryDate={setEntryDate}
+          warehouse={warehouse}
+          onWarehouse={setWarehouse}
+          invoiceNo={invoiceNo}
+          onInvoiceNo={setInvoiceNo}
+          nccField={nccField("stockin-supplier-m")}
+          nccHint={nccHint}
+          picker={productPicker(true)}
+          onScan={() => setBarcodeOpen(true)}
+          onDiscard={discardDraft}
+          onSubmit={handleSubmit}
+          saving={saving}
+        />
+      </div>
+
+    <div className="hidden space-y-6 lg:block">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <Link
@@ -554,46 +654,8 @@ export default function StockInPage() {
                     vào ghi chú. `onPick` trả `null` cho trường hợp gõ tay,
                     nên không có đường nào lẫn hai thứ với nhau.
                 */}
-                <SearchSelect
-                  id="stockin-supplier"
-                  options={supplierOptions}
-                  valueId={supplierId}
-                  freeText={supplier}
-                  allowFreeText
-                  placeholder={
-                    suppliers.length > 0
-                      ? "Gõ tên hoặc mã NCC…"
-                      : "Chưa có NCC nào — gõ tên tự do"
-                  }
-                  onPick={(opt, text) => {
-                    setSupplierId(opt?.id ?? "")
-                    setSupplier(text)
-                  }}
-                  footer={
-                    <Link
-                      href="/suppliers/new"
-                      target="_blank"
-                      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:bg-surface-low"
-                    >
-                      <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
-                      <ExternalLink className="ml-auto h-3 w-3" />
-                    </Link>
-                  }
-                />
-                {/* ⚠ NÓI RÕ ĐANG ĐI ĐƯỜNG NÀO. Đây là chỗ quyết định có
-                    sinh công nợ NCC hay không; im lặng thì người nhập kho
-                    chỉ biết khi đi đối chiếu công nợ cuối tháng. */}
-                {supplierId ? (
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    Khi lưu, hệ thống sẽ ghi <strong>công nợ NCC</strong> bằng tổng tiền nhập
-                    ({formatCurrency(summary.total)}) — xem ở mục Hoá đơn mua hàng / Công nợ NCC.
-                  </p>
-                ) : supplier.trim() ? (
-                  <p className="mt-1.5 text-[11px] text-[#b54708]">
-                    “{supplier.trim()}” không có trong danh mục — chỉ ghi vào ghi chú phiếu,{" "}
-                    <strong>không sinh công nợ NCC</strong>.
-                  </p>
-                ) : null}
+                {nccField("stockin-supplier")}
+                {nccHint}
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -687,35 +749,7 @@ export default function StockInPage() {
                 chung `ProductPicker` với phiếu nhập hàng, phiếu trả NCC
                 và phiếu xuất kho.
             */}
-            <ProductPicker
-              closeOnPick
-              id="si-add-product"
-              label="Thêm mặt hàng"
-              term={productSearch}
-              onTermChange={setProductSearch}
-              items={filteredProducts.map((p) => ({
-                ...p,
-                title: p.name,
-                subtitle: `SKU: ${p.sku} • ${p.base_unit}`,
-              }))}
-              onPick={(p) => addProductLine(p.id)}
-              emptyHint="Không tìm thấy mã nào khớp."
-              hint={catTruncated ? <CatalogueShortNote /> : null}
-              footer={
-                <div className="border-t border-border/50 p-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingProductSearch(productSearch)
-                      setCreateProductOpen(true)
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-low"
-                  >
-                    <Plus className="h-3 w-3" /> Tạo sản phẩm mới
-                  </button>
-                </div>
-              }
-            />
+            {productPicker(false)}
             </div>
             <Button
               type="button"
@@ -946,6 +980,8 @@ export default function StockInPage() {
         </CardContent>
       </Card>
 
+    </div>
+
       <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
 
       <Dialog open={createProductOpen} onOpenChange={setCreateProductOpen}>
@@ -966,6 +1002,6 @@ export default function StockInPage() {
           />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

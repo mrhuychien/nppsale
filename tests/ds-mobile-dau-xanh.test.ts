@@ -23,7 +23,7 @@ const DS = trang(GOC).map((p) => ({ p, r: route(p), s: readFileSync(p, "utf8") }
 
 describe("danh sách trên điện thoại theo mẫu Đơn hàng", () => {
   it("mọi trang dùng khuôn DocListLayout có thẻ điện thoại đều có đầu trang xanh (trừ màn tự dựng riêng)", () => {
-    const rieng = new Set(["/customers"]) // màn khách hàng tự dựng đầu xanh riêng
+    const rieng = new Set(["/customers", "/products", "/inventory/entries"]) // màn tự dựng đầu xanh riêng
     const thieu = DS.filter((x) => x.s.includes("<DocListLayout") && !rieng.has(x.r) && !x.s.includes("mobileHead={")).map((x) => x.r)
     expect(thieu).toEqual([])
   })

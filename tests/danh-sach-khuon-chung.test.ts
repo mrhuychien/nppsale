@@ -185,7 +185,8 @@ const DA_VE_KHUON: Array<{
   { duong: "payables", mobileFilter: true, statusChips: true },
   { duong: "purchasing/invoices", mobileFilter: true, statusChips: true },
   { duong: "invoices", mobileFilter: true, statusChips: true },
-  { duong: "inventory/entries", mobileFilter: true, statusChips: true },
+  // Phiếu kho: điện thoại dựng riêng `PhieuKhoDienThoai` (thiết kế "ds-phieu-kho" 30/09/2026, đầu trắng).
+  { duong: "inventory/entries", statusChips: true },
   { duong: "suppliers", mobileFilter: true, statusChips: true },
   { duong: "products", mobileFilter: true, statusChips: true, thanhPhan: "src/components/products/product-table.tsx" },
   { duong: "promotions", mobileFilter: true, statusChips: true },

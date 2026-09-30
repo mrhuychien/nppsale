@@ -11,7 +11,7 @@
  */
 
 import { duocXuatFile } from "@/lib/permissions"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { createClient } from "@/lib/supabase/client"
@@ -30,7 +30,10 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
-import { Download, Search } from "lucide-react"
+import { Check, ArrowUpDown, Download, FileSpreadsheet, Search } from "lucide-react"
+import { xemDuocGiaVon } from "@/lib/permissions"
+import { cn } from "@/lib/utils"
+import { nhanSapXep, sapXepKeTiep, sapXepTon, type SapXepTon } from "@/lib/inventory/kho-hang-mobile"
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
 import { buildStockExportAoa, stockExportFileName } from "@/lib/inventory/stock-export"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
@@ -87,7 +90,15 @@ interface PivotRow {
   totalValue: number
 }
 
-export function StockBalanceTable() {
+export function StockBalanceTable({
+  dienThoai = false,
+  dauMuc,
+}: {
+  /** Màn Kho hàng trên điện thoại (thiết kế 30/09/2026): danh sách dòng thay cho bảng. */
+  dienThoai?: boolean
+  /** Đầu mục "Tồn kho" của màn điện thoại — nhận nút Xuất Excel (null khi không được xuất). */
+  dauMuc?: (nutXuat: ReactNode) => ReactNode
+} = {}) {
   const { user } = useAuth()
   const [rows, setRows] = useState<BalanceRow[]>([])
   const [products, setProducts] = useState<Map<string, ProductMeta>>(new Map())
@@ -319,6 +330,45 @@ export function StockBalanceTable() {
     }
   }
 
+  if (dienThoai) {
+    const duocXuat = duocXuatFile(user?.role, "inventory")
+    return (
+      <TonKhoDienThoai
+        rows={pivot}
+        loading={loading}
+        loadError={loadError}
+        exportError={exportError}
+        search={search}
+        onSearch={setSearch}
+        onlyOnHand={onlyOnHand}
+        onOnlyOnHand={setOnlyOnHand}
+        xemGiaTri={xemDuocGiaVon(user?.role)}
+        onOpen={setDrawerProductId}
+        dauMuc={dauMuc}
+        nutXuat={duocXuat ? (
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={loading || exporting || pivot.length === 0}
+            title={pivot.length === 0 ? "Không có dòng nào để xuất" : `Xuất ${pivot.length} dòng đang hiện ra Excel`}
+            className="tap inline-flex items-center gap-1.5 text-sm font-semibold text-primary disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {exporting ? "Đang xuất…" : "Xuất Excel"}
+          </button>
+        ) : null}
+        drawer={
+          <StockHistoryDrawer
+            productId={drawerProductId}
+            product={drawerProductId ? pivot.find((r) => r.product.id === drawerProductId)?.product ?? null : null}
+            open={!!drawerProductId}
+            onOpenChange={(o) => !o && setDrawerProductId(null)}
+          />
+        }
+      />
+    )
+  }
+
   return (
     <div className="space-y-3">
       {loadError && (
@@ -486,6 +536,123 @@ export function StockBalanceTable() {
         open={!!drawerProductId}
         onOpenChange={(o) => !o && setDrawerProductId(null)}
       />
+    </div>
+  )
+}
+
+/** Số dòng mỗi lần "Xem thêm" trên điện thoại — như mẫu "đang hiện 20/257". */
+const BUOC_HIEN = 20
+
+/** Danh sách tồn trên điện thoại: ô tìm, chip Còn tồn / Sắp xếp, dòng tên · SKU · SL cơ sở · giá trị. */
+function TonKhoDienThoai({
+  rows, loading, loadError, exportError, search, onSearch, onlyOnHand, onOnlyOnHand,
+  xemGiaTri, onOpen, dauMuc, nutXuat, drawer,
+}: {
+  rows: PivotRow[]
+  loading: boolean
+  loadError: string | null
+  exportError: string | null
+  search: string
+  onSearch: (s: string) => void
+  onlyOnHand: boolean
+  onOnlyOnHand: (v: boolean) => void
+  xemGiaTri: boolean
+  onOpen: (id: string) => void
+  dauMuc?: (nutXuat: ReactNode) => ReactNode
+  nutXuat: ReactNode
+  drawer: ReactNode
+}) {
+  const [sapXep, setSapXep] = useState<SapXepTon>("ten")
+  const [soHien, setSoHien] = useState(BUOC_HIEN)
+  useEffect(() => { setSoHien(BUOC_HIEN) }, [search, onlyOnHand, sapXep])
+  const daSap = useMemo(() => sapXepTon(rows, sapXep), [rows, sapXep])
+  const hien = daSap.slice(0, soHien)
+
+  return (
+    <div className="space-y-3" data-testid="ton-kho-dien-thoai">
+      {dauMuc?.(nutXuat)}
+      {loadError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">⚠ {loadError}</div>
+      )}
+      {exportError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Không xuất được file Excel: {exportError}
+        </div>
+      )}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Tìm theo tên hoặc mã SKU"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          className="h-11 rounded-xl bg-card pl-9 text-base"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={onlyOnHand}
+          onClick={() => onOnlyOnHand(!onlyOnHand)}
+          className={cn(
+            "inline-flex h-9 items-center gap-1 rounded-full border px-3 text-[13px] font-semibold",
+            onlyOnHand ? "border-primary/40 bg-primary/10 text-primary" : "border-outline-variant bg-card text-on-surface-variant"
+          )}
+        >
+          {onlyOnHand && <Check className="h-3.5 w-3.5" />} Còn tồn
+        </button>
+        <button
+          type="button"
+          onClick={() => setSapXep(sapXepKeTiep(sapXep))}
+          className="inline-flex h-9 items-center gap-1 rounded-full border border-outline-variant bg-card px-3 text-[13px] font-semibold text-on-surface"
+        >
+          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" /> Sắp xếp: {nhanSapXep(sapXep)}
+        </button>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground" data-testid="ton-dem-sku">{rows.length} SKU</span>
+      </div>
+
+      {loading ? (
+        <Skeleton className="h-64 rounded-2xl" />
+      ) : rows.length === 0 ? (
+        <div className="rounded-2xl border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+          Không có mặt hàng phù hợp{search ? " — thử bỏ bớt chữ tìm" : ""}.
+        </div>
+      ) : (
+        <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
+          {hien.map((r) => (
+            <li key={r.product.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(r.product.id)}
+                className="flex w-full items-start gap-3 px-3.5 py-3 text-left active:bg-muted/40"
+                data-testid="dong-ton"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface">{r.product.name}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">{r.product.sku}</p>
+                </div>
+                <div className="shrink-0 text-right" title={buildQtyTooltip(r.totalQty, r.product)}>
+                  <p className="text-sm tabular-nums">
+                    <span className="font-bold">{r.totalQty.toLocaleString("vi-VN")}</span>{" "}
+                    <span className="text-xs text-muted-foreground">{r.product.base_unit}</span>
+                  </p>
+                  {xemGiaTri && <p className="text-xs tabular-nums text-on-surface-variant">{formatCurrency(r.totalValue)}</p>}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!loading && hien.length < daSap.length && (
+        <button
+          type="button"
+          onClick={() => setSoHien((n) => n + BUOC_HIEN)}
+          className="h-12 w-full rounded-2xl border bg-card text-sm font-semibold text-primary"
+        >
+          Xem thêm · đang hiện {hien.length}/{daSap.length}
+        </button>
+      )}
+      {drawer}
     </div>
   )
 }

@@ -58,11 +58,14 @@ import {
   Eye,
 } from "lucide-react"
 import type { Batch, Product } from "@/types"
+import { useKhoMay } from "@/hooks/use-is-desktop"
+import { KhoHangDienThoai } from "@/components/inventory/kho-hang-dien-thoai"
 
 type BatchWithProduct = Batch & { product?: Product }
 
 /** Các cột đủ để tính ba thẻ đầu trang — không hơn. */
 type StatsBatch = Pick<Batch, "qty_on_hand" | "unit_cost" | "expires_at"> & {
+  product_id?: string | null
   location?: string | null
   product?: { shelf_life_days?: number | null; brand?: string | null } | null
 }
@@ -87,6 +90,10 @@ export default function InventoryPage() {
   const [batches, setBatches] = useState<BatchWithProduct[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
+  /** Phiếu kiểm kê chờ duyệt — ô "Duyệt phiếu" của màn điện thoại (duyệt ở /inventory/adjustments). */
+  const [choDuyetKiemKe, setChoDuyetKiemKe] = useState(0)
+  /* Biết khổ rồi mới dựng bảng tồn của khổ đó — hai bản cùng đọc toàn bộ danh mục là thừa. */
+  const khoMay = useKhoMay()
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
   const khoaTaiRef = useRef<KhoaTai>(null)
@@ -129,12 +136,12 @@ export default function InventoryPage() {
   // cộng tiền khác trong dự án.
   useEffect(() => {
     async function loadStatsData() {
-      const [statsRes, pendingRes] = await Promise.all([
+      const [statsRes, pendingRes, kiemKeRes] = await Promise.all([
         fetchAllForAggregate<StatsBatch>((from, to) =>
           supabase
             .from("batches")
             .select(
-              "qty_on_hand, unit_cost, expires_at, location, product:products(shelf_life_days, brand)",
+              "product_id, qty_on_hand, unit_cost, expires_at, location, product:products(shelf_life_days, brand)",
               { count: "exact" }
             )
             .gt("qty_on_hand", 0)
@@ -148,6 +155,11 @@ export default function InventoryPage() {
         supabase
           .from("stock_entries")
           .select("id", { count: "exact", head: true })
+          .eq("status", "draft"),
+        supabase
+          .from("stock_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("type", "stocktake")
           .eq("status", "draft"),
       ])
       if (statsRes.error) {
@@ -163,6 +175,8 @@ export default function InventoryPage() {
       }
       if (pendingRes.error) console.error("[app/inventory] truy vấn lỗi:", pendingRes.error.message)
       setPendingCount(pendingRes.count ?? 0)
+      if (kiemKeRes.error) console.error("[app/inventory] truy vấn lỗi:", kiemKeRes.error.message)
+      setChoDuyetKiemKe(kiemKeRes.count ?? 0)
     }
     loadStatsData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -282,15 +296,47 @@ export default function InventoryPage() {
   // T-09: legacy single-column summary replaced by StockBalanceTable
   // (split by zone + drill-down). Keep computation removed.
 
+  // Giờ VN — không để múi giờ của máy (máy chủ UTC ra lệch 7 tiếng so với Tổng quan).
   const timeLabel = now.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Ho_Chi_Minh",
   })
 
   if (authLoading) return <Skeleton className="h-96" />
 
   return (
-    <div className="space-y-6">
+    <>
+    <KhoHangDienThoai
+      timeLabel={timeLabel}
+      statsError={statsError}
+      statsTruncated={statsTruncated}
+      statsBatches={statsBatches}
+      stats={stats}
+      xemGiaTri={xemDuocGiaVon(user?.role)}
+      choDuyet={choDuyetKiemKe}
+      tab={tab}
+      onTab={setTab}
+      tonHienTai={khoMay === false ? (dauMuc) => <StockBalanceTable dienThoai dauMuc={dauMuc} /> : null}
+      fefo={{
+        search,
+        onSearch: setSearch,
+        batches: filteredBatches,
+        loading,
+        loadError,
+        truncated: listSearch.truncated,
+        pg,
+        brands,
+        locations,
+        brandFilter,
+        onBrand: setBrandFilter,
+        locationFilter,
+        onLocation: setLocationFilter,
+        expiryState: (b) => getBatchExpiryState(b.expires_at, b.product?.shelf_life_days ?? undefined),
+        daysUntil,
+      }}
+    />
+    <div className="space-y-6 max-lg:hidden">
       {/*
         ⚠ TRA MÃ CHẠM TRẦN THÌ NÓI RA. Kết quả đang THIẾU và trông y hệt
           lúc đủ — đúng cái lỗi "chỉ tìm trang 1" vừa sửa, chỉ đổi chỗ.
@@ -475,7 +521,7 @@ export default function InventoryPage() {
 
         {/* Tab 1: T-09 — Tồn kho hiện tại split by Kho bán / Kho date + drill-down */}
         <TabsContent value="current" className="mt-4">
-          <StockBalanceTable />
+          {khoMay === true && <StockBalanceTable />}
         </TabsContent>
 
         {/* Tab 2: FEFO batches */}
@@ -682,5 +728,7 @@ export default function InventoryPage() {
 
       </Tabs>
     </div>
+    </>
   )
 }
+

@@ -23,6 +23,8 @@ import {
   describeAdjustment,
   productsMissingBatch,
 } from "@/lib/inventory/post-adjustment"
+import { tomTatPhieuDieuChinh } from "@/lib/inventory/kiem-ke-mobile"
+import { DuyetDieuChinhMobile } from "@/components/inventory/duyet-dieu-chinh-mobile"
 
 type AdjustmentLine = {
   id: string
@@ -141,26 +143,8 @@ export default function AdjustmentsPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Compute variance summary for one adjustment
-  const summarize = (a: Adjustment) => {
-    let shrinkQty = 0
-    let shrinkValue = 0
-    let surplusQty = 0
-    let surplusValue = 0
-    for (const l of a.lines || []) {
-      const qty = Number(l.quantity)
-      const cost = Number(l.unit_cost) || 0
-      const value = Math.abs(qty) * cost
-      if (qty < 0) {
-        shrinkQty += -qty
-        shrinkValue += value
-      } else if (qty > 0) {
-        surplusQty += qty
-        surplusValue += value
-      }
-    }
-    return { shrinkQty, shrinkValue, surplusQty, surplusValue, netValue: surplusValue - shrinkValue }
-  }
+  // Chênh của một phiếu — cùng hàm với màn điện thoại (|SL| × giá vốn dòng).
+  const summarize = (a: Adjustment) => tomTatPhieuDieuChinh(a.lines || [])
 
   const totalSummary = useMemo(() => {
     let shrink = 0
@@ -316,7 +300,23 @@ export default function AdjustmentsPage() {
   )
 
   return (
-    <div className="space-y-4">
+    <>
+    <div className="lg:hidden">
+      <DuyetDieuChinhMobile
+        loading={loading}
+        drafts={drafts}
+        recentPosted={recentPosted}
+        productsWithBatch={productsWithBatch}
+        canApprove={!!canApprove}
+        approvingId={approvingId}
+        rejectingId={rejectingId}
+        expandedId={expandedId}
+        onExpand={setExpandedId}
+        onApprove={(a) => handleApprove(a as Adjustment)}
+        onReject={(a) => handleReject(a as Adjustment)}
+      />
+    </div>
+    <div className="hidden space-y-4 lg:block">
       <PageHeader
         title="Điều chỉnh kho (từ kiểm kê)"
         description="Duyệt phiếu kiểm kê: cập nhật tồn kho + ghi nhận chi phí hao hụt"
@@ -549,5 +549,6 @@ export default function AdjustmentsPage() {
         </div>
       )}
     </div>
+    </>
   )
 }

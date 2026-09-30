@@ -30,6 +30,9 @@ export const OWN_ACTION_BAR_ROUTES = [
   /* Phiếu nhập hàng / trả hàng NCC trên điện thoại (chủ nhà 30/09/2026) — thanh đáy riêng. */
   "/purchasing/receipts/new",
   "/purchase-returns/new",
+  /* Nhập kho / kiểm kê trên điện thoại theo bản thiết kế 30/09/2026 — thanh đáy riêng. */
+  "/inventory/stock-in",
+  "/inventory/stocktake-adjust",
 ] as const
 
 /**
@@ -60,10 +63,8 @@ export const DOC_LIST_MOBILE_ROUTES = [
   "/finance/cash-receipts",
   "/finance/expenses",
   "/inventory/batches",
-  "/inventory/entries",
   "/invoices",
   "/payables",
-  "/products",
   "/promotions",
   "/purchase-returns",
   "/purchasing/invoices",
@@ -73,8 +74,23 @@ export const DOC_LIST_MOBILE_ROUTES = [
   "/suppliers",
 ] as const
 
+export const DAU_TRANG_RIENG_ROUTES = [
+  "/dashboard",
+  "/products",
+  "/inventory/stock-in",
+  "/inventory/stocktake-adjust",
+  "/inventory/adjustments",
+  "/inventory",
+  "/inventory/entries",
+] as const
+
 export function hidesMobileAppBar(pathname: string): boolean {
   if ((DOC_LIST_MOBILE_ROUTES as readonly string[]).includes(pathname)) return true
+  /* Màn điện thoại theo 8 bản thiết kế chủ nhà gửi 30/09/2026 — tự dựng đầu trang (`DauTrangXanh` /
+     `DauTrangTrang`, src/components/mobile/dau-trang.tsx). */
+  if ((DAU_TRANG_RIENG_ROUTES as readonly string[]).includes(pathname)) return true
+  /* Chi tiết phiếu kho (/inventory/entries/<id>) — đầu trắng riêng. */
+  if (/^\/inventory\/entries\/[^/]+$/.test(pathname)) return true
   /* "/orders", "/customers": danh sách trên điện thoại có đầu trang xanh riêng (mẫu 26/09/2026). */
   /* "/bao-cao/*": Báo cáo tổng hợp có đầu trang xanh + ☰ menu 6 màn riêng (thiết kế 26/09/2026). */
   return (

@@ -24,6 +24,8 @@ import {
 import type { Product, Batch, ExpenseCategory } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { tomTatKiemKe } from "@/lib/inventory/kiem-ke-mobile"
+import { KiemKeMobile } from "@/components/inventory/kiem-ke-mobile"
 
 interface AdjustRow {
   key: string
@@ -63,6 +65,25 @@ export default function StocktakeAdjustPage() {
   const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
+  /** Số SKU đang có tồn — cho nút "Tải toàn bộ tồn kho (N SKU)" trên điện thoại. */
+  const [soSkuTon, setSoSkuTon] = useState<number | null>(null)
+
+  /**
+   * Đếm sản phẩm đang hoạt động có ít nhất một lô còn tồn — đúng tập mà `loadAllStock` nạp.
+   * Chỉ đếm (HEAD), không kéo dòng. Lỗi thì để null: nút vẫn chạy, chỉ không hiện số.
+   */
+  useEffect(() => {
+    if (!user?.org_id) return
+    supabase
+      .from("products")
+      .select("id, batches!inner(id)", { count: "exact", head: true })
+      .eq("status", "active")
+      .gt("batches.qty_on_hand", 0)
+      .then(({ count, error }) => {
+        if (error) console.warn("[inventory/stocktake-adjust] đếm SKU tồn lỗi:", error.message)
+        setSoSkuTon(error ? null : count ?? null)
+      })
+  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function loadCategories() {
@@ -231,31 +252,8 @@ export default function StocktakeAdjustPage() {
     setRows((prev) => prev.filter((r) => r.key !== key))
   }
 
-  const summary = useMemo(() => {
-    let shrinkageQty = 0
-    let shrinkageValue = 0
-    let surplusQty = 0
-    let surplusValue = 0
-    let totalDiffValue = 0
-    let rowsWithDiff = 0
-    for (const r of rows) {
-      if (r.actualQty === "") continue
-      const actual = parseFloat(r.actualQty)
-      if (isNaN(actual)) continue
-      const diff = actual - r.systemQty
-      const diffValue = diff * r.batchCost
-      if (diff !== 0) rowsWithDiff += 1
-      if (diff < 0) {
-        shrinkageQty += -diff
-        shrinkageValue += -diffValue
-      } else if (diff > 0) {
-        surplusQty += diff
-        surplusValue += diffValue
-      }
-      totalDiffValue += diffValue
-    }
-    return { shrinkageQty, shrinkageValue, surplusQty, surplusValue, totalDiffValue, rowsWithDiff }
-  }, [rows])
+  /* Cùng một phép tính cho máy tính và điện thoại: chênh × giá vốn lô (mỗi đơn vị cơ sở). */
+  const summary = useMemo(() => tomTatKiemKe(rows), [rows])
 
   const handleSave = async () => {
     if (!user?.org_id || !user.id) {
@@ -354,7 +352,29 @@ export default function StocktakeAdjustPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   return (
-    <div className="space-y-4">
+    <>
+    <div className="lg:hidden">
+      <KiemKeMobile
+        rows={rows}
+        tomTat={summary}
+        search={search}
+        onSearch={setSearch}
+        searchOpen={searchOpen}
+        onSearchOpen={setSearchOpen}
+        matches={matches}
+        onChon={(p) => addRow(p as Product & { batches?: Batch[] })}
+        onTaiToanBo={loadAllStock}
+        soSkuTon={soSkuTon}
+        onSuaDong={updateRow}
+        onXoaDong={removeRow}
+        notes={notes}
+        onNotes={setNotes}
+        saving={saving}
+        onGui={handleSave}
+        onHuy={() => router.back()}
+      />
+    </div>
+    <div className="hidden space-y-4 lg:block">
       <PageHeader
         title="Kiểm kê / Điều chỉnh"
         description="Gõ SKU, tồn thực tế. Chênh lệch âm sẽ tự động ghi vào chi phí hao hụt."
@@ -596,5 +616,6 @@ export default function StocktakeAdjustPage() {
         </div>
       )}
     </div>
+    </>
   )
 }

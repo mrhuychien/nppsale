@@ -20,6 +20,9 @@ import {
 import type { SalesOrder } from "@/types"
 import { PendingWorkWidget } from "@/components/dashboard/pending-work-widget"
 import { errorMessage } from "@/lib/errors"
+import { TongQuanMobile, TongQuanMobileKhung } from "@/components/dashboard/tong-quan-mobile"
+import { congNgay, dauKy, nhanCapNhat, type KyTongQuan } from "@/lib/dashboard/tong-quan"
+import { vnDateKey } from "@/lib/orders/status-tone"
 
 interface DashboardStats {
   todayOrders: number
@@ -55,7 +58,7 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Đã hủy",
 }
 
-type Period = "today" | "week" | "month" | "quarter"
+type Period = KyTongQuan
 
 interface ChannelBreakdown {
   channel: string
@@ -70,7 +73,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [today, setToday] = useState<string>("")
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [capNhat, setCapNhat] = useState<string>("")
   const [period, setPeriod] = useState<Period>("month")
   const [stats, setStats] = useState<DashboardStats>({
     todayOrders: 0,
@@ -82,7 +85,6 @@ export default function DashboardPage() {
   })
   const [recentOrders, setRecentOrders] = useState<SalesOrder[]>([])
   const [topCustomers, setTopCustomers] = useState<TopCustomer[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [channelBreakdown, setChannelBreakdown] = useState<ChannelBreakdown[]>([])
   const supabase = createClient()
 
@@ -93,26 +95,11 @@ export default function DashboardPage() {
         setError(null)
         const now = new Date()
         setToday(formatDate(now))
-        const todayStr = now.toISOString().slice(0, 10)
-        const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .slice(0, 10)
-
-        // Period-based date range
-        let periodStart: string
-        if (period === "today") {
-          periodStart = todayStr
-        } else if (period === "week") {
-          const dayOfWeek = now.getDay() || 7
-          const monday = new Date(now)
-          monday.setDate(now.getDate() - dayOfWeek + 1)
-          periodStart = monday.toISOString().slice(0, 10)
-        } else if (period === "quarter") {
-          const qMonth = Math.floor(now.getMonth() / 3) * 3
-          periodStart = new Date(now.getFullYear(), qMonth, 1).toISOString().slice(0, 10)
-        } else {
-          periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-        }
+        setCapNhat(nhanCapNhat(now))
+        // ⚠ Mốc kỳ theo NGÀY GIỜ VN (`invoice_date` là DATE) — xem `dauKy`.
+        const todayStr = vnDateKey(now)
+        const in30Days = congNgay(todayStr, 30)
+        const periodStart = dauKy(period, now)
 
         const [
           sumRes,
@@ -221,7 +208,13 @@ export default function DashboardPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="space-y-card-gap">
+      <>
+      <TongQuanMobileKhung subtitle={capNhat || undefined}>
+        <div className="h-40 rounded-2xl bg-surface-container-low animate-pulse" />
+        <div className="h-32 rounded-2xl bg-surface-container-low animate-pulse" />
+        <div className="h-48 rounded-2xl bg-surface-container-low animate-pulse" />
+      </TongQuanMobileKhung>
+      <div className="hidden lg:block space-y-card-gap">
         <div className="space-y-2">
           <div className="h-8 w-64 bg-surface-container-low rounded-lg animate-pulse" />
           <div className="h-4 w-40 bg-surface-container-low rounded animate-pulse" />
@@ -233,12 +226,23 @@ export default function DashboardPage() {
         </div>
         <div className="h-72 bg-surface-container-low rounded-xl animate-pulse" />
       </div>
+      </>
     )
   }
 
   if (error) {
     return (
-      <div className="space-y-card-gap">
+      <>
+      <TongQuanMobileKhung>
+        <div className="rounded-xl border border-error/30 bg-error-container p-4 text-on-error-container">
+          <p className="mb-1 font-semibold">Không thể tải dữ liệu</p>
+          <p className="text-sm">{error}</p>
+          <button onClick={() => window.location.reload()} className="tap mt-2 text-sm font-semibold underline">
+            Thử lại
+          </button>
+        </div>
+      </TongQuanMobileKhung>
+      <div className="hidden lg:block space-y-card-gap">
         <PageHeader title="Tổng quan kinh doanh" />
         <div className="bg-error-container border border-error/30 text-on-error-container p-6 rounded-xl">
           <p className="font-semibold mb-1">Không thể tải dữ liệu</p>
@@ -251,6 +255,7 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+      </>
     )
   }
 
@@ -259,7 +264,26 @@ export default function DashboardPage() {
     period === "today" ? "hôm nay" : period === "week" ? "tuần này" : period === "quarter" ? "quý này" : "tháng này"
 
   return (
-    <div className="space-y-card-gap">
+    <>
+    {/* Điện thoại: thiết kế "tongquan" (chủ nhà 30/09/2026). Cùng số liệu với bản máy tính. */}
+    <div className="lg:hidden">
+      <TongQuanMobile
+        isSales={isSales}
+        subtitle={capNhat}
+        period={period}
+        onPeriod={setPeriod}
+        revenue={stats.monthRevenue}
+        orders={stats.todayOrders}
+        openReceivables={stats.openReceivables}
+        overdueCount={stats.overdueCount}
+        lowStockCount={stats.lowStockCount}
+        expiringSoonCount={stats.expiringSoonCount}
+        channels={channelBreakdown}
+        topCustomers={topCustomers}
+        recentOrders={recentOrders}
+      />
+    </div>
+    <div className="hidden lg:block space-y-card-gap">
       <PageHeader
         title={isSales ? "Tổng quan của tôi" : "Tổng quan kinh doanh"}
         description={today ? `Cập nhật ${today}` : undefined}
@@ -528,6 +552,7 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

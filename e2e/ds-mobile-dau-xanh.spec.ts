@@ -9,8 +9,8 @@ test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true
 
 const DS = [
   "/finance/cash-receipts", "/finance/expenses", "/payables", "/purchase-returns",
-  "/purchasing/receipts", "/purchasing/invoices", "/inventory/entries", "/inventory/batches",
-  "/products", "/suppliers", "/promotions", "/commissions/policies", "/invoices", "/receivables", "/settings/users",
+  "/purchasing/receipts", "/purchasing/invoices", "/inventory/batches",
+  "/suppliers", "/promotions", "/commissions/policies", "/invoices", "/receivables", "/settings/users",
 ]
 
 test("mọi danh sách: đầu trang xanh có ☰ và ô tìm, không có app bar chuẩn", async ({ page }) => {

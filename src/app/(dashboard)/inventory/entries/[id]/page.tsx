@@ -22,7 +22,8 @@ import { formatDate, formatCurrency } from "@/lib/utils"
 import { STOCK_ENTRY_TYPES } from "@/lib/constants"
 import { postStockExport, warningsFor } from "@/lib/inventory/post-export"
 import { Pencil, Trash2, X, Package, Truck, Printer, CircleX } from "lucide-react"
-import { PrintButton } from "@/components/ui/print-button"
+import { PrintButton, moHopThoaiIn } from "@/components/ui/print-button"
+import { ChiTietPhieuDienThoai, type DongChiTiet } from "@/components/inventory/chi-tiet-phieu-dien-thoai"
 import { DeliverySlip } from "@/components/printing/delivery-slip"
 import { DriverList, type DriverListOrder } from "@/components/printing/driver-list"
 import { useWorkflowSession } from "@/hooks/use-workflow-session"
@@ -123,7 +124,7 @@ export default function StockEntryDetailPage() {
     const [entryRes, linesRes, swapRes] = await Promise.all([
       supabase
         .from("stock_entries")
-        .select("id, org_id, entry_code, type, status, posted_at, supplier_id, ref_order_ids, created_by, notes, created_at, creator:users!stock_entries_created_by_fkey(*)")
+        .select("id, org_id, entry_code, type, status, posted_at, supplier_id, ref_order_ids, created_by, notes, created_at, warehouse_zone, dest_warehouse_zone, creator:users!stock_entries_created_by_fkey(*)")
         .eq("id", id)
         .single(),
       supabase
@@ -474,11 +475,40 @@ export default function StockEntryDetailPage() {
     }
   }
   const exchangeRows = Array.from(exchangeAgg.values())
+
+  /* Hai phép in dùng chung cho nút máy tính và thanh đáy điện thoại. */
+  const inPhieuXuat = () => {
+    document.documentElement.removeAttribute("data-print-mode")
+    moHopThoaiIn()
+  }
+  const inDanhSachGiao = () => {
+    const html = document.documentElement
+    html.setAttribute("data-print-mode", "driver-list")
+    requestAnimationFrame(() => {
+      window.print()
+      setTimeout(() => {
+        html.removeAttribute("data-print-mode")
+      }, 200)
+    })
+  }
   const refundRows = Array.from(refundAgg.values())
 
   return (
     <div className="space-y-4">
       <div className="no-print space-y-4">
+      <ChiTietPhieuDienThoai
+        entry={entry as typeof entry & { warehouse_zone?: string | null; dest_warehouse_zone?: string | null }}
+        typeLabel={typeLabel}
+        lines={lines as unknown as DongChiTiet[]}
+        refOrders={refOrders}
+        canCancel={!!canEdit && entry.status !== "cancelled"}
+        canDeleteDraft={!!canDelete && entry.status === "draft"}
+        onCancel={() => setCancelOpen(true)}
+        onDelete={() => setDeleteOpen(true)}
+        onInPhieu={inPhieuXuat}
+        onInDsGiao={entry.type === "export" && refOrders.length > 0 ? inDanhSachGiao : null}
+      />
+      <div className="space-y-4 max-lg:hidden">
       <PageHeader
         title={entry.entry_code}
         description={`${typeLabel} • Ngày tạo: ${formatDate(entry.created_at)}`}
@@ -817,11 +847,7 @@ export default function StockEntryDetailPage() {
                 <Button
                   variant="outline"
                   className="w-full h-11 justify-start"
-                  onClick={() => {
-                    const html = document.documentElement
-                    html.removeAttribute("data-print-mode")
-                    requestAnimationFrame(() => window.print())
-                  }}
+                  onClick={inPhieuXuat}
                 >
                   <Printer className="h-4 w-4 mr-2" /> IN PHIẾU XUẤT &amp; GIAO HÀNG
                 </Button>
@@ -829,16 +855,7 @@ export default function StockEntryDetailPage() {
                   <Button
                     variant="outline"
                     className="w-full h-11 justify-start"
-                    onClick={() => {
-                      const html = document.documentElement
-                      html.setAttribute("data-print-mode", "driver-list")
-                      requestAnimationFrame(() => {
-                        window.print()
-                        setTimeout(() => {
-                          html.removeAttribute("data-print-mode")
-                        }, 200)
-                      })
-                    }}
+                    onClick={inDanhSachGiao}
                   >
                     <Printer className="h-4 w-4 mr-2" /> IN DANH SÁCH GIAO
                   </Button>
@@ -986,6 +1003,7 @@ export default function StockEntryDetailPage() {
             </Card>
           )}
         </aside>
+      </div>
       </div>
 
       <ConfirmDialog

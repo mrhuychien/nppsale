@@ -40,6 +40,14 @@ describe("mig 217 — máy chủ", () => {
     expect(MIG).toMatch(/SET status = 'completed',[\s\S]*WHERE status IN \('partially_invoiced', 'closed'\);/)
   })
 
+  it("nới trigger closed → completed TRƯỚC khi đổi dữ liệu cũ (chạy lần đầu trên sổ thật đã nổ)", () => {
+    const noi = MIG.indexOf("pg_get_functiondef('public.check_order_status_transition()'::regprocedure)")
+    const doi = MIG.indexOf("WHERE status IN ('partially_invoiced', 'closed');")
+    expect(noi, "thiếu bước nới trigger").toBeGreaterThan(0)
+    expect(noi).toBeLessThan(doi)
+    expect(MIG).toContain("\\1, ''completed'' /* (mig 217) */\\2")
+  })
+
   it("luật mig 166 + khám sổ", () => {
     for (const sig of ["_wf2b_sync_order_status(uuid)", "_huy_don_theo_hoa_don(uuid, text, text, text)"]) {
       expect(MIG).toContain(`REVOKE EXECUTE ON FUNCTION public.${sig} FROM PUBLIC, anon, authenticated;`)

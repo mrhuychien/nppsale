@@ -150,6 +150,25 @@ END;
 $fn$;
 
 -- 5. Dữ liệu cũ về Hoàn thành --------------------------------------------------
+-- ⚠ Trigger `check_order_status_transition` không cho `closed → completed` (chỉ cho về
+--   partially_invoiced / submitted) — chạy lần đầu trên sổ thật nổ "Không thể chuyển đơn từ closed
+--   sang completed". Nới đúng một bước đó (đơn đã đóng nay coi là xuất xong).
+DO $p$
+DECLARE
+  v_src text := pg_get_functiondef('public.check_order_status_transition()'::regprocedure);
+  v_re  text := '(WHEN[ \t]+''closed''[ \t]+THEN[ \t]+NEW\.status[ \t]+IN[ \t]+\(''partially_invoiced'',[ \t]*''submitted'')(\))';
+BEGIN
+  IF position('(mig 217)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 217: check_order_status_transition đã cho closed → completed, bỏ qua ---';
+    RETURN;
+  END IF;
+  IF (SELECT count(*) FROM regexp_matches(v_src, v_re, 'g')) <> 1 THEN
+    RAISE EXCEPTION '217: không thấy đúng một nhánh ''closed'' trong check_order_status_transition' USING ERRCODE = 'P0001';
+  END IF;
+  EXECUTE regexp_replace(v_src, v_re, '\1, ''completed'' /* (mig 217) */\2');
+END;
+$p$;
+
 DO $p$
 BEGIN
   PERFORM set_config('npp.via_rpc', 'on', true);

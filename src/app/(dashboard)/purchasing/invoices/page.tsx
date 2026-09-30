@@ -24,7 +24,6 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
@@ -245,41 +244,29 @@ export default function PurchaseInvoicesLookupPage() {
   const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
   const xemNo = xem?.payable ? (DEBT_LABEL[xem.payable.status] || { label: xem.payable.status, variant: "secondary" as const }) : null
 
+  const chips = DEBT_FILTERS.map((f) => ({ key: f.value, label: f.label, count: counts[f.value] ?? 0, accent: f.accent }))
+  const nutTao = canCreate && (
+    <Button asChild>
+      {/* Cửa phiếu nhập hàng — máy tính mở POS (`posTargetFor`). */}
+      <Link href="/purchasing/receipts/new"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập hàng</Link>
+    </Button>
+  )
+
   return (
     <div className="space-y-4">
       <PageHeader
+        className="max-lg:hidden"
         title="Hoá đơn mua hàng (tra cứu)"
         descriptionDesktopOnly
         description="Danh sách phiếu nhập kho từ nhà cung cấp. Việc tạo / sửa hàng nhập + công nợ NCC làm ở phiếu nhập."
         backHref="/purchasing"
       >
-        {canCreate && (
-          <Button asChild>
-            {/* Cửa phiếu nhập hàng — máy tính mở POS (`posTargetFor`). */}
-            <Link href="/purchasing/receipts/new"><Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu nhập hàng</Link>
-          </Button>
-        )}
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        active={debtFilter}
-        onPick={setDebtFilter}
-        chips={DEBT_FILTERS.map((f) => ({ key: f.value, label: f.label, count: counts[f.value] ?? 0, accent: f.accent }))}
-      />
+      <StatusChips className="max-lg:hidden" active={debtFilter} onPick={setDebtFilter} chips={chips} />
 
       <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm mã phiếu, NCC, số HĐ…"
-        activeCount={locNC.soDangAp}
-        onClear={locNC.xoa}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <AdvancedFilter truong={LOC_PHIEU_NHAP_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -296,6 +283,22 @@ export default function PurchaseInvoicesLookupPage() {
         }
         /* Màn tra cứu, không cộng tiền: tổng công nợ NCC nằm ở màn Công nợ NCC. */
         totals={null}
+        mobileCountUnit="phiếu nhập"
+        mobileHead={{
+          title: "Hoá đơn mua hàng",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm mã phiếu, NCC, số HĐ…",
+          chips: { chips, active: debtFilter, onPick: setDebtFilter },
+          filter: {
+            activeCount: locNC.soDangAp,
+            onClear: locNC.xoa,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: <AdvancedFilter truong={LOC_PHIEU_NHAP_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+          },
+          actions: nutTao || undefined,
+        }}
         loading={loading}
         isEmpty={rows.length === 0}
         empty={

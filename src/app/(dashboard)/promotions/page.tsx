@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -256,43 +255,26 @@ export default function PromotionsPage() {
       ))}
     </p>
   ) : null
+  const chips = [
+    { key: "active", label: "Đang chạy", count: counts.active, accent: "#22c55e" },
+    { key: "inactive", label: "Ngừng", count: counts.inactive, accent: "#98a2b3" },
+    { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
+  ]
+  const nutTao = user && hasPermission(user.role, "promotions", "create") && (
+    <Button onClick={() => router.push("/promotions/new")}>
+      <Plus className="mr-2 h-4 w-4" /> Tạo KM
+    </Button>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Khuyến mãi" descriptionDesktopOnly description={`${promotions.length} chương trình`}>
-        {user && hasPermission(user.role, "promotions", "create") && (
-          <Button onClick={() => router.push("/promotions/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Tạo KM
-          </Button>
-        )}
+      <PageHeader className="max-lg:hidden" title="Khuyến mãi" descriptionDesktopOnly description={`${promotions.length} chương trình`}>
+        {nutTao}
       </PageHeader>
 
       {filterActive("status") && (
-        <StatusChips
-          active={statusFilter}
-          onPick={setStatusFilter}
-          chips={[
-            { key: "active", label: "Đang chạy", count: counts.active, accent: "#22c55e" },
-            { key: "inactive", label: "Ngừng", count: counts.inactive, accent: "#98a2b3" },
-            { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
-          ]}
-        />
+        <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
       )}
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm tên chương trình..."
-        activeCount={(typeFilter !== "all" ? 1 : 0) + locNC.soDangAp}
-        onClear={() => { setTypeFilter("all"); locNC.xoa() }}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          {filterActive("type") && <LocNhanhField label="Loại KM">{typeSelect}</LocNhanhField>}
-          <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-        </div>
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -311,6 +293,27 @@ export default function PromotionsPage() {
         }
         totals={null}
         totalsNote={topNote}
+        mobileCountUnit="chương trình"
+        mobileHead={{
+          title: "Khuyến mãi",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm tên chương trình...",
+          chips: filterActive("status") ? { chips, active: statusFilter, onPick: setStatusFilter } : undefined,
+          filter: {
+            activeCount: (typeFilter !== "all" ? 1 : 0) + locNC.soDangAp,
+            onClear: () => { setTypeFilter("all"); locNC.xoa() },
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                {filterActive("type") && <LocNhanhField label="Loại KM">{typeSelect}</LocNhanhField>}
+                <AdvancedFilter truong={LOC_KHUYEN_MAI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
+          },
+          actions: nutTao || undefined,
+        }}
         loading={loading}
         isEmpty={filtered.length === 0}
         empty={

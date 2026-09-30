@@ -41,7 +41,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import {
   DocListLayout, DocListSearch, LocNhanhButton, LocNhanhField, XoaLocButton,
@@ -383,41 +382,20 @@ export default function ExpensesPage() {
     </p>
   )
 
+  const chips = TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))
+  const nutTao = canEdit && (
+    <Button onClick={openAdd}>
+      <Plus className="h-4 w-4 mr-1.5" /> Thêm chi phí
+    </Button>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Chi phí" descriptionDesktopOnly description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
-        {canEdit && (
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1.5" /> Thêm chi phí
-          </Button>
-        )}
+      <PageHeader className="max-lg:hidden" title="Chi phí" descriptionDesktopOnly description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        multi
-        active={status}
-        onPick={setStatus}
-        chips={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))}
-      />
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm mô tả, mã tham chiếu…"
-        activeCount={activeFilterCount}
-        onClear={clearAdvanced}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          <LocNhanhField label="Kỳ">
-            <PeriodSelect className="w-full" value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
-          </LocNhanhField>
-          {dateFields}
-          <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>
-          <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-        </div>
-      </MobileFilterBar>
+      <StatusChips className="max-lg:hidden" multi active={status} onPick={setStatus} chips={chips} />
 
       <DocListLayout
         toolbar={
@@ -438,6 +416,30 @@ export default function ExpensesPage() {
         }
         advanced={showAdvanced && filterActive("date") ? dateFields : null}
         totals={{ label: "Tổng chi phí", countText: `${filtered.length} khoản chi`, total: formatCurrency(totals.total) }}
+        mobileHead={{
+          title: "Chi phí",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm mô tả, mã tham chiếu…",
+          chips: { chips, active: status, onPick: setStatus, multi: true },
+          filter: {
+            activeCount: activeFilterCount,
+            onClear: clearAdvanced,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                <LocNhanhField label="Kỳ">
+                  <PeriodSelect className="w-full" value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
+                </LocNhanhField>
+                {dateFields}
+                <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>
+                <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
+          },
+          actions: nutTao || undefined,
+        }}
         totalsNote={filtered.length > 0 ? bucketNote : null}
         loading={loading}
         isEmpty={filtered.length === 0}

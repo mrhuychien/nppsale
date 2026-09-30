@@ -13,7 +13,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -237,24 +236,32 @@ export default function BatchesPage() {
       ? { title: "Không có lô nào khớp", description: "Thử từ khoá khác." }
       : RONG[tab] ?? { title: "Không có lô phù hợp", description: "Thử đổi bộ lọc." }
 
+  const chips = [
+    { key: "all", label: "Tất cả", count: locBatches.length, accent: "#181c1e" },
+    { key: "sale", label: "Kho hàng bán", count: saleBatches.length, accent: "#22c55e" },
+    { key: "date", label: "Kho hàng date", count: dateBatches.length, accent: "#fdb022" },
+    { key: "fefo", label: "FEFO (ưu tiên xuất)", count: fefoBatches.length, accent: "#2563eb" },
+    { key: "expiring", label: "Sắp hết hạn", count: expiring.length, accent: "#ef5350" },
+  ]
+  /* Rà soát kho date + tạo lô — dùng chung cho đầu trang máy tính và điện thoại. */
+  const nutThaoTac = canCreate ? (
+    <>
+      <Button variant="outline" size="sm" onClick={refreshZones} disabled={refreshing}>
+        <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        Rà soát kho date
+      </Button>
+      <Button asChild>
+        <Link href="/inventory/batches/new">
+          <Plus className="mr-2 h-4 w-4" /> Tạo lô mới
+        </Link>
+      </Button>
+    </>
+  ) : undefined
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý lô hàng" descriptionDesktopOnly description={`${batches.length} lô hàng`} backHref="/inventory">
-        <div className="flex items-center gap-2">
-          {canCreate && (
-            <Button variant="outline" size="sm" onClick={refreshZones} disabled={refreshing}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              Rà soát kho date
-            </Button>
-          )}
-          {canCreate && (
-            <Button asChild>
-              <Link href="/inventory/batches/new">
-                <Plus className="mr-2 h-4 w-4" /> Tạo lô mới
-              </Link>
-            </Button>
-          )}
-        </div>
+      <PageHeader className="max-lg:hidden" title="Quản lý lô hàng" descriptionDesktopOnly description={`${batches.length} lô hàng`} backHref="/inventory">
+        {nutThaoTac && <div className="flex items-center gap-2">{nutThaoTac}</div>}
       </PageHeader>
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
@@ -295,29 +302,7 @@ export default function BatchesPage() {
         </Card>
       )}
 
-      <StatusChips
-        active={tab}
-        onPick={setTab}
-        chips={[
-          { key: "all", label: "Tất cả", count: locBatches.length, accent: "#181c1e" },
-          { key: "sale", label: "Kho hàng bán", count: saleBatches.length, accent: "#22c55e" },
-          { key: "date", label: "Kho hàng date", count: dateBatches.length, accent: "#fdb022" },
-          { key: "fefo", label: "FEFO (ưu tiên xuất)", count: fefoBatches.length, accent: "#2563eb" },
-          { key: "expiring", label: "Sắp hết hạn", count: expiring.length, accent: "#ef5350" },
-        ]}
-      />
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm sản phẩm, mã lô, vị trí…"
-        activeCount={locNC.soDangAp}
-        onClear={locNC.xoa}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-      </MobileFilterBar>
+      <StatusChips className="max-lg:hidden" active={tab} onPick={setTab} chips={chips} />
 
       <DocListLayout
         toolbar={
@@ -334,6 +319,22 @@ export default function BatchesPage() {
         }
         /* Tồn của các lô là số lượng của nhiều mặt hàng khác đơn vị — cộng lại là vô nghĩa. */
         totals={null}
+        mobileCountUnit="lô hàng"
+        mobileHead={{
+          title: "Lô hàng",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm sản phẩm, mã lô, vị trí…",
+          chips: { chips, active: tab, onPick: setTab },
+          filter: {
+            activeCount: locNC.soDangAp,
+            onClear: locNC.xoa,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: <AdvancedFilter truong={LOC_LO_HANG} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+          },
+          actions: nutThaoTac,
+        }}
         totalsNote={GOI_Y[tab] ? <p className="text-xs text-muted-foreground">{GOI_Y[tab]}</p> : null}
         loading={loading}
         isEmpty={theoTab.length === 0}

@@ -29,7 +29,6 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
@@ -194,41 +193,29 @@ export default function PurchaseReceiptsPage() {
   const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
   const khongTinhHuy = !tachTrangThai(tab).includes("cancelled") && (trangThaiCuaChon(tab) === null || tab.includes(","))
 
+  const chips = [
+    { key: "all", label: "Tất cả", count: counts.all, accent: "#64748b" },
+    ...RECEIPT_STATUS.map((s) => ({
+      key: s, label: receiptStatusLabel(s), count: counts[s] ?? 0, accent: receiptStatusTone(s),
+    })),
+  ]
+  const nutTao = (
+    <Button asChild>
+      <Link href="/purchasing/receipts/new"><Plus className="mr-1.5 h-4 w-4" /> Tạo phiếu</Link>
+    </Button>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Phiếu nhập hàng" descriptionDesktopOnly description="Nhập hàng từ nhà cung cấp — hoàn thành là nhập kho và ghi công nợ.">
-        <Button asChild>
-          <Link href="/purchasing/receipts/new"><Plus className="mr-1.5 h-4 w-4" /> Tạo phiếu</Link>
-        </Button>
+      <PageHeader className="max-lg:hidden" title="Phiếu nhập hàng" descriptionDesktopOnly description="Nhập hàng từ nhà cung cấp — hoàn thành là nhập kho và ghi công nợ.">
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        chips={[
-          { key: "all", label: "Tất cả", count: counts.all, accent: "#64748b" },
-          ...RECEIPT_STATUS.map((s) => ({
-            key: s, label: receiptStatusLabel(s), count: counts[s] ?? 0, accent: receiptStatusTone(s),
-          })),
-        ]}
-        multi
-        active={tab || "all"}
-        onPick={setTab}
-      />
+      <StatusChips className="max-lg:hidden" chips={chips} multi active={tab || "all"} onPick={setTab} />
 
       {canhBao && (
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
       )}
-
-      <MobileFilterBar
-        value={q}
-        onChange={setQ}
-        placeholder="Mã phiếu, số hoá đơn, tên NCC…"
-        activeCount={locNC.soDangAp}
-        onClear={locNC.xoa}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -244,6 +231,21 @@ export default function PurchaseReceiptsPage() {
             <ColumnPicker available={PURCHASE_RECEIPT_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
           </>
         }
+        mobileHead={{
+          title: "Phiếu nhập hàng",
+          search: q,
+          onSearch: setQ,
+          searchPlaceholder: "Mã phiếu, số hoá đơn, tên NCC…",
+          chips: { chips, active: tab || "all", onPick: setTab, multi: true },
+          filter: {
+            activeCount: locNC.soDangAp,
+            onClear: locNC.xoa,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+          },
+          actions: nutTao,
+        }}
         totals={{
           label: "Tổng tiền phiếu nhập",
           countText: `${tongPhieu.soPhieu} phiếu nhập${khongTinhHuy ? " · không tính phiếu huỷ" : ""}`,

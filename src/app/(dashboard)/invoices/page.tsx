@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -309,38 +308,27 @@ export default function InvoicesPage() {
       </SelectContent>
     </Select>
   )
+  const nutTao = user && hasPermission(user.role, "invoices", "create") && (
+    <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tạo hóa đơn</Button>
+  )
+  /* Đối soát hai chiều: rổ "chỉ có trên MISA" không hiện được ở
+     danh sách này vì những tờ đó KHÔNG CÓ trong bảng invoices. */
+  const nutDoiSoat = (
+    <Button variant="outline" asChild>
+      <Link href="/invoices/reconcile">Đối soát MISA</Link>
+    </Button>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Hóa đơn điện tử" descriptionDesktopOnly description={`${stats.total} hóa đơn`}>
-        {/* Đối soát hai chiều: rổ "chỉ có trên MISA" không hiện được ở
-            danh sách này vì những tờ đó KHÔNG CÓ trong bảng invoices. */}
-        <Button variant="outline" asChild>
-          <Link href="/invoices/reconcile">Đối soát MISA</Link>
-        </Button>
-        {user && hasPermission(user.role, "invoices", "create") && (
-          <Button onClick={() => router.push("/invoices/new")}><Plus className="mr-2 h-4 w-4" /> Tạo hóa đơn</Button>
-        )}
+      <PageHeader className="max-lg:hidden" title="Hóa đơn điện tử" descriptionDesktopOnly description={`${stats.total} hóa đơn`}>
+        {nutDoiSoat}
+        {nutTao}
       </PageHeader>
 
       {filterActive("misa") && (
-        <StatusChips active={misaFilter} onPick={setMisaFilter} chips={MISA_CHIPS} />
+        <StatusChips className="max-lg:hidden" active={misaFilter} onPick={setMisaFilter} chips={MISA_CHIPS} />
       )}
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm số HĐ, khách hàng, mã MISA..."
-        activeCount={(statusFilter !== "all" ? 1 : 0) + locNC.soDangAp}
-        onClear={() => { setStatusFilter("all"); locNC.xoa() }}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
-          <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-        </div>
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -362,6 +350,27 @@ export default function InvoicesPage() {
         /* Hóa đơn điện tử là bản khai với MISA, không phải sổ doanh thu (doanh thu theo hóa
            đơn bán ghi sổ) — màn này không cộng tiền để khỏi đọc nhầm thành doanh thu. */
         totals={null}
+        mobileCountUnit="hóa đơn"
+        mobileHead={{
+          title: "Hóa đơn điện tử",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm số HĐ, khách hàng, mã MISA...",
+          chips: filterActive("misa") ? { chips: MISA_CHIPS, active: misaFilter, onPick: setMisaFilter } : undefined,
+          filter: {
+            activeCount: (statusFilter !== "all" ? 1 : 0) + locNC.soDangAp,
+            onClear: () => { setStatusFilter("all"); locNC.xoa() },
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+                <AdvancedFilter truong={LOC_HOA_DON_DIEN_TU} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
+          },
+          actions: <>{nutDoiSoat}{nutTao}</>,
+        }}
         loading={loading}
         isEmpty={filtered.length === 0}
         empty={

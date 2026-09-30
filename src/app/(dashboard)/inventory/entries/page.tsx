@@ -16,7 +16,6 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -503,51 +502,54 @@ export default function StockEntriesPage() {
     </Select>
   )
 
+  const nutTao = canCreate && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button>
+          <Plus className="mr-2 h-4 w-4" /> Tạo phiếu
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => router.push("/inventory/stock-in")}>
+          <ArrowDownToLine className="mr-2 h-4 w-4 text-tertiary" />
+          Nhập kho
+        </DropdownMenuItem>
+        {/*
+          ⚠ ĐÂY LÀ `/inventory/stock-issue`, KHÔNG PHẢI
+            `/inventory/stock-out` (chủ nhà chốt 20/09/2026: "Nút
+            tạo phiếu ở màn Phiếu kho thêm phần Phiếu xuất kho").
+            `stock-out` là màn SOẠN HÀNG của luồng cũ, đã khoá ghi
+            ở P7 — dẫn vào đó là dẫn tới một nút bấm không làm gì.
+            `stock-issue` là phiếu xuất lẻ thật: FIFO qua RPC
+            `post_stock_issue`, có vết lấy lô, huỷ được.
+        */}
+        <DropdownMenuItem onClick={() => router.push("/inventory/stock-issue")}>
+          <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
+          Xuất kho
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push("/inventory/stocktake-adjust")}>
+          <ClipboardCheck className="mr-2 h-4 w-4 text-primary" />
+          Kiểm kê
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push("/inventory/adjustments")}>
+          <ClipboardCheck className="mr-2 h-4 w-4 text-[#b54708]" />
+          Duyệt điều chỉnh kiểm kê
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   return (
     <div className="space-y-4">
       <PageHeader
+        className="max-lg:hidden"
         title="Phiếu kho"
         descriptionDesktopOnly
         description={`${entries.length} phiếu • ${draftCount} chờ duyệt`}
         backHref="/inventory"
       >
-        {canCreate && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" /> Tạo phiếu
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => router.push("/inventory/stock-in")}>
-                <ArrowDownToLine className="mr-2 h-4 w-4 text-tertiary" />
-                Nhập kho
-              </DropdownMenuItem>
-              {/*
-                ⚠ ĐÂY LÀ `/inventory/stock-issue`, KHÔNG PHẢI
-                  `/inventory/stock-out` (chủ nhà chốt 20/09/2026: "Nút
-                  tạo phiếu ở màn Phiếu kho thêm phần Phiếu xuất kho").
-                  `stock-out` là màn SOẠN HÀNG của luồng cũ, đã khoá ghi
-                  ở P7 — dẫn vào đó là dẫn tới một nút bấm không làm gì.
-                  `stock-issue` là phiếu xuất lẻ thật: FIFO qua RPC
-                  `post_stock_issue`, có vết lấy lô, huỷ được.
-              */}
-              <DropdownMenuItem onClick={() => router.push("/inventory/stock-issue")}>
-                <ArrowUpFromLine className="mr-2 h-4 w-4 text-[#b54708]" />
-                Xuất kho
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/inventory/stocktake-adjust")}>
-                <ClipboardCheck className="mr-2 h-4 w-4 text-primary" />
-                Kiểm kê
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/inventory/adjustments")}>
-                <ClipboardCheck className="mr-2 h-4 w-4 text-[#b54708]" />
-                Duyệt điều chỉnh kiểm kê
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {nutTao}
       </PageHeader>
 
       {/* Lỗi tải / số thiếu — nói ra, không để danh sách trông như đủ. */}
@@ -570,22 +572,7 @@ export default function StockEntriesPage() {
           một ô nhớ riêng là hai thứ trên cùng màn nói hai chuyện khác
           nhau về cùng một bộ lọc.
       */}
-      <StatusChips chips={typeChips} active={typeFilter} onPick={setTypeFilter} />
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm mã phiếu hoặc ghi chú..."
-        activeCount={(statusFilter !== "all" ? 1 : 0) + locNC.soDangAp}
-        onClear={() => { setStatusFilter("all"); locNC.xoa() }}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
-          <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-        </div>
-      </MobileFilterBar>
+      <StatusChips className="max-lg:hidden" chips={typeChips} active={typeFilter} onPick={setTypeFilter} />
 
       <DocListLayout
         toolbar={
@@ -609,6 +596,26 @@ export default function StockEntriesPage() {
           </>
         }
         /* Phiếu kho là chứng từ số lượng, không mang tiền — dòng thống kê là số phiếu. */
+        mobileHead={{
+          title: "Phiếu kho",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm mã phiếu hoặc ghi chú...",
+          chips: { chips: typeChips, active: typeFilter, onPick: setTypeFilter },
+          filter: {
+            activeCount: (statusFilter !== "all" ? 1 : 0) + locNC.soDangAp,
+            onClear: () => { setStatusFilter("all"); locNC.xoa() },
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                {filterActive("status") && <LocNhanhField label="Trạng thái">{statusSelect}</LocNhanhField>}
+                <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
+          },
+          actions: nutTao || undefined,
+        }}
         totals={{ label: "Số phiếu kho", countText: `${draftCount} phiếu chờ duyệt`, total: `${filtered.length} phiếu` }}
         loading={loading}
         isEmpty={filtered.length === 0}

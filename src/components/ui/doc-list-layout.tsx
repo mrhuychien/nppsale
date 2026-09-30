@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import type { UsePaginationReturn } from "@/hooks/use-pagination"
+import { DocListMobileHead, type DocListMobileHeadProps } from "@/components/ui/doc-list-mobile-head"
 
 export interface DocListTotalsInfo {
   /** "Tổng tiền phiếu thu". */
@@ -55,6 +56,8 @@ export function DocListLayout({
   pg,
   shownCount,
   mobilePager,
+  mobileHead,
+  mobileCountUnit = "mục",
 }: {
   /** Nửa trái thanh công cụ: ô tìm, bộ lọc nhanh, kỳ, "Xoá lọc", nút "Lọc nhanh". */
   toolbar: ReactNode
@@ -82,6 +85,13 @@ export function DocListLayout({
   shownCount?: number
   /** Thay phân trang điện thoại — vd `LoadMore` của màn công nợ (NVBH cuộn để đi thu). */
   mobilePager?: ReactNode
+  /**
+   * Đầu trang xanh theo mẫu màn Đơn hàng (chủ nhà 30/09/2026). Có thì điện thoại dựng đầu này thay
+   * cho `PageHeader` / `StatusChips` / `MobileFilterBar` của trang (trang ẩn chúng trên điện thoại).
+   */
+  mobileHead?: DocListMobileHeadProps
+  /** Chữ dưới số đếm khi màn không có dòng tổng tiền — "nhân viên", "sản phẩm"… */
+  mobileCountUnit?: string
 }) {
   return (
     <>
@@ -122,7 +132,32 @@ export function DocListLayout({
       </div>
 
       {/* ---------------- Điện thoại: dải tóm tắt + thẻ ---------------- */}
-      {cards !== null && (
+      {cards !== null && mobileHead && (
+      <div data-doc-list="mobile" className="-mx-4 !-mt-4 lg:hidden">
+        <DocListMobileHead
+          head={mobileHead}
+          totalLabel={totals?.label ?? null}
+          total={totals?.total ?? null}
+          countText={totals?.countText ?? `${pg.total} ${mobileCountUnit}`}
+        />
+        <div className="mt-3 space-y-3 px-4 pb-2">
+          {mobileSummary}
+          {totalsNote && <div className="px-1">{totalsNote}</div>}
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)
+          ) : isEmpty ? (
+            <div className="rounded-2xl border bg-card p-6">{empty}</div>
+          ) : (
+            <>
+              {cards}
+              {mobilePager ?? <DataPagination pg={pg} shownCount={shownCount} />}
+            </>
+          )}
+        </div>
+      </div>
+      )}
+
+      {cards !== null && !mobileHead && (
       <div data-doc-list="mobile" className="space-y-3 lg:hidden">
         {mobileSummary ??
           (totals && (

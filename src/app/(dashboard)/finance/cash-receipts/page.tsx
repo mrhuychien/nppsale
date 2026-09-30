@@ -54,9 +54,7 @@ import { StatusChips } from "@/components/ui/status-chips"
 import { PeriodSelect } from "@/components/ui/period-select"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocSearchBox, DocFieldInputs } from "@/components/ui/doc-search-box"
-import { DocListSummary } from "@/components/ui/doc-list-summary"
 import {
   DocListLayout, KetQuaThieu, LocNhanhButton, LocNhanhField, XoaLocButton,
 } from "@/components/ui/doc-list-layout"
@@ -465,45 +463,28 @@ export default function CashReceiptsListPage() {
   const countText = `${pg.total} phiếu thu${khongTinhHuy ? " · không tính phiếu huỷ" : ""}`
   const tongText = filteredTotal === null ? null : formatCurrency(filteredTotal)
 
+  const chips = TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))
+  const nutTao = canCreate && (
+    <Button onClick={() => router.push("/finance/cash-receipts/new")}>
+      <Plus className="mr-2 h-4 w-4" /> Lập phiếu thu
+    </Button>
+  )
+
   return (
     <div className="space-y-4">
       {/* ⚠ Workflow v2 không có bước quyết toán chuyến — phiếu thu là chứng từ độc lập. */}
       <PageHeader
+        className="max-lg:hidden"
         title="Phiếu thu"
         descriptionDesktopOnly
         description="Chứng từ thu tiền công nợ của khách — trừ nợ theo từng hóa đơn."
       >
-        {canCreate && (
-          <Button onClick={() => router.push("/finance/cash-receipts/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Lập phiếu thu
-          </Button>
-        )}
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        multi
-        active={status}
-        onPick={setStatus}
-        chips={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))}
-      />
+      <StatusChips className="max-lg:hidden" multi active={status} onPick={setStatus} chips={chips} />
 
       <KetQuaThieu show={searchTruncated && !loading} term={debouncedSearch} />
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm số phiếu, khách, hóa đơn…"
-        activeCount={activeFilterCount}
-        onClear={clearAdvanced}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          <DocFieldInputs fields={TRUONG_PHIEU_THU} values={truongTim} onChange={setTruongTim} />
-          <AdvancedFilter truong={LOC_PHIEU_THU} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-          {advancedFilterFields}
-        </div>
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -539,18 +520,28 @@ export default function CashReceiptsListPage() {
         }
         advanced={showAdvanced ? advancedFilterFields : null}
         totals={{ label: "Tổng tiền phiếu thu", countText, total: tongText }}
-        mobileSummary={
-          <DocListSummary
-            label="Tổng tiền phiếu thu"
-            period={period}
-            onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
-            onOpenFilter={() => setFilterSheet(true)}
-            filtersActive={activeFilterCount > 0 || period !== "month"}
-            onClearFilters={() => { clearAdvanced(); setPeriod("month") }}
-            countText={countText}
-            total={tongText}
-          />
-        }
+        mobileHead={{
+          title: "Phiếu thu",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm số phiếu, khách, hóa đơn…",
+          chips: { chips, active: status, onPick: setStatus, multi: true },
+          ky: { period, onCycle: () => setPeriod((p) => nextPeriod(p)) },
+          filter: {
+            activeCount: activeFilterCount,
+            onClear: () => { clearAdvanced(); setPeriod("month") },
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                <DocFieldInputs fields={TRUONG_PHIEU_THU} values={truongTim} onChange={setTruongTim} />
+                <AdvancedFilter truong={LOC_PHIEU_THU} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+                {advancedFilterFields}
+              </div>
+            ),
+          },
+          actions: nutTao || undefined,
+        }}
         loading={loading}
         isEmpty={rows.length === 0}
         empty={empty}

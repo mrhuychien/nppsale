@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -227,32 +226,28 @@ export default function UsersPage() {
 
   if (authLoading) return <Skeleton className="h-96" />
 
+  const chips = [
+    { key: "active", label: "Đang hoạt động", count: counts.active, accent: "#22c55e" },
+    { key: "locked", label: "Tạm khóa", count: counts.locked, accent: "#98a2b3" },
+    { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
+  ]
+  const nutTao = isOwner && (
+    <Button asChild>
+      <Link href="/settings/users/new">
+        <Plus className="mr-2 h-4 w-4" /> Tạo nhân viên
+      </Link>
+    </Button>
+  )
+
   const xem = xemId ? users.find((u) => u.id === xemId) ?? null : null
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Quản lý người dùng" descriptionDesktopOnly description={`${users.length} người dùng`} backHref="/settings">
-        {isOwner && (
-          <Button asChild>
-            <Link href="/settings/users/new">
-              <Plus className="mr-2 h-4 w-4" /> Tạo nhân viên
-            </Link>
-          </Button>
-        )}
+      <PageHeader className="max-lg:hidden" title="Quản lý người dùng" descriptionDesktopOnly description={`${users.length} người dùng`} backHref="/settings">
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        active={status}
-        onPick={setStatus}
-        chips={[
-          { key: "active", label: "Đang hoạt động", count: counts.active, accent: "#22c55e" },
-          { key: "locked", label: "Tạm khóa", count: counts.locked, accent: "#98a2b3" },
-          { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
-        ]}
-      />
-
-      {/* Màn không có bộ lọc nào ngoài ô tìm — thanh điện thoại chỉ có ô tìm. */}
-      <MobileFilterBar value={search} onChange={setSearch} placeholder="Tìm họ tên, SĐT, vai trò…" activeCount={0} open={false} onOpenChange={() => {}} />
+      <StatusChips className="max-lg:hidden" active={status} onPick={setStatus} chips={chips} />
 
 
       <DocListLayout
@@ -275,6 +270,15 @@ export default function UsersPage() {
         }
         pg={pg}
         shownCount={trang.length}
+        mobileCountUnit="người dùng"
+        mobileHead={{
+          title: "Nhân viên",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm họ tên, SĐT, vai trò…",
+          chips: { chips, active: status, onPick: setStatus },
+          actions: nutTao || undefined,
+        }}
         table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(u) => setXemId(u.id)} />}
         cards={
           <DocCardList

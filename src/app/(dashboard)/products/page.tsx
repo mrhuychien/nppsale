@@ -7,7 +7,6 @@ import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { Badge } from "@/components/ui/badge"
@@ -301,32 +300,33 @@ export default function ProductsPage() {
   )
   const soLocKhac = (categoryFilter !== "all" ? 1 : 0) + (supplierFilter !== "all" ? 1 : 0)
   const xoaLocKhac = () => { setCategoryFilter("all"); setSupplierFilter("all") }
+  const chips = [
+    { key: "active", label: "Đang bán", count: counts.active ?? 0, accent: "#22c55e" },
+    { key: "inactive", label: "Ngừng bán", count: counts.inactive ?? 0, accent: "#98a2b3" },
+    { key: "all", label: "Tất cả", count: counts.all ?? 0, accent: "#181c1e" },
+  ]
+  const coQuyenTao = !!user && hasPermission(user.role, "products", "create")
+  const nutTao = coQuyenTao && (
+    <Button onClick={() => router.push("/products/new")}>
+      <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
+    </Button>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Sản phẩm" descriptionDesktopOnly description={`${pg.total} sản phẩm`}>
-        {user && hasPermission(user.role, "products", "create") && (
+      <PageHeader className="max-lg:hidden" title="Sản phẩm" descriptionDesktopOnly description={`${pg.total} sản phẩm`}>
+        {coQuyenTao && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" /> Nhập Excel
             </Button>
-            <Button onClick={() => router.push("/products/new")}>
-              <Plus className="mr-2 h-4 w-4" /> Thêm sản phẩm
-            </Button>
+            {nutTao}
           </div>
         )}
       </PageHeader>
 
       {filterActive("status") && (
-        <StatusChips
-          active={statusFilter}
-          onPick={setStatusFilter}
-          chips={[
-            { key: "active", label: "Đang bán", count: counts.active ?? 0, accent: "#22c55e" },
-            { key: "inactive", label: "Ngừng bán", count: counts.inactive ?? 0, accent: "#98a2b3" },
-            { key: "all", label: "Tất cả", count: counts.all ?? 0, accent: "#181c1e" },
-          ]}
-        />
+        <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
       )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
@@ -356,22 +356,6 @@ export default function ProductsPage() {
         </div>
       )}
 
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm theo tên, SKU, nhãn hàng..."
-        activeCount={soLocKhac + locNC.soDangAp}
-        onClear={() => { xoaLocKhac(); locNC.xoa() }}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <div className="grid gap-4">
-          {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
-          {filterActive("supplier") && <LocNhanhField label="Nhà cung cấp">{supplierSelect}</LocNhanhField>}
-          <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-        </div>
-      </MobileFilterBar>
-
       <DocListLayout
         toolbar={
           <>
@@ -390,6 +374,28 @@ export default function ProductsPage() {
         }
         /* Danh mục hàng, không phải chứng từ — không có tiền để cộng. */
         totals={null}
+        mobileCountUnit="sản phẩm"
+        mobileHead={{
+          title: "Sản phẩm",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm theo tên, SKU, nhãn hàng...",
+          chips: filterActive("status") ? { chips, active: statusFilter, onPick: setStatusFilter } : undefined,
+          filter: {
+            activeCount: soLocKhac + locNC.soDangAp,
+            onClear: () => { xoaLocKhac(); locNC.xoa() },
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: (
+              <div className="grid gap-4">
+                {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
+                {filterActive("supplier") && <LocNhanhField label="Nhà cung cấp">{supplierSelect}</LocNhanhField>}
+                <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
+          },
+          actions: nutTao || undefined,
+        }}
         loading={loading}
         isEmpty={filtered.length === 0}
         empty={

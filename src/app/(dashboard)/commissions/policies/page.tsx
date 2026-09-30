@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -107,26 +106,22 @@ export default function CommissionPoliciesPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const xem = xemId ? policies.find((p) => p.id === xemId) ?? null : null
+  const chips = [
+    { key: "active", label: "Đang áp dụng", count: locRows.filter((p) => p.is_active).length, accent: "#22c55e" },
+    { key: "inactive", label: "Ngừng", count: locRows.filter((p) => !p.is_active).length, accent: "#98a2b3" },
+    { key: "all", label: "Tất cả", count: locRows.length, accent: "#181c1e" },
+  ]
+  const nutTao = user && hasPermission(user.role, "commissions", "create") && (
+    <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Chính sách hoa hồng" descriptionDesktopOnly description={`${policies.length} chính sách`} backHref="/commissions">
-        {user && hasPermission(user.role, "commissions", "create") && (
-          <Button onClick={() => router.push("/commissions/policies/new")}><Plus className="mr-2 h-4 w-4" /> Tạo chính sách</Button>
-        )}
+      <PageHeader className="max-lg:hidden" title="Chính sách hoa hồng" descriptionDesktopOnly description={`${policies.length} chính sách`} backHref="/commissions">
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        active={status}
-        onPick={setStatus}
-        chips={[
-          { key: "active", label: "Đang áp dụng", count: locRows.filter((p) => p.is_active).length, accent: "#22c55e" },
-          { key: "inactive", label: "Ngừng", count: locRows.filter((p) => !p.is_active).length, accent: "#98a2b3" },
-          { key: "all", label: "Tất cả", count: locRows.length, accent: "#181c1e" },
-        ]}
-      />
-
-      <MobileFilterBar value={search} onChange={setSearch} placeholder="Tìm tên chính sách…" activeCount={0} open={false} onOpenChange={() => {}} />
+      <StatusChips className="max-lg:hidden" active={status} onPick={setStatus} chips={chips} />
 
       <DocListLayout
         toolbar={
@@ -137,6 +132,15 @@ export default function CommissionPoliciesPage() {
         }
         toolbarEnd={<ColumnPicker available={COMMISSION_POLICY_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />}
         totals={null}
+        mobileCountUnit="chính sách"
+        mobileHead={{
+          title: "Chính sách hoa hồng",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm tên chính sách…",
+          chips: { chips, active: status, onPick: setStatus },
+          actions: nutTao || undefined,
+        }}
         loading={loading}
         isEmpty={shown.length === 0}
         empty={<EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title={policies.length === 0 ? "Chưa có chính sách hoa hồng" : "Không có chính sách khớp"} />}

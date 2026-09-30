@@ -9,10 +9,10 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { usePagination } from "@/hooks/use-pagination"
-import { DocListLayout } from "@/components/ui/doc-list-layout"
+import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { useListSearch } from "@/hooks/use-list-search"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
-import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
@@ -99,6 +99,21 @@ export default function ReceivablesPage() {
   const [xemId, setXemId] = useState<string | null>(null)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("receivables", LOC_CONG_NO_PHAI_THU)
+  /* Ô tìm (đầu xanh điện thoại + thanh công cụ máy tính) — tìm cả sổ, không chỉ trang đang tải. */
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+  /* Khách / mã HĐ nằm ở bảng khác → tra mã riêng (`useListSearch`). */
+  const listSearch = useListSearch(
+    supabase, debouncedSearch, authUser?.org_id, [],
+    [
+      { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
+      { column: "invoice_id", table: "sales_invoices", columns: ["invoice_code"] },
+    ]
+  )
 
   // Tổng công nợ + phân nhóm tuổi nợ: một lời gọi, Postgres cộng trên TOÀN
   // BỘ dữ liệu. Không phụ thuộc phân trang, không phụ thuộc `db.max_rows`.
@@ -124,13 +139,18 @@ export default function ReceivablesPage() {
   // Reset page khi bộ lọc nâng cao đổi.
   useEffect(() => {
     pg.reset()
-  }, [locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locNC.key, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paginated table query (gồm join customer + sales_user).
   useEffect(() => {
-    if (!locNC.ready) return
+    if (!locNC.ready || !listSearch.ready) return
     let cancelled = false
     async function fetch() {
+      /* Không bảng nào khớp từ khoá → `filter` null; không được hiện cả sổ. */
+      if (debouncedSearch && !listSearch.filter) {
+        setReceivables([]); setLoadError(null); pg.setTotal(0); setLoading(false)
+        return
+      }
       // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
       if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
@@ -148,6 +168,7 @@ export default function ReceivablesPage() {
           .order("id")
           .range(from, to)
         for (const f of locNC.menhDe) q = q.or(f)
+        if (listSearch.filter) q = q.or(listSearch.filter)
         return q
       }
       const res = await taiHaiNhip<Receivable, ResilientResult<Receivable>>(
@@ -173,7 +194,7 @@ export default function ReceivablesPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, locNC.ready, locNC.key, debouncedSearch, listSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<Receivable> & { k?: ReceivableColumnKey }> = [
@@ -275,36 +296,61 @@ export default function ReceivablesPage() {
     1
   )
 
+  /* Tab tuổi nợ của đầu xanh điện thoại — "Tất cả" = bỏ lọc. */
+  const MAU_TUOI_NO: Record<BucketKey, string> = { current: "#1e5eff", warning: "#fdb022", overdue: "#f97316", critical: "#d92d20" }
+  const tabTuoiNo = [
+    { key: "all", label: "Tất cả", count: pg.total, accent: "#181c1e" },
+    ...(Object.keys(bucketConfig) as BucketKey[]).map((key) => ({
+      key, label: bucketConfig[key].label, count: buckets[key].count, accent: MAU_TUOI_NO[key],
+    })),
+  ]
+  const tieuDe = isSales ? "Công nợ của tôi" : "Công nợ"
+  const nutDau = (
+    <>
+      <Button variant="outline" asChild><Link href="/receivables/aging">Sổ chi tiết</Link></Button>
+      <Button variant="outline" asChild><Link href="/receivables/collect">Thu tiền</Link></Button>
+    </>
+  )
+  const ghiChuVaiTro = (isSales || isDriver) && (
+    <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
+      <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
+      {isSales
+        ? "Bạn chỉ thấy công nợ từ các đơn do bạn tạo."
+        : "Bạn thấy công nợ thuộc các đơn giao của bạn (COD)."}
+    </div>
+  )
+  const loiTong = summaryError && (
+    <div
+      role="alert"
+      className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
+    >
+      <p className="font-semibold">Không tải được tổng công nợ và tuổi nợ</p>
+      <p className="mt-0.5 break-words">{summaryError}</p>
+    </div>
+  )
+  /* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */
+  const loiDanhSach = loadError && !loading && (
+    <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+      <p className="font-semibold">Không tải được danh sách công nợ</p>
+      <p className="mt-0.5 break-words">{loadError}</p>
+    </div>
+  )
+  const ketQuaThieu = <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
+
   return (
     <div className="space-y-4">
-      <PageHeader title={isSales ? "Công nợ của tôi" : "Công nợ"} description={summaryError ? "Tổng công nợ: không tải được" : `Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild><Link href="/receivables/aging">Sổ chi tiết</Link></Button>
-          <Button variant="outline" asChild><Link href="/receivables/collect">Thu tiền</Link></Button>
-        </div>
+      {/* Điện thoại: đầu xanh của `DocListLayout` thay chỗ này (chủ nhà 30/09/2026). */}
+      <PageHeader className="max-lg:hidden" title={tieuDe} description={summaryError ? "Tổng công nợ: không tải được" : `Tổng công nợ: ${formatCurrency(totalOutstanding)}`}>
+        <div className="flex gap-2">{nutDau}</div>
       </PageHeader>
 
-      {(isSales || isDriver) && (
-        <div className="rounded-lg bg-primary-fixed border border-primary-fixed-dim p-3 text-sm text-on-primary-fixed-variant flex items-center gap-2">
-          <span className="inline-flex h-5 w-5 rounded-full bg-primary text-on-primary items-center justify-center text-xs font-bold shrink-0">i</span>
-          {isSales
-            ? "Bạn chỉ thấy công nợ từ các đơn do bạn tạo."
-            : "Bạn thấy công nợ thuộc các đơn giao của bạn (COD)."}
-        </div>
-      )}
-
-      {summaryError && (
-        <div
-          role="alert"
-          className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container"
-        >
-          <p className="font-semibold">Không tải được tổng công nợ và tuổi nợ</p>
-          <p className="mt-0.5 break-words">{summaryError}</p>
-        </div>
-      )}
+      <div className="space-y-4 max-lg:hidden empty:hidden">
+        {ghiChuVaiTro}
+        {loiTong}
+      </div>
 
       {/* Aging Chart — ẩn khi phần tổng đọc hỏng: bốn ô 0đ là số sai. */}
-      <Card className={summaryError ? "hidden" : undefined}>
+      <Card className={summaryError ? "hidden" : "max-lg:hidden"}>
         <CardContent className="p-4 lg:p-6">
           <div className="mb-4 flex items-end justify-between">
             <div>
@@ -315,48 +361,6 @@ export default function ReceivablesPage() {
               Cập nhật: {formatDate(new Date())}
             </span>
           </div>
-          {/* Mobile: MỘT thanh xếp chồng ngang thay cho lưới 2 cột bốn ô
-              (mỗi ô cao 200px, chữ "Hiện tại 0-30 NGÀY" xuống dòng gãy).
-              Tiết kiệm ~180px và đọc nhanh hơn: tỉ lệ giữa bốn khoảng nhìn
-              thấy ngay trong một thanh. ĐÚNG BỐN khoảng theo bucketConfig —
-              dữ liệu tổng hợp phía DB chỉ có bốn, đừng phát minh khoảng
-              thứ năm. */}
-          <div className="lg:hidden">
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-container">
-              {(Object.keys(bucketConfig) as BucketKey[]).map((key) => {
-                const cfg = bucketConfig[key]
-                const pct = totalAging > 0 ? (buckets[key].amount / totalAging) * 100 : 0
-                if (pct <= 0) return null
-                return (
-                  <div
-                    key={key}
-                    className={cfg.barClass}
-                    style={{ width: `${pct}%` }}
-                    title={`${cfg.label}: ${formatCurrency(buckets[key].amount)}`}
-                  />
-                )
-              })}
-            </div>
-            <SegmentedScroller
-              segments={(Object.keys(bucketConfig) as BucketKey[]).map((key) => ({
-                key,
-                label: bucketConfig[key].label,
-                count: buckets[key].count,
-              }))}
-              value={agingFilter}
-              onChange={setAgingFilter}
-              ariaLabel="Lọc theo tuổi nợ"
-            />
-            {agingFilter && (
-              <p className="px-1 text-xs text-on-surface-variant">
-                {bucketConfig[agingFilter as BucketKey].sub} ·{" "}
-                <span className="font-semibold tabular-nums">
-                  {formatCurrency(buckets[agingFilter as BucketKey].amount)}
-                </span>
-              </p>
-            )}
-          </div>
-
           <div className="hidden lg:grid grid-cols-2 gap-4 md:grid-cols-4">
             {(Object.keys(bucketConfig) as BucketKey[]).map((key) => {
               const cfg = bucketConfig[key]
@@ -394,19 +398,21 @@ export default function ReceivablesPage() {
         </CardContent>
       </Card>
 
-      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
-      {loadError && !loading && (
-        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
-          <p className="font-semibold">Không tải được danh sách công nợ</p>
-          <p className="mt-0.5 break-words">{loadError}</p>
-        </div>
-      )}
+      <div className="space-y-4 max-lg:hidden empty:hidden">
+        {loiDanhSach}
+        {ketQuaThieu}
+      </div>
 
       {/* ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026) — một thẻ: thanh công cụ · dòng tổng ·
           lưới · phân trang; bấm dòng mở xem nhanh. Điện thoại giữ thẻ có nút "Thu tiền" +
           "Tải thêm": NVBH mở màn này để đi thu. */}
       <DocListLayout
-        toolbar={<span className="text-sm font-bold text-on-surface">Các khoản công nợ</span>}
+        toolbar={
+          <>
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm khách hàng, SĐT, mã hóa đơn..." />
+            <XoaLocButton show={!!search} onClick={() => setSearch("")} />
+          </>
+        }
         toolbarEnd={
           <>
             <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
@@ -420,23 +426,67 @@ export default function ReceivablesPage() {
         }
         totals={{
           label: "Tổng công nợ (toàn sổ)",
-          countText: `${pg.total} khoản nợ${locNC.soDangAp ? " khớp bộ lọc" : ""}`,
+          countText: `${pg.total} khoản nợ${locNC.soDangAp || debouncedSearch ? " khớp bộ lọc" : ""}`,
           total: summaryError ? null : formatCurrency(totalOutstanding),
         }}
+        mobileHead={{
+          title: tieuDe,
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm khách hàng, SĐT, mã hóa đơn…",
+          chips: { chips: tabTuoiNo, active: agingFilter ?? "all", onPick: (k) => setAgingFilter(k === "all" ? null : k) },
+          actions: nutDau,
+        }}
         mobileSummary={
-          <div className="flex justify-end">
-            <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
-          </div>
+          /* Dưới thẻ tổng: ghi chú vai trò · lỗi · thanh tuổi nợ · lọc nâng cao (popover, không phải ngăn). */
+          <>
+            {ghiChuVaiTro}
+            {loiTong}
+            {loiDanhSach}
+            {ketQuaThieu}
+            {!summaryError && (
+              <div className="space-y-2">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-container">
+                  {(Object.keys(bucketConfig) as BucketKey[]).map((key) => {
+                    const cfg = bucketConfig[key]
+                    const pct = totalAging > 0 ? (buckets[key].amount / totalAging) * 100 : 0
+                    if (pct <= 0) return null
+                    return (
+                      <div
+                        key={key}
+                        className={cfg.barClass}
+                        style={{ width: `${pct}%` }}
+                        title={`${cfg.label}: ${formatCurrency(buckets[key].amount)}`}
+                      />
+                    )
+                  })}
+                </div>
+                {agingFilter && (
+                  <p className="px-1 text-xs text-on-surface-variant">
+                    {bucketConfig[agingFilter as BucketKey].sub} ·{" "}
+                    <span className="font-semibold tabular-nums">
+                      {formatCurrency(buckets[agingFilter as BucketKey].amount)}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <AdvancedFilter truong={LOC_CONG_NO_PHAI_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
+            </div>
+          </>
         }
         loading={loading}
         isEmpty={receivables.length === 0}
         empty={
           <EmptyState
             icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
-            title={loadError ? "Không tải được dữ liệu" : "Chưa có công nợ"}
+            title={loadError ? "Không tải được dữ liệu" : debouncedSearch ? "Không có khoản nợ khớp" : "Chưa có công nợ"}
             description={
               loadError
                 ? "Xem thông báo lỗi phía trên."
+                : debouncedSearch
+                  ? `Không có khách / hóa đơn nào khớp "${debouncedSearch}".`
                 : isWarehouse
                   ? "Vai trò Kho không có quyền xem công nợ phải thu. Liên hệ kế toán để đối chiếu."
                   : isSales

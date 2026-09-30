@@ -7,7 +7,7 @@ import { dangNhap, chonKy, FAKE } from "./helpers"
  *   503.410.450đ · 285 đơn hàng". Tổng là của CẢ BỘ LỌC, không phải trang.
  */
 const khoi = (page: import("@playwright/test").Page, nhan: string) =>
-  page.locator("div", { has: page.getByText(nhan, { exact: true }) }).last()
+  page.locator("div", { has: page.getByText(nhan, { exact: true }) }).filter({ visible: true }).last()
 
 test("đơn hàng — máy tính: 'Tất cả' ra cả đơn năm ngoái; đơn huỷ không vào tổng", async ({ page }) => {
   await dangNhap(page)

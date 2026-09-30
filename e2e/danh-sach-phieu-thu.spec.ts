@@ -39,7 +39,7 @@ const DONG = [{
 }]
 
 const khoi = (page: import("@playwright/test").Page, nhan: string) =>
-  page.locator("div", { has: page.getByText(nhan, { exact: true }) }).last()
+  page.locator("div", { has: page.getByText(nhan, { exact: true }) }).filter({ visible: true }).last()
 
 test.describe("danh sách phiếu thu — khuôn đơn / hóa đơn", () => {
   test.beforeEach(async () => {
@@ -57,8 +57,9 @@ test.describe("danh sách phiếu thu — khuôn đơn / hóa đơn", () => {
     await dangNhap(page)
     await page.goto("/finance/cash-receipts")
 
-    await expect(page.locator('[data-status-chip="received"]')).toContainText("24")
-    await expect(page.locator('[data-status-chip="voided"]')).toContainText("1")
+    // Bản điện thoại (đầu xanh) cũng có dải này trong DOM nhưng ẩn — chỉ xét bản đang hiện.
+    await expect(page.locator('[data-status-chip="received"]').filter({ visible: true })).toContainText("24")
+    await expect(page.locator('[data-status-chip="voided"]').filter({ visible: true })).toContainText("1")
 
     const k = khoi(page, "Tổng tiền phiếu thu")
     await expect(k).toContainText("25 phiếu thu")
@@ -81,14 +82,16 @@ test.describe("danh sách phiếu thu — khuôn đơn / hóa đơn", () => {
     expect(loi).toEqual([])
   })
 
-  test("điện thoại: dải tóm tắt + thẻ theo khuôn đơn / hóa đơn", async ({ browser }) => {
+  test("điện thoại: đầu xanh (thẻ tổng) + thẻ theo khuôn đơn / hóa đơn", async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
     const page = await ctx.newPage()
     await dangNhap(page)
     await page.goto("/finance/cash-receipts")
     const dt = page.locator('[data-doc-list="mobile"]')
-    await expect(dt.getByText("Tổng tiền phiếu thu", { exact: true })).toBeVisible()
-    await expect(dt.getByText(/25 phiếu thu/).first()).toBeVisible()
+    const tong = dt.getByTestId("ds-the-tong")
+    await expect(tong).toContainText("Tổng tiền phiếu thu")
+    await expect(tong.getByTestId("ds-so-dem")).toHaveText("25")
+    await expect(tong.getByTestId("ds-tong-tien")).toContainText("2.400.000")
     const the = dt.locator("[data-doc-card-list]")
     await expect(the.getByText("Tạp hoá Phiếu Thu")).toBeVisible()
     await expect(the.getByText(/PT-E2E-001/)).toBeVisible()

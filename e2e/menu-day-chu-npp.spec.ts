@@ -30,14 +30,14 @@ for (const url of ["/orders", "/sales-invoices", "/customers", "/returns"]) {
   })
 }
 
-test("trang danh sách có nút lùi (Người dùng, Trả hàng NCC) vẫn là ☰ trên app bar", async ({ page }) => {
+test("trang danh sách còn app bar có nút lùi (Tuổi nợ, Xuất kho) vẫn là ☰", async ({ page }) => {
   await dangNhap(page)
-  for (const url of ["/settings/users", "/purchase-returns"]) {
+  for (const url of ["/inventory/stock-out", "/receivables/aging"]) {
     await page.goto(url)
     const bar = page.locator("header").first()
     await expect(bar.getByRole("button", { name: "Mở menu" })).toBeVisible()
     await expect(bar.getByRole("button", { name: "Quay lại" })).toHaveCount(0)
   }
-  await page.getByRole("button", { name: "Mở menu" }).first().click()
+  await page.locator("header").first().getByRole("button", { name: "Mở menu" }).click()
   await expect(page.getByRole("dialog")).toBeVisible()
 })

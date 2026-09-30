@@ -66,7 +66,9 @@ describe("DocListLayout — một thẻ như màn hóa đơn", () => {
     expect(iTrang).toBeGreaterThan(iLuoi)
   })
   it("màn có màn điện thoại riêng (cards = null) thì khuôn chỉ dựng phần máy tính", () => {
-    expect(LAYOUT).toContain("{cards !== null && (")
+    // Hai nhánh điện thoại (đầu xanh `mobileHead` / dải tóm tắt cũ) — cả hai đều chặn khi cards = null.
+    expect(LAYOUT).toContain("{cards !== null && mobileHead && (")
+    expect(LAYOUT).toContain("{cards !== null && !mobileHead && (")
   })
   it("điện thoại: dải tóm tắt → thẻ → phân trang; rỗng thì EmptyState, không trắng", () => {
     const dt = LAYOUT.slice(LAYOUT.indexOf('data-doc-list="mobile"'))
@@ -122,7 +124,8 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
       "<PageHeader",
       "<StatusChips",
       "multi",
-      "<MobileFilterBar",
+      // Điện thoại: đầu xanh (mobileHead) thay MobileFilterBar.
+      "mobileHead={{",
       "<DocFieldInputs fields={TRUONG_PHIEU_THU}",
       "<DocSearchBox",
       "<PeriodSelect",
@@ -131,7 +134,8 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
       "<FilterPicker available={CASH_RECEIPT_FILTERS}",
       "<ColumnPicker available={CASH_RECEIPT_COLUMNS}",
       "<DocListLayout",
-      "<DocListSummary",
+      // Kỳ + tổng nằm trên thẻ trắng của đầu xanh (thay DocListSummary).
+      "ky: { period, onCycle:",
       "<DocTable rows={rows} columns={columns}",
       "<DocCardList",
       "<CashReceiptDrawer",
@@ -209,7 +213,8 @@ describe("các danh sách đã về khuôn chung", () => {
     expect(s).toContain("<ColumnPicker")
     if (!khongLocNangCao) expect(s).toContain("<AdvancedFilter")
     expect(s).toMatch(/totals=\{/)
-    if (mobileFilter) expect(s).toContain("<MobileFilterBar")
+    // Điện thoại: MobileFilterBar cũ hoặc đầu xanh `mobileHead` (30/09/2026).
+    if (mobileFilter) expect(s).toMatch(/<MobileFilterBar|mobileHead=\{\{/)
     if (statusChips) expect(s).toContain("<StatusChips")
   })
 

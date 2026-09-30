@@ -27,6 +27,8 @@ interface Props {
   children?: React.ReactNode
   open: boolean
   onOpenChange: (o: boolean) => void
+  /** Chỉ dựng ngăn lọc — ô tìm + nút lọc nằm ở đầu trang xanh (`DocListMobileHead`). */
+  chiNganLoc?: boolean
 }
 
 export function MobileFilterBar({
@@ -38,11 +40,13 @@ export function MobileFilterBar({
   children,
   open,
   onOpenChange,
+  chiNganLoc = false,
 }: Props) {
   return (
     <>
       {/* `top-below-appbar` neo theo --app-bar-h, không phải một con số
           cứng — app bar đổi chiều cao thì hàng này đi theo. */}
+      {!chiNganLoc && (
       <div className="lg:hidden sticky top-below-appbar z-30 -mx-4 px-4 py-2 bg-surface/95 backdrop-blur border-b border-outline-variant/50">
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1">
@@ -86,6 +90,7 @@ export function MobileFilterBar({
           )}
         </div>
       </div>
+      )}
 
       {children != null && (
       <Sheet open={open} onOpenChange={onOpenChange}>

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -285,24 +284,27 @@ export default function PayablesPage() {
     </p>
   )
 
+  const chips = TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))
+  const chonTab = (k: string) => setStatusFilter(k as StatusFilter)
+  // Nút của màn — máy tính ở PageHeader, điện thoại ở đầu xanh.
+  const nutTao = (
+    <>
+      <Button variant="outline" asChild>
+        <Link href="/payables/by-supplier">Theo NCC</Link>
+      </Button>
+      <Button asChild className="bg-primary text-on-primary shadow-card">
+        <Link href="/payables/new"><Plus className="mr-2 h-4 w-4" />Tạo công nợ NCC</Link>
+      </Button>
+    </>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Công nợ nhà cung cấp" descriptionDesktopOnly description={`Tổng phải trả: ${formatCurrency(totalOutstanding)}`}>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/payables/by-supplier">Theo NCC</Link>
-          </Button>
-          <Button asChild className="bg-primary text-on-primary shadow-card">
-            <Link href="/payables/new"><Plus className="mr-2 h-4 w-4" />Tạo công nợ NCC</Link>
-          </Button>
-        </div>
+      <PageHeader className="max-lg:hidden" title="Công nợ nhà cung cấp" descriptionDesktopOnly description={`Tổng phải trả: ${formatCurrency(totalOutstanding)}`}>
+        <div className="flex gap-2">{nutTao}</div>
       </PageHeader>
 
-      <StatusChips
-        active={statusFilter}
-        onPick={(k) => setStatusFilter(k as StatusFilter)}
-        chips={TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))}
-      />
+      <StatusChips className="max-lg:hidden" active={statusFilter} onPick={chonTab} chips={chips} />
 
       <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
 
@@ -328,18 +330,6 @@ export default function PayablesPage() {
         </div>
       )}
 
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Tìm theo NCC, mã hóa đơn..."
-        activeCount={locNC.soDangAp}
-        onClear={locNC.xoa}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-      </MobileFilterBar>
-
       {/* ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026). "Tổng phải trả" là của các khoản CHƯA
           TRẢ trên toàn sổ (bốn ô tổng cũ), không phải của trang. */}
       <DocListLayout
@@ -364,6 +354,21 @@ export default function PayablesPage() {
           label: "Tổng phải trả (toàn sổ)",
           countText: `${pg.total} khoản nợ NCC`,
           total: statsError || statsTruncated ? null : formatCurrency(totalOutstanding),
+        }}
+        mobileHead={{
+          title: "Công nợ NCC",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Tìm theo NCC, mã hóa đơn...",
+          chips: { chips, active: statusFilter, onPick: chonTab },
+          filter: {
+            activeCount: locNC.soDangAp,
+            onClear: locNC.xoa,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+          },
+          actions: nutTao,
         }}
         totalsNote={statsError ? null : tongNote}
         loading={loading}

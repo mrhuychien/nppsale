@@ -50,7 +50,31 @@ export function showsBottomNav(pathname: string): boolean {
  * lên là hai hàng tiêu đề cho một màn — đúng lỗi mà /home và /sell đã
  * tránh. Desktop vẫn có app bar: ở đó bố cục hai cột cần nó.
  */
+/**
+ * Danh sách dựng đầu trang xanh theo mẫu màn Đơn hàng qua `DocListLayout mobileHead` (chủ nhà
+ * 30/09/2026: "viết lại tất cả các trang danh sách chưa theo phong cách trang Đơn hàng"). So ĐÚNG
+ * đường dẫn — trang con (chi tiết, tạo mới) vẫn có app bar.
+ */
+export const DOC_LIST_MOBILE_ROUTES = [
+  "/commissions/policies",
+  "/finance/cash-receipts",
+  "/finance/expenses",
+  "/inventory/batches",
+  "/inventory/entries",
+  "/invoices",
+  "/payables",
+  "/products",
+  "/promotions",
+  "/purchase-returns",
+  "/purchasing/invoices",
+  "/purchasing/receipts",
+  "/receivables",
+  "/settings/users",
+  "/suppliers",
+] as const
+
 export function hidesMobileAppBar(pathname: string): boolean {
+  if ((DOC_LIST_MOBILE_ROUTES as readonly string[]).includes(pathname)) return true
   /* "/orders", "/customers": danh sách trên điện thoại có đầu trang xanh riêng (mẫu 26/09/2026). */
   /* "/bao-cao/*": Báo cáo tổng hợp có đầu trang xanh + ☰ menu 6 màn riêng (thiết kế 26/09/2026). */
   return (

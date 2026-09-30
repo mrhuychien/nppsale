@@ -90,7 +90,8 @@ describe("các danh sách dùng chọn nhiều", () => {
     expect(R).toContain("if (chon && !chon.includes(r.status)) return false")
     const N = read("src/app/(dashboard)/purchase-returns/page.tsx")
     // Khuôn danh sách chung (27/09/2026): dải `StatusChips multi`, lọc tại chỗ để dải đếm được.
-    expect(N).toMatch(/<StatusChips\s+multi\s+active=\{filter\}\s+onPick=\{setFilter\}/)
+    expect(N).toMatch(/<StatusChips[^>]*\smulti\s+active=\{filter\}\s+onPick=\{setFilter\}/)
+    expect(N).toContain("chips: { chips, active: filter, onPick: setFilter, multi: true }")
     expect(N).toContain("return chon ? locRows.filter((r) => chon.includes(r.status)) : locRows")
   })
   it("StatusChips multi: nút bật/tắt (aria-pressed), gửi lên giá trị mới của cả dải", () => {

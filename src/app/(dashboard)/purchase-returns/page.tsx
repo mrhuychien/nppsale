@@ -37,7 +37,6 @@ import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_TRA_HANG_NCC } from "@/lib/search/list-filter-fields"
 import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import { StatusChips } from "@/components/ui/status-chips"
-import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -183,43 +182,31 @@ export default function PurchaseReturnsPage() {
   const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
   const khongTinhHuy = !tachTrangThai(filter).includes("cancelled") && filter !== "draft" && filter !== "completed"
 
+  const chips = TRANG_THAI_NCC.map((f) => ({
+    key: f,
+    label: f === "all" ? "Tất cả" : STATUS_LABEL[f]?.label || f,
+    count: counts[f] ?? 0,
+    accent: f === "all" ? "#181c1e" : STATUS_LABEL[f].accent,
+  }))
+  const nutTao = (
+    <Button asChild>
+      <Link href="/purchase-returns/new">
+        <Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu trả
+      </Link>
+    </Button>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Trả hàng NCC" descriptionDesktopOnly description="Hoàn trả hàng cho nhà cung cấp — xuất kho + giảm công nợ" backHref="/purchasing">
-        <Button asChild>
-          <Link href="/purchase-returns/new">
-            <Plus className="h-4 w-4 mr-1.5" /> Tạo phiếu trả
-          </Link>
-        </Button>
+      <PageHeader className="max-lg:hidden" title="Trả hàng NCC" descriptionDesktopOnly description="Hoàn trả hàng cho nhà cung cấp — xuất kho + giảm công nợ" backHref="/purchasing">
+        {nutTao}
       </PageHeader>
 
-      <StatusChips
-        multi
-        active={filter}
-        onPick={setFilter}
-        chips={TRANG_THAI_NCC.map((f) => ({
-          key: f,
-          label: f === "all" ? "Tất cả" : STATUS_LABEL[f]?.label || f,
-          count: counts[f] ?? 0,
-          accent: f === "all" ? "#181c1e" : STATUS_LABEL[f].accent,
-        }))}
-      />
+      <StatusChips className="max-lg:hidden" multi active={filter} onPick={setFilter} chips={chips} />
 
       {canhBao && (
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{canhBao}</p>
       )}
-
-      <MobileFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Mã phiếu, tên NCC…"
-        activeCount={locNC.soDangAp}
-        onClear={locNC.xoa}
-        open={filterSheet}
-        onOpenChange={setFilterSheet}
-      >
-        <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
-      </MobileFilterBar>
 
       <DocListLayout
         toolbar={
@@ -238,6 +225,21 @@ export default function PurchaseReturnsPage() {
           label: "Tổng tiền trả NCC",
           countText: `${tongPhieu.soPhieu} phiếu trả${khongTinhHuy ? " · không tính phiếu huỷ" : ""}`,
           total: tongPhieu.tong === null ? null : formatCurrency(tongPhieu.tong),
+        }}
+        mobileHead={{
+          title: "Trả hàng NCC",
+          search,
+          onSearch: setSearch,
+          searchPlaceholder: "Mã phiếu, tên NCC…",
+          chips: { chips, active: filter, onPick: setFilter, multi: true },
+          filter: {
+            activeCount: locNC.soDangAp,
+            onClear: locNC.xoa,
+            open: filterSheet,
+            onOpenChange: setFilterSheet,
+            sheet: <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+          },
+          actions: nutTao,
         }}
         loading={loading}
         isEmpty={shown.length === 0}

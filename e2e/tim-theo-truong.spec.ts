@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test"
 import { dangNhap, chonKy } from "./helpers"
 
+/* Dữ liệu giả ghi cứng ngày tháng 9/2026 mà danh sách mặc định lọc "Tháng này" — ghim đồng hồ trình duyệt
+   về 30/09/2026 (giờ VN), chạy qua nửa đêm 30/09 → 01/10 không còn đỏ vì "Tháng này" thành tháng 10. */
+test.beforeEach(async ({ page }) => {
+  await page.clock.setSystemTime(new Date("2026-09-30T10:00:00+07:00"))
+})
+
 /**
  * ⚠ YÊU CẦU 23/09/2026: "Phần tìm trong các danh sách (đơn hàng, hóa đơn,
  *   trả hàng…) làm theo mẫu" — ô tìm + nút lọc; bấm nút xổ ra các ô theo
@@ -83,6 +89,7 @@ test("trả hàng: tìm theo hàng — tổng khoản có theo đúng bộ lọc
 test("đơn hàng — điện thoại: các ô theo trường nằm trong tấm lọc", async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await ctx.newPage()
+  await page.clock.setSystemTime(new Date("2026-09-30T10:00:00+07:00"))
   await dangNhap(page)
   await page.goto("/orders")
   const man = page.getByTestId("don-mobile")

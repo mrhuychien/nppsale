@@ -17,8 +17,9 @@ test("mở app rồi đi qua 3 trang: không đọc trùng hồ sơ / thông bá
   await page.waitForTimeout(1500)
   const truoc = (await nhatKy()).length
   // Đi tiếp bằng liên kết trong app (không tải lại trang).
-  await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Kho" }).click()
-  await page.waitForURL(/\/inventory/)
+  // Menu đáy chủ NPP (30/09/2026): Trang chủ · Đơn hàng · Bán hàng · Nhập hàng · Nhân viên.
+  await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Nhập hàng" }).click()
+  await page.waitForURL(/\/purchasing\/receipts/)
   await page.waitForLoadState("networkidle")
   await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Đơn hàng" }).click()
   await page.waitForURL(/\/orders/)

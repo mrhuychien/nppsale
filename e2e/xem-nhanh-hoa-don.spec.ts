@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test"
 import { dangNhap, nhatKy, FAKE } from "./helpers"
 
+/* Dữ liệu giả ghi cứng ngày tháng 9/2026 mà danh sách mặc định lọc "Tháng này" — ghim đồng hồ trình duyệt
+   về 30/09/2026 (giờ VN), chạy qua nửa đêm 30/09 → 01/10 không còn đỏ vì "Tháng này" thành tháng 10. */
+test.beforeEach(async ({ page }) => {
+  await page.clock.setSystemTime(new Date("2026-09-30T10:00:00+07:00"))
+})
+
 /**
  * ⚠ CHỦ NHÀ 24/09/2026: "Phần xem nhanh Hoá đơn từ Danh sách hoá đơn: thêm nút
  *   Trả hàng và Thu tiền. Bấm vào Trả hàng -> tạo trả hàng gắn với Hoá đơn.

@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from "lucide-react"
 import { errorMessage } from "@/lib/errors"
+import { laThietBiApple, linkTrinhDuyetRieng } from "@/lib/users/mo-trinh-duyet"
 
 interface QrLoginDialogProps {
   userId: string
@@ -53,6 +54,11 @@ export function QrLoginDialog({
   const [copied, setCopied] = useState(false)
   /** Đã chép link để mở ẩn danh — hiện hướng dẫn phím tắt. */
   const [anDanh, setAnDanh] = useState(false)
+  /** iPhone / iPad — hiện nút mở bằng Safari / Chrome riêng (đọc sau khi gắn màn: server không có navigator). */
+  const [apple, setApple] = useState(false)
+  useEffect(() => {
+    setApple(laThietBiApple(navigator.userAgent, navigator.maxTouchPoints || 0))
+  }, [])
   const [state, setState] = useState<QrState>({
     token: null,
     loginUrl: null,
@@ -179,7 +185,30 @@ export function QrLoginDialog({
               </a>
             </div>
 
-            <Button className="w-full" onClick={chepAnDanh} data-testid="qr-chep-an-danh">
+            {/* iPhone: app ở màn hình chính giữ phiên riêng — mở bằng Safari / Chrome là không mất phiên. */}
+            {apple && linkTrinhDuyetRieng(state.loginUrl) && (
+              <div data-testid="qr-mo-iphone" className="grid w-full gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button asChild>
+                    <a href={linkTrinhDuyetRieng(state.loginUrl)!.safari}>
+                      <ExternalLink className="mr-1.5 h-4 w-4" />
+                      Mở bằng Safari
+                    </a>
+                  </Button>
+                  <Button asChild>
+                    <a href={linkTrinhDuyetRieng(state.loginUrl)!.chrome}>
+                      <ExternalLink className="mr-1.5 h-4 w-4" />
+                      Mở bằng Chrome
+                    </a>
+                  </Button>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Trình duyệt đó đăng nhập thành {userName}; app ở màn hình chính của bạn vẫn giữ tài khoản của
+                  bạn. (Chưa cài Chrome thì nút Chrome không mở được.)
+                </p>
+              </div>
+            )}
+            <Button className="w-full" variant={apple ? "outline" : "default"} onClick={chepAnDanh} data-testid="qr-chep-an-danh">
               {anDanh ? <Check className="mr-1.5 h-4 w-4" /> : <Copy className="mr-1.5 h-4 w-4" />}
               {anDanh ? "Đã chép link — mở cửa sổ ẩn danh rồi dán" : "Chép link để mở ẩn danh (giữ phiên của bạn)"}
             </Button>

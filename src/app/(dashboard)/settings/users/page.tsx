@@ -25,6 +25,8 @@ import { ROLE_LABELS } from "@/lib/constants"
 import { Users, Pencil, Lock, Unlock, Plus, Trash2, QrCode } from "lucide-react"
 import type { User } from "@/types"
 import { QrLoginDialog } from "@/components/users/qr-login-dialog"
+import { NutDangNhapNhanVien } from "@/components/users/nut-dang-nhap-nhan-vien"
+import { laThietBiApple } from "@/lib/users/mo-trinh-duyet"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import {
@@ -66,6 +68,32 @@ export default function UsersPage() {
 
   const canManage = currentUser && hasPermission(currentUser.role, "settings", "update")
   const isOwner = currentUser?.role === "owner"
+
+  /* Nút "Đăng nhập" cạnh tên (chủ nhà 30/09/2026) — chỉ Chủ NPP, chỉ trên iPhone / iPad: mở Safari riêng
+     nên app ở màn hình chính giữ phiên. Máy khác mở tab là đổi phiên cả trình duyệt → không hiện. */
+  const [apple, setApple] = useState(false)
+  useEffect(() => {
+    setApple(laThietBiApple(navigator.userAgent, navigator.maxTouchPoints || 0))
+  }, [])
+  const [linkDn, setLinkDn] = useState<Record<string, string>>({})
+  const coNutDangNhap = isOwner && apple
+  useEffect(() => {
+    if (!coNutDangNhap) return
+    fetch("/api/admin/users/qr-links")
+      .then((r) => r.json())
+      .then((d) => d.links && setLinkDn(d.links))
+      .catch((e) => console.error("[settings/users] link đăng nhập:", e))
+  }, [coNutDangNhap])
+  const nutDangNhap = (u: User, lon = false) =>
+    coNutDangNhap && u.is_active && u.id !== currentUser?.id ? (
+      <NutDangNhapNhanVien
+        userId={u.id}
+        userName={u.full_name}
+        loginUrl={linkDn[u.id]}
+        onTaoMa={(id, url) => setLinkDn((m) => ({ ...m, [id]: url }))}
+        lon={lon}
+      />
+    ) : null
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -179,7 +207,12 @@ export default function UsersPage() {
       {
         key: "name", label: "Họ tên", width: "minmax(200px,1.5fr)",
         sort: (a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? "", "vi"),
-        render: (u) => <span className="block truncate text-sm font-bold">{u.full_name}</span>,
+        render: (u) => (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-bold">{u.full_name}</span>
+            {nutDangNhap(u)}
+          </span>
+        ),
       },
       { k: "role", key: "role", label: "Vai trò", width: "150px", render: (u) => <Badge variant="outline">{ROLE_LABELS[u.role] || u.role}</Badge> },
       { k: "phone", key: "phone", label: "SĐT", width: "140px", render: (u) => <DocCellText muted>{u.phone}</DocCellText> },
@@ -190,7 +223,7 @@ export default function UsersPage() {
       { k: "action", key: "action", label: "Thao tác", width: "380px", align: "right", render: (u) => thaoTac(u) },
     ]
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
-  }, [visibleColumns, canManage, isOwner, currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleColumns, canManage, isOwner, currentUser?.id, coNutDangNhap, linkDn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -247,6 +280,7 @@ export default function UsersPage() {
           <DocCardList
             items={trang}
             onOpen={(u) => setXemId(u.id)}
+            aside={(u) => nutDangNhap(u, true)}
             card={(u) => ({
               accent: u.is_active ? "#22c55e" : "#98a2b3",
               title: u.full_name,

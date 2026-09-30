@@ -12,6 +12,7 @@
  *   ngày ấy, như danh sách hóa đơn.
  */
 
+import type { ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { cn, formatCurrency } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -39,6 +40,7 @@ export function DocCardList<T extends { id: string }>({
   unit,
   now,
   select,
+  aside,
 }: {
   items: T[]
   card: (row: T) => DocCard
@@ -54,6 +56,8 @@ export function DocCardList<T extends { id: string }>({
   now?: Date
   /** Chế độ chọn nhiều (thao tác hàng loạt) — ô chọn đứng bên trái thẻ. */
   select?: { checked: (row: T) => boolean; onChange: (row: T, next: boolean) => void }
+  /** Nút riêng bên phải thẻ (ngoài vùng chạm), vd. "Đăng nhập" ở danh sách nhân viên. */
+  aside?: (row: T) => ReactNode
 }) {
   const router = useRouter()
   const groups = getDate
@@ -99,18 +103,22 @@ export function DocCardList<T extends { id: string }>({
                 />
               </button>
             )
-            if (!select) return nut
-            /* ⚠ Ô CHỌN NẰM NGOÀI vùng chạm của thẻ (SKILL §2b-2) — bấm ô chọn không mở thẻ. */
+            const ben = aside?.(r)
+            if (!select && !ben) return nut
+            /* ⚠ Ô CHỌN / NÚT BÊN NẰM NGOÀI vùng chạm của thẻ (SKILL §2b-2) — bấm chúng không mở thẻ. */
             return (
               <div key={r.id} className={cn("flex min-w-0 items-stretch", i > 0 && "border-t border-outline-variant/30")}>
-                <label className="tap flex shrink-0 items-center justify-center pl-3">
-                  <Checkbox
-                    checked={select.checked(r)}
-                    onCheckedChange={(v) => select.onChange(r, !!v)}
-                    aria-label={`Chọn ${c.title}`}
-                  />
-                </label>
+                {select && (
+                  <label className="tap flex shrink-0 items-center justify-center pl-3">
+                    <Checkbox
+                      checked={select.checked(r)}
+                      onCheckedChange={(v) => select.onChange(r, !!v)}
+                      aria-label={`Chọn ${c.title}`}
+                    />
+                  </label>
+                )}
                 <div className="min-w-0 flex-1 [&>button>span]:border-t-0">{nut}</div>
+                {ben && <div className="flex shrink-0 items-center pr-3">{ben}</div>}
               </div>
             )
           })}

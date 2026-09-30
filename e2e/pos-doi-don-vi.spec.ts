@@ -38,7 +38,7 @@ test("đơn hàng: đổi đơn vị ở dòng bán và dòng hàng trả đều
 
   // Ô giá chia khối nghìn — yêu cầu cùng ngày
   await giaTra.fill("")
-  await giaTra.pressSequentially("220000")
+  await giaTra.pressSequentially("220000", { delay: 50 }) // gõ như người: ô tự chèn dấu nghìn sau mỗi phím
   await expect(giaTra).toHaveValue("220.000")
 
   // Lý do theo dòng: ô chọn có tìm (thay `<select>` gốc, 23/09/2026).
@@ -65,7 +65,7 @@ test("nhập hàng: đổi đơn vị thì giá nhập đi theo hệ số", asyn
   const donVi = page.getByLabel("Đơn vị tính dòng 1")
   const gia = page.getByLabel("Giá nhập dòng 1")
   await donVi.selectOption("thùng")
-  await gia.pressSequentially("480000")
+  await gia.pressSequentially("480000", { delay: 50 })
   await expect(gia).toHaveValue("480.000")
   await donVi.selectOption("hộp")
   await expect(gia, "đổi sang hộp mà giá nhập vẫn là giá thùng").toHaveValue("20.000")

@@ -117,3 +117,20 @@ test("nút chọn nhiều chỉ đổi khi bấm, nhớ qua lần mở sau; nh�
   await page.reload()
   await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
 })
+
+/* Chủ nhà 30/09/2026: "trả hàng ncc y như vậy" — chọn từng mã: chạm quy cách là vào phiếu, không −/+. */
+test("trả hàng NCC: chọn từng mã — chạm quy cách vào phiếu ngay, thẻ không có −/+", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/purchase-returns/new")
+  await expect(page.getByTestId("chon-nhieu")).toHaveAttribute("aria-pressed", "false")
+  const sua = page.getByTestId("the-hang-ncc").filter({ hasText: "Sữa hộp" })
+  await sua.getByRole("button", { name: "thùng", exact: true }).click()
+  await expect(page.getByTestId("buoc-phieu")).toBeVisible()
+  await expect(page.getByTestId("dong-phieu-ncc")).toContainText("thùng")
+  await page.getByRole("button", { name: "Thêm hàng" }).click()
+  await expect(sua.getByTestId("da-co-tren-phieu")).toHaveText("Đã có 1 thùng")
+  await expect(sua.getByRole("button", { name: "Tăng Sữa hộp" })).toHaveCount(0)
+  await sua.click()
+  await expect(page.getByTestId("buoc-phieu")).toBeVisible()
+  await expect(page.getByTestId("dong-phieu-ncc")).toHaveCount(1)
+})

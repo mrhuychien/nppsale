@@ -14,6 +14,7 @@
  * ⚠ Nút Back của điện thoại ở bước Phiếu quay về bước Thêm hàng (history), không rời màn.
  */
 
+import { bottomSheetBox, useViewportInsets } from "@/hooks/use-viewport-insets"
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, ChevronUp, ListChecks, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
@@ -723,9 +724,18 @@ function ChonNccSheet({
     if (open) setQ("")
   }, [open])
   const ds = useMemo(() => timXepHang(suppliers, q, (s) => [s.code, s.name]).ketQua.slice(0, 80), [suppliers, q])
+  /* ⚠ Bàn phím mở thì nhấc tấm lên trên bàn phím và thu chiều cao theo phần còn thấy — không thì danh sách
+     NCC tụt xuống dưới bàn phím (chủ nhà 30/09/2026). Cùng cách với /sell (line-edit-sheet). */
+  const vp = useViewportInsets(open)
+  const box = vp ? bottomSheetBox(vp, 0.85) : null
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="bottom" className="flex max-h-[85vh] flex-col gap-0 rounded-t-[20px] p-0">
+      <SheetContent
+        side="bottom"
+        className="flex max-h-[85vh] flex-col gap-0 rounded-t-[20px] p-0"
+        style={box ? { maxHeight: box.height, bottom: box.bottom } : undefined}
+        data-testid="chon-ncc-sheet"
+      >
         <div className="flex flex-col gap-2.5 border-b border-border/60 px-4 pb-3 pt-2">
           <p className="text-[16px] font-bold">Chọn nhà cung cấp</p>
           <div className="relative">
@@ -780,9 +790,15 @@ function SuaDongSheet({
   onClose: () => void
 }) {
   const open = !!line
+  const vp = useViewportInsets(open)
+  const box = vp ? bottomSheetBox(vp, 0.9) : null
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="bottom" className="flex max-h-[90vh] flex-col gap-0 rounded-t-[20px] p-0">
+      <SheetContent
+        side="bottom"
+        className="flex max-h-[90vh] flex-col gap-0 rounded-t-[20px] p-0"
+        style={box ? { maxHeight: box.height, bottom: box.bottom } : undefined}
+      >
         {line && (
           <>
             <div className="flex items-start gap-3 border-b border-border/60 px-4 pb-3.5 pt-2">

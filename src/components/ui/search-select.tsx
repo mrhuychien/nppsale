@@ -22,6 +22,7 @@
  * Esc đóng.
  */
 
+import { chieuCaoXo, useViewportInsets } from "@/hooks/use-viewport-insets"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -111,6 +112,28 @@ export function SearchSelect({
     setOpen(false)
   }
 
+  /* Điện thoại: danh sách xổ không được chui xuống dưới bàn phím — đo phần màn còn nhìn thấy, thiếu chỗ
+     thì cuộn ô lên đầu khung nhìn (chủ nhà 30/09/2026, ô tìm NCC). */
+  const vp = useViewportInsets(open)
+  const [xoMax, setXoMax] = useState<number | null>(null)
+  useEffect(() => {
+    if (!open) return setXoMax(null)
+    const vv = typeof window !== "undefined" ? window.visualViewport : null
+    const el = boxRef.current
+    if (!vv || !el) return
+    const doLai = () => {
+      const r = el.getBoundingClientRect()
+      return chieuCaoXo(r.bottom, { height: vv.height, offsetTop: vv.offsetTop })
+    }
+    const dau = doLai()
+    setXoMax(dau.maxHeight)
+    // Cuộn ô lên xong (hoặc người dùng cuộn) thì đo lại — chỗ còn lại dưới ô đã đổi.
+    const onScroll = () => setXoMax(doLai().maxHeight)
+    window.addEventListener("scroll", onScroll, { passive: true })
+    if (dau.canCuon && window.matchMedia?.("(pointer: coarse)").matches) el.scrollIntoView({ block: "start" })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [open, vp]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Chữ hiện trong ô khi đang đóng: tên đã chọn, hoặc chữ gõ tay. */
   const closedText = picked?.label ?? (allowFreeText ? freeText ?? "" : "")
 
@@ -185,7 +208,11 @@ export function SearchSelect({
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-xl border bg-card py-1 shadow-lg">
+        <div
+          className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-xl border bg-card py-1 shadow-lg"
+          style={xoMax ? { maxHeight: xoMax } : undefined}
+          data-testid="search-select-xo"
+        >
           {results.length === 0 ? (
             <p className="px-3 py-3 text-center text-xs text-muted-foreground">
               {term.trim() && allowFreeText

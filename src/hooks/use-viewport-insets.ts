@@ -82,3 +82,19 @@ export function useViewportInsets(active = true): ViewportInsets | null {
 
   return insets
 }
+
+/**
+ * Danh sách xổ DƯỚI một ô nhập được cao bao nhiêu mà không chui xuống dưới bàn phím — chủ nhà
+ * 30/09/2026: "Màn nhập hàng NCC trên điện thoại: khi tìm ncc phần danh sách tìm tụt xuống dưới bàn phím".
+ * `oBottom` = đáy ô nhập (getBoundingClientRect, toạ độ khung trang). Còn ít hơn `min` thì nơi gọi cuộn
+ * ô lên đầu khung nhìn trước (`canCuon`).
+ */
+export function chieuCaoXo(
+  oBottom: number,
+  vp: { height: number; offsetTop: number },
+  max = 288,
+  min = 160
+): { maxHeight: number; canCuon: boolean } {
+  const conLai = Math.floor(vp.offsetTop + vp.height - oBottom - 12)
+  return { maxHeight: Math.max(96, Math.min(max, conLai)), canCuon: conLai < min }
+}

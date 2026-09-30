@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 27/09/2026: "Làm danh sách Phiếu thu format giống Danh sách đơn hàng / Hóa đơn
@@ -8,7 +8,7 @@ import { dangNhap, FAKE } from "./helpers"
  *   dải tóm tắt + thẻ.
  */
 const ORG = "00000000-0000-4000-8000-0000000000a1"
-const homNay = () => new Date().toISOString().slice(0, 10)
+const homNay = () => HOM_NAY_E2E.slice(0, 10)
 const id = (i: number) => `00000000-0000-4000-8000-00000000f${String(i).padStart(3, "0")}`
 
 function phieu() {
@@ -17,7 +17,7 @@ function phieu() {
     org_id: ORG,
     receipt_code: `PT-E2E-${String(i + 1).padStart(3, "0")}`,
     receipt_date: homNay(),
-    created_at: new Date(Date.now() - i * 60_000).toISOString(),
+    created_at: new Date(new Date(HOM_NAY_E2E).getTime() - i * 60_000).toISOString(),
     source_type: "standalone",
     // Phiếu cuối ĐÃ HUỶ — vẫn đếm, không vào tổng.
     status: i === 24 ? "voided" : "received",

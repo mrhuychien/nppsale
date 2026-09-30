@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 26/09/2026: "Thiết kế lại màn Khách hàng trên mobile theo mẫu".
@@ -19,11 +19,11 @@ test("điện thoại: khách hàng theo mẫu — đầu xanh, ba ô lọc, th�
   await dangNhap(page)
   await api("receivables", "POST", [{
     id: NO, org_id: ORG, customer_id: KHACH_NHOM, amount: 2_200_000, paid: 0, status: "open",
-    due_date: "2026-01-01", sales_user_id: OWNER, invoice_id: null, created_at: new Date().toISOString(),
+    due_date: "2026-01-01", sales_user_id: OWNER, invoice_id: null, created_at: new Date(HOM_NAY_E2E).toISOString(),
   }, {
     // Cô Ba nợ ÍT hơn, chưa tới hạn — thứ tự tên (máy chủ trả) khác thứ tự nợ.
     id: NO2, org_id: ORG, customer_id: KHACH, amount: 1_000_000, paid: 0, status: "open",
-    due_date: "2099-01-01", sales_user_id: OWNER, invoice_id: null, created_at: new Date().toISOString(),
+    due_date: "2099-01-01", sales_user_id: OWNER, invoice_id: null, created_at: new Date(HOM_NAY_E2E).toISOString(),
   }])
   try {
     await page.goto("/customers")

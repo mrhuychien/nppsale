@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
 
 /* Cùng mã với e2e/fixture.mjs (NPP thử, chủ NPP, Sữa hộp, Mì tôm). */
 const ORG = "00000000-0000-4000-8000-0000000000a1"
@@ -19,7 +19,7 @@ const them = (bang: string, rows: unknown[]) =>
   fetch(`${FAKE}/rest/v1/${bang}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rows) })
 const xoa = (bang: string, loc: string) => fetch(`${FAKE}/rest/v1/${bang}?${loc}`, { method: "DELETE" })
 
-const bayGio = new Date().toISOString()
+const bayGio = new Date(HOM_NAY_E2E).toISOString()
 const creator = { full_name: "Chủ NPP" }
 const PHIEU = [
   { id: "se-m-nk", org_id: ORG, entry_code: "NK-M-1", type: "import", status: "draft", notes: null, created_at: bayGio, created_by: OWNER, creator, ref_order_ids: [], warehouse_zone: "sale" },

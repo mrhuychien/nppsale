@@ -23,7 +23,8 @@ export const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
 
 export const users = [{ id: OWNER, email: "chu@npp.test", password: "matkhau-e2e" }]
 
-const homNay = () => new Date().toISOString().slice(0, 10)
+/* Cùng ngày với đồng hồ trình duyệt ghim ở e2e/helpers.ts (HOM_NAY_E2E) — không theo ngày chạy. */
+const homNay = () => "2026-09-30"
 function donMau(id, code, status, total, ngay) {
   return {
     id, org_id: ORG, order_code: code, customer_id: KHACH, sales_user_id: OWNER, status,

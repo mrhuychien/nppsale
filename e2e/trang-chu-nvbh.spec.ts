@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 25/09/2026: "Làm lại trang chủ cho nhân viên bán hàng theo mẫu". Tài khoản
@@ -12,14 +12,14 @@ const KHACH = "00000000-0000-4000-8000-0000000000c1"
 const HD = "00000000-0000-4000-8000-00000000c0de"
 const api = (path: string, method: string, body?: unknown) =>
   fetch(`${FAKE}/rest/v1/${path}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
-const homNay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date())
+const homNay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(HOM_NAY_E2E))
 
 test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, tab kỳ, tạo đơn, chức năng, tìm", async ({ page }) => {
   await dangNhap(page)
   await api("sales_invoices", "POST", [{
     id: HD, org_id: ORG, invoice_code: "HD-E2E-NV", customer_id: KHACH, status: "posted",
     subtotal: 1_234_000, vat: 0, total: 1_234_000, invoice_date: homNay, sales_user_id: OWNER,
-    created_at: new Date().toISOString(),
+    created_at: new Date(HOM_NAY_E2E).toISOString(),
   }])
   await api(`users?id=eq.${OWNER}`, "PATCH", { role: "sales" })
   try {

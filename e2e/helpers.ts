@@ -2,7 +2,15 @@ import { expect, type Locator, type Page } from "@playwright/test"
 
 export const FAKE = "http://127.0.0.1:54321"
 
+/**
+ * Ngày "hôm nay" của cả bộ e2e — dữ liệu giả (fixture.mjs) ghi theo tháng 9/2026 mà danh sách mặc định lọc
+ * "Tháng này". Chạy qua nửa đêm 30/09 → 01/10 (giờ VN) từng làm đỏ hàng loạt vì "Tháng này" thành tháng 10.
+ * Ghim đồng hồ trình duyệt; fixture.mjs dùng cùng ngày (E2E_HOM_NAY).
+ */
+export const HOM_NAY_E2E = "2026-09-30T10:00:00+07:00"
+
 export async function dangNhap(page: Page) {
+  await page.clock.setSystemTime(new Date(HOM_NAY_E2E))
   await page.goto("/login")
   await page.fill("#identifier", "chu@npp.test")
   await page.fill("#password", "matkhau-e2e")

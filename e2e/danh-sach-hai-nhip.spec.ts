@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 26/09/2026: "Các danh sách load nhanh 20 đơn trước, hiển thị luôn, trong khi vẫn load
@@ -12,7 +12,7 @@ const OWNER = "00000000-0000-4000-8000-0000000000b1"
 const KHACH = "00000000-0000-4000-8000-0000000000c1"
 const api = (path: string, method: string, body?: unknown) =>
   fetch(`${FAKE}/rest/v1/${path}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
-const homNay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date())
+const homNay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(HOM_NAY_E2E))
 
 test("Đơn hàng: mặc định 20 đơn / trang; chọn 50/trang thì phần còn lại nối vào sau", async ({ page }) => {
   const ids = Array.from({ length: 30 }, (_, i) => `00000000-0000-4000-8000-00000000d${String(100 + i).padStart(3, "0")}`)
@@ -20,7 +20,7 @@ test("Đơn hàng: mặc định 20 đơn / trang; chọn 50/trang thì phần c
     id, org_id: ORG, order_code: `DH-HN-${String(i + 1).padStart(2, "0")}`, customer_id: KHACH, sales_user_id: OWNER,
     status: "submitted", subtotal: 100_000, vat: 0, total: 100_000, order_date: homNay,
     /* Mới hơn mọi đơn mẫu (tạo 08:00 UTC) ở mọi giờ chạy — không thì trước 15h VN chúng chen vào 20 dòng đầu. */
-    created_at: new Date(Date.now() + 86_400_000 - i * 60_000).toISOString(), payment_terms: "COD",
+    created_at: new Date(new Date(HOM_NAY_E2E).getTime() + 86_400_000 - i * 60_000).toISOString(), payment_terms: "COD",
     customer: { store_name: "Tạp hoá Cô Ba" }, sales_user: { full_name: "Chủ NPP" },
   })))
   try {

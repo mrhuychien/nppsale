@@ -139,8 +139,11 @@ describe("Luồng tác vụ /sell ẩn nav (thiết kế 24/09/2026)", () => {
 describe("Danh sách màn tự dựng thanh đáy", () => {
   it("mọi đường dẫn khai trong danh sách đều là route có thật", () => {
     for (const r of OWN_ACTION_BAR_ROUTES) {
-      const dir = r.replace("/sell/", "")
-      expect(existsSync(join(SELL_DIR, dir, "page.tsx")), `${r} không có màn`).toBe(true)
+      /* Màn ngoài /sell (phiếu nhập / trả NCC di động) nằm thẳng dưới (dashboard). */
+      const f = r.startsWith("/sell/")
+        ? join(SELL_DIR, r.replace("/sell/", ""), "page.tsx")
+        : join(SELL_DIR, "..", r.slice(1), "page.tsx")
+      expect(existsSync(f), `${r} không có màn`).toBe(true)
     }
   })
 

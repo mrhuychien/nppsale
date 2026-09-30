@@ -79,7 +79,7 @@ export function tables() {
       { id: "b1", org_id: ORG, product_id: SUA, qty_on_hand: 1000, warehouse_zone: "sale", batch_code: "L1", expires_at: "2027-12-31" },
       { id: "b2", org_id: ORG, product_id: MI, qty_on_hand: 900, warehouse_zone: "sale", batch_code: "L2", expires_at: "2027-12-31" },
     ],
-    suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active" }],
+    suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active", is_active: true }],
     role_permissions: [],
     /* Số phiên danh mục bán hàng (mig 209) — bài e2e tăng tay (máy chủ giả không có trigger). */
     danh_muc_ban_phien: [{ id: 1, phien: 1, luc: "2026-09-28T00:00:00Z" }],
@@ -288,6 +288,9 @@ export const rpc = {
   create_return_with_lines: () => "00000000-0000-4000-8000-00000000f002",
   /* Lập phiếu thu (mig 119/215) — trả id phiếu; chốt chỉ đọc tải trọng. */
   create_cash_receipt: () => "00000000-0000-4000-8000-00000000f0c1",
+  /* Hoàn thành phiếu nhập / gửi phiếu trả NCC (mig 142 / 146) — chốt chỉ đọc tải trọng. */
+  complete_purchase_invoice: () => null,
+  complete_supplier_return: () => null,
   /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
   cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],
   reissue_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f003", invoice_code: "HD-E2E-1-1", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "completed" }],

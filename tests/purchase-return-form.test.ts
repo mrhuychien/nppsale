@@ -521,9 +521,10 @@ describe("biểu mẫu phiếu trả NCC theo khuôn phiếu nhập", () => {
     expect(bar).toContain("formatCurrency(totals.total)")
     expect(bar).toContain("{actions}")
     /* Thanh dính đáy che mất cuối trang nếu trang không chừa chỗ. */
-    for (const [ten, src] of [["màn tạo", NEW_PAGE], ["màn sửa", EDIT_PAGE]] as const) {
-      expect(src, `${ten} thiếu chỗ chừa cho thanh dính đáy`).toContain("pb-28")
-    }
+    expect(EDIT_PAGE, "màn sửa thiếu chỗ chừa cho thanh dính đáy").toContain("pb-28")
+    /* Màn tạo trên điện thoại dùng khung như /sell (chủ nhà 30/09/2026) — khung tự chừa chỗ. */
+    expect(NEW_PAGE).toContain("<PhieuNccMobile")
+    expect(read("src/components/purchasing/phieu-ncc-mobile.tsx")).toContain("pb-[200px]")
   })
 
   /**

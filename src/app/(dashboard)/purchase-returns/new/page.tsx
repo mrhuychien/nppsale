@@ -16,25 +16,21 @@ import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewSupplierReturnHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { duocGhiMuaHang } from "@/lib/purchasing/roles"
-import { PageHeader } from "@/components/ui/page-header"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { NhomNut, OTruong, PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
 import { useToast } from "@/hooks/use-toast"
-import {
-  PurchaseReturnForm, type PurchaseReturnFormValue,
-} from "@/components/purchasing/purchase-return-form"
-import { friendlyReturnError, percentToRatio } from "@/lib/purchasing/return-form"
+import type { PurchaseReturnFormValue } from "@/components/purchasing/purchase-return-form"
+import { friendlyReturnError, percentToRatio, RETURN_REASONS } from "@/lib/purchasing/return-form"
 import {
   receiptTotals, validReceiptLines, type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import { saveReturnLines } from "@/lib/purchasing/save-receipt"
-import type { Supplier } from "@/types"
+import type { Supplier, WarehouseZone } from "@/types"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
@@ -51,6 +47,8 @@ export default function NewPurchaseReturnPage() {
   const [products, setProducts] = useState<ReceiptProduct[]>([])
   /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
   const [catTruncated, setCatTruncated] = useState(false)
+  /** Danh mục đã nạp xong (thẻ hàng hiện khung chờ tới lúc đó). */
+  const [loaded, setLoaded] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReturnFormValue>(() => ({
@@ -94,6 +92,7 @@ export default function NewPurchaseReturnPage() {
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
     setCatTruncated(prodRes.truncated)
+      setLoaded(true)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
       void fillExtras(prods)
     })()
@@ -175,33 +174,43 @@ export default function NewPurchaseReturnPage() {
   }
 
   return (
-    <div className="space-y-4 pb-28">
-      <PageHeader
-        title="Tạo phiếu trả NCC"
-        description="Khi gửi phiếu hệ thống sẽ tự xuất kho và giảm công nợ NCC"
-        backHref="/purchase-returns"
-      />
-
-      <PurchaseReturnForm
-        suppliers={suppliers}
-        products={products}
-        catalogueTruncated={catTruncated}
-        value={form}
-        onChange={patch}
-        submitting={submitting}
-        extras={extras}
-        actions={
-          <>
-            <Button variant="outline" onClick={() => handleSubmit(true)} disabled={submitting}>
-              Lưu nháp
-            </Button>
-            <Button onClick={() => handleSubmit(false)} disabled={submitting || form.lines.length === 0}>
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Gửi phiếu
-            </Button>
-          </>
-        }
-      />
-    </div>
+    <PhieuNccMobile
+      kind="tra"
+      suppliers={suppliers}
+      products={products}
+      loading={!loaded}
+      catalogueTruncated={catTruncated}
+      extras={extras}
+      value={form}
+      onChange={patch}
+      submitting={submitting}
+      onDraft={() => handleSubmit(true)}
+      onDone={() => handleSubmit(false)}
+      backHref="/purchase-returns"
+      fields={
+        <>
+          <OTruong label="Ngày trả">
+            <input
+              id="pr-date"
+              type="date"
+              value={form.returnDate}
+              onChange={(e) => patch({ returnDate: e.target.value })}
+              className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
+            />
+          </OTruong>
+          <OTruong label="Xuất từ kho (FIFO, hạn cũ trước)">
+            <NhomNut<WarehouseZone>
+              label="Xuất từ kho"
+              value={form.zone}
+              options={[{ value: "date", label: "Kho hàng date" }, { value: "sale", label: "Kho hàng bán" }]}
+              onChange={(v) => patch({ zone: v })}
+            />
+          </OTruong>
+          <OTruong label="Lý do">
+            <NhomNut label="Lý do trả" value={form.reason} options={RETURN_REASONS} onChange={(v) => patch({ reason: v })} />
+          </OTruong>
+        </>
+      }
+    />
   )
 }

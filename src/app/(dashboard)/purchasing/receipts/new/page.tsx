@@ -14,21 +14,17 @@ import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewPurchaseHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { duocGhiMuaHang } from "@/lib/purchasing/roles"
-import { PageHeader } from "@/components/ui/page-header"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { NhomNut, OTruong, PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
 import { useToast } from "@/hooks/use-toast"
-import {
-  PurchaseReceiptForm, type PurchaseReceiptFormValue,
-} from "@/components/purchasing/purchase-receipt-form"
+import type { PurchaseReceiptFormValue } from "@/components/purchasing/purchase-receipt-form"
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
-  receiptTotals, validReceiptLines, friendlyReceiptError,
+  receiptTotals, validReceiptLines, friendlyReceiptError, RECEIPT_ZONES,
   type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { percentToRatio } from "@/lib/purchasing/return-form"
@@ -50,6 +46,8 @@ export default function NewPurchaseReceiptPage() {
   const [products, setProducts] = useState<ReceiptProduct[]>([])
   /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
   const [catTruncated, setCatTruncated] = useState(false)
+  /** Danh mục đã nạp xong (thẻ hàng hiện khung chờ tới lúc đó). */
+  const [loaded, setLoaded] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReceiptFormValue>(() => ({
@@ -84,6 +82,7 @@ export default function NewPurchaseReceiptPage() {
       setSuppliers((supRes.data as Supplier[]) || [])
       setProducts(prods)
     setCatTruncated(prodRes.truncated)
+      setLoaded(true)
       /* NCC và tồn kho cho ô tìm — nạp NỀN, không chặn màn. */
       void fillExtras(prods)
     })()
@@ -166,32 +165,46 @@ export default function NewPurchaseReceiptPage() {
   }
 
   return (
-    <div className="space-y-4 pb-28">
-      <PageHeader
-        title="Tạo phiếu nhập hàng"
-        description="Hoàn thành phiếu là nhập kho và ghi công nợ NCC, trong một giao dịch."
-        backHref="/purchasing/receipts"
-      />
-      <PurchaseReceiptForm
-        suppliers={suppliers}
-        products={products}
-        catalogueTruncated={catTruncated}
-        value={form}
-        onChange={patch}
-        submitting={submitting}
-        extras={extras}
-        actions={
-          <>
-            <Button variant="outline" onClick={() => submit(false)} disabled={submitting}>
-              Lưu tạm
-            </Button>
-            <Button onClick={() => submit(true)} disabled={submitting || form.lines.length === 0}>
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Hoàn thành
-            </Button>
-          </>
-        }
-      />
-    </div>
+    <PhieuNccMobile
+      kind="nhap"
+      suppliers={suppliers}
+      products={products}
+      loading={!loaded}
+      catalogueTruncated={catTruncated}
+      extras={extras}
+      value={form}
+      onChange={patch}
+      submitting={submitting}
+      onDraft={() => submit(false)}
+      onDone={() => submit(true)}
+      backHref="/purchasing/receipts"
+      fields={
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <OTruong label="Số HĐ NCC">
+              <input
+                id="pn-so-hd"
+                value={form.invoiceNumber}
+                onChange={(e) => patch({ invoiceNumber: e.target.value })}
+                placeholder="Không bắt buộc"
+                className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
+              />
+            </OTruong>
+            <OTruong label="Ngày HĐ">
+              <input
+                id="pn-ngay"
+                type="date"
+                value={form.invoiceDate}
+                onChange={(e) => patch({ invoiceDate: e.target.value })}
+                className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
+              />
+            </OTruong>
+          </div>
+          <OTruong label="Nhập vào kho">
+            <NhomNut label="Nhập vào kho" value={form.zone} options={RECEIPT_ZONES} onChange={(v) => patch({ zone: v })} />
+          </OTruong>
+        </>
+      }
+    />
   )
 }

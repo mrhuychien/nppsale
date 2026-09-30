@@ -20,6 +20,7 @@ import {
   ShieldOff,
   QrCode as QrIcon,
   Check,
+  ExternalLink,
 } from "lucide-react"
 import { errorMessage } from "@/lib/errors"
 
@@ -50,6 +51,8 @@ export function QrLoginDialog({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  /** Đã chép link để mở ẩn danh — hiện hướng dẫn phím tắt. */
+  const [anDanh, setAnDanh] = useState(false)
   const [state, setState] = useState<QrState>({
     token: null,
     loginUrl: null,
@@ -119,6 +122,21 @@ export function QrLoginDialog({
     }
   }
 
+  /**
+   * CHÉP LINK ĐỂ MỞ ẨN DANH (chủ nhà 30/09/2026: "mở luôn cửa sổ ẩn danh được k … để k mất phiên
+   * đăng nhập"). ⚠ Trang web KHÔNG tự mở được cửa sổ ẩn danh — trình duyệt cấm. Nên chép link và
+   * chỉ phím tắt; cửa sổ ẩn danh có kho cookie riêng, phiên của chủ NPP ở cửa sổ này giữ nguyên.
+   */
+  const chepAnDanh = async () => {
+    if (!state.loginUrl) return
+    try {
+      await navigator.clipboard.writeText(state.loginUrl)
+      setAnDanh(true)
+    } catch {
+      toast({ title: "Không sao chép được", description: "Bấm giữ / chuột phải vào link để chép.", variant: "destructive" })
+    }
+  }
+
   const printQr = async () => {
     if (!state.loginUrl) return
     await printQrLoginCard(userName, state.loginUrl)
@@ -149,10 +167,41 @@ export function QrLoginDialog({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                 Đường dẫn đăng nhập
               </p>
-              <p className="break-all font-mono text-[11px] text-on-surface/80">
+              {/* Chủ nhà 30/09/2026: "ấn vào link -> mở trình duyệt theo link nhân viên đó để vào xem ở tab khác". */}
+              <a
+                href={state.loginUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="qr-link-mo"
+                className="break-all font-mono text-[11px] text-primary underline underline-offset-2"
+              >
                 {state.loginUrl}
-              </p>
+              </a>
             </div>
+
+            <Button className="w-full" onClick={chepAnDanh} data-testid="qr-chep-an-danh">
+              {anDanh ? <Check className="mr-1.5 h-4 w-4" /> : <Copy className="mr-1.5 h-4 w-4" />}
+              {anDanh ? "Đã chép link — mở cửa sổ ẩn danh rồi dán" : "Chép link để mở ẩn danh (giữ phiên của bạn)"}
+            </Button>
+            {anDanh && (
+              <div data-testid="qr-huong-dan-an-danh" className="w-full rounded-lg bg-primary/10 px-3 py-2 text-[12px] leading-relaxed text-on-surface">
+                Mở cửa sổ ẩn danh: <b>Ctrl + Shift + N</b> (Chrome, Edge, Cốc Cốc) · <b>Ctrl + Shift + P</b> (Firefox) ·{" "}
+                <b>⌘ + Shift + N</b> (Mac). Dán link vào ô địa chỉ rồi Enter — vào app bằng tài khoản {userName}, cửa sổ
+                này vẫn là tài khoản của bạn.
+              </div>
+            )}
+            <Button asChild variant="outline" className="w-full">
+              <a href={state.loginUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-1.5 h-4 w-4" />
+                Mở tab mới (đổi phiên cả trình duyệt)
+              </a>
+            </Button>
+            {/* ⚠ Link đặt phiên đăng nhập cho CẢ trình duyệt (cookie) — mọi tab chuyển sang nhân viên. */}
+            <p className="w-full rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+              Mở tab mới ở trình duyệt này là <b>đăng nhập thành {userName} ở mọi tab</b> — tab đang dùng cũng chuyển
+              sang tài khoản nhân viên. Muốn giữ phiên của mình: dùng nút <b>Chép link để mở ẩn danh</b>, hoặc bấm
+              chuột phải vào link → <b>Mở trong cửa sổ ẩn danh</b>.
+            </p>
 
             <div className="grid w-full grid-cols-2 gap-2">
               <Button variant="outline" size="sm" onClick={copyLink}>

@@ -11,6 +11,7 @@
  */
 
 import { UserMenu } from "@/components/layout/user-menu"
+import { NutMenuDauTrang } from "@/components/layout/mo-menu-context"
 import Link from "@/components/ui/link"
 import { Search, MapPin, Plus, X } from "lucide-react"
 import { NotificationBell } from "@/components/layout/notification-bell"
@@ -127,6 +128,7 @@ export function MobileCustomersScreen({
     <div className="-mx-4 !-mt-4 lg:hidden" data-testid="kh-mobile">
       <div className="bg-primary px-4 pb-14 pt-4 text-primary-foreground">
         <div className="flex items-center gap-2">
+          <NutMenuDauTrang />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-xl font-extrabold">{title}</h1>
             <p className="truncate text-[12.5px] opacity-85">{subtitle}</p>

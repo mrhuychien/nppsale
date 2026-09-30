@@ -11,6 +11,7 @@
 
 import { Search, Undo2, Check, ChevronRight } from "lucide-react"
 import { UserMenu } from "@/components/layout/user-menu"
+import { NutMenuDauTrang } from "@/components/layout/mo-menu-context"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "@/components/ui/link"
@@ -86,6 +87,7 @@ export function MobileReturnsScreen({
     <div className="-mx-4 !-mt-4 lg:hidden" data-testid="tra-mobile">
       <div className="bg-primary px-4 pb-16 pt-5 text-primary-foreground">
         <div className="flex items-center gap-2">
+          <NutMenuDauTrang />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-xl font-bold">{title}</h1>
             <p className="mt-0.5 truncate text-xs opacity-85">{subtitle}</p>

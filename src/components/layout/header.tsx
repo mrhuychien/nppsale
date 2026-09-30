@@ -12,6 +12,8 @@ import { MobileSearchOverlay } from "@/components/layout/mobile-search-overlay"
 import { usePageTitle } from "@/components/layout/page-title-context"
 import { ROLE_LABELS } from "@/lib/constants"
 import { ArrowLeft, Menu, Search } from "lucide-react"
+import { laTrangDanhSach } from "@/lib/nav/mobile-chrome"
+import { laNhanVien } from "@/lib/nav/trang-dau"
 import { useRouter, usePathname } from "next/navigation"
 
 interface HeaderProps {
@@ -102,7 +104,9 @@ export function Header({ onMenuClick, className }: HeaderProps) {
   const pageTitle = pushedTitle ?? fallbackTitle
 
   // undefined = trang không khai báo nút back → chỗ đó là nút mở menu.
-  const showBack = backHref !== undefined
+  // ⚠ Trang danh sách của khối văn phòng LUÔN là ☰ (chủ nhà 30/09/2026: "Các trang danh sách khi NPP
+  //   truy cập mobile phải có menu 3 gạch") — kể cả khi trang khai nút back.
+  const showBack = backHref !== undefined && !(user && !laNhanVien(user.role) && laTrangDanhSach(pathname))
 
   return (
     <>

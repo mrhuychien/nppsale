@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { PosNewTab } from "@/components/sell/pos-new-tab"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { hidesMobileAppBar, showsBottomNav } from "@/lib/nav/mobile-chrome"
 import { PageTitleProvider } from "@/components/layout/page-title-context"
+import { MoMenuContext } from "@/components/layout/mo-menu-context"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
 import { OrderSyncProvider } from "@/hooks/use-order-sync"
@@ -21,6 +22,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({ role, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const moMenu = useCallback(() => setMobileOpen(true), [])
   const pathname = usePathname()
   // Trang chủ NVBH và luồng bán hàng đều tự dựng đầu trang riêng (tiêu đề
   // lớn + ô tìm + chip khách). Để app bar chuẩn chồng lên trên thì màn
@@ -101,9 +103,10 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
 
       {menuSheet}
 
+      <MoMenuContext.Provider value={moMenu}>
       <div className="flex flex-1 flex-col min-h-screen min-w-0">
         <Header
-          onMenuClick={() => setMobileOpen(true)}
+          onMenuClick={moMenu}
           className={hidesMobileAppBar(pathname) ? "hidden lg:flex" : undefined}
         />
         {/* key={pathname}: remount main mỗi lần đổi route để chạy hiệu ứng
@@ -117,6 +120,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
           {children}
         </main>
       </div>
+      </MoMenuContext.Provider>
 
       {showNav && <MobileNav role={role} />}
     </div>

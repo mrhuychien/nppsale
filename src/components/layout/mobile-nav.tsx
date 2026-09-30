@@ -30,11 +30,13 @@ type NavAction = NavItem
  * vùng ngón cái với tới dễ nhất của cả tay trái và tay phải.
  */
 const ROLE_NAV: Record<Role, NavItem[]> = {
+  /* Chủ nhà 30/09/2026: "thay Tổng quan = Trang chủ. Thay Kho bằng Nhập hàng (phiếu nhập hàng), Thay
+     nhân sự bằng Nhân viên (danh sách nhân viên)". */
   owner: [
-    { label: "Tổng quan", href: "/dashboard", icon: BarChart3 },
+    { label: "Trang chủ", href: "/home", icon: Home },
     { label: "Đơn hàng", href: "/orders", icon: ShoppingCart },
-    { label: "Kho", href: "/inventory", icon: Boxes },
-    { label: "Nhân sự", href: "/hr", icon: UserCog },
+    { label: "Nhập hàng", href: "/purchasing/receipts", icon: PackagePlus },
+    { label: "Nhân viên", href: "/settings/users", icon: UserCog },
   ],
   manager: [
     { label: "Tổng quan", href: "/dashboard", icon: BarChart3 },

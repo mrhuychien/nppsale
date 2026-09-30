@@ -68,3 +68,17 @@ export function hidesMobileAppBar(pathname: string): boolean {
     pathname.startsWith("/bao-cao/")
   )
 }
+
+/**
+ * Trang danh sách / trang gốc của một mục (không phải chi tiết hay form nhập) — chủ nhà 30/09/2026:
+ * "Các trang danh sách khi NPP truy cập mobile phải có menu 3 gạch". Ô trái app bar của những trang
+ * này là ☰ (không phải ←) với khối văn phòng.
+ * Chi tiết / form = có đoạn là mã id (uuid) hoặc kết thúc bằng /new, /edit, /print.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function laTrangDanhSach(pathname: string): boolean {
+  const doan = pathname.split("/").filter(Boolean)
+  if (doan.length === 0) return false
+  if (doan.some((d) => UUID.test(d))) return false
+  return !["new", "edit", "print"].includes(doan[doan.length - 1])
+}

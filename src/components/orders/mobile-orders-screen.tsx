@@ -13,6 +13,7 @@
 import { UserMenu } from "@/components/layout/user-menu"
 import Link from "@/components/ui/link"
 import { Search, MapPin, Phone, SlidersHorizontal } from "lucide-react"
+import { NutMenuDauTrang } from "@/components/layout/mo-menu-context"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -135,6 +136,8 @@ export function MobileOrdersScreen({
     <div className="-mx-4 !-mt-4 lg:hidden" data-testid={testId}>
       <div className="bg-primary px-4 pb-14 pt-4 text-primary-foreground">
         <div className="flex items-center gap-2">
+          {/* Chủ nhà 30/09/2026: "thêm menu 3 gạch vào cạnh chữ Đơn hàng/Hoá đơn bán" — màn này ẩn app bar. */}
+          <NutMenuDauTrang />
           <h1 className="flex-1 truncate text-xl font-extrabold">{title}</h1>
           <div className="rounded-xl bg-primary-foreground/15 [&_button]:text-primary-foreground">
             <NotificationBell />

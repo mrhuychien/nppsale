@@ -156,12 +156,12 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
   })
 
   /** Mẫu in cả GIỜ ở dòng dưới tiêu đề, `formatDate` chỉ có ngày. */
-  it("mốc dưới tiêu đề có cả giờ, và giờ đến từ created_at", () => {
+  it("mốc dưới tiêu đề có cả giờ, và giờ đến từ giờ sửa cuối / created_at", () => {
     expect(TPL).toContain("Ngày {stampVN(issuedAt)}")
     const SALES_PAGE = read("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx")
     // ⚠ `invoice_date` là cột kiểu `date` — in kèm giờ từ nó là in
     //   "07:00" cho mọi hóa đơn.
-    expect(SALES_PAGE).toContain("docStampAt(inv.created_at, inv.invoice_date).at")
+    expect(SALES_PAGE).toContain("docStampAt(gioSuaCuoi(gioSua, inv.created_at), inv.invoice_date).at")
   })
 
   /**

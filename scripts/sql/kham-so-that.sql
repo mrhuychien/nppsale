@@ -510,4 +510,12 @@ SELECT 58, 'Mig 219 (Nhập kho chọn Kho bán / Kho date)',
   CASE WHEN position('v_zone' IN pg_get_functiondef('public.post_stock_import(jsonb)'::regprocedure)) = 0
        THEN 'CHƯA — phiếu nhập kho luôn vào kho bán dù chọn Kho date'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 59. Mig 220 — giờ sửa cuối của đơn / hoá đơn / phiếu trả (mẫu in)
+SELECT 59, 'Mig 220 (Giờ sửa cuối trên mẫu in)',
+  CASE WHEN (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'updated_at'
+               AND table_name IN ('sales_orders', 'sales_invoices', 'returns')) < 3
+         OR (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_zzz_sua_luc') < 6
+       THEN 'CHƯA — tờ in vẫn mang giờ tạo lần đầu'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

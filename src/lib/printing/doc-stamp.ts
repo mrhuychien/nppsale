@@ -116,3 +116,33 @@ export function mocInPhieuTra(
   }
   return { at: new Date(`${returnDate}T12:00:00+07:00`), hasTime: false }
 }
+
+/**
+ * GIỜ SỬA CUỐI cho mốc trên tờ in — chủ nhà 01/10/2026: "Giờ sửa cuối. Hiện tại đang giờ tạo lần đầu".
+ * `updated_at` (mig 220) chỉ đổi khi SỬA nội dung chứng từ / dòng hàng; chưa có (mig chưa chạy, dòng cũ)
+ * thì lùi về `created_at` như trước.
+ */
+export function gioSuaCuoi(updatedAt: string | null | undefined, createdAt: string | null | undefined): string | null {
+  for (const s of [updatedAt, createdAt]) {
+    if (s && !Number.isNaN(new Date(s).getTime())) return s
+  }
+  return null
+}
+
+/**
+ * Đọc `updated_at` của MỘT chứng từ bằng câu riêng — cột chưa có (mig 220 chưa chạy) thì trả `null`,
+ * tờ in vẫn ra như cũ (giờ lập), không trắng tờ.
+ */
+export async function docGioSuaCuoi(
+  sb: { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => PromiseLike<{ data: unknown; error: unknown }> } } } },
+  bang: "sales_orders" | "sales_invoices" | "returns",
+  id: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await sb.from(bang).select("updated_at").eq("id", id).maybeSingle()
+    if (error) return null
+    return (data as { updated_at?: string | null } | null)?.updated_at ?? null
+  } catch {
+    return null
+  }
+}

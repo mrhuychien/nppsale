@@ -19,10 +19,10 @@ describe("tờ in không mang giờ bấm in", () => {
     expect(CSS).toContain("@media print and (min-width: 293mm) {")
     expect(CSS).not.toMatch(/min-width: (185|275)mm/)
   })
-  it("giờ trên phiếu là giờ TẠO hoá đơn (giờ VN), không phải lúc in", () => {
+  it("giờ trên phiếu là giờ sửa cuối / giờ tạo hoá đơn (giờ VN), không phải lúc in", () => {
     const { at } = docStampAt("2026-09-30T01:05:00Z", "2026-09-30")
     expect(stampVN(at)).toBe("30/09/2026 08:05")
     const HD = readFileSync("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx", "utf8")
-    expect(HD).toContain("issuedAt={docStampAt(inv.created_at, inv.invoice_date).at}")
+    expect(HD).toContain("issuedAt={docStampAt(gioSuaCuoi(gioSua, inv.created_at), inv.invoice_date).at}")
   })
 })

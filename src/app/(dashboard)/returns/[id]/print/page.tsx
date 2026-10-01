@@ -17,7 +17,7 @@ import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/heade
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReturnSlip, type ReturnSlipLine } from "@/components/printing/return-slip"
 import { invoiceAddressOf } from "@/lib/customers/address"
-import { mocInPhieuTra } from "@/lib/printing/doc-stamp"
+import { docGioSuaCuoi, gioSuaCuoi, mocInPhieuTra } from "@/lib/printing/doc-stamp"
 import { RETURN_REASONS } from "@/lib/constants"
 
 interface ReturnRow {
@@ -68,9 +68,12 @@ export default function ReturnPrintPage() {
   const [maPhieu, setMaPhieu] = useState<string | null>(null)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
+  /* Giờ sửa cuối (mig 220) — hỏi riêng: cột chưa có thì in giờ lập như cũ. */
+  const [gioSua, setGioSua] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    const gioSuaP = docGioSuaCuoi(supabase as never, "returns", id)
     const [retRes, lineRes, nvRes, ngayRes] = await Promise.all([
       supabase
         .from("returns")
@@ -97,6 +100,8 @@ export default function ReturnPrintPage() {
     setMaPhieu((await docMaPhieuTra(supabase, [id])).get(id) ?? null)
     setNvBan(nvRes.error ? null : (nvRes.data as { seller?: { full_name?: string | null } | null } | null)?.seller?.full_name ?? null)
     if (row?.org_id) setOrg(await loadOrgHeader(supabase, row.org_id))
+    // Chờ xong mới tắt loading: ?auto=1 in ngay khi tắt — không thì tờ in tự động vẫn ra giờ tạo.
+    setGioSua(await gioSuaP)
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -157,8 +162,8 @@ export default function ReturnPrintPage() {
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <ReturnSlip
           org={{ name: org.name, address: org.address, phone: org.phone }}
-          issuedAt={mocInPhieuTra(ret.created_at, ngayTra).at}
-          issuedHasTime={mocInPhieuTra(ret.created_at, ngayTra).hasTime}
+          issuedAt={mocInPhieuTra(gioSuaCuoi(gioSua, ret.created_at), ngayTra).at}
+          issuedHasTime={mocInPhieuTra(gioSuaCuoi(gioSua, ret.created_at), ngayTra).hasTime}
           refLabel={refLabel}
           code={maPhieu}
           customerName={ret.customer?.billing_name || ret.customer?.store_name || ""}

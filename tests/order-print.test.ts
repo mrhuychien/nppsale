@@ -39,9 +39,9 @@ describe("màn in đơn đặt hàng", () => {
     expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone }}")
   })
 
-  /** ⚠ Giờ thật nằm ở `created_at`; `order_date` là cột kiểu `date`. */
-  it("mốc in lấy giờ từ created_at", () => {
-    expect(PAGE).toContain("docStampAt(order.created_at, order.order_date).at")
+  /** ⚠ Giờ thật nằm ở `updated_at` (giờ sửa cuối, mig 220) → `created_at`; `order_date` là cột kiểu `date`. */
+  it("mốc in lấy giờ sửa cuối, lùi về created_at", () => {
+    expect(PAGE).toContain("docStampAt(gioSuaCuoi(gioSua, order.created_at), order.order_date).at")
   })
 
   /**

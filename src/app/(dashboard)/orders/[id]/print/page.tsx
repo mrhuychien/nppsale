@@ -34,7 +34,7 @@ import {
   SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
 } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
-import { docStampAt } from "@/lib/printing/doc-stamp"
+import { docGioSuaCuoi, docStampAt, gioSuaCuoi } from "@/lib/printing/doc-stamp"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 
@@ -101,9 +101,12 @@ export default function OrderPrintPage() {
   const [returns, setReturns] = useState<ReturnRow[]>([])
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
+  /* Giờ sửa cuối (mig 220) — hỏi riêng: cột chưa có thì in giờ lập như cũ. */
+  const [gioSua, setGioSua] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    const gioSuaP = docGioSuaCuoi(supabase as never, "sales_orders", id)
     const [ordRes, lineRes, retRes] = await Promise.all([
       supabase
         .from("sales_orders")
@@ -145,6 +148,8 @@ export default function OrderPrintPage() {
       //   `settings` jsonb, không phải cột trên `organizations`.
       setOrg(await loadOrgHeader(supabase, row.org_id))
     }
+    // Chờ xong mới tắt loading: ?auto=1 in ngay khi tắt — không thì tờ in tự động vẫn ra giờ tạo.
+    setGioSua(await gioSuaP)
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -254,7 +259,7 @@ export default function OrderPrintPage() {
           title="ĐƠN ĐẶT HÀNG"
           numberLabel="Số ĐH"
           invoiceNumber={order.order_code}
-          issuedAt={docStampAt(order.created_at, order.order_date).at}
+          issuedAt={docStampAt(gioSuaCuoi(gioSua, order.created_at), order.order_date).at}
           customerName={order.customer?.billing_name || order.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(order.customer ?? {})}
           customerPhone={order.customer?.phone}

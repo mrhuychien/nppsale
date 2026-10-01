@@ -77,7 +77,6 @@ import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import {
   periodFrom, nextPeriod,
-  type ListPeriod,
   kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { formatCurrency } from "@/lib/utils"
@@ -87,6 +86,7 @@ import {
   type InvoiceColumnKey, type InvoiceFilterKey,
 } from "./list-config"
 import type { Customer, User } from "@/types"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 /**
  * ⚠ HAI CÂU EMBED KHÁCH HÀNG, giống hệt màn đơn. Lọc theo tuyến phải
@@ -147,7 +147,8 @@ export default function SalesInvoicesPage() {
    * Khoảng thời gian của dải tóm tắt trên điện thoại (mẫu chủ nhà gửi).
    * Mặc định "Tháng này" — xem cùng khối ở màn đơn hàng.
    */
-  const [period, setPeriod] = useState<ListPeriod>("month")
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026) — xem `useLuuKy`. */
+  const [period, setPeriod] = useLuuKy("hoa-don-ban", "month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được. */
   const [filteredTotal, setFilteredTotal] = useState<number | null>(null)
@@ -840,7 +841,7 @@ export default function SalesInvoicesPage() {
         activeTab={status}
         onPickTab={(k) => setStatus(k)}
         period={period}
-        onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
+        onCyclePeriod={() => setPeriod(nextPeriod(period))}
         onOpenFilter={() => setFilterSheet(true)}
         filtersActive={activeFilterCount > 0 || period !== "month"}
         total={filteredTotal === null ? null : formatCurrency(filteredTotal)}

@@ -116,8 +116,9 @@ describe("dải tóm tắt", () => {
 
   it("viên thuốc khoảng thời gian quay vòng bốn mức", () => {
     for (const src of [ORDERS, INVOICES]) {
-      expect(src).toContain("setPeriod((p) => nextPeriod(p))")
-      expect(src).toContain('useState<ListPeriod>("month")')
+      expect(src).toContain("setPeriod(nextPeriod(period))")
+      // Mặc định Tháng này; kỳ đã chọn nhớ theo tài khoản (chủ nhà 01/10/2026).
+      expect(src).toMatch(/useLuuKy\("[\w-]+", "month"\)/)
     }
   })
 

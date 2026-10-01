@@ -55,6 +55,7 @@ import type {
   SalesOrderLine,
 } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 type OrderWithRelations = SalesOrder & {
   customer?: Customer
@@ -134,6 +135,8 @@ export default function StockOutPage() {
   const [showFilter, setShowFilter] = useState(false)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026): nạp được kỳ đã lưu thì đổi luôn hai ô ngày. */
+  const [, luuKy] = useLuuKy("xuat-kho", "all", (ky) => { const r = khoangKy(ky); setDateFrom(r.from); setDateTo(r.to) })
   const [customerFilter, setCustomerFilter] = useState<string>("all")
   const [mergeCode] = useState<string>(generateMergeCode())
   const [submitting, setSubmitting] = useState(false)
@@ -551,6 +554,7 @@ export default function StockOutPage() {
   }
 
   const resetFilters = () => {
+    luuKy("all")
     setDateFrom("")
     setDateTo("")
     setCustomerFilter("all")
@@ -861,7 +865,7 @@ export default function StockOutPage() {
                     <PeriodSelect
                       className="h-9 w-full"
                       value={kyCuaKhoang(dateFrom, dateTo)}
-                      onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+                      onChange={(k) => { luuKy(k); const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
                     />
                   </div>
                   <div className="space-y-1">

@@ -44,7 +44,6 @@ import { soTruongDangTim } from "@/lib/search/field-search"
 import { openInNewTab } from "@/components/ui/new-tab-link"
 import {
   periodFrom, nextPeriod,
-  type ListPeriod,
   kyDangLoc,
 } from "@/lib/orders/list-summary"
 import { RouteFilter } from "@/components/orders/route-filter"
@@ -92,6 +91,7 @@ import {
 } from "lucide-react"
 import type { Customer, Invoice, OrderStatus, SalesOrder, User } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 /** Khoá nhớ "đã đọc" của banner phạm vi dữ liệu. */
 const SCOPE_HINT_KEY = "npp.hint.orders-scope"
@@ -276,7 +276,8 @@ export default function OrdersPage() {
    * câu hỏi về hôm nay, và dải tổng tiền phía trên thành một con số vô
    * nghĩa.
    */
-  const [period, setPeriod] = useState<ListPeriod>("month")
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026) — xem `useLuuKy`. */
+  const [period, setPeriod] = useLuuKy("don-hang", "month")
   /* Viên thuốc chỉ lọc ở điện thoại — xem `kyDangLoc`. */
   /** Mặt hàng đại diện + số dòng của từng đơn đang hiện. */
   /** Tổng tiền của CẢ bộ lọc. `null` = chưa cộng được — xem `DocListSummary`. */
@@ -1682,7 +1683,7 @@ export default function OrdersPage() {
         activeTab={effectiveStatus}
         onPickTab={(k) => setStatusFilter(k)}
         period={period}
-        onCyclePeriod={() => setPeriod((p) => nextPeriod(p))}
+        onCyclePeriod={() => setPeriod(nextPeriod(period))}
         onOpenFilter={() => setFilterSheet(true)}
         filtersActive={activeFilterCount > 0 || period !== "month"}
         total={filteredTotal === null ? null : formatCurrency(filteredTotal)}

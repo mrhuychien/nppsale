@@ -32,7 +32,7 @@ import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { hasPermission } from "@/lib/permissions"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { vnTime } from "@/lib/orders/status-tone"
-import { periodFrom, nextPeriod, kyDangLoc, type ListPeriod } from "@/lib/orders/list-summary"
+import { periodFrom, nextPeriod, kyDangLoc } from "@/lib/orders/list-summary"
 import { trangThaiCuaChon } from "@/lib/list/status-multi"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { LOC_PHIEU_THU } from "@/lib/search/list-filter-fields"
@@ -66,6 +66,7 @@ import {
   DEFAULT_CASH_RECEIPT_COLUMNS, DEFAULT_CASH_RECEIPT_FILTERS,
   type CashReceiptColumnKey, type CashReceiptFilterKey,
 } from "./list-config"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 interface ReceiptRow {
   id: string
@@ -136,7 +137,8 @@ export default function CashReceiptsListPage() {
   /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
   const [status, setStatus] = useLuuTrangThai("cash-receipts", "all")
   /* Kỳ mặc định "Tháng này" (chủ nhà 23/09/2026) — cùng luật mọi danh sách có thời gian. */
-  const [period, setPeriod] = useState<ListPeriod>("month")
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026) — xem `useLuuKy`. */
+  const [period, setPeriod] = useLuuKy("phieu-thu", "month")
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [collectorFilter, setCollectorFilter] = useState("all")
@@ -526,7 +528,7 @@ export default function CashReceiptsListPage() {
           onSearch: setSearch,
           searchPlaceholder: "Tìm số phiếu, khách, hóa đơn…",
           chips: { chips, active: status, onPick: setStatus, multi: true },
-          ky: { period, onCycle: () => setPeriod((p) => nextPeriod(p)) },
+          ky: { period, onCycle: () => setPeriod(nextPeriod(period)) },
           filter: {
             activeCount: activeFilterCount,
             onClear: () => { clearAdvanced(); setPeriod("month") },

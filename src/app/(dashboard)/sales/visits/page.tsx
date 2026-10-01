@@ -25,6 +25,7 @@ import {
   Camera, Route,
 } from "lucide-react"
 import type { User } from "@/types"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 type VisitRow = {
   id: string
@@ -58,6 +59,8 @@ export default function VisitsHistoryPage() {
   /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
   const [dateFrom, setDateFrom] = useState(() => khoangKy("month").from)
   const [dateTo, setDateTo] = useState(() => khoangKy("month").to)
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026): nạp được kỳ đã lưu thì đổi luôn hai ô ngày. */
+  const [, luuKy] = useLuuKy("vieng-tham", "month", (ky) => { const r = khoangKy(ky); setDateFrom(r.from); setDateTo(r.to) })
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name" | "role">[]>([])
   const [visits, setVisits] = useState<VisitRow[]>([])
@@ -180,7 +183,7 @@ export default function VisitsHistoryPage() {
             <PeriodSelect
               className="w-full"
               value={kyCuaKhoang(dateFrom, dateTo)}
-              onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+              onChange={(k) => { luuKy(k); const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
             />
           </div>
           <div className="space-y-1.5">

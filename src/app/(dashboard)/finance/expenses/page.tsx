@@ -60,6 +60,7 @@ import {
   EXPENSE_COLUMNS, EXPENSE_FILTERS, DEFAULT_EXPENSE_COLUMNS, DEFAULT_EXPENSE_FILTERS,
   type ExpenseColumnKey, type ExpenseFilterKey,
 } from "./list-config"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -96,6 +97,8 @@ export default function ExpensesPage() {
   /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
   const [dateFrom, setDateFrom] = useState(() => khoangKy("month").from)
   const [dateTo, setDateTo] = useState(() => khoangKy("month").to)
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026): nạp được kỳ đã lưu thì đổi luôn hai ô ngày. */
+  const [, luuKy] = useLuuKy("chi-phi", "month", (ky) => { const r = khoangKy(ky); setDateFrom(r.from); setDateTo(r.to) })
   /* ⚠ Nhớ qua lần tải lại (chủ nhà 25/09/2026) — `useLuuTrangThai`. */
   const [status, setStatus] = useLuuTrangThai("expenses", "all")
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -342,6 +345,7 @@ export default function ExpensesPage() {
   const coLocKhac = categoryFilter !== "all" || dateFrom !== macDinh.from || dateTo !== macDinh.to
   const clearAdvanced = () => {
     setCategoryFilter("all")
+    luuKy("month")
     setDateFrom(macDinh.from)
     setDateTo(macDinh.to)
   }
@@ -402,7 +406,7 @@ export default function ExpensesPage() {
           <>
             <DocListSearch value={search} onChange={setSearch} placeholder="Tìm mô tả, mã tham chiếu…" />
             {filterActive("category") && categorySelect}
-            <PeriodSelect value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
+            <PeriodSelect value={ky} onChange={(k) => { luuKy(k); const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
             <XoaLocButton show={coLocKhac || !!search} onClick={() => { clearAdvanced(); setSearch("") }} />
             {filterActive("date") && <LocNhanhButton open={showAdvanced} onToggle={() => setShowAdvanced((v) => !v)} />}
           </>
@@ -430,7 +434,7 @@ export default function ExpensesPage() {
             sheet: (
               <div className="grid gap-4">
                 <LocNhanhField label="Kỳ">
-                  <PeriodSelect className="w-full" value={ky} onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
+                  <PeriodSelect className="w-full" value={ky} onChange={(k) => { luuKy(k); const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }} />
                 </LocNhanhField>
                 {dateFields}
                 <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>

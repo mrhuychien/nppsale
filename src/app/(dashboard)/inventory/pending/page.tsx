@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { RETURN_REASONS } from "@/lib/constants"
 import { errorMessage } from "@/lib/errors"
+import { useLuuKy } from "@/hooks/use-luu-ky"
 
 // --- Đơn chờ xuất (confirmed sales orders) ---
 type ConfirmedOrder = {
@@ -91,6 +92,8 @@ export default function PendingStockPage() {
   const [searchText, setSearchText] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /* Kỳ nhớ theo tài khoản (chủ nhà 01/10/2026): nạp được kỳ đã lưu thì đổi luôn hai ô ngày. */
+  const [, luuKy] = useLuuKy("cho-xu-ly", "all", (ky) => { const r = khoangKy(ky); setDateFrom(r.from); setDateTo(r.to) })
 
   useEffect(() => {
     async function fetchAll() {
@@ -473,7 +476,7 @@ export default function PendingStockPage() {
               <PeriodSelect
                 className="h-9 w-full"
                 value={kyCuaKhoang(dateFrom, dateTo)}
-                onChange={(k) => { const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
+                onChange={(k) => { luuKy(k); const r = khoangKy(k); setDateFrom(r.from); setDateTo(r.to) }}
               />
               <Input
                 type="date"

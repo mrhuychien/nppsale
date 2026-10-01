@@ -163,23 +163,34 @@
   KHỔ GIẤY IN — DO HỘP THOẠI IN CỦA TRÌNH DUYỆT QUYẾT.
 
   ⚠ CHỦ NHÀ 25/09/2026: "tao muốn chọn khổ nào thì tràn ra khổ đấy trên hộp thoại
-    in của trình duyệt". Nên `@page` CHỈ đặt lề, KHÔNG đặt `size`: có `size` là Chrome
-    khoá ô "Khổ giấy" và in đúng khổ trong CSS dù người dùng chọn gì.
+    in của trình duyệt". Nên `@page` CHỈ đặt lề (= 0, xem dưới), KHÔNG đặt `size`: có `size`
+    là Chrome khoá ô "Khổ giấy" và in đúng khổ trong CSS dù người dùng chọn gì.
   ⚠ TỜ IN GIÃN THEO KHỔ BẰNG `@media print and (min-width: …)`. Khi in, `width` là bề
-    rộng vùng in của tờ giấy đã chọn (đã trừ lề): A5 ≈ 132mm, A4 / Letter ≈ 194mm,
-    A3 ≈ 281mm. Khối gốc bên dưới là cỡ A5; hai khối sau phóng theo tỉ lệ khổ
+    rộng vùng in của tờ giấy đã chọn — lề `@page` = 0 (01/10/2026) nên là CẢ khổ giấy:
+    A5 = 148mm, A4 = 210mm, A3 = 297mm (đệm 8mm của <body> không đổi `width`). Khối gốc bên dưới là cỡ A5; hai khối sau phóng theo tỉ lệ khổ
     (A4 ≈ 1,41 × A5, A3 = 2 × A5) để chữ đầy trang chứ không co một góc.
   ⚠ Luôn viết `html .lớp` (không phải `.lớp`): phải thắng `text-[12px]` của Tailwind
     ở bản xem trước trên màn hình.
   ⚠ Ô "TỶ LỆ" CỦA HỘP THOẠI IN CŨNG ĐỔI `width` (đo trên Chromium: vùng in ÷ tỷ lệ — A5
     ở 80% báo ~165mm, không có tín hiệu nào khác cho biết khổ). Mốc cũ 160mm nằm ngay
     trên A5 ở 82% → chủ nhà 28/09/2026: "tỷ lệ 80% chữ đột nhiên to ra như 100%, tỷ lệ
-    80% lại to hơn 81-82% rất nhiều". Mốc đặt GIỮA hai khổ: 185mm (A5 co đều từ ~72%,
-    A4 tới ~104%), 275mm (A4 từ ~71%, A3 tới ~102%). Ngoài khoảng ấy vẫn nhảy cỡ —
+    80% lại to hơn 81-82% rất nhiều". Mốc đặt GIỮA hai khổ: 204mm (A5 co đều tới ~73%,
+    A4 phóng tới ~103%), 293mm (A4 co tới ~72%, A3 phóng tới ~101%) — dời theo lề 0 (trước
+    185 / 275mm khi lề 8mm: A5 72%…A4 104%). Lề 0 làm A5 / A4 sít lại (148/210 thay 132/194)
+    nên không giữ trọn hai đầu cũ được; 80–82% vẫn êm. Ngoài khoảng ấy vẫn nhảy cỡ —
     chủ nhà đã chọn hướng này (giữ chữ tự giãn theo khổ).
 */
 @media print {
-  @page { margin: 8mm; }
+  /*
+    ⚠ LỀ TRANG = 0, LỀ THẬT LÀ ĐỆM CỦA <body> — chủ nhà 01/10/2026: "Sửa mẫu in hoá đơn. Thời gian
+      trên phiếu là ngày giờ tạo chứ ko phải ngày giờ in". Lề `@page` khác 0 là chỗ trình duyệt in
+      "đầu trang / chân trang" của nó (ngày giờ BẤM IN, tên trang, đường dẫn — Chrome bật sẵn), nên tờ
+      hoá đơn mang hai mốc giờ và người đọc thấy giờ in. Lề 0 thì trình duyệt không còn chỗ in đầu trang.
+      8mm cũ chuyển thành đệm của <body>; `box-decoration-break: clone` lặp đệm trên MỖI tờ.
+  */
+  @page { margin: 0; }
+  html, body { margin: 0 !important; }
+  body { padding: 8mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   /* T-11 — A5 needs tighter font to fit ~25 line orders on 1 page.
      Times New Roman matches official VN business slip aesthetic. */
   html .print-page,
@@ -226,8 +237,8 @@
   html .a4-doc .h-16 { height: 2.2rem; }
 }
 
-/* Khổ A4 / Letter (vùng in ≥ 185mm) — ≈ 1,41 × A5. */
-@media print and (min-width: 185mm) {
+/* Khổ A4 / Letter (vùng in ≥ 204mm) — ≈ 1,41 × A5. */
+@media print and (min-width: 204mm) {
   html .print-page,
   html .a5-doc { font-size: 11pt; }
   html .print-page table,
@@ -244,8 +255,8 @@
   html .a4-doc .h-16 { height: 3.1rem; }
 }
 
-/* Khổ A3 (vùng in ≥ 275mm) — 2 × A5. */
-@media print and (min-width: 275mm) {
+/* Khổ A3 (vùng in ≥ 293mm) — 2 × A5. */
+@media print and (min-width: 293mm) {
   html .print-page,
   html .a5-doc { font-size: 16pt; }
   html .print-page table,

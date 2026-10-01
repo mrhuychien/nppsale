@@ -184,7 +184,7 @@ describe("tờ in gọn lại", () => {
    * tờ mẫu). Chỉ đổi tiếp khi có một tờ giấy thật để đo.
    */
   it("A4 có dãn dòng riêng, không thừa hưởng 1.5 của Tailwind", () => {
-    const k = CSS.slice(CSS.indexOf("@media print and (min-width: 185mm) {"))
+    const k = CSS.slice(CSS.indexOf("@media print and (min-width: 204mm) {"))
     const i = k.indexOf("html .a4-doc {")
     expect(i).toBeGreaterThan(0)
     expect(k.slice(i, k.indexOf("}", i))).toContain("line-height: 1.15")

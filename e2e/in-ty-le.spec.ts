@@ -11,8 +11,8 @@ import { dangNhap } from "./helpers"
  */
 const HOA_DON = "00000000-0000-4000-8000-0000000000f1"
 const MM = 96 / 25.4
-/** Vùng in (khổ − 2 × lề 8mm). */
-const VUNG = { A5: 148 - 16, A4: 210 - 16 } as const
+/** Vùng in = cả khổ (lề @page = 0 từ 01/10/2026 — lề khác 0 là chỗ trình duyệt in ngày giờ bấm in). */
+const VUNG = { A5: 148, A4: 210 } as const
 
 async function coChuTrenGiay(page: Page, kho: keyof typeof VUNG, tyLe: number): Promise<number> {
   await page.setViewportSize({ width: Math.round((VUNG[kho] * MM) / tyLe), height: 900 })
@@ -27,8 +27,8 @@ test("in theo tỷ lệ: cùng khổ, hạ tỷ lệ thì chữ nhỏ đi — kh
   await page.emulateMedia({ media: "print" })
 
   for (const [kho, cacTyLe] of [
-    ["A5", [1, 0.95, 0.9, 0.85, 0.83, 0.82, 0.81, 0.8, 0.75, 0.72]],
-    ["A4", [1.04, 1, 0.9, 0.82, 0.8, 0.75, 0.72]],
+    ["A5", [1, 0.95, 0.9, 0.85, 0.83, 0.82, 0.81, 0.8, 0.75, 0.73]],
+    ["A4", [1.02, 1, 0.9, 0.82, 0.8, 0.75, 0.72]],
   ] as const) {
     const co: number[] = []
     for (const t of cacTyLe) co.push(await coChuTrenGiay(page, kho, t))

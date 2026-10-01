@@ -33,9 +33,9 @@ type Kho = "A5" | "A4" | "A3"
  * là khối `@media print and (min-width: …)` — lúc in, `width` là bề rộng tờ giấy.
  */
 const MO: Record<Kho, string> = {
-  A5: "@media print {\n  @page { margin: 8mm; }",
-  A4: "@media print and (min-width: 185mm) {",
-  A3: "@media print and (min-width: 275mm) {",
+  A5: "@media print {\n  /*\n    ⚠ LỀ TRANG = 0",
+  A4: "@media print and (min-width: 204mm) {",
+  A3: "@media print and (min-width: 293mm) {",
 }
 function khoi(kho: Kho): string {
   const i = CSS.indexOf(MO[kho])
@@ -213,7 +213,7 @@ describe("khổ giấy do hộp thoại in chọn", () => {
    *   của trình duyệt". `@page { size }` ở bất cứ đâu là Chrome khoá ô Khổ giấy.
    */
   it("không `@page` nào đặt size", () => {
-    expect(CSS.match(/@page\s*\{[^}]*\}/g)).toEqual(["@page { margin: 8mm; }"])
+    expect(CSS.match(/@page\s*\{[^}]*\}/g)).toEqual(["@page { margin: 0; }"])
     const BTN = readFileSync(resolve(__dirname, "..", "src/components/ui/print-button.tsx"), "utf-8")
     expect(BTN).not.toMatch(/size:\s*A[345]/)
     expect(BTN).not.toContain("data-paper-size")

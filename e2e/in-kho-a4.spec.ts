@@ -6,17 +6,18 @@ import { dangNhap } from "./helpers"
  *   của trình duyệt" (Đơn hàng / Hoá đơn / Trả hàng).
  *   · Chọn khổ trong hộp thoại = `page.pdf({ format })`. Có `preferCSSPageSize` mà PDF
  *     vẫn đúng khổ đã chọn → CSS không ép khổ (bản cũ ép A5: chọn A4 vẫn ra 148 × 210).
- *   · Chữ giãn theo bề rộng vùng in của khổ đó (lề 8mm mỗi bên).
+ *   · Chữ giãn theo bề rộng vùng in của khổ đó — lề `@page` = 0 (01/10/2026: lề khác 0 là chỗ
+ *     trình duyệt in ngày giờ BẤM IN lên tờ hoá đơn), nên vùng in = cả khổ.
  */
 const khoMm = (pdf: Buffer) =>
   (pdf.toString("latin1").match(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\]/) ?? []).slice(1).map((x) => Math.round((Number(x) / 72) * 25.4))
 
 const mmPx = (mm: number) => Math.floor((mm * 96) / 25.4)
 const KHO = [
-  // khổ, kích thước mm, bề rộng vùng in (trừ lề 2 × 8mm), cỡ chữ thân tối thiểu (px)
-  ["A5", [148, 210], 148 - 16, 14],
-  ["A4", [210, 297], 210 - 16, 19],
-  ["A3", [297, 420], 297 - 16, 28],
+  // khổ, kích thước mm, bề rộng vùng in (lề @page = 0 → cả khổ), cỡ chữ thân tối thiểu (px)
+  ["A5", [148, 210], 148, 14],
+  ["A4", [210, 297], 210, 19],
+  ["A3", [297, 420], 297, 28],
 ] as const
 
 /** Chặn hộp in thật và việc trang in tự rời màn sau `afterprint` (xuất PDF cũng bắn). */

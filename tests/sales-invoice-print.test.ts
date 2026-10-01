@@ -339,7 +339,7 @@ describe("Khổ giấy", () => {
   it("khổ nhỏ (A5) có cỡ riêng, khổ lớn giãn theo bề rộng giấy", () => {
     expect(CSS).toContain("html .a4-doc {")
     expect(CSS).toContain("html .a4-doc table")
-    expect(CSS).toContain("@media print and (min-width: 185mm) {")
+    expect(CSS).toContain("@media print and (min-width: 204mm) {")
     expect(TPL).toContain('className="a4-doc')
   })
 })

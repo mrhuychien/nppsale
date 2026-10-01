@@ -29,7 +29,7 @@ import {
   SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
 } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
-import { docGioSuaCuoi, docStampAt, gioSuaCuoi } from "@/lib/printing/doc-stamp"
+import { ngayChungTu } from "@/lib/printing/doc-stamp"
 
 interface InvoiceRow {
   id: string
@@ -95,12 +95,9 @@ export default function SalesInvoicePrintPage() {
   const [eInvoiceIssued, setEInvoiceIssued] = useState(false)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
-  /* Giờ sửa cuối (mig 220) — hỏi riêng: cột chưa có thì in giờ lập như cũ. */
-  const [gioSua, setGioSua] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const gioSuaP = docGioSuaCuoi(supabase as never, "sales_invoices", id)
     const [invRes, lineRes, retRes, eRes] = await Promise.all([
       supabase
         .from("sales_invoices")
@@ -156,8 +153,6 @@ export default function SalesInvoicePrintPage() {
        */
       setOrg(await loadOrgHeader(supabase, row.org_id))
     }
-    // Chờ xong mới tắt loading: ?auto=1 in ngay khi tắt — không thì tờ in tự động vẫn ra giờ tạo.
-    setGioSua(await gioSuaP)
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -289,12 +284,10 @@ export default function SalesInvoicePrintPage() {
         <SalesInvoice
           org={{ name: org.name, address: org.address, phone: org.phone }}
           invoiceNumber={inv.invoice_code}
-          /* ⚠ GIỜ LẤY TỪ `created_at` (chủ nhà chốt in kèm giờ).
-             `invoice_date` là cột kiểu `date` — dựng Date từ nó ra nửa
-             đêm UTC = 07:00 giờ Việt Nam, nên in kèm giờ là in ra "07:00"
-             cho MỌI hóa đơn: một con số trông như dữ liệu thật mà không
-             phải. Xem `docStampAt`. */
-          issuedAt={docStampAt(gioSuaCuoi(gioSua, inv.created_at), inv.invoice_date).at}
+          /* ⚠ CHỈ IN NGÀY HOÁ ĐƠN, không giờ (chủ nhà 01/10/2026). `invoice_date` là
+             DATE — không có giờ thật; in kèm giờ từ nó là bịa "07:00". Xem `ngayChungTu`. */
+          issuedAt={ngayChungTu(inv.invoice_date)}
+          issuedHasTime={false}
           customerName={inv.customer?.billing_name || inv.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(inv.customer ?? {})}
           customerPhone={inv.customer?.phone}

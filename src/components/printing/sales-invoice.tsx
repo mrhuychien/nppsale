@@ -59,7 +59,7 @@
  */
 
 import { formatCurrency } from "@/lib/utils"
-import { stampVN, longDateVN } from "@/lib/printing/doc-stamp"
+import { stampVN, longDateVN, dateVN } from "@/lib/printing/doc-stamp"
 import { bangChuCoAm } from "@/lib/utils/number-to-vn-words"
 import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
 
@@ -111,6 +111,8 @@ export interface SalesInvoiceProps {
   invoiceNumber: string
   /** Mốc in ở dòng "Ngày … " dưới tiêu đề. */
   issuedAt: Date | null
+  /** false = chỉ in ngày (ngày chứng từ, không có giờ). */
+  issuedHasTime?: boolean
   customerName: string
   customerAddress?: string | null
   customerPhone?: string | null
@@ -272,7 +274,7 @@ export function noteBlocksOf(
 export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, title = "HÓA ĐƠN BÁN HÀNG", numberLabel = "Số HĐ",
-    invoiceNumber, issuedAt, customerName, customerAddress, customerPhone,
+    invoiceNumber, issuedAt, issuedHasTime, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines,
     total, invoiceDiscount = 0, returnCredit = 0, returnLines = [], notes = [], footerNote,
   } = props
@@ -308,7 +310,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         <h1 className="text-xl font-bold leading-tight">{title}</h1>
         {/* ⚠ NGÀY KÈM GIỜ (chủ nhà chốt) — xem `docStampAt`: giờ thật nằm
             ở `created_at`, không nằm ở cột ngày kiểu `date`. */}
-        <p className="font-bold leading-tight">Ngày {stampVN(issuedAt)}</p>
+        <p className="font-bold leading-tight">Ngày {issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt)}</p>
         <p className="leading-tight">{numberLabel}: {invoiceNumber || "—"}</p>
       </div>
 

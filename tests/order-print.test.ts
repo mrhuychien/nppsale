@@ -39,9 +39,10 @@ describe("màn in đơn đặt hàng", () => {
     expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone }}")
   })
 
-  /** ⚠ Giờ thật nằm ở `updated_at` (giờ sửa cuối, mig 220) → `created_at`; `order_date` là cột kiểu `date`. */
-  it("mốc in lấy giờ sửa cuối, lùi về created_at", () => {
-    expect(PAGE).toContain("docStampAt(gioSuaCuoi(gioSua, order.created_at), order.order_date).at")
+  /** ⚠ Chủ nhà 01/10/2026: chỉ in NGÀY đơn (`order_date`, kiểu `date`), không giờ. */
+  it("mốc in là ngày đơn, không kèm giờ", () => {
+    expect(PAGE).toContain("issuedAt={ngayChungTu(order.order_date)}")
+    expect(PAGE).toContain("issuedHasTime={false}")
   })
 
   /**

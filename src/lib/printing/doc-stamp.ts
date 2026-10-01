@@ -146,3 +146,14 @@ export async function docGioSuaCuoi(
     return null
   }
 }
+
+/**
+ * NGÀY CHỨNG TỪ cho tờ in hoá đơn / đơn hàng — chủ nhà 01/10/2026 (chọn "chỉ in ngày hoá đơn, bỏ hẳn giờ"):
+ * in đúng ngày trên chứng từ (`invoice_date` / `order_date`, kiểu DATE), không kèm giờ. Dựng lúc 12:00 giờ
+ * VN để đổi múi giờ nào cũng không trượt sang ngày bên cạnh.
+ */
+export function ngayChungTu(docDate: string | null | undefined): Date | null {
+  if (!docDate || !/^\d{4}-\d{2}-\d{2}$/.test(docDate)) return null
+  const d = new Date(`${docDate}T12:00:00+07:00`)
+  return Number.isNaN(d.getTime()) ? null : d
+}

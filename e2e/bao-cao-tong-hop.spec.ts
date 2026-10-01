@@ -60,8 +60,8 @@ test("Bán hàng theo nhân viên: cột như báo cáo cũ + chỉ tiêu; khôn
   await dangNhap(page)
   await page.goto(`/bao-cao/ban-hang?${KY}&xem=staff`)
   const bang = page.getByTestId("bc-bang")
-  // Chênh lệch theo giá lúc bán + chênh trả + giảm giá đơn riêng (chủ nhà 30/09/2026).
-  for (const c of ["SL bán", "Niêm yết lúc bán", "Doanh thu", "Chênh lệch bán", "Giảm giá đơn", "SL trả", "Giá trị trả", "Chênh lệch trả", "DT thuần", "Chênh lệch thuần", "Chỉ tiêu", "% đạt"]) {
+  // Chênh lệch theo bảng giá cùng đơn vị + chênh trả + giảm giá đơn riêng (chủ nhà 01/10/2026).
+  for (const c of ["SL bán", "Theo bảng giá", "Doanh thu", "Chênh lệch bán", "Giảm giá đơn", "SL trả", "Giá trị trả", "Chênh lệch trả", "DT thuần", "Chênh lệch thuần", "Chỉ tiêu", "% đạt"]) {
     await expect(bang.locator("th", { hasText: c }).first()).toBeVisible()
   }
   // Chỉ tiêu tháng 9 = mức doanh số chung A (3.000.000).

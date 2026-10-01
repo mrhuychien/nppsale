@@ -79,7 +79,7 @@ const src = (p: string) => readFileSync(p, "utf8")
 describe("giao diện báo cáo (chủ nhà 27/09/2026)", () => {
   const banHang = src("src/components/bao-cao/man-ban-hang.tsx")
   it("theo nhân viên có đủ cột như báo cáo cũ + chỉ tiêu từ cài đặt lương", () => {
-    for (const c of ['"SL bán"', '"Niêm yết lúc bán"', '"Chênh lệch bán"', '"SL trả"', '"Giá trị trả"', '"Chênh lệch trả"', '"Chênh lệch thuần"', '"Chỉ tiêu"', '"% đạt"']) expect(banHang).toContain(c)
+    for (const c of ['"SL bán"', '"Theo bảng giá"', '"Chênh lệch bán"', '"SL trả"', '"Giá trị trả"', '"Chênh lệch trả"', '"Chênh lệch thuần"', '"Chỉ tiêu"', '"% đạt"']) expect(banHang).toContain(c)
     expect(banHang).toContain('rpc("my_sales_target")')
   })
   it("bỏ Thương hiệu / Nhóm khách / Tỉnh ở mọi màn", () => {

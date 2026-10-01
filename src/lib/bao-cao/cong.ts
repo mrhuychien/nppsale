@@ -38,7 +38,7 @@ export interface DongBan {
    * Chênh = `tienTT − niemYet`; dòng không có `niemYet` (HĐ không dòng) không tính chênh.
    */
   niemYet?: number
-  /** Tiền theo giá sửa, TRƯỚC thuế và TRƯỚC giảm giá cả đơn: SL × đơn giá dòng. */
+  /** Tiền theo đơn giá trên chứng từ, TRƯỚC thuế và TRƯỚC giảm giá cả đơn: SL × đơn giá dòng. */
   tienTT?: number
   /** Giảm giá cả đơn của hoá đơn — chỉ ghi ở dòng đầu mỗi HĐ (chủ nhà: "tính riêng, tính theo đơn"). */
   giamDon?: number
@@ -224,7 +224,7 @@ export interface NhomBan extends TongBan {
   /** SL theo từng đơn vị cơ sở ("640 hộp · 120 chai") — bán ra / trả về. */
   qtyDv: SLTheoDonVi
   rqtyDv: SLTheoDonVi
-  /** Σ niêm yết lúc bán của dòng bán / dòng trả, và tiền trước thuế tương ứng (`chenh-lech.ts`). */
+  /** Σ SL × giá bảng (cùng đơn vị) của dòng bán / dòng trả, và tiền trước thuế tương ứng (`chenh-lech.ts`). */
   listed: number
   revTT: number
   rlisted: number

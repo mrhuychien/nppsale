@@ -287,8 +287,8 @@ export function ManBanHang() {
               { k: "slBan", label: "SL bán", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.qtyDv), sub: "" }), coTong: true, wrap: true },
               /* ⚠ CHÊNH (chủ nhà 30/09/2026): "Nhân viên sửa giá loại nào -> tính phần chênh số lượng X (giá
                  sửa - giá gốc)", cả hàng đi lẫn hàng trả; "Phần giảm giá cả đơn tính riêng (tính theo đơn)". */
-              { k: "listed", label: "Niêm yết lúc bán", f: "money", v: (x) => x.listed },
-              { k: "revTT", label: "Tiền theo giá sửa", f: "money", v: (x) => x.revTT, opt: true },
+              { k: "listed", label: "Theo bảng giá", f: "money", v: (x) => x.listed },
+              { k: "revTT", label: "Tiền theo giá HĐ", f: "money", v: (x) => x.revTT, opt: true },
               M.rev,
               { k: "diff", label: "Chênh lệch bán", f: "money", v: (x) => (x.revTT || 0) - (x.listed || 0) },
               { k: "giamDon", label: "Giảm giá đơn", f: "money", v: (x) => (x.giamDon ? -x.giamDon : 0) },

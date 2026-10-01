@@ -38,12 +38,13 @@ Chủ nhà chốt 24/09/2026: *"làm tiếp phần doanh thu tính theo hoá đ�
   Tiền của một hóa đơn trong danh sách là **số còn lại** sau hàng trả.
 
 ### Chênh lệch giá của nhân viên
-Chủ nhà chốt 30/09/2026 (mig 218): *"Hàng trả về và Hàng đi: Nhân viên sửa giá loại nào -> tính phần chênh
-số lượng X (giá sửa - giá gốc). Phần giảm giá cả đơn tính riêng (tính theo đơn)"*.
-- Chênh = SL × (giá sửa − giá gốc), **trước thuế** (không lấy tiền HĐ gồm VAT). Giá gốc = giá của khách
-  **lúc bán** = đơn giá + chiết khấu/SL của **dòng đơn** (chiết khấu chép sang HĐ là của cả dòng đơn).
-- Chênh trả tính y vậy, giá gốc lấy trên hoá đơn gốc; chênh thuần = chênh bán − chênh trả.
-- Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `src/lib/analytics/chenh-lech.ts`.
+Chủ nhà chốt lại 01/10/2026 (thay luật "giá lúc bán" của mig 218): *"hiện tại chỉ có 1 giá bán ra. Cách
+tính chênh lệch: Hàng đi: lấy số liệu trên hóa đơn. Giá trên hóa đơn so với giá trên bảng giá (lưu ý phải
+cùng đơn vị tính) x số lượng"*.
+- Chênh = SL × (đơn giá trên HĐ − giá bảng của **đúng đơn vị dòng**), **trước thuế**. Bán thùng so với giá
+  thùng (`giaNiemYetDonVi`), không lấy giá lon × hệ số khi thùng có giá riêng.
+- Hàng trả cùng luật (đơn giá phiếu trả − giá bảng cùng đơn vị); chênh thuần = chênh bán − chênh trả.
+- Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `chenhDong` trong `src/lib/analytics/chenh-lech.ts`.
 
 ### Quy đổi đơn vị trong báo cáo
 Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).

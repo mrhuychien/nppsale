@@ -1,6 +1,5 @@
 "use client"
 
-import { napGiaLucBan } from "@/lib/bao-cao/nap-ban-hang"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -128,8 +127,6 @@ export default function EmployeesReportPage() {
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
-  /** (mig 218) dòng đơn gốc + dòng hoá đơn gốc của phiếu trả — chênh lệch theo giá lúc bán. */
-  const [giaLucBan, setGiaLucBan] = useState<Awaited<ReturnType<typeof napGiaLucBan>>>({ dongDon: new Map(), dongHdGoc: new Map() })
   // Giá vốn hàng trả ĐÃ NHẬP LẠI KHO theo phiếu — trừ khỏi giá vốn (mig 192).
   const [returnCosts, setReturnCosts] = useState<Awaited<ReturnType<typeof fetchReturnCosts>>>(new Map())
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -195,9 +192,6 @@ export default function EmployeesReportPage() {
       setStockLines(stockLinesList)
       setReturnLines(returnLinesList)
       setReturnCosts(returnCostMap)
-      setGiaLucBan(
-        await napGiaLucBan(supabase, linesList, returnsRows.map((r) => r.invoice_id).filter((x): x is string => !!x))
-      )
     } catch (err) {
       setLoadError(errorMessage(err))
       toast({
@@ -769,9 +763,9 @@ export default function EmployeesReportPage() {
      * ⚠ HAI BẢNG LỆCH LUẬT LÀ HAI CON SỐ TRẢ HÀNG KHÁC NHAU TRÊN CÙNG
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
-    const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line, invoiceId: returnById.get(line.return_id)?.invoice_id ?? null }))
+    const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line }))
 
-    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap, dongDon: giaLucBan.dongDon, dongHdGoc: giaLucBan.dongHdGoc, giamDon })
+    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap, giamDon })
     /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — xem `chotTienChungTu`. */
     const coLocHang = productFilter.length > 0 || categoryFilter.length > 0 || brandFilter.length > 0
     if (!coLocHang) {
@@ -790,7 +784,7 @@ export default function EmployeesReportPage() {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, returnById, giaLucBan, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
+  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -839,7 +833,7 @@ export default function EmployeesReportPage() {
           "Tên hàng",
           "Đơn vị",
           "SL bán",
-          "Niêm yết lúc bán",
+          "Theo bảng giá",
           "Doanh thu",
           "Chênh lệch bán",
           "Giảm giá đơn",
@@ -1238,7 +1232,7 @@ export default function EmployeesReportPage() {
             },
             {
               key: "listed",
-              label: "Niêm yết lúc bán",
+              label: "Theo bảng giá",
               align: "right",
               render: (r) => formatCurrency(r.listed),
             },
@@ -1249,7 +1243,7 @@ export default function EmployeesReportPage() {
               render: (r) => formatCurrency(r.revenue),
             },
             {
-              /* Chênh = SL × (giá sửa − giá gốc lúc bán); giảm giá cả đơn là cột riêng (chủ nhà 30/09/2026). */
+              /* Chênh = SL × (giá HĐ − giá bảng cùng đơn vị); giảm giá cả đơn là cột riêng (chủ nhà 01/10/2026). */
               key: "diff",
               label: "Chênh lệch bán",
               align: "right",
@@ -1358,7 +1352,7 @@ export default function EmployeesReportPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Đơn vị</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL bán</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Niêm yết lúc bán</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Theo bảng giá</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch bán</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL trả</th>

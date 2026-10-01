@@ -1,60 +1,50 @@
 /**
- * Chủ nhà 30/09/2026 — báo cáo bán hàng theo nhân viên, phần chênh lệch: "Hàng trả về và Hàng đi:
- * Nhân viên sửa giá loại nào -> tính phần chênh số lượng X (giá sửa - giá gốc). Phần giảm giá cả
- * đơn tính riêng (tính theo đơn)" · giá gốc = giá của khách LÚC BÁN · "lúc đi đã ăn chênh, lúc về
- * phải trả chênh". Quét trước khi sửa: chênh lệch ăn cả VAT (bán đúng giá, VAT 10% → chênh +10%).
+ * Báo cáo bán hàng theo nhân viên, phần chênh lệch. Chủ nhà 01/10/2026 (chốt lại luật): "hiện tại chỉ có
+ * 1 giá bán ra. Cách tính chênh lệch: Hàng đi: lấy số liệu trên hóa đơn. Giá trên hóa đơn so với giá trên
+ * bảng giá (lưu ý phải cùng đơn vị tính) x số lượng". Hàng trả cùng luật; giảm giá cả đơn cột riêng.
  */
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
-import { chenhDongBan, chenhDongTra, giaNyCoSoLucBan, giaNyCoSoTrenHd, tiLeSauGiamHd, type DongDonGoc } from "@/lib/analytics/chenh-lech"
+import { chenhDong, giaBangCuaDong } from "@/lib/analytics/chenh-lech"
 import { congHangBanNhanVien } from "@/lib/analytics/hang-ban-nhan-vien"
 import { dungDongBan } from "@/lib/bao-cao/nap-ban-hang"
 import { gomBan, type DanhMucBC } from "@/lib/bao-cao/cong"
 
-const SP = { base_unit: "lon", sell_price: 100, units: [{ unit_name: "thùng", conversion: 24 }], price_lists: [] }
-// Đơn: 100 lon, giá khách 100, bán 90 → line_discount = 100 × 10 = 1.000 (của CẢ dòng đơn).
-const DON: DongDonGoc = { id: "sol1", unit_name: "lon", conversion_factor: 1, quantity: 100, unit_price: 90, line_discount: 1000 }
-const dongDon = new Map([[DON.id, DON]])
-// Hoá đơn giao THIẾU 80 lon — post_invoice chép nguyên line_discount 1.000.
+// Bảng giá: lon 100; thùng (24 lon) có giá RIÊNG 2.300 — không phải 24 × 100.
+const SP = {
+  base_unit: "lon", sell_price: 100, units: [{ unit_name: "thùng", conversion: 24 }],
+  price_lists: [{ unit_name: "lon", price: 100, group_id: null }, { unit_name: "thùng", price: 2300, group_id: null }],
+}
+// Dòng HĐ 80 lon giá 90 — kèm chiết khấu / dòng đơn cũ: KHÔNG còn ảnh hưởng (luật giá lúc bán đã bỏ).
 const HD80 = { product_id: "p", unit_name: "lon", conversion_factor: 1, quantity: 80, unit_price: 90, line_total: 7200, line_discount: 1000, order_line_id: "sol1" }
 
-describe("giá niêm yết lúc bán", () => {
-  it("tính từ DÒNG ĐƠN, không lấy chiết khấu nguyên dòng chép sang hoá đơn", () => {
-    expect(giaNyCoSoLucBan(HD80, SP, dongDon)).toBe(100)
-    const c = chenhDongBan(HD80, SP, 1, dongDon)
-    expect(c).toEqual({ tien: 7200, niemYet: 8000, chenh: -800 }) // không phải −1.000
+describe("chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị)", () => {
+  it("bán dưới giá bảng: âm; chiết khấu / dòng đơn không còn tính", () => {
+    expect(chenhDong(HD80, SP)).toEqual({ tien: 7200, niemYet: 8000, chenh: -800 })
   })
-  it("hoá đơn khác đơn vị với đơn: quy về đơn vị cơ sở", () => {
-    const donThung: DongDonGoc = { id: "t", unit_name: "thùng", conversion_factor: 24, quantity: 2, unit_price: 2160, line_discount: 480 }
-    const hdLon = { ...HD80, quantity: 24, unit_price: 90, line_total: 2160, order_line_id: "t" }
-    // giá khách 1 thùng = 2160 + 240 = 2400 → 100 / lon
-    expect(chenhDongBan(hdLon, SP, 1, new Map([["t", donThung]]))).toEqual({ tien: 2160, niemYet: 2400, chenh: -240 })
+  it("so với giá của ĐÚNG đơn vị dòng: 2 thùng × (2.400 − 2.300), không phải × (2.400 − 24 × 100)", () => {
+    const thung = { unit_name: "thùng", conversion_factor: 24, quantity: 2, unit_price: 2400, line_total: 4800 }
+    expect(giaBangCuaDong(thung, SP)).toBe(2300)
+    expect(chenhDong(thung, SP)).toEqual({ tien: 4800, niemYet: 4600, chenh: 200 })
   })
-  it("tiLeSauGiamHd (giữ cho nơi khác dùng) — chênh lệch KHÔNG trộn giảm giá đơn", () => {
-    expect(tiLeSauGiamHd(6480, [{ line_total: 7200 }])).toBeCloseTo(0.9)
-    expect(tiLeSauGiamHd(0, [{ line_total: 7200 }]), "không có subtotal = không giảm").toBe(1)
+  it("đơn vị không có giá riêng: giá cơ sở × hệ số (như màn bán)", () => {
+    const sp = { ...SP, price_lists: [{ unit_name: "lon", price: 100, group_id: null }] }
+    expect(chenhDong({ unit_name: "thùng", conversion_factor: 24, quantity: 1, unit_price: 2300, line_total: 2300 }, sp).chenh).toBe(-100)
   })
-  it("không tra được giá lúc bán: lùi về giá đưa vào, rồi mới tới đơn giá (chênh 0)", () => {
-    const le = { ...HD80, order_line_id: "khong-co", line_discount: null }
-    expect(chenhDongBan(le, SP, 1, dongDon, 95).niemYet).toBe(80 * 95)
-    expect(chenhDongBan(le, SP, 1, dongDon).chenh).toBe(0)
+  it("bán CAO hơn giá bảng: chênh dương", () => {
+    expect(chenhDong({ unit_name: "lon", quantity: 10, unit_price: 110, line_total: 1100 }, SP).chenh).toBe(100)
   })
-})
-
-describe("chênh trả — lúc đi ăn chênh, lúc về trả chênh", () => {
-  it("giá niêm yết lấy từ đúng mặt hàng trên hoá đơn gốc; tiền trả trước thuế", () => {
-    const gia = giaNyCoSoTrenHd("p", [HD80], SP, dongDon)
-    expect(gia).toBe(100)
-    // Trả 5 lon ở giá 90 — line_total đã gồm VAT 8% (486) nhưng chênh tính trên 5 × 90.
-    expect(chenhDongTra({ product_id: "p", unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, SP, gia)).toEqual({ tien: 450, niemYet: 500, chenh: -50 })
+  it("mặt hàng chưa có giá bảng: chênh 0, không chênh cả doanh thu", () => {
+    expect(chenhDong({ unit_name: "gói", quantity: 3, unit_price: 50, line_total: 150 }, { base_unit: "gói", sell_price: 0, price_lists: [] }).chenh).toBe(0)
   })
-  it("congHangBanNhanVien: chênh thuần = chênh bán − chênh trả", () => {
+  it("hàng trả: tiền trước thuế (line_total có VAT không dùng)", () => {
+    expect(chenhDong({ unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, SP)).toEqual({ tien: 450, niemYet: 500, chenh: -50 })
+  })
+  it("congHangBanNhanVien: chênh thuần = chênh bán − chênh trả; giảm giá đơn cột riêng", () => {
     const [r] = congHangBanNhanVien({
       ban: [{ uid: "nv", line: HD80 }],
-      tra: [{ uid: "nv", line: { product_id: "p", unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, invoiceId: "hd1" }],
+      tra: [{ uid: "nv", line: { product_id: "p", unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 } }],
       sanPham: new Map([["p", { ...SP, id: "p", sku: "P", name: "Bia" }]]),
-      dongDon,
-      dongHdGoc: new Map([["hd1", [HD80]]]),
       giamDon: [{ uid: "nv", tien: 720 }],
     })
     expect(r.listed).toBe(8000)
@@ -67,9 +57,9 @@ describe("chênh trả — lúc đi ăn chênh, lúc về trả chênh", () => {
 })
 
 describe("Báo cáo tổng hợp › Theo nhân viên dùng cùng luật", () => {
-  const dm = { sp: new Map([["p", { id: "p", sku: "P", ten: "Bia", donViCoSo: "lon", quyDoi: SP }]]) } as unknown as DanhMucBC
+  const dm = { sp: new Map([["p", { id: "p", sku: "P", ten: "Bia", donViCoSo: "lon", giaBan: 100, donVi: [{ ten: "thùng", heSo: 24 }], bangGia: [{ ten: "lon", gia: 100 }, { ten: "thùng", gia: 2300 }] }]]) } as unknown as DanhMucBC
   const hoaDon = [{ id: "hd1", invoice_code: "HD1", invoice_date: "2026-09-30", status: "posted", total: 7128, subtotal: 6480, vat: 648, customer_id: "k", sales_user_id: "nv", order_id: "o" }]
-  it("chênh = SL × (giá sửa − giá gốc): VAT không lọt; giảm giá đơn cột riêng; chênh trả", () => {
+  it("chênh = SL × (giá HĐ − giá bảng): VAT không lọt; giảm giá đơn cột riêng; chênh trả", () => {
     const { dong } = dungDongBan({
       hoaDon: hoaDon as never,
       dongHd: [{ id: "l1", invoice_id: "hd1", ...HD80 }] as never,
@@ -79,8 +69,6 @@ describe("Báo cáo tổng hợp › Theo nhân viên dùng cùng luật", () =>
       giaVonTra: new Map(),
       nvTra: new Map([["r1", "nv"]]),
       dm,
-      dongDon,
-      dongHdGoc: new Map([["hd1", [{ id: "l1", invoice_id: "hd1", ...HD80 }]]]) as never,
     })
     const g = gomBan(dong, (l) => l.nv, dm).get("nv")!
     expect(g.rev, "doanh thu vẫn là tiền HĐ").toBe(7128)
@@ -97,9 +85,10 @@ describe("Báo cáo tổng hợp › Theo nhân viên dùng cùng luật", () =>
     expect(s).toContain('label: "Chênh lệch thuần"')
     expect(s).toContain('label: "Giảm giá đơn"')
   })
-  it("mig 218 trả dữ liệu giá lúc bán", () => {
-    const m = readFileSync("supabase/migrations/218_chenh_lech_gia_luc_ban.sql", "utf8")
-    for (const k of ["'line_discount', l.line_discount", "'order_line_id', l.order_line_id", "'dong_hd_goc'", "'dong_don'", "'unit_price', l.unit_price"]) expect(m).toContain(k)
-    expect(readFileSync("scripts/sql/kham-so-that.sql", "utf8")).toContain("Mig 218")
+  it("không còn đọc 'giá lúc bán' (dòng đơn / hoá đơn gốc) — chỉ bảng giá", () => {
+    for (const f of ["src/lib/bao-cao/nap-ban-hang.ts", "src/lib/analytics/hang-ban-nhan-vien.ts", "src/app/(dashboard)/reports/employees/page.tsx"]) {
+      const s = readFileSync(f, "utf8")
+      expect(s, f).not.toMatch(/napGiaLucBan|dongDon|dongHdGoc|giaNyCoSo/)
+    }
   })
 })

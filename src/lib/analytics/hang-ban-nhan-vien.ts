@@ -11,14 +11,14 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDongBan, chenhDongTra, giaNyCoSoTrenHd, type DongDonGoc, type DongHdGia } from "./chenh-lech"
+import { chenhDong } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
 
 export interface DongBanHangBan {
   product_id: string
-  /** (mig 218) giá niêm yết lúc bán — `chenh-lech.ts`. */
+  /** Không còn dùng cho chênh (chủ nhà 01/10/2026: so với bảng giá) — giữ cho dữ liệu cũ. */
   line_discount?: number | null
   order_line_id?: string | null
   unit_name: string
@@ -49,13 +49,13 @@ export interface HangBanSanPham {
   qtyTheoDv: SLTheoDonVi
   listed: number
   revenue: number
-  /** Chênh lệch BÁN — trước thuế, sau giảm giá cả đơn, so với niêm yết lúc bán (`chenh-lech.ts`). */
+  /** Chênh lệch BÁN — SL × (giá HĐ − giá bảng cùng đơn vị), trước thuế (`chenh-lech.ts`). */
   diff: number
   returnQty: number
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
-  /** Niêm yết lúc bán của hàng trả · chênh trả · chênh thuần = diff − diffReturn (chủ nhà 30/09/2026). */
+  /** Giá bảng của hàng trả · chênh trả · chênh thuần = diff − diffReturn (chủ nhà 30/09/2026). */
   returnListed: number
   diffReturn: number
   diffNet: number
@@ -101,12 +101,8 @@ export function giaTriNiemYetDong(l: DongBanHangBan, sp: SanPhamQuyDoi | null | 
  */
 export function congHangBanNhanVien(input: {
   ban: ReadonlyArray<{ uid: string; line: DongBanHangBan }>
-  /** `invoiceId` = hoá đơn gốc của phiếu trả — chênh trả theo giá lúc bán. */
-  tra: ReadonlyArray<{ uid: string; line: DongTraHangBan; invoiceId?: string | null }>
+  tra: ReadonlyArray<{ uid: string; line: DongTraHangBan }>
   sanPham: ReadonlyMap<string, SanPhamHangBan>
-  /** (mig 218) dòng đơn gốc / dòng hoá đơn gốc của phiếu trả — thiếu thì lùi về bảng giá chung hiện tại. */
-  dongDon?: ReadonlyMap<string, DongDonGoc>
-  dongHdGoc?: ReadonlyMap<string, readonly DongHdGia[]>
   /** Giảm giá cả đơn theo hoá đơn — cộng riêng cho nhân viên của HĐ. */
   giamDon?: ReadonlyArray<{ uid: string; tien: number }>
 }): HangBanNhanVien[] {
@@ -144,12 +140,10 @@ export function congHangBanNhanVien(input: {
   for (const { uid, line } of input.ban) {
     const sp = input.sanPham.get(line.product_id)
     if (!sp) continue
-    // SL quy về đơn vị cơ sở; niêm yết LÚC BÁN (lùi về bảng giá chung hiện tại) — `chenh-lech.ts`.
+    // SL quy về đơn vị cơ sở; chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị) — `chenh-lech.ts`.
     const heSo = heSoQuyDoi(sp, line.unit_name, line.conversion_factor)
     const qty = soLuongCoSo(line.quantity, heSo)
-    const c = chenhDongBan(
-      { ...line, unit_price: Number(line.unit_price || 0) }, sp, 1, input.dongDon, giaNiemYetDonVi(sp, line.unit_name, heSo)
-    )
+    const c = chenhDong(line, sp)
     const revenue = Number(line.line_total || 0)
     const r = dong(uid)
     r.qty += qty
@@ -165,16 +159,14 @@ export function congHangBanNhanVien(input: {
     p.diff += c.chenh
   }
 
-  for (const { uid, line, invoiceId } of input.tra) {
+  for (const { uid, line } of input.tra) {
     const sp = input.sanPham.get(line.product_id)
     // Dòng trả không có hệ số chụp → tra danh mục.
     const heSo = heSoQuyDoi(sp, line.unit_name || "")
     const qty = soLuongCoSo(line.quantity, heSo)
     const value = Number(line.line_total || 0)
-    // Chênh trả: "lúc đi đã ăn chênh, lúc về phải trả chênh" — giá lúc bán trên hoá đơn gốc.
-    const goc = invoiceId ? input.dongHdGoc?.get(invoiceId) : undefined
-    const gia = goc ? giaNyCoSoTrenHd(line.product_id, goc, sp, input.dongDon) : null
-    const c = chenhDongTra(line, sp, gia, giaNiemYetDonVi(sp, line.unit_name || "", heSo))
+    // Chênh trả: cùng luật hàng đi — giá trên phiếu trả so với giá bảng cùng đơn vị.
+    const c = chenhDong(line, sp)
     const r = dong(uid)
     r.returnQty += qty
     congSL(r.returnQtyTheoDv, sp?.base_unit, qty)

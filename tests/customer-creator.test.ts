@@ -89,23 +89,27 @@ describe("Phân công cho người vừa tạo điểm bán", () => {
 })
 
 describe("Màn tạo khách có nối đúng", () => {
+  /* Lõi tạo khách dùng chung cho form máy tính và màn điện thoại (chủ nhà 01/10/2026) — `taoKhach`. */
+  const LOI = readFileSync("src/lib/customers/tao-khach.ts", "utf8")
   /** Không lấy `id` về thì không có gì để phân công. */
   it("lấy id của điểm bán vừa tạo", () => {
-    expect(FORM).toContain('.insert(insertPayload)\n          .select("id")\n          .single()')
+    expect(LOI).toContain('await sb.from("customers").insert(ghi).select("id").single()')
+    expect(FORM).toContain("await taoKhach(supabase, user, payload)")
   })
 
   it("gọi phân công ngay sau khi tạo", () => {
-    expect(FORM).toContain("assignCustomerToCreator(supabase, { customerId: newId, role: user?.role })")
+    expect(LOI).toContain("assignCustomerToCreator(sb, { customerId: id, role: user?.role ?? undefined })")
   })
 
   /** Nhánh lùi (DB chưa có cột created_by) cũng phải lấy id về. */
   it("nhánh thử lại cũng lấy id", () => {
-    const retry = FORM.slice(FORM.indexOf("delete insertPayload.created_by"))
-    expect(retry.slice(0, 400)).toContain('.select("id")')
+    const retry = LOI.slice(LOI.indexOf("delete ghi.created_by"))
+    expect(retry.slice(0, 200)).toContain('.select("id")')
   })
 
   it("phân công hỏng thì thông báo báo đỏ", () => {
-    expect(FORM).toContain('variant: outcome.kind === "failed" ? "destructive" : undefined')
+    expect(LOI).toContain('phanCongLoi: kq.kind === "failed"')
+    expect(FORM).toContain('variant: kq.phanCongLoi ? "destructive" : undefined')
   })
 })
 

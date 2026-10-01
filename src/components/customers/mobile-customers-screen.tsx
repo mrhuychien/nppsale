@@ -10,6 +10,7 @@
  * địa chỉ, SĐT, nhãn) → "Tải thêm 20".
  */
 
+import { CHUA_CO_TUYEN } from "@/lib/customers/tao-khach"
 import { UserMenu } from "@/components/layout/user-menu"
 import { NutMenuDauTrang } from "@/components/layout/mo-menu-context"
 import Link from "@/components/ui/link"
@@ -83,6 +84,7 @@ export function MobileCustomersScreen({
   routes,
   route,
   canCreate,
+  taoMoiHref = "/customers/new",
   listLabel,
   count,
   sort,
@@ -110,6 +112,8 @@ export function MobileCustomersScreen({
   /** Tuyến hôm nay: đã ghé / tổng điểm. */
   route: { visited: number; total: number }
   canCreate: boolean
+  /** Đường tạo khách — kèm `?sdt=` khi ô tìm đang là một SĐT (chủ nhà 01/10/2026). */
+  taoMoiHref?: string
   listLabel: string
   count: number
   /** `null` = không cho đổi cách sắp (đang xem tuyến / nợ quá hạn — đã có thứ tự riêng). */
@@ -198,6 +202,7 @@ export function MobileCustomersScreen({
               <SelectTrigger className="h-10 rounded-xl" aria-label="Tuyến"><SelectValue placeholder="Tuyến" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi tuyến</SelectItem>
+                <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
                 {routes.map((r) => (
                   <SelectItem key={r.code} value={r.code}>{r.name || r.code}</SelectItem>
                 ))}
@@ -220,7 +225,7 @@ export function MobileCustomersScreen({
           </Link>
           {canCreate && (
             <Link
-              href="/customers/new"
+              href={taoMoiHref}
               className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-sm"
             >
               <Plus className="h-4 w-4" /> Thêm KH

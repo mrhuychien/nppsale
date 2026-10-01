@@ -167,8 +167,8 @@ describe("Màn thêm khách hàng nói rõ hỏng ở đâu", () => {
 
   /** ⚠ "Lỗi" một mình không nói được người dùng vừa mất cái gì. */
   it("tiêu đề nói rõ thao tác nào hỏng", () => {
-    expect(FORM).toContain('title: customer ? "Không cập nhật được khách hàng" : "Không tạo được khách hàng"')
-    expect(FORM).toContain("description: errorMessage(err),")
+    expect(FORM).toContain('customer ? "Không cập nhật được khách hàng" : "Không tạo được khách hàng"')
+    expect(FORM).toContain("errorMessage(err)")
   })
 
   /**

@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/select"
 import {
   Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check, Trash2, Camera, PackageCheck, Pencil, Undo2,
-} from "lucide-react"
+  Clock, Navigation, Info, Check, Trash2, Camera, PackageCheck, Pencil, Undo2, Route } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 import { toast } from "@/hooks/use-toast"
@@ -42,6 +41,7 @@ const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string; labe
   receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]", label: "Quá hạn" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10", label: "Ghé thăm" },
   customer_photo_missing: { icon: Camera, color: "text-[#b54708] bg-[#fff4ed]", label: "Thiếu ảnh điểm bán" },
+  customer_route_missing: { icon: Route, color: "text-[#b54708] bg-[#fff4ed]", label: "Chưa gán tuyến" },
   info: { icon: Info, color: "text-muted-foreground bg-muted", label: "Khác" },
 }
 

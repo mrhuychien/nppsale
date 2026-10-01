@@ -254,6 +254,15 @@ function baoCaoTonKho({ p_tu, p_den }, { db }) {
 }
 
 export const rpc = {
+  /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số) hoặc tên — màn thêm khách chặn tạo trùng số. */
+  search_customer_dupes: ({ p_q }, { db }) => {
+    const so = String(p_q ?? "").replace(/\D/g, "")
+    const q = String(p_q ?? "").toLowerCase().trim()
+    if (q.length < 2) return []
+    return (db.customers || [])
+      .filter((c) => (so.length >= 3 && String(c.phone ?? "").replace(/\D/g, "").includes(so)) || String(c.store_name ?? "").toLowerCase().includes(q))
+      .map((c) => ({ id: c.id, store_name: c.store_name, owner_name: c.owner_name, phone: c.phone, address: c.address ?? null, ward: c.ward ?? null, primary_user_name: null, has_my_assignment: true }))
+  },
   bao_cao_so_ban: baoCaoSoBan,
   bao_cao_cong_no: baoCaoCongNo,
   bao_cao_ton_kho: baoCaoTonKho,

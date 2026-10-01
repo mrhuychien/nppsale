@@ -472,6 +472,7 @@ export type NotificationType =
   | "receivable_overdue"
   | "visit_logged"
   | "customer_photo_missing"
+  | "customer_route_missing"
   | "info"
 
 export interface Notification {

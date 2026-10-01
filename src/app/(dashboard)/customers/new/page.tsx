@@ -4,10 +4,13 @@ import { useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { PageHeader } from "@/components/ui/page-header"
 import { CustomerForm } from "@/components/customers/customer-form"
 import { CustomerDupeFinder } from "@/components/customers/customer-dupe-finder"
+import { TaoKhachDienThoai } from "@/components/customers/tao-khach-dien-thoai"
 import { Skeleton } from "@/components/ui/skeleton"
+import { sdtTuTimKiem } from "@/lib/customers/tao-khach"
 import { Camera } from "lucide-react"
 
 /**
@@ -27,11 +30,18 @@ export default function NewCustomerPage() {
   const { loading: authLoading } = useRoleGuard("customers")
   const { groups, loading } = useCustomerGroups()
   const params = useSearchParams()
+  const laMay = useKhoMay()
+  /* Chủ nhà 01/10/2026: tìm SĐT không ra → tạo khách mới phải gán sẵn số vừa tìm (`?sdt=`). */
+  const sdtTim = sdtTuTimKiem(params.get("sdt"))
   const [showForm, setShowForm] = useState(false)
+  const [sdtDaTim, setSdtDaTim] = useState(sdtTim)
 
   const next = safeNext(params.get("next"))
 
-  if (authLoading || loading) return <Skeleton className="h-96" />
+  if (authLoading || loading || laMay === null) return <Skeleton className="h-96" />
+
+  /* Điện thoại: màn theo bản thiết kế 01/10/2026 — có kiểm trùng SĐT ngay khi gõ, nên đi thẳng vào form. */
+  if (laMay === false) return <TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} />
 
   return (
     <div className="space-y-4">
@@ -48,10 +58,16 @@ export default function NewCustomerPage() {
           lấy tự động. Hệ thống sẽ nhắc lại những điểm bán còn thiếu.
         </span>
       </p>
-      {showForm ? (
-        <CustomerForm groups={groups} nextHref={next} />
+      {showForm || sdtTim ? (
+        <CustomerForm groups={groups} nextHref={next} initialPhone={sdtDaTim} />
       ) : (
-        <CustomerDupeFinder onConfirmCreateNew={() => setShowForm(true)} />
+        <CustomerDupeFinder
+          onConfirmCreateNew={(q) => {
+            // Ô tìm đang là một SĐT → gán sẵn vào form tạo mới.
+            setSdtDaTim(sdtTuTimKiem(q))
+            setShowForm(true)
+          }}
+        />
       )}
     </div>
   )

@@ -9,8 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button"
 import {
   Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check, Camera, PackageCheck, Pencil, Undo2,
-} from "lucide-react"
+  Clock, Navigation, Info, Check, Camera, PackageCheck, Pencil, Undo2, Route } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 
@@ -32,6 +31,7 @@ const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = 
   receivable_overdue: { icon: Clock, color: "text-[#c2410c] bg-[#fff4ed]" },
   visit_logged: { icon: Navigation, color: "text-primary bg-primary/10" },
   customer_photo_missing: { icon: Camera, color: "text-[#b54708] bg-[#fff4ed]" },
+  customer_route_missing: { icon: Route, color: "text-[#b54708] bg-[#fff4ed]" },
   info: { icon: Info, color: "text-muted-foreground bg-muted" },
 }
 

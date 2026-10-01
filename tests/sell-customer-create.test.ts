@@ -47,7 +47,9 @@ describe("nút tạo khách trên màn chọn khách", () => {
   })
 
   it("mang theo đường quay về luồng bán hàng", () => {
-    expect(PICKER).toContain('router.push("/customers/new?next=/sell/customer")')
+    // Kèm `&sdt=` khi ô tìm đang là SĐT (chủ nhà 01/10/2026).
+    expect(PICKER).toContain("`/customers/new?next=/sell/customer${sdtTim ? `&sdt=${sdtTim}` : \"\"}`")
+    expect(PICKER).toContain("router.push(taoMoiHref)")
   })
 })
 
@@ -112,7 +114,8 @@ describe("trang tạo khách nhận đường quay về", () => {
   })
 
   it("truyền đường quay về xuống form", () => {
-    expect(NEWPAGE).toContain("<CustomerForm groups={groups} nextHref={next} />")
+    expect(NEWPAGE).toContain("<CustomerForm groups={groups} nextHref={next}")
+    expect(NEWPAGE).toContain("<TaoKhachDienThoai groups={groups} nextHref={next}")
   })
 
   /**

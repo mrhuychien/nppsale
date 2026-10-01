@@ -1,5 +1,6 @@
 "use client"
 
+import { dinhDangSdt, sdtTuTimKiem } from "@/lib/customers/tao-khach"
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Check, ChevronLeft, Plus, Search } from "lucide-react"
@@ -72,6 +73,9 @@ export default function SellCustomerPage() {
     router.replace("/sell")
   }, [pickWait, picked, customerById]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const sdtTim = sdtTuTimKiem(q)
+  const taoMoiHref = `/customers/new?next=/sell/customer${sdtTim ? `&sdt=${sdtTim}` : ""}`
+
   // Chữ gõ vào ô là việc khẩn; lọc lại danh sách theo sau — xem màn /sell.
   const deferredQ = useDeferredValue(q)
   const list = useMemo(
@@ -109,7 +113,7 @@ export default function SellCustomerPage() {
           */}
           <button
             type="button"
-            onClick={() => router.push("/customers/new?next=/sell/customer")}
+            onClick={() => router.push(taoMoiHref)}
             aria-label="Tạo khách hàng mới"
             className="flex h-9 items-center gap-1 rounded-[10px] bg-primary/10 px-3 text-[13px] font-semibold text-primary"
           >
@@ -139,9 +143,22 @@ export default function SellCustomerPage() {
         ) : loading ? (
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="mt-2 h-16 rounded-[14px]" />)
         ) : list.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            {q.trim() ? `Không tìm thấy khách khớp “${q.trim()}”` : "Chưa có khách hàng nào"}
-          </p>
+          <div className="flex flex-col items-center gap-3 py-10">
+            <p className="text-center text-sm text-muted-foreground">
+              {q.trim() ? `Không tìm thấy khách khớp “${q.trim()}”` : "Chưa có khách hàng nào"}
+            </p>
+            {/* Chủ nhà 01/10/2026: tìm SĐT không ra → tạo khách mới gán sẵn số vừa tìm. */}
+            {sdtTim && (
+              <button
+                type="button"
+                data-testid="tao-khach-voi-sdt"
+                onClick={() => router.push(taoMoiHref)}
+                className="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+              >
+                <Plus className="h-4 w-4" /> Tạo khách mới với số {dinhDangSdt(sdtTim)}
+              </button>
+            )}
+          </div>
         ) : (
           nhom.map(([chu, ds]) => (
             <div key={chu} className="flex flex-col">

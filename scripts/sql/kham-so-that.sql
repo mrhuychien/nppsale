@@ -518,4 +518,14 @@ SELECT 59, 'Mig 220 (Giờ sửa cuối trên mẫu in)',
          OR (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_zzz_sua_luc') < 6
        THEN 'CHƯA — tờ in vẫn mang giờ tạo lần đầu'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 60. Mig 221 — nhắc khách chưa gán tuyến (loại thông báo + cột hạ nhiệt)
+SELECT 60, 'Mig 221 (Nhắc khách chưa gán tuyến)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+                          AND table_name = 'customers' AND column_name = 'route_reminder_sent_at')
+         OR position('customer_route_missing' IN coalesce((SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+                          WHERE c.conname = 'notifications_type_check'), '')) = 0
+       THEN 'CHƯA — cron không ghi được thông báo khách chưa gán tuyến'
+       ELSE 'OK — đã vá' END,
+  'Khách đang bán chưa có tuyến: ' || (SELECT count(*) FROM customers WHERE status = 'active' AND coalesce(trim(channel), '') = '')
 ) t ORDER BY stt;

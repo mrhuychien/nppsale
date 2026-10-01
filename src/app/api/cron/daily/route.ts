@@ -4,6 +4,7 @@ import { isWeeklyDue, MONDAY_VN, vnDate, vnWeekday } from "@/lib/cron/schedule"
 import { GET as einvoiceSync } from "@/app/api/einvoice/sync/route"
 import { GET as pullSnapshots } from "@/app/api/einvoice/pull-snapshots/route"
 import { GET as photoReminders } from "@/app/api/customers/photo-reminders/route"
+import { GET as routeReminders } from "@/app/api/customers/route-reminders/route"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -80,6 +81,9 @@ async function handle(req: Request) {
       skipped: `chỉ chạy thứ Hai giờ VN (hôm nay là thứ ${vnWeekday(now)})`,
     })
   }
+
+  // Khách chưa gán tuyến — mỗi ngày, mỗi khách hạ nhiệt vài ngày (chủ nhà 01/10/2026).
+  jobs.push(await runJob("customer-route-reminders", routeReminders, req))
 
   jobs.push(await runJob("einvoice-pull-snapshots", pullSnapshots, req))
 

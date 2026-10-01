@@ -9,6 +9,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout } from "@/components/ui/doc-list-layout"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
+import { CHUA_CO_TUYEN, dinhDangSdt, sdtTuTimKiem } from "@/lib/customers/tao-khach"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -96,7 +97,12 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("")
   const [quick, setQuick] = useState<QuickFilter>("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  /* `?tuyen=chua` — thông báo "khách chưa gán tuyến" mở thẳng danh sách cần cập nhật (chủ nhà 01/10/2026). */
   const [channelFilter, setChannelFilter] = useState("all")
+  // Đọc trong effect, không lúc render đầu (HTML máy chủ ≠ máy khách → lỗi hydrate #418).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tuyen") === "chua") setChannelFilter(CHUA_CO_TUYEN)
+  }, [])
   const [salesUserFilter, setSalesUserFilter] = useState("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
@@ -297,7 +303,8 @@ export default function CustomersPage() {
         /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
         for (const f of locNC.menhDe) q = q.or(f)
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
-        if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+        if (channelFilter === CHUA_CO_TUYEN) q = q.or("channel.is.null,channel.eq.")
+        else if (channelFilter !== "all") q = q.eq("channel", channelFilter)
         return q
       }
       const chon = "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)"
@@ -583,6 +590,10 @@ export default function CustomersPage() {
     }
   }
 
+  /* Chủ nhà 01/10/2026: tìm SĐT không ra → tạo khách mới gán sẵn số vừa tìm. */
+  const sdtTim = sdtTuTimKiem(debouncedSearch)
+  const taoMoiHref = sdtTim ? `/customers/new?sdt=${sdtTim}` : "/customers/new"
+  const coQuyenTao = !!user && hasPermission(user.role, "customers", "create")
   const emptyState = (
     <EmptyState
       icon={<Users className="h-8 w-8 text-muted-foreground" />}
@@ -616,7 +627,17 @@ export default function CustomersPage() {
                       : "Bắt đầu bằng cách thêm khách hàng đầu tiên"
                   : "Thử điều chỉnh bộ lọc"
       }
-    />
+    >
+      {sdtTim && coQuyenTao && !loadError && (
+        <Link
+          href={taoMoiHref}
+          data-testid="tao-khach-voi-sdt"
+          className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" /> Tạo khách mới với số {dinhDangSdt(sdtTim)}
+        </Link>
+      )}
+    </EmptyState>
   )
 
   /* ⚠ CÔNG NỢ ĐỌC THIẾU / LỖI TẢI THÌ NÓI TRƯỚC KHI NGƯỜI TA ĐỌC CON SỐ — cả hai màn. */
@@ -661,7 +682,7 @@ export default function CustomersPage() {
             <Button variant="outline" size="sm" className="hidden lg:inline-flex" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" /> Nhập Excel
             </Button>
-            <Button size="sm" onClick={() => router.push("/customers/new")}>
+            <Button size="sm" onClick={() => router.push(taoMoiHref)}>
               <Plus className="mr-2 h-4 w-4" /> Thêm KH
             </Button>
           </>
@@ -760,6 +781,7 @@ export default function CustomersPage() {
                 <SelectTrigger aria-label="Tuyến" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Tuyến" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả tuyến</SelectItem>
+                  <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
                   {routes.map((r) => (
                     <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
                   ))}
@@ -863,6 +885,7 @@ export default function CustomersPage() {
         routes={routes}
         route={{ visited: visitedOnRoute, total: routeTotal }}
         canCreate={!!user && hasPermission(user.role, "customers", "create")}
+        taoMoiHref={taoMoiHref}
         listLabel={
           debouncedSearch ? "Kết quả" : quick === "all" ? (noNhieuNhat ? "Còn nợ" : "Tất cả") : QUICK_FILTER_LABEL[quick]
         }

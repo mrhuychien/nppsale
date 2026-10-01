@@ -2,7 +2,7 @@
 
 import { lamCuDanhMucBan } from "@/lib/sell/ref-store"
 import { xoaNhoNen } from "@/lib/cache/nho-nen"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -14,9 +14,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { assignCustomerToCreator, assignNote } from "@/lib/customers/assign-creator"
 import { PAYMENT_TERMS } from "@/lib/constants"
-import { WARDS_HAI_PHONG } from "@/lib/constants/wards-hai-phong"
+import { SearchSelect } from "@/components/ui/search-select"
+import { KhachDaCo, LUA_CHON_PHUONG_XA, chuanHoaSdt, taoKhach } from "@/lib/customers/tao-khach"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
 import type { Customer, CustomerGroup } from "@/types"
 import { errorMessage } from "@/lib/errors"
@@ -35,6 +35,8 @@ interface CustomerFormProps {
    * Mã khách vừa tạo được gắn vào `?picked=` để nơi nhận tự chọn sẵn.
    */
   nextHref?: string
+  /** SĐT gán sẵn khi tạo mới — từ ô tìm khách không ra kết quả (chủ nhà 01/10/2026). */
+  initialPhone?: string
 }
 
 interface PjpRouteDisplay {
@@ -53,16 +55,18 @@ const DAY_LABELS: Record<number, string> = {
   6: "Thứ 7",
 }
 
-export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) {
+export function CustomerForm({ customer, groups, nextHref, initialPhone }: CustomerFormProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
+  /** Chống bấm Lưu 2 lần — `loading` chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt (chủ nhà 01/10/2026). */
+  const dangLuu = useRef(false)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [pjpRoutes, setPjpRoutes] = useState<PjpRouteDisplay[]>([])
   const [salesRoutes, setSalesRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [form, setForm] = useState<Record<string, string>>({
     store_name: customer?.store_name || "",
     owner_name: customer?.owner_name || "",
-    phone: customer?.phone || "",
+    phone: customer?.phone || initialPhone || "",
     address: customer?.address || "",
     ward: customer?.ward || "",
     channel: customer?.channel || "",
@@ -157,6 +161,13 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (dangLuu.current) return
+    // Tuyến BẮT BUỘC (chủ nhà 01/10/2026: "Tuyến -> trường bắt buộc").
+    if (!form.channel) {
+      toast({ title: "Chưa chọn tuyến bán hàng", description: "Tuyến là trường bắt buộc.", variant: "destructive" })
+      return
+    }
+    dangLuu.current = true
     setLoading(true)
 
     try {
@@ -173,7 +184,8 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
        * Vậy nên ở đây KHÔNG được coi "đọc hỏng" là "không trùng" rồi đi
        * tiếp trong im lặng — nói ra, rồi vẫn để database phán.
        */
-      if (!customer || customer.phone !== form.phone) {
+      // Tạo mới: `taoKhach` tự kiểm trùng (thấy cả khách người khác phụ trách). Ở đây chỉ còn cho SỬA số.
+      if (customer && customer.phone !== form.phone) {
         const { data: existing, error: existingErr } = await supabase
           .from("customers")
           .select("id")
@@ -200,7 +212,7 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
       const payload: Record<string, unknown> = {
         store_name: form.store_name,
         owner_name: form.owner_name,
-        phone: form.phone,
+        phone: chuanHoaSdt(form.phone),
         address: form.address,
         ward: form.ward || null,
         channel: form.channel || null,
@@ -230,53 +242,13 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
         if (error) throw error
         toast({ title: "Đã cập nhật khách hàng" })
       } else {
-        // Stamp created_by so the §1.2 RLS policy lets the rep see
-        // their own customer immediately. Wrapped via spread so DBs
-        // without migration 032 still accept the insert.
-        const insertPayload: Record<string, unknown> = {
-          ...payload,
-          org_id: user?.org_id,
-        }
-        if (user?.id) insertPayload.created_by = user.id
-        // Lấy về `id`: không có nó thì không phân công được cho người vừa
-        // tạo, và điểm bán mới sẽ không thuộc về ai.
-        const { data, error } = await supabase
-          .from("customers")
-          .insert(insertPayload)
-          .select("id")
-          .single()
-        if (error) {
-          // If created_by column missing (mig 032 not applied), retry without it
-          if (
-            (error.message || "").includes("created_by") ||
-            error.code === "PGRST204"
-          ) {
-            delete insertPayload.created_by
-            const retry = await supabase
-              .from("customers")
-              .insert(insertPayload)
-              .select("id")
-              .single()
-            if (retry.error) throw retry.error
-            newId = (retry.data as { id: string } | null)?.id ?? null
-          } else {
-            throw error
-          }
-        } else {
-          newId = (data as { id: string } | null)?.id ?? null
-        }
-
-        // Phân công ngay cho người vừa tạo. NVBH đứng tại cửa hàng nhập
-        // điểm bán mới mà không được phân công thì chính họ cũng không mở
-        // lại được — RLS chỉ cho NVBH thấy khách ĐƯỢC PHÂN CÔNG.
-        const outcome = newId
-          ? await assignCustomerToCreator(supabase, { customerId: newId, role: user?.role })
-          : ({ kind: "skipped", reason: "không lấy được mã điểm bán" } as const)
-        const note = assignNote(outcome)
+        // Kiểm trùng số (cả khách người khác phụ trách) + ghi + phân công cho người tạo — `taoKhach`.
+        const kq = await taoKhach(supabase, user, payload)
+        newId = kq.id
         toast({
           title: "Đã tạo khách hàng mới",
-          description: note ?? undefined,
-          variant: outcome.kind === "failed" ? "destructive" : undefined,
+          description: kq.ghiChu ?? undefined,
+          variant: kq.phanCongLoi ? "destructive" : undefined,
         })
       }
 
@@ -299,12 +271,14 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
     } catch (err: unknown) {
       // ⚠ Tiêu đề phải nói THAO TÁC NÀO hỏng. "Lỗi" một mình thì người
       // dùng không biết mình vừa mất cái gì — bản nháp còn hay đã bay.
+      // Trùng số: báo "đã có khách hàng" và Ở LẠI màn (không chuyển trang).
       toast({
-        title: customer ? "Không cập nhật được khách hàng" : "Không tạo được khách hàng",
-        description: errorMessage(err),
+        title: err instanceof KhachDaCo ? "Đã có khách hàng" : customer ? "Không cập nhật được khách hàng" : "Không tạo được khách hàng",
+        description: err instanceof KhachDaCo ? err.message : errorMessage(err),
         variant: "destructive",
       })
     } finally {
+      dangLuu.current = false
       setLoading(false)
     }
   }
@@ -333,7 +307,7 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Tuyến bán hàng</Label>
+                <Label>Tuyến bán hàng *</Label>
                 <Link
                   href="/customers/routes"
                   className="text-[10px] text-primary hover:underline"
@@ -381,18 +355,17 @@ export function CustomerForm({ customer, groups, nextHref }: CustomerFormProps) 
                   required
                   placeholder="Số nhà, tên đường"
                 />
-                <Input
-                  list="customer-ward-options"
-                  value={form.ward}
-                  onChange={(e) => setForm({ ...form, ward: e.target.value })}
-                  placeholder="Phường (gõ tìm)"
-                  autoComplete="off"
+                {/* 114 phường / xã / đặc khu Hải Phòng sau sáp nhập, có ô tìm (chủ nhà 01/10/2026). */}
+                <SearchSelect
+                  id="customer-ward"
+                  options={LUA_CHON_PHUONG_XA}
+                  valueId={LUA_CHON_PHUONG_XA.some((o) => o.id === form.ward) ? form.ward : ""}
+                  freeText={form.ward}
+                  allowFreeText
+                  onPick={(o, text) => setForm({ ...form, ward: o?.id ?? text })}
+                  placeholder="Phường / xã (gõ tìm)"
+                  limit={120}
                 />
-                <datalist id="customer-ward-options">
-                  {WARDS_HAI_PHONG.map((w) => (
-                    <option key={w} value={w} />
-                  ))}
-                </datalist>
               </div>
               {hasGps && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">

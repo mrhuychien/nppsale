@@ -215,7 +215,9 @@ export default function ReturnsPage() {
       { column: "requested_by", table: "users", columns: ["full_name"] },
       { column: "order_id", table: "sales_orders", columns: ["order_code"] },
     ],
-    "returns"
+    "returns",
+    // số chỉ tìm số phiếu trả (chủ nhà 01/10/2026)
+    true
   )
 
   /* Chờ cả hai lượt tra — ô tìm nhanh và các trường. */

@@ -338,6 +338,13 @@ export interface TuyChonMenhDe {
    * `idFilters`. Xem `tachSoChu`.
    */
   tron?: IdMatch[]
+  /**
+   * SỐ CHỈ TÌM MÃ CỦA CHÍNH CHỨNG TỪ — chủ nhà 01/10/2026: "Tìm kiếm ở Đơn hàng, Trả hàng, Hóa đơn:
+   * tìm kiếm số theo đúng tài liệu: Đơn hàng -> chỉ tìm số đơn hàng. Trả hàng -> tìm đúng số phiếu trả,
+   * hóa đơn tìm đúng theo số hóa đơn". Từ khoá có số thì KHÔNG tra bảng khác bằng cả từ khoá (SĐT khách,
+   * mã đơn của hoá đơn…); chữ trong từ khoá vẫn tra khách ("minh 0123" = phiếu 0123 của khách Minh).
+   */
+  soChiTimMa?: boolean
 }
 
 /**
@@ -383,7 +390,9 @@ export function buildOrFilter(
   })
   const chia = chiaNganSach(ds, thuTu)
   let truncated = false
+  const boTraCaTu = !!opt.soChiTimMa && !!tachSoChu(t).so
   idFilters.forEach((f, i) => {
+    if (boTraCaTu) return
     const m = chia[`d${i}`][0]
     if (m.truncated) truncated = true
     if (m.ids.length > 0) parts.push(`${f.column}.in.(${m.ids.join(",")})`)
@@ -427,18 +436,21 @@ export async function menhDeTimDanhSach(
   term: string,
   orgId: string | null | undefined,
   ownColumns: string[],
-  lookups: LookupSpec[]
+  lookups: LookupSpec[],
+  soChiTimMa = false
 ): Promise<OrClause & { timKd: boolean }> {
   const t = term.trim()
   if (!t) return { filter: null, truncated: false, timKd: false }
+  // Có số + `soChiTimMa`: cả từ khoá không đem tra bảng khác (xem `TuyChonMenhDe.soChiTimMa`).
+  const boTraCaTu = soChiTimMa && !!tachSoChu(t).so
   const [timKd, matches] = await Promise.all([
     bang ? coTimKd(sb, bang) : Promise.resolve(false),
-    Promise.all(lookups.map((s) => idsMatching(sb, s.table, s.columns, t, orgId, s.idColumn ?? "id"))),
+    Promise.all(lookups.map((s) => (boTraCaTu ? Promise.resolve(NO_MATCH) : idsMatching(sb, s.table, s.columns, t, orgId, s.idColumn ?? "id")))),
   ])
   const chu = canTraTron(t, ownColumns.length > 0 || timKd, lookups.length)
   const tron = chu
     ? await Promise.all(lookups.map((s) => idsMatching(sb, s.table, s.columns, chu, orgId, s.idColumn ?? "id")))
     : undefined
-  const or = buildOrFilter(t, ownColumns, lookups.map((s, i) => ({ column: s.column, match: matches[i] })), { timKd, tron })
+  const or = buildOrFilter(t, ownColumns, lookups.map((s, i) => ({ column: s.column, match: matches[i] })), { timKd, tron, soChiTimMa })
   return { ...or, timKd }
 }

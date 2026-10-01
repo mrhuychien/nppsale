@@ -54,7 +54,9 @@ export function useListSearch(
    * Tên bảng đang liệt kê — để tìm cả khoá `tim_kd` của nó (mã viết liền,
    * bỏ số 0 đầu, không dấu; mig 205). Bỏ trống thì chỉ tìm `ownColumns`.
    */
-  bang?: string
+  bang?: string,
+  /** Từ khoá có số chỉ tìm mã của chính chứng từ — `TuyChonMenhDe.soChiTimMa`. */
+  soChiTimMa = false
 ): ListSearch {
   const t = term.trim()
   const [state, setState] = useState<{ term: string; filter: string | null; truncated: boolean }>({
@@ -68,7 +70,7 @@ export function useListSearch(
    *   trong thân component, nên tham chiếu đổi mỗi lần vẽ lại — để nó
    *   thẳng vào mảng phụ thuộc là hiệu ứng chạy vô hạn.
    */
-  const key = JSON.stringify([ownColumns, lookups, bang ?? null])
+  const key = JSON.stringify([ownColumns, lookups, bang ?? null, soChiTimMa])
 
   useEffect(() => {
     if (!t) {
@@ -77,8 +79,8 @@ export function useListSearch(
     }
     let cancelled = false
     ;(async () => {
-      const [cot, specs, b]: [string[], LookupSpec[], string | null] = JSON.parse(key)
-      const or = await menhDeTimDanhSach(supabase, b, t, orgId, cot, specs)
+      const [cot, specs, b, chiMa]: [string[], LookupSpec[], string | null, boolean] = JSON.parse(key)
+      const or = await menhDeTimDanhSach(supabase, b, t, orgId, cot, specs, chiMa)
       if (!cancelled) setState({ term: t, filter: or.filter, truncated: or.truncated })
     })()
     return () => { cancelled = true }

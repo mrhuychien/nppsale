@@ -279,7 +279,9 @@ export default function SalesInvoicesPage() {
       { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
       { column: "order_id", table: "sales_orders", columns: ["order_code"] },
     ],
-    "sales_invoices"
+    "sales_invoices",
+    // số chỉ tìm số hoá đơn (chủ nhà 01/10/2026)
+    true
   )
   /* ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu 23/09/2026) — mã hóa đơn/đơn, hàng, số lô,
      khách; ghép "VÀ". Xem `useFieldSearch`. Trễ 350 ms cho tấm lọc điện thoại. */
@@ -709,7 +711,7 @@ export default function SalesInvoicesPage() {
       <MobileFilterBar
         value={search}
         onChange={setSearch}
-        placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
+        placeholder="Tìm số hóa đơn, tên khách…"
         activeCount={activeFilterCount}
         onClear={clearAdvanced}
         open={filterSheet}
@@ -738,7 +740,7 @@ export default function SalesInvoicesPage() {
               className="min-w-[260px] max-w-md flex-1"
               value={search}
               onChange={setSearch}
-              placeholder="Tìm số hóa đơn, mã đơn, tên khách…"
+              placeholder="Tìm số hóa đơn, tên khách…"
               fields={TRUONG_HOA_DON}
               applied={truongTim}
               onApply={setTruongTim}

@@ -157,7 +157,7 @@ describe("Hai bộ lọc dùng nhiều nhất: máy tính đứng NGOÀI, điệ
     const row = ORDERS.indexOf('<div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">')
     /* ⚠ NEO VÀO PHẦN KHÔNG ĐỔI của placeholder — nó được nối dài khi ô
        tìm mở rộng sang tên khách (21/09/2026). */
-    const search = ORDERS.indexOf('placeholder="Tìm mã đơn', row)
+    const search = ORDERS.indexOf('placeholder="Tìm số đơn hàng', row)
     const route = ORDERS.indexOf("<RouteFilter routes={routes}", search)
     /* 24/09/2026: nút cũ đổi tên "Lọc nhanh" — "Bộ lọc nâng cao" nay là bộ lọc theo trường bất kỳ. */
     const advanced = ORDERS.indexOf("Lọc nhanh", search)

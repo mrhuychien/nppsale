@@ -16,7 +16,7 @@ test("danh sách đơn: mã gõ liền + bỏ số 0 đầu ('dh3' ra DH-0003), 
   await page.goto("/orders")
   await chonKy(page, "Tất cả")
   await expect(page.getByText("DH-0001").first()).toBeVisible()
-  const o = page.getByPlaceholder("Tìm mã đơn, tên khách, số điện thoại…").locator("visible=true").first()
+  const o = page.getByPlaceholder("Tìm số đơn hàng, tên khách…").locator("visible=true").first()
 
   await o.fill("dh3")
   await expect(tongDon(page)).toContainText("1 đơn hàng")

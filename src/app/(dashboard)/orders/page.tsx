@@ -496,7 +496,9 @@ export default function OrdersPage() {
   const listSearch = useListSearch(
     supabase, debouncedSearch, user?.org_id, ["order_code"],
     [{ column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] }],
-    "sales_orders"
+    "sales_orders",
+    // số chỉ tìm số đơn hàng (chủ nhà 01/10/2026)
+    true
   )
   /**
    * ⚠ TÌM THEO TỪNG TRƯỜNG (mẫu chủ nhà 23/09/2026) — mã đơn, mã/tên hàng,
@@ -1501,7 +1503,7 @@ export default function OrdersPage() {
       <MobileFilterBar
         value={search}
         onChange={setSearch}
-        placeholder="Tìm mã đơn, tên khách…"
+        placeholder="Tìm số đơn hàng, tên khách…"
         activeCount={activeFilterCount}
         onClear={clearAdvancedFilters}
         open={filterSheet}
@@ -1531,7 +1533,7 @@ export default function OrdersPage() {
             className="flex-1 min-w-[260px] max-w-md"
             value={search}
             onChange={setSearch}
-            placeholder="Tìm mã đơn, tên khách, số điện thoại…"
+            placeholder="Tìm số đơn hàng, tên khách…"
             fields={TRUONG_DON_HANG}
             applied={truongTim}
             onApply={setTruongTim}

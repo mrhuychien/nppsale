@@ -448,8 +448,9 @@ describe("mọi ô tìm đi qua bộ tìm chung", () => {
       const khoi = s.slice(i, s.indexOf("\n  )", i))
       // Không có cột riêng để tìm (`ownColumns = []`, vd công nợ chỉ tra khách / mã HĐ) thì không cần bảng.
       if (/useListSearch\(\s*\w+,\s*[\w.?]+,\s*[\w.?]+,\s*\[\],/.test(khoi)) continue
-      expect(khoi, f).toMatch(/\],\s*"(\w+)"\s*$/)
-      const bang = khoi.match(/"(\w+)"\s*$/)![1]
+      // Sau tên bảng có thể có cờ `soChiTimMa` (Đơn hàng / Hoá đơn / Trả hàng, chủ nhà 01/10/2026).
+      expect(khoi, f).toMatch(/\],\s*"(\w+)"(,\s*true)?\s*$/)
+      const bang = khoi.match(/"(\w+)"(?:,\s*true)?\s*$/)![1]
       expect(BANG_TIM_KD_TINH.has(bang), `${f}: ${bang}`).toBe(true)
     }
   })

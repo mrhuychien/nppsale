@@ -63,7 +63,7 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
     expect(card).toBeGreaterThan(0)
     /* ⚠ NEO VÀO Ô TÌM, và placeholder của nó đổi khi ô tìm được mở
        rộng sang tên khách (21/09/2026) — neo vào phần KHÔNG đổi. */
-    const toolbar = PAGE.indexOf('placeholder="Tìm mã đơn', card)
+    const toolbar = PAGE.indexOf('placeholder="Tìm số đơn hàng', card)
     const bulk = PAGE.indexOf("{bulkBar}", card)
     const table = PAGE.indexOf("<DesktopOrderTable", card)
     const pager = PAGE.indexOf("<DataPagination", card)
@@ -100,7 +100,7 @@ describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng ·
    * lượt tra thật đứng sau.
    */
   it("placeholder ô tìm nói đúng thứ nó tìm", () => {
-    expect(PAGE).toContain('placeholder="Tìm mã đơn, tên khách, số điện thoại…"')
+    expect(PAGE).toContain('placeholder="Tìm số đơn hàng, tên khách…"')
     expect(PAGE, "hứa tìm tên khách mà không tra bảng khách")
       .toContain('table: "customers", columns: ["store_name", "owner_name", "phone"]')
     expect(PAGE, "vẫn còn ô tìm chỉ soi mã đơn")

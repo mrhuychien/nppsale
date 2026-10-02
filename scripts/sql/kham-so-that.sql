@@ -547,4 +547,11 @@ SELECT 62, 'Mig 223 (Nhân viên nghỉ việc, nợ về NPP)',
   CASE WHEN to_regprocedure('public.cho_nhan_vien_nghi(uuid)') IS NULL THEN ''
        ELSE 'Nợ NPP đang giữ (chưa phân lại): ' || (SELECT count(*) FROM receivables
               WHERE status <> 'paid' AND (to_jsonb(receivables) ->> 've_npp_luc') IS NOT NULL) END
+UNION ALL
+-- 63. Mig 224 — đánh dấu hoá đơn đã soạn hàng
+SELECT 63, 'Mig 224 (Đánh dấu đã soạn hàng)',
+  CASE WHEN to_regprocedure('public.danh_dau_soan_hang(uuid[],boolean)') IS NULL
+       THEN 'CHƯA — màn Soạn hàng không lọc / đánh dấu được hoá đơn đã soạn'
+       ELSE 'OK — đã vá' END,
+  ''
 ) t ORDER BY stt;

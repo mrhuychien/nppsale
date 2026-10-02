@@ -12,11 +12,15 @@
  * (`?ids=`) — tải lại hay gửi link cho kho vẫn đúng các hóa đơn ấy.
  *
  * ⚠ CHỈ ĐỌC — kho đã trừ lúc ghi sổ hóa đơn. Xem `lib/orders/pick-list.ts`.
+ *
+ * ⚠ CHỦ NHÀ 02/10/2026: "thêm các bộ lọc vào đơn. thêm đánh dấu đơn nào đã soạn vào" · "đã soạn chỉ xuất
+ *   hiện ở màn soạn đơn thôi". Lọc ngày HĐ / nhân viên / tuyến / chưa-đã soạn (mặc định Chưa soạn); dấu đã
+ *   soạn ghi qua RPC `danh_dau_soan_hang` (mig 224) — `lib/orders/soan-hang-loc.ts`.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Plus, Search, X, ListPlus } from "lucide-react"
+import { Plus, Search, X, ListPlus, CheckCircle2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
@@ -25,6 +29,14 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
+import { errorMessage } from "@/lib/errors"
+import {
+  LOC_SOAN_MAC_DINH, NHAN_TRANG_THAI_SOAN, apLocSoan, cotHoaDonSoan, duocDanhDauSoan, khoaCuaTuyen, nhanDaSoan,
+  soLocDangBat, thieuCotSoan, type LocSoan, type TrangThaiSoan,
+} from "@/lib/orders/soan-hang-loc"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
 import { KHONG_DONG_NAO, menhDeTimDanhSach } from "@/lib/search/list-search"
@@ -39,9 +51,16 @@ interface HoaDon {
   invoice_date: string | null
   status: string
   total: number | null
-  customer?: { store_name?: string | null; phone?: string | null } | null
+  sales_user_id?: string | null
+  /** Đã soạn lúc / người đánh dấu (mig 224) — chỉ dùng ở màn này. */
+  soan_luc?: string | null
+  soan_boi?: string | null
+  customer?: { store_name?: string | null; phone?: string | null; channel?: string | null } | null
   order?: { order_code?: string | null } | null
 }
+
+interface Tuyen { id: string; code: string | null; name: string }
+interface Nguoi { id: string; full_name: string | null; role: string; is_active?: boolean | null }
 
 interface DongHD {
   invoice_id: string
@@ -53,7 +72,6 @@ interface DongHD {
   product?: ({ name?: string | null; sku?: string | null } & ProductUnits) | null
 }
 
-const COT_HD = "id, invoice_code, invoice_date, status, total, customer:customers(store_name, phone), order:sales_orders(order_code)"
 /** Trần kết quả — đủ cho một ngày giao hàng, không kéo cả sổ về. */
 const TRAN_TIM = 50
 
@@ -77,6 +95,28 @@ function Trang() {
   const [ketQua, setKetQua] = useState<HoaDon[] | null>(null)
   const [dangTim, setDangTim] = useState(false)
   const [chiTiet, setChiTiet] = useState(true)
+  const { toast } = useToast()
+  const [loc, setLoc] = useState<LocSoan>(LOC_SOAN_MAC_DINH)
+  const datLoc = (x: Partial<LocSoan>) => setLoc((l) => ({ ...l, ...x }))
+  /** Sổ đã chạy mig 224 chưa — chưa thì đọc không có cột soạn, ẩn lọc / nút đánh dấu. */
+  const [coCotSoan, setCoCotSoan] = useState(true)
+  const [tuyen, setTuyen] = useState<Tuyen[]>([])
+  const [nguoi, setNguoi] = useState<Nguoi[]>([])
+  const [dangDanhDau, setDangDanhDau] = useState(false)
+  const choDanhDau = coCotSoan && duocDanhDauSoan(user?.role)
+
+  useEffect(() => {
+    if (authLoading) return
+    supabase.from("sales_routes").select("id, code, name").order("sort_order").then(({ data, error }) => {
+      if (error) console.error("[soan-hang] đọc tuyến lỗi:", error.message)
+      setTuyen((data as Tuyen[]) ?? [])
+    })
+    supabase.from("users").select("id, full_name, role, is_active").order("full_name").then(({ data, error }) => {
+      if (error) console.error("[soan-hang] đọc nhân viên lỗi:", error.message)
+      setNguoi((data as Nguoi[]) ?? [])
+    })
+  }, [authLoading, supabase])
+  const tenNguoi = (id: string | null | undefined) => (id && nguoi.find((u) => u.id === id)?.full_name) || null
 
   /* ---- nạp hóa đơn từ đường dẫn ---- */
   const idsUrl = params.get("ids")
@@ -86,7 +126,12 @@ function Trang() {
     let huy = false
     ;(async () => {
       if (ids.length === 0) { setNapDau(false); return }
-      const { data, error } = await supabase.from("sales_invoices").select(COT_HD).in("id", ids)
+      const doc = (co: boolean) => supabase.from("sales_invoices").select(cotHoaDonSoan(LOC_SOAN_MAC_DINH, co)).in("id", ids)
+      let { data, error } = await doc(true)
+      if (error && thieuCotSoan(error.message)) {
+        setCoCotSoan(false)
+        ;({ data, error } = await doc(false))
+      }
       if (huy) return
       if (error) console.error("[soan-hang] đọc hóa đơn lỗi:", error.message)
       const theoId = new Map(((data as unknown as HoaDon[]) ?? []).map((d) => [d.id, d]))
@@ -139,13 +184,7 @@ function Trang() {
     const term = tu.trim()
     const luot = ++timRef.current
     setDangTim(true)
-    let qd = supabase
-      .from("sales_invoices")
-      .select(COT_HD)
-      .order("invoice_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(TRAN_TIM)
-    qd = caDaHuy ? qd.in("status", ["posted", "cancelled"]) : qd.eq("status", "posted")
+    let dieuKienTim: string | null = null
     if (term) {
       /* Ô tìm chung (chủ nhà 27/09/2026): từng từ, không dấu, mã viết liền — như mọi danh sách. */
       const or = await menhDeTimDanhSach(supabase, "sales_invoices", term, user?.org_id, ["invoice_code"], [
@@ -153,14 +192,30 @@ function Trang() {
         { column: "order_id", table: "sales_orders", columns: ["order_code"] },
       ])
       if (luot !== timRef.current) return
-      qd = qd.or(or.filter ?? KHONG_DONG_NAO)
+      dieuKienTim = or.filter ?? KHONG_DONG_NAO
     }
-    const { data, error } = await qd
+    const chay = (co: boolean) => {
+      let qd = supabase
+        .from("sales_invoices")
+        .select(cotHoaDonSoan(loc, co))
+        .order("invoice_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(TRAN_TIM)
+      qd = caDaHuy ? qd.in("status", ["posted", "cancelled"]) : qd.eq("status", "posted")
+      qd = apLocSoan(qd, loc, co, khoaCuaTuyen(tuyen.find((r) => r.id === loc.tuyen)))
+      if (dieuKienTim) qd = qd.or(dieuKienTim)
+      return qd
+    }
+    let { data, error } = await chay(coCotSoan)
+    if (error && coCotSoan && thieuCotSoan(error.message)) {
+      setCoCotSoan(false)
+      ;({ data, error } = await chay(false))
+    }
     if (luot !== timRef.current) return
     if (error) console.error("[soan-hang] tìm hóa đơn lỗi:", error.message)
     setKetQua((data as unknown as HoaDon[]) ?? [])
     setDangTim(false)
-  }, [supabase, caDaHuy, user?.org_id])
+  }, [supabase, caDaHuy, user?.org_id, loc, coCotSoan, tuyen])
 
   useEffect(() => {
     if (authLoading) return
@@ -175,6 +230,30 @@ function Trang() {
     setDaDoc((s) => { const n = new Set(s); n.delete(id); return n })
   }
   const chuaChon = (ketQua ?? []).filter((d) => !idsChon.includes(d.id))
+
+  /* ---- đánh dấu đã soạn (mig 224) ---- */
+  const chonChuaSoan = chon.filter((d) => d.status === "posted" && !d.soan_luc)
+  const chonDaSoan = chon.filter((d) => !!d.soan_luc)
+  const danhDau = async (ids: string[], da: boolean) => {
+    if (!ids.length || dangDanhDau) return
+    setDangDanhDau(true)
+    try {
+      const { error } = await supabase.rpc("danh_dau_soan_hang", { p_ids: ids, p_da: da })
+      if (error) throw error
+      const luc = new Date().toISOString()
+      const doi = (d: HoaDon): HoaDon =>
+        !ids.includes(d.id) ? d : da ? { ...d, soan_luc: d.soan_luc ?? luc, soan_boi: d.soan_boi ?? user?.id ?? null } : { ...d, soan_luc: null, soan_boi: null }
+      setChon((s) => s.map(doi))
+      setKetQua((s) => (s ? s.map(doi) : s))
+      toast({ title: da ? `Đã đánh dấu ${ids.length} hóa đơn đã soạn` : `Đã bỏ đánh dấu ${ids.length} hóa đơn` })
+      void tim(q)
+    } catch (e) {
+      toast({ title: "Không đánh dấu được", description: errorMessage(e), variant: "destructive" })
+    } finally {
+      setDangDanhDau(false)
+    }
+  }
+  const nguoiBan = nguoi.filter((u) => ["sales", "manager", "owner"].includes(u.role))
 
   /* ---- đơn tổng ---- */
   const rows = useMemo(() => {
@@ -219,6 +298,56 @@ function Trang() {
           {/* ---- chọn hóa đơn ---- */}
           <aside className="space-y-3 self-start lg:sticky lg:top-4">
             <div className="space-y-2.5 rounded-xl border bg-card p-3">
+              <div className="grid grid-cols-2 gap-2" data-testid="loc-soan">
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  Từ ngày HĐ
+                  <Input type="date" value={loc.tu} max={loc.den || undefined} onChange={(e) => datLoc({ tu: e.target.value })} aria-label="Từ ngày hóa đơn" className="h-9" />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  Đến ngày HĐ
+                  <Input type="date" value={loc.den} min={loc.tu || undefined} onChange={(e) => datLoc({ den: e.target.value })} aria-label="Đến ngày hóa đơn" className="h-9" />
+                </label>
+                <Select value={loc.nv || "all"} onValueChange={(v) => datLoc({ nv: v === "all" ? "" : v })}>
+                  <SelectTrigger aria-label="Nhân viên bán" className="h-9"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Mọi nhân viên</SelectItem>
+                    {nguoiBan.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.full_name || "—"}{u.is_active === false ? " (đã khoá)" : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={loc.tuyen || "all"} onValueChange={(v) => datLoc({ tuyen: v === "all" ? "" : v })}>
+                  <SelectTrigger aria-label="Tuyến" className="h-9"><SelectValue placeholder="Tuyến" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Mọi tuyến</SelectItem>
+                    {tuyen.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.code ? `${r.code} · ${r.name}` : r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {coCotSoan ? (
+                <div className="flex items-center gap-1.5" role="group" aria-label="Trạng thái soạn">
+                  {(["chua", "da", "tat"] as TrangThaiSoan[]).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={loc.soan === k}
+                      onClick={() => datLoc({ soan: k })}
+                      className={`h-8 flex-1 rounded-lg border text-xs font-semibold ${loc.soan === k ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40"}`}
+                    >
+                      {NHAN_TRANG_THAI_SOAN[k]}
+                    </button>
+                  ))}
+                  {soLocDangBat(loc) > 0 && (
+                    <button type="button" className="px-1 text-xs font-semibold text-muted-foreground hover:text-foreground" onClick={() => setLoc(LOC_SOAN_MAC_DINH)}>
+                      Bỏ lọc
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-amber-700">Máy chủ chưa chạy migration 224 — chưa lọc / đánh dấu được hóa đơn đã soạn.</p>
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -273,6 +402,11 @@ function Trang() {
                               {d.customer?.store_name || "Khách lẻ"} · {d.invoice_date ? formatDate(d.invoice_date) : "—"}
                               {d.order?.order_code ? ` · ${d.order.order_code}` : ""}
                             </span>
+                            {d.soan_luc && (
+                              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-700" data-testid="da-soan">
+                                <CheckCircle2 className="h-3 w-3" /> {nhanDaSoan(d.soan_luc, tenNguoi(d.soan_boi))}
+                              </span>
+                            )}
                           </span>
                           {da ? <span className="text-xs text-muted-foreground">Đã chọn</span> : <Plus className="h-4 w-4 text-primary" />}
                         </button>
@@ -303,6 +437,11 @@ function Trang() {
                       <span className="min-w-0 flex-1">
                         <span className="font-mono text-xs font-bold">{d.invoice_code}</span>{" "}
                         <span className="text-xs text-muted-foreground">{d.customer?.store_name || "Khách lẻ"}</span>
+                        {d.soan_luc && (
+                          <span className="ml-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-700" data-testid="da-soan-chon" title={nhanDaSoan(d.soan_luc, tenNguoi(d.soan_boi))}>
+                            <CheckCircle2 className="h-3 w-3" /> Đã soạn
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs tabular-nums text-muted-foreground">{formatCurrency(Number(d.total) || 0)}</span>
                       <button type="button" aria-label={`Bỏ ${d.invoice_code}`} onClick={() => bo(d.id)} className="text-muted-foreground hover:text-destructive">
@@ -310,6 +449,18 @@ function Trang() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {choDanhDau && chon.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Button size="sm" className="flex-1" disabled={!chonChuaSoan.length || dangDanhDau} onClick={() => void danhDau(chonChuaSoan.map((d) => d.id), true)} data-testid="danh-dau-soan">
+                    <CheckCircle2 className="mr-1 h-4 w-4" /> Đánh dấu đã soạn ({chonChuaSoan.length})
+                  </Button>
+                  {chonDaSoan.length > 0 && (
+                    <Button size="sm" variant="outline" disabled={dangDanhDau} onClick={() => void danhDau(chonDaSoan.map((d) => d.id), false)} data-testid="bo-danh-dau-soan">
+                      Bỏ đánh dấu ({chonDaSoan.length})
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -320,6 +471,11 @@ function Trang() {
             {loiDong && (
               <p className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
                 Không đọc được dòng hóa đơn — {loiDong}
+              </p>
+            )}
+            {chonDaSoan.length > 0 && (
+              <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800" data-testid="canh-bao-da-soan">
+                Có {chonDaSoan.length} hóa đơn ĐÃ SOẠN rồi: {chonDaSoan.map((d) => d.invoice_code).join(", ")} — kiểm tra kẻo soạn trùng.
               </p>
             )}
             {huyTrongChon.length > 0 && (

@@ -45,7 +45,8 @@ function filterFn(col, expr) {
   let raw = e.slice(dot + 1)
   // Giá trị trong ngoặc kép: `\"` / `\\` là ký tự thật.
   if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1).replace(/\\(.)/g, "$1")
-  const get = (row) => col.split("->>").reduce((o, k) => (o == null ? undefined : o[k]), row)
+  // `a->>b` (JSON) và `bang.cot` (lọc theo bảng nhúng, như `customer.channel` của `!inner`).
+  const get = (row) => col.split(/->>|\./).reduce((o, k) => (o == null ? undefined : o[k]), row)
   let f = null
   if (op === "eq") f = (r) => String(get(r)) === raw
   else if (op === "neq") f = (r) => String(get(r)) !== raw

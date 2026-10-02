@@ -64,9 +64,9 @@ describe("màn Kho vận › Soạn hàng", () => {
     expect(S).toContain('qd.eq("status", "posted")')
     expect(S).not.toContain("loadInvoiceableLines")
   })
-  it("CHỈ ĐỌC: không ghi bảng nào, không gọi RPC", () => {
+  it("CHỈ ĐỌC kho / tiền: không ghi bảng nào; RPC duy nhất là đánh dấu đã soạn (mig 224, chủ nhà 02/10/2026)", () => {
     expect(S).not.toMatch(/\.from\("[a-z_]+"\)\s*\.(insert|update|delete|upsert)\(/)
-    expect(S).not.toMatch(/\.rpc\(/)
+    expect(Array.from(S.matchAll(/\.rpc\("([a-z_]+)"/g), (m) => m[1])).toEqual(["danh_dau_soan_hang"])
   })
   it("có ở menu Kho vận; phần cũ trong Đơn hàng đã bỏ", () => {
     expect(readFileSync("src/components/layout/sidebar.tsx", "utf8")).toContain('{ label: "Soạn hàng", href: "/inventory/soan-hang"')

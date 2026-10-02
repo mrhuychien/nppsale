@@ -254,6 +254,17 @@ function baoCaoTonKho({ p_tu, p_den }, { db }) {
 }
 
 export const rpc = {
+  /* Đánh dấu đã soạn hàng (mig 224): chỉ HĐ đã ghi sổ; đánh dấu lại không ghi đè giờ / người. */
+  danh_dau_soan_hang: ({ p_ids, p_da }, { db, user }) => {
+    let n = 0
+    for (const h of db.sales_invoices || []) {
+      if (!(p_ids || []).includes(h.id) || h.status !== "posted" || !h.soan_luc === !p_da) continue
+      h.soan_luc = p_da ? new Date().toISOString() : null
+      h.soan_boi = p_da ? user?.id ?? null : null
+      n++
+    }
+    return n
+  },
   /* Nhân viên nghỉ việc (mig 223): đếm chứng từ chặn xoá theo vài bảng chính; cho nghỉ = khoá + nợ mở về NPP. */
   so_chung_tu_nhan_vien: ({ p_user_id }, { db }) => {
     const dem = (bang, cot) => (db[bang] || []).filter((r) => r[cot] === p_user_id).length

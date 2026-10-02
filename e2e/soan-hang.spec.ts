@@ -63,3 +63,66 @@ test("phần Soạn hàng cũ trong Đơn hàng đã bỏ", async ({ page }) => 
   await dangNhap(page)
   await expect(page.getByRole("button", { name: "Soạn hàng" })).toHaveCount(0)
 })
+
+/**
+ * ⚠ CHỦ NHÀ 02/10/2026: "phần soạn đơn, thêm các bộ lọc vào đơn. thêm đánh dấu đơn nào đã soạn vào" ·
+ *   "đã soạn chỉ xuất hiện ở màn soạn đơn thôi". Máy chủ: scripts/sql/thu-224-soan-hang.sql.
+ */
+test.describe("bộ lọc + đánh dấu đã soạn", () => {
+  const HD1 = "00000000-0000-4000-8000-0000000000f1"
+  const HD2 = "00000000-0000-4000-8000-0000000000f2"
+  test.beforeEach(async () => {
+    await api("sales_routes", "POST", [{ id: "tuyen-t9", org_id: "00000000-0000-4000-8000-0000000000a1", code: "T9", name: "Thứ Chín", is_active: true, sort_order: 9 }])
+    await api(`sales_invoices?id=eq.${HD1}`, "PATCH", { customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", channel: "T9" } })
+  })
+  test.afterEach(async () => {
+    await api("sales_routes?id=eq.tuyen-t9", "DELETE", {})
+    for (const id of [HD1, HD2]) await api(`sales_invoices?id=eq.${id}`, "PATCH", { soan_luc: null, soan_boi: null })
+    await api(`sales_invoices?id=eq.${HD1}`, "PATCH", { customer: { store_name: "Tạp hoá Cô Ba", phone: "0911111111", address: "1 Lê Lợi" } })
+  })
+
+  test("mặc định Chưa soạn; đánh dấu đã soạn → rời danh sách, sang lọc Đã soạn; lọc NV + tuyến; bỏ đánh dấu", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/inventory/soan-hang")
+    const kq = page.getByTestId("ket-qua-hoa-don")
+    const trangThai = page.getByRole("group", { name: "Trạng thái soạn" })
+    await expect(trangThai.getByRole("button", { name: "Chưa soạn" })).toHaveAttribute("aria-pressed", "true")
+    await expect(kq.filter({ hasText: "HD-E2E-1" })).toBeVisible()
+    await expect(kq.filter({ hasText: "HD-E2E-2" })).toBeVisible()
+
+    await kq.filter({ hasText: "HD-E2E-1" }).click()
+    await page.getByTestId("danh-dau-soan").click()
+    await expect(page.getByTestId("da-soan-chon")).toBeVisible()
+    await expect(page.getByTestId("canh-bao-da-soan")).toContainText("HD-E2E-1")
+    const hd = (await (await fetch(`${FAKE}/rest/v1/sales_invoices?id=eq.${HD1}&select=*`)).json())[0]
+    expect(hd.soan_luc).toBeTruthy()
+    // Chưa soạn: HD-E2E-1 rời danh sách.
+    await expect(kq.filter({ hasText: "HD-E2E-1" })).toHaveCount(0)
+    await expect(kq.filter({ hasText: "HD-E2E-2" })).toBeVisible()
+
+    // Đã soạn: chỉ HD-E2E-1, có dấu.
+    await trangThai.getByRole("button", { name: "Đã soạn" }).click()
+    await expect(kq).toHaveCount(1)
+    await expect(kq.first()).toContainText("HD-E2E-1")
+    await expect(kq.first().getByTestId("da-soan")).toContainText("Đã soạn")
+
+    // Tất cả + lọc nhân viên / tuyến.
+    await trangThai.getByRole("button", { name: "Tất cả" }).click()
+    await expect(kq).toHaveCount(2)
+    await page.getByRole("combobox", { name: "Tuyến" }).click()
+    await page.getByRole("option", { name: "T9 · Thứ Chín" }).click()
+    await expect(kq).toHaveCount(1)
+    await expect(kq.first()).toContainText("HD-E2E-1")
+    await page.getByRole("button", { name: "Bỏ lọc" }).click()
+    await trangThai.getByRole("button", { name: "Tất cả" }).click()
+    await page.getByRole("combobox", { name: "Nhân viên bán" }).click()
+    await page.getByRole("option", { name: "Chủ NPP" }).click()
+    await expect(kq).toHaveCount(1)
+    await expect(kq.first()).toContainText("HD-E2E-1")
+
+    // Bỏ đánh dấu.
+    await page.getByTestId("bo-danh-dau-soan").click()
+    await expect(page.getByTestId("da-soan-chon")).toHaveCount(0)
+    await expect(page.getByTestId("canh-bao-da-soan")).toHaveCount(0)
+  })
+})

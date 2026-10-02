@@ -20,6 +20,7 @@ import { kyTheoMa, congNgay, soNgay, ngayDu, ngayThang, nhanKhoang, chiaThoiGian
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { quaLoc, hienSoLuong, CHUA_CO, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu } from "@/lib/bao-cao/so"
+import { chiTietBienDong, chiTietTonLo, type SheetXuat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { napTonKho, napBienDong, tinhXnt, NGUONG_KHO, type TonMatHang, type LoKho, type DongXnt } from "@/lib/bao-cao/nap-kho"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
@@ -282,7 +283,12 @@ export function ManKho() {
         />
       )
     }
-    return { kpis, bang, bieuDo, ten }
+    // Sheet chi tiết của file Excel (chủ nhà 02/10/2026): tồn theo lô; xem theo kỳ thì thêm từng dòng phiếu kho.
+    const chiTiet = (): SheetXuat[] => [
+      { ten: "Tồn theo lô", rows: chiTietTonLo(ton, dm, xemGiaVon) },
+      ...(theoKy && bd.data ? [{ ten: "Biến động kho", rows: chiTietBienDong(bd.data.ds.filter((m) => qua(m.sp)), dm, a, b, xemGiaVon) }] : []),
+    ]
+    return { kpis, bang, bieuDo, ten, chiTiet }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, bd.data, bd.loi, bd.dangTai, JSON.stringify(E), view, a, b, xemGiaVon, homNay])
 
@@ -295,7 +301,7 @@ export function ManKho() {
       role={bc.user?.role}
       dao={dao}
       onBoDao={() => veBuoc(0)}
-      onXuat={bc.xuatFile ? () => xuatExcel(`Kho · ${vm?.ten || ""} · ${theoKy ? `${tenKy(st.ky)} ${nhanKhoang(a, b)}` : ngayThang(homNay)}`, xuatRef.current?.()) : null}
+      onXuat={bc.xuatFile ? () => xuatExcel(`Kho · ${vm?.ten || ""} · ${theoKy ? `${tenKy(st.ky)} ${nhanKhoang(a, b)}` : ngayThang(homNay)}`, xuatRef.current?.(), vm?.chiTiet() ?? []) : null}
       thanhLoc={
         <ThanhLoc
           che={theoKy ? "range" : "static"}

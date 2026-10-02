@@ -150,31 +150,34 @@ export async function downloadXlsx(
   rows: (string | number)[][],
   sheetName: string = "Sheet1"
 ) {
+  return downloadXlsxSheets(filename, [{ ten: sheetName, rows }])
+}
+
+/** Nhiều sheet trong một tệp (báo cáo: "Tổng hợp" + "Chi tiết dòng" — chủ nhà 02/10/2026). */
+export async function downloadXlsxSheets(filename: string, sheets: { ten: string; rows: (string | number)[][] }[]) {
   const XLSX = await import("xlsx")
-
-  // Auto-fit column widths based on the longest cell string in each
-  // column (capped so very long descriptions don't blow up the layout).
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  if (rows.length > 0) {
-    const cols = rows[0].map((_, colIdx) => {
-      let max = 8
-      for (const row of rows) {
-        const v = row[colIdx]
-        if (v === null || v === undefined) continue
-        const len = String(v).length
-        if (len > max) max = len
-      }
-      return { wch: Math.min(max + 2, 60) }
-    })
-    ws["!cols"] = cols
-  }
-  // Make the header row bold by referencing a stand-alone bold style;
-  // SheetJS community edition does not write styles, but assigning
-  // !rows[0].s won't error and helps when users open in Google Sheets.
-  ws["!rows"] = [{ hpt: 20 }]
-
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31)) // Excel cap
+  for (const { ten, rows } of sheets) {
+    // Auto-fit column widths based on the longest cell string in each
+    // column (capped so very long descriptions don't blow up the layout).
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    if (rows.length > 0) {
+      ws["!cols"] = rows[0].map((_, colIdx) => {
+        let max = 8
+        for (const row of rows) {
+          const v = row[colIdx]
+          if (v === null || v === undefined) continue
+          const len = String(v).length
+          if (len > max) max = len
+        }
+        return { wch: Math.min(max + 2, 60) }
+      })
+      // Hàng đầu cố định + lọc sẵn để lọc / pivot ngay trong Excel.
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: rows[0].length - 1 } }) }
+    }
+    ws["!rows"] = [{ hpt: 20 }]
+    XLSX.utils.book_append_sheet(wb, ws, ten.slice(0, 31)) // Excel cap
+  }
   // Ensure the filename ends with .xlsx
   const safe = filename.replace(/\.(csv|xls|xlsx)$/i, "") + ".xlsx"
   XLSX.writeFile(wb, safe)

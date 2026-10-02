@@ -22,6 +22,7 @@ import { hieuLuc, lienKetMan, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { soGon, soDu, phanTram, soSanh } from "@/lib/bao-cao/so"
 import { napKetQuaKd, napDongTien, napKhoanThu, napPhieuChi, type KetQuaKd, type DongTien } from "@/lib/bao-cao/nap-tien"
 import { napCongNo } from "@/lib/bao-cao/nap-cong-no"
+import { chiTietChi, chiTietThu } from "@/lib/bao-cao/xuat-chi-tiet"
 import { fetchBalanceSheet, fetchCashFlow } from "@/lib/finance"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
@@ -320,13 +321,32 @@ export function ManTaiChinh() {
 
   const dao: MatDao[] = [{ label: `Tài chính · ${TEN_TAB[tab]}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
   const laDocs = E.xem === "docs"
+  /* Sheet chi tiết của file Excel (chủ nhà 02/10/2026): từng khoản thu + phiếu chi của kỳ đang xem — đọc lúc
+     bấm Xuất (bảng Kết quả KD / Dòng tiền chỉ có số tổng). Bảng cân đối là số dư một ngày → không có. */
+  const xuat = async () => {
+    const tenFile = `Tài chính · ${TEN_TAB[tab]} · ${tab === "bs" ? "đến " + ngayDu(X) : tenKy(st.ky) + " " + nhanKhoang(a, b)}`
+    const tongHop = xuatRef.current?.()
+    if (tab === "bs" || !orgId) return xuatExcel(tenFile, tongHop)
+    const [x, y] = laDocs ? E.khoang || [a, b] : theoThang ? [`${homNay.slice(0, 4)}-01-01`, homNay] : [a, b]
+    try {
+      const sb = createClient()
+      const [thu, chi, { dm }] = await Promise.all([napKhoanThu(sb, x, y), napPhieuChi(sb, orgId, x, y, true), layDanhMuc(orgId)])
+      xuatExcel(tenFile, tongHop, [
+        { ten: "Thu tiền", rows: chiTietThu(thu.ds, dm) },
+        { ten: "Chi", rows: chiTietChi(chi.ds) },
+      ])
+    } catch (e) {
+      console.error("[bao-cao/tai-chinh] đọc chi tiết để xuất hỏng:", e)
+      xuatExcel(tenFile, tongHop)
+    }
+  }
   return (
     <KhungBaoCao
       href="/bao-cao/tai-chinh"
       role={bc.user?.role}
       dao={dao}
       onBoDao={() => veBuoc(0)}
-      onXuat={bc.xuatFile ? () => xuatExcel(`Tài chính · ${TEN_TAB[tab]} · ${tab === "bs" ? "đến " + ngayDu(X) : tenKy(st.ky) + " " + nhanKhoang(a, b)}`, xuatRef.current?.()) : null}
+      onXuat={bc.xuatFile ? () => void xuat() : null}
       thanhLoc={
         <ThanhLoc
           che={tab === "bs" ? "asof" : theoThang ? "static" : "range"}

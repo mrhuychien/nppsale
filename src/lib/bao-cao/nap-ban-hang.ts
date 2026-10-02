@@ -106,6 +106,7 @@ export function dungDongBan(p: {
       const c = chenhDong(l, qd)
       dong.push({
         ...base, sp: l.product_id, tien, giaVon: sl * gvCoSo, sl, niemYet: c.niemYet, tienTT: c.tien,
+        goc: { dv: l.unit_name || "", sl: Number(l.quantity || 0), donGia: Number(l.unit_price || 0), giam: Number(l.line_discount || 0), thanhTien: Number(l.line_total || 0) },
         ...(i === 0 ? { giamDon: giamGiaHoaDon(h, ls) } : {}),
         ...(sl > 0 && !(gvCoSo > 0) ? { thieuGV: true as const } : {}),
       })
@@ -142,7 +143,10 @@ export function dungDongBan(p: {
       const tong = slTheoSp.get(x.l.product_id) || 0
       // Chênh trả: cùng luật hàng đi — giá trên phiếu trả so với giá bảng cùng đơn vị (chenh-lech.ts).
       const c = chenhDong(x.l, quyDoiTuDanhMuc(dm, x.l.product_id))
-      dong.push({ ...base, sp: x.l.product_id, tien: t, giaVon: tong ? (gvSp * x.sl) / tong : 0, sl: x.sl, niemYet: c.niemYet, tienTT: c.tien })
+      dong.push({
+        ...base, sp: x.l.product_id, tien: t, giaVon: tong ? (gvSp * x.sl) / tong : 0, sl: x.sl, niemYet: c.niemYet, tienTT: c.tien,
+        goc: { dv: x.l.unit_name || "", sl: Math.abs(Number(x.l.quantity || 0)), donGia: Number(x.l.unit_price || 0), giam: 0, thanhTien: Math.abs(Number(x.l.line_total || 0)) },
+      })
     })
   }
   return { dong, hoaDon, phieuTra }

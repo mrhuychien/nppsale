@@ -21,6 +21,7 @@ import { ngayDu, ngayThang } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { quaLoc, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram } from "@/lib/bao-cao/so"
+import { chiTietNo } from "@/lib/bao-cao/xuat-chi-tiet"
 import { napCongNo, napSoChiTiet, NHOM_TUOI, type NoKhach, type PhieuNoTai } from "@/lib/bao-cao/nap-cong-no"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
@@ -229,6 +230,8 @@ export function ManCongNo() {
     }
     const tongTuoi = tuoi.reduce((s, v) => s + v, 0)
     return {
+      // Sheet chi tiết của file Excel — từng phiếu nợ của các khách đang xem (chủ nhà 02/10/2026).
+      chiTiet: () => chiTietNo(khach, dm),
       kpis,
       bang,
       tenXuat,
@@ -258,7 +261,7 @@ export function ManCongNo() {
       role={bc.user?.role}
       dao={dao}
       onBoDao={() => veBuoc(0)}
-      onXuat={bc.xuatFile ? () => xuatExcel(`Công nợ · ${vm?.tenXuat || ""} · đến ${ngayDu(X)}`, xuatRef.current?.()) : null}
+      onXuat={bc.xuatFile ? () => xuatExcel(`Công nợ · ${vm?.tenXuat || ""} · đến ${ngayDu(X)}`, xuatRef.current?.(), vm ? [{ ten: "Chi tiết phiếu nợ", rows: vm.chiTiet() }] : []) : null}
       thanhLoc={
         <ThanhLoc
           che="asof"

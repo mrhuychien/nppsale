@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { napDanhMuc, type KetQuaDanhMuc } from "@/lib/bao-cao/nap-danh-muc"
 import { CHUA_CO, type DanhMucBC, type LoaiLoc } from "@/lib/bao-cao/cong"
-import { downloadXlsx } from "@/components/analytics/report-frame"
+import { downloadXlsxSheets } from "@/components/analytics/report-frame"
+import type { SheetXuat } from "@/lib/bao-cao/xuat-chi-tiet"
 
 const gioPhut = () => new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" }).format(new Date())
 
@@ -143,9 +144,13 @@ export function tenGiaTri(dm: DanhMucBC | null, k: LoaiLoc, v: string): string {
   }
 }
 
-/** Xuất Excel đúng thứ đang thấy (spec 2.2). */
-export function xuatExcel(ten: string, rows: (string | number)[][] | null | undefined) {
-  if (!rows || rows.length === 0) return
+/**
+ * Xuất Excel: sheet "Tổng hợp" đúng thứ đang thấy (spec 2.2) + các sheet chi tiết (`them`, vd "Chi tiết dòng"
+ * — chủ nhà 02/10/2026 "xuất chi tiết các dòng hơn để xử lý thông tin").
+ */
+export function xuatExcel(ten: string, rows: (string | number)[][] | null | undefined, them: SheetXuat[] = []) {
+  const sheets = [...(rows && rows.length ? [{ ten: "Tổng hợp", rows }] : []), ...them.filter((x) => x.rows.length > 1)]
+  if (!sheets.length) return
   const file = ten.replace(/[\\/:*?"<>|·]+/g, "-").replace(/\s+/g, " ").trim()
-  void downloadXlsx(file, rows, "Bao cao")
+  void downloadXlsxSheets(file, sheets)
 }

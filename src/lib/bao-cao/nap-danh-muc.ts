@@ -20,6 +20,8 @@ export const hanNoTheoDieuKhoan = (t: string | null | undefined) => Number(/NET(
 interface KhachTho {
   id: string
   store_name: string
+  phone?: string | null
+  address?: string | null
   group_id: string | null
   channel: string | null
   province: string | null
@@ -53,7 +55,7 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
       return q.order("id").range(from, to) as unknown as Trang
     }, `đọc ${bang}`)
   const [kh, sp, nv, nhom, tuyen, ncc, pc] = await Promise.all([
-    doc<KhachTho>("customers", "id, store_name, group_id, channel, province, payment_terms, credit_limit"),
+    doc<KhachTho>("customers", "id, store_name, phone, address, group_id, channel, province, payment_terms, credit_limit"),
     doc<SpTho>("products", "id, sku, name, category, brand, primary_supplier_id, base_unit, sell_price, units:product_units(unit_name, conversion), price_lists(unit_name, price, group_id)"),
     doc<{ id: string; full_name: string }>("users", "id, full_name"),
     doc<{ id: string; name: string }>("customer_groups", "id, name"),
@@ -80,6 +82,8 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
     if (!dm.kenh.has(kenh)) dm.kenh.set(kenh, kenh)
     dm.khach.set(c.id, {
       ten: c.store_name,
+      sdt: c.phone || "",
+      diaChi: c.address || "",
       nhom: c.group_id || "",
       kenh,
       tinh: (c.province || "").trim(),

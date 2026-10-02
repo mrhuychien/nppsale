@@ -44,6 +44,25 @@ export interface DongBan {
   giamDon?: number
   /** Dòng bán của mặt hàng CHƯA CÓ GIÁ VỐN trong kỳ (giá vốn đang tính = 0 → lãi gộp phồng). */
   thieuGV?: true
+  /** Số trên chứng từ — chỉ để xuất Excel chi tiết dòng (chủ nhà 02/10/2026). */
+  goc?: DongGoc
+}
+
+/**
+ * Dòng gốc trên chứng từ — chủ nhà 02/10/2026: "phần báo cáo xuất excel cần xuất chi tiết các dòng hơn để xử
+ * lý thông tin. VD báo cáo bán hàng theo nhân viên -> chi tiết dòng hàng, bán cho ai, giá bao nhiêu...".
+ */
+export interface DongGoc {
+  /** Đơn vị tính của dòng (thùng, hộp…). */
+  dv: string
+  /** Số lượng theo đơn vị của dòng. */
+  sl: number
+  /** Đơn giá trên chứng từ (trước thuế) — theo đơn vị của dòng. */
+  donGia: number
+  /** Giảm giá của dòng (đ). */
+  giam: number
+  /** Thành tiền dòng trên chứng từ. */
+  thanhTien: number
 }
 
 /** Một dòng đơn đặt (không huỷ) — số HOẠT ĐỘNG, không phải doanh thu. */
@@ -58,10 +77,14 @@ export interface DongDat {
   daXuat: number
   trangThai: string
   nguoiTao: string
+  goc?: DongGoc
 }
 
 export interface KhachBC {
   ten: string
+  /** SĐT / địa chỉ — cho Excel chi tiết dòng. */
+  sdt?: string
+  diaChi?: string
   nhom: string
   kenh: string
   tinh: string

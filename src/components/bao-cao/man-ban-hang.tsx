@@ -17,6 +17,7 @@ import { BieuDoCot, BieuDoNgang, type CotBD } from "./bieu-do"
 import { BangBaoCao, type CotBang, type DongBang } from "./bang"
 import { XemNhanhChungTu, type ChungTuMo } from "./xem-nhanh"
 import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./dung-chung"
+import { chiTietBan, chiTietDat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { createClient } from "@/lib/supabase/client"
 import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, type Ky } from "@/lib/bao-cao/ky"
@@ -377,6 +378,8 @@ export function ManBanHang() {
         bang,
         bieuDo: view === "docs" ? null : bieuDo,
         tenXuat,
+        // Sheet "Chi tiết dòng" của file Excel — mọi dòng hàng đã qua bộ lọc (chủ nhà 02/10/2026).
+        chiTiet: () => chiTietBan({ dong: cur, dm, hoaDon: d.hoaDon, phieuTra: d.phieuTra, giaVon: xemGiaVon }),
         rong: !cur.some((l) => l.loai > 0),
         thieuGV: thieuGV.length ? (
           <KhoiGap
@@ -525,7 +528,10 @@ export function ManBanHang() {
         )
       }
     }
-    return { kpis, bang, bieuDo: view === "docs" ? null : bieuDo, tenXuat, rong: cur.length === 0, phu: null, thieuGV: null }
+    return {
+      kpis, bang, bieuDo: view === "docs" ? null : bieuDo, tenXuat, rong: cur.length === 0, phu: null, thieuGV: null,
+      chiTiet: () => chiTietDat({ dong: cur, dm, don: d.don }),
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, noKhach.data, dm, a, b, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
 
@@ -544,7 +550,7 @@ export function ManBanHang() {
       role={bc.user?.role}
       dao={dao}
       onBoDao={() => veBuoc(0)}
-      onXuat={bc.xuatFile ? () => xuatExcel(`Bán hàng · ${nguon === "inv" ? "Hoá đơn" : "Đơn đặt"} · ${vm?.tenXuat || ""} · ${nhanKy}`, xuatRef.current?.()) : null}
+      onXuat={bc.xuatFile ? () => xuatExcel(`Bán hàng · ${nguon === "inv" ? "Hoá đơn" : "Đơn đặt"} · ${vm?.tenXuat || ""} · ${nhanKy}`, xuatRef.current?.(), vm ? [{ ten: "Chi tiết dòng", rows: vm.chiTiet() }] : []) : null}
       thanhLoc={
         <ThanhLoc
           che="range"

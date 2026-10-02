@@ -20,6 +20,7 @@ import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { congBan, quaLoc, maChuaCoGiaVon, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram, soSanh } from "@/lib/bao-cao/so"
 import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
+import { chiTietBan, chiTietChi, chiTietThu, type SheetXuat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { napKhoanThu, napPhieuChi, tonQuy } from "@/lib/bao-cao/nap-tien"
 import { fetchAllOrdersDu } from "@/lib/analytics/sales"
 import { nhanTrangThaiDon } from "@/lib/bao-cao/nap-don-dat"
@@ -184,7 +185,13 @@ export function ManCuoiNgay() {
         />
       )
     }
-    return { kpis, tien, trangThai, bang, tenXuat, T, song, soDon: O.length, thu: { tm: sum(tm), ck: sum(ck) }, chi: sum(x.chi), quy: x.quy, rong: !O.length && !L.length && !thu.length }
+    // Sheet chi tiết của file Excel (chủ nhà 02/10/2026): dòng hàng bán / trả trong ngày, từng khoản thu, phiếu chi.
+    const chiTiet = (): SheetXuat[] => [
+      { ten: "Chi tiết dòng", rows: chiTietBan({ dong: L, dm, hoaDon: x.ban.hoaDon, phieuTra: x.ban.phieuTra, giaVon: xemGiaVon }) },
+      { ten: "Thu tiền", rows: chiTietThu(thu, dm) },
+      { ten: "Chi", rows: chiTietChi(x.chi) },
+    ]
+    return { kpis, tien, trangThai, bang, tenXuat, chiTiet, T, song, soDon: O.length, thu: { tm: sum(tm), ck: sum(ck) }, chi: sum(x.chi), quy: x.quy, rong: !O.length && !L.length && !thu.length }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, JSON.stringify(E), view, d, st.soSanh, xemGiaVon])
 
@@ -208,7 +215,7 @@ export function ManCuoiNgay() {
         onBoDao={() => veBuoc(0)}
         onIn={vm ? inA5 : null}
         nhanIn="In báo cáo cuối ngày"
-        onXuat={bc.xuatFile ? () => xuatExcel(`Cuối ngày ${ngayDu(d)} · ${vm?.tenXuat || ""}`, xuatRef.current?.()) : null}
+        onXuat={bc.xuatFile ? () => xuatExcel(`Cuối ngày ${ngayDu(d)} · ${vm?.tenXuat || ""}`, xuatRef.current?.(), vm?.chiTiet() ?? []) : null}
         thanhLoc={
           <ThanhLoc
             che="day"

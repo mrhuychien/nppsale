@@ -29,6 +29,9 @@ interface DongDonTho {
   quantity: number | null
   invoiced_qty: number | null
   line_total: number | null
+  unit_name?: string | null
+  unit_price?: number | null
+  line_discount?: number | null
 }
 
 export const nhanTrangThaiDon = (s: string) => ORDER_STATUS_MAP[s]?.label || s
@@ -62,7 +65,10 @@ export function dungDongDat(don: readonly SalesOrderRow[], dong: readonly DongDo
       conLai -= tien
       const q = Number(l.quantity || 0)
       const tiLe = q > 0 ? Math.min(1, Math.max(0, Number(l.invoiced_qty || 0) / q)) : 0
-      out.push({ ...base, sp: l.product_id, tien, daXuat: Math.round(tien * tiLe) })
+      out.push({
+        ...base, sp: l.product_id, tien, daXuat: Math.round(tien * tiLe),
+        goc: { dv: l.unit_name || "", sl: q, donGia: Number(l.unit_price || 0), giam: Number(l.line_discount || 0), thanhTien: Number(l.line_total || 0) },
+      })
     })
   }
   return { dong: out, don: ds }
@@ -76,7 +82,7 @@ export async function napDonDat(sb: SupabaseClient, orgId: string, a: string, b:
     (lo, from, to) =>
       sb
         .from("sales_order_lines")
-        .select("order_id, product_id, quantity, invoiced_qty, line_total", { count: "exact" })
+        .select("order_id, product_id, quantity, invoiced_qty, line_total, unit_name, unit_price, line_discount", { count: "exact" })
         .in("order_id", lo)
         .order("id")
         .range(from, to),

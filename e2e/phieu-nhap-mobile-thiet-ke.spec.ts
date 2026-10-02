@@ -33,6 +33,7 @@ test("phiếu nhập kho điện thoại: trống thì khoá nút, thêm hàng �
   await man.getByPlaceholder("Thêm mặt hàng: tên hoặc mã SKU").fill("Sữa")
   await man.getByRole("button", { name: /Sữa hộp/ }).first().click()
   await expect(man.getByTestId("nk-m-dong")).toHaveCount(1)
+  await expect(man.getByTestId("nk-m-dong").first().getByTestId("stt-dong")).toHaveText("1")
   await expect(man.getByTestId("nk-m-trong")).toHaveCount(0)
 
   const dong = man.getByTestId("nk-m-dong").first()

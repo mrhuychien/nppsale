@@ -35,6 +35,7 @@ import { submitSellOrder } from "@/lib/sell/submit"
 import { applyOrderEdit, decideEditStatus, editHint } from "@/lib/sell/order-edit"
 import { SearchSelect } from "@/components/ui/search-select"
 import { toast } from "@/hooks/use-toast"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export default function SellCartPage() {
   const router = useRouter()
@@ -587,13 +588,14 @@ export default function SellCartPage() {
               {loading ? "Đang tải danh mục…" : "Chưa có sản phẩm. Bấm “Thêm hàng” để chọn."}
             </p>
           ) : (
-            rows.map((r) => (
+            rows.map((r, k) => (
               <div
                 key={`${r.line.productId}|${r.line.unit}`}
                 data-testid="dong-gio"
                 className="flex flex-col gap-2.5 border-b border-border/60 p-3"
               >
                 <div className="flex items-start gap-2">
+                  <SoThuTu n={k + 1} />
                   {/* Chạm tên / giá là mở sheet sửa dòng (3a). */}
                   <button
                     type="button"

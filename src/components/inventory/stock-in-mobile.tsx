@@ -21,6 +21,7 @@ import { resolveUnitCost } from "@/lib/inventory/opening-stock"
 import {
   buocSoLuong, dongCoHang, locSoLuong, lyDoKhoaNut, moneyDisplay, soCuaO, tomTatLo, tomTatThanhDay,
 } from "@/lib/inventory/stock-in-mobile"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export interface DongNhapKhoMobile {
   id: string
@@ -207,7 +208,7 @@ export function StockInMobile(p: StockInMobileProps) {
               </div>
             )}
 
-            {dong.map((l) => {
+            {dong.map((l, i) => {
               const qty = soCuaO(l.quantity)
               const thanhTien = qty * soCuaO(l.unit_price)
               const thieuVon = qty > 0 && !resolveUnitCost(l.unit_cost).known
@@ -219,6 +220,7 @@ export function StockInMobile(p: StockInMobileProps) {
                   className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card px-3.5 py-3"
                 >
                   <div className="flex items-start gap-2.5">
+                    <SoThuTu n={i + 1} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold leading-snug text-on-surface">{l.product_name}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">

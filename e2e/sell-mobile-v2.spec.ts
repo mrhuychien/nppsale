@@ -151,6 +151,7 @@ test("1a → 1b: chọn hàng trả trên thẻ, Tiếp tục về phiếu trả
 
   // 1b: đổi hàng thì dòng không trừ tiền.
   const dong = page.getByTestId("dong-tra-sell").filter({ hasText: "Mì tôm" })
+  await expect(dong.getByTestId("stt-dong")).toHaveText(/^\d+$/)
   await dong.getByRole("button", { name: "Đổi hàng" }).click()
   await expect(dong).toContainText("Đổi 1:1, không trừ tiền")
 })

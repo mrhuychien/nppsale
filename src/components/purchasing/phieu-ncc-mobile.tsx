@@ -35,6 +35,7 @@ import {
   buocSoLuong, datSoLuong, dongChuaCoGia, doiDonViDong, donViNhap, giaGoiY, MUC_VAT, soLuongTrenPhieu, tongPhieuNcc, tongSoLuong, vatMacDinh,
   type GiamGiaPhieu,
 } from "@/lib/purchasing/phieu-mobile"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 /** Trần số thẻ vẽ một lúc — như /sell. */
 const RENDER_CAP = 60
@@ -358,6 +359,7 @@ export function PhieuNccMobile({
                   return (
                     <div key={l.id} data-testid="dong-phieu-ncc" className="flex flex-col gap-2.5 border-b border-border/60 p-3">
                       <div className="flex items-start gap-2">
+                        <SoThuTu n={i + 1} />
                         <button type="button" onClick={() => setEditIdx(i)} className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                           <span className="text-[14px] font-semibold leading-[1.35] text-on-surface">{l.product_name}</span>
                           <span className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">

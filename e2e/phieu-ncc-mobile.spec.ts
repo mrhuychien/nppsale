@@ -31,6 +31,8 @@ test("nhập hàng trên điện thoại: chạm thẻ thêm hàng, đổi thùn
   await sua.getByRole("button", { name: "thùng", exact: true }).click()
   await expect(page.getByTestId("buoc-phieu")).toBeVisible()
   await expect(page.getByTestId("dong-phieu-ncc")).toContainText("360.000đ / thùng")
+  // Số thứ tự đầu dòng (chủ nhà 02/10/2026).
+  await expect(page.getByTestId("dong-phieu-ncc").first().getByTestId("stt-dong")).toHaveText("1")
   await page.getByRole("button", { name: "Thêm hàng" }).click()
   // Chọn từng mã: thẻ không có −/+, chỉ báo đã có; chạm lại chỉ sang phiếu, không cộng thêm.
   await expect(sua.getByTestId("da-co-tren-phieu")).toHaveText("Đã có 1 thùng")

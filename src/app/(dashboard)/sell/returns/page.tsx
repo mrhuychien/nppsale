@@ -25,6 +25,7 @@ import { userPriceRulesFrom } from "@/lib/pricing"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { isReturnLineOverstock } from "@/lib/orders/stock-check"
 import { cn, formatCurrency } from "@/lib/utils"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export default function SellReturnsPage() {
   const router = useRouter()
@@ -164,6 +165,7 @@ export default function SellReturnsPage() {
           return (
             <div key={`${r.productId}|${r.unit}`} data-testid="dong-tra-sell" className="flex flex-col gap-3 rounded-[14px] bg-surface-container-lowest p-3">
               <div className="flex items-start gap-2">
+                <SoThuTu n={i + 1} />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   {/* Chạm tên là mở sheet sửa dòng trả (ghi chú, đơn vị…). */}
                   <button type="button" onClick={() => setEditIdx(i)} className="text-left text-[14px] font-semibold leading-[1.35]">

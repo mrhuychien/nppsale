@@ -254,6 +254,39 @@ function baoCaoTonKho({ p_tu, p_den }, { db }) {
 }
 
 export const rpc = {
+  /* Lượt soạn hàng (mig 225): tạo / gộp tiến độ (null = xoá khoá) / hoàn tất (đánh dấu HĐ đã soạn) / huỷ. */
+  tao_luot_soan: ({ p_invoice_ids }, { db, newId }) => {
+    db.luot_soan = db.luot_soan || []
+    const id = newId()
+    db.luot_soan.push({
+      id, org_id: ORG, ma: `SH-02/10-${String(db.luot_soan.length + 1).padStart(2, "0")}`, invoice_ids: [...new Set(p_invoice_ids || [])],
+      trang_thai: "dang_soan", tien_do: { nhat: {}, chia: {} }, created_at: new Date().toISOString(), updated_at: String(Date.now()),
+    })
+    return id
+  },
+  cap_nhat_luot_soan: ({ p_id, p_invoice_ids, p_nhat, p_chia }, { db }) => {
+    const l = (db.luot_soan || []).find((x) => x.id === p_id)
+    if (!l) throw Object.assign(new Error("KHONG_TIM_THAY_LUOT"), { code: "P0001" })
+    if (l.trang_thai !== "dang_soan") throw Object.assign(new Error("LUOT_DA_DONG"), { code: "P0001" })
+    if (p_invoice_ids) l.invoice_ids = [...new Set(p_invoice_ids)]
+    const gop = (cu, moi) => Object.fromEntries(Object.entries({ ...cu, ...moi }).filter(([, v]) => v !== null))
+    l.tien_do = { nhat: p_nhat ? gop(l.tien_do.nhat, p_nhat) : l.tien_do.nhat, chia: p_chia ? gop(l.tien_do.chia, p_chia) : l.tien_do.chia }
+    l.updated_at = String(Date.now() + Math.random())
+    return { ...l }
+  },
+  hoan_tat_luot_soan: ({ p_id }, { db, user }) => {
+    const l = (db.luot_soan || []).find((x) => x.id === p_id)
+    if (!l || l.trang_thai !== "dang_soan") throw Object.assign(new Error("LUOT_DA_DONG"), { code: "P0001" })
+    l.trang_thai = "xong"
+    let n = 0
+    for (const h of db.sales_invoices || []) if (l.invoice_ids.includes(h.id) && h.status === "posted" && !h.soan_luc) { h.soan_luc = new Date().toISOString(); h.soan_boi = user?.id ?? null; n++ }
+    return n
+  },
+  huy_luot_soan: ({ p_id }, { db }) => {
+    const l = (db.luot_soan || []).find((x) => x.id === p_id)
+    if (l) l.trang_thai = "huy"
+    return null
+  },
   /* Đánh dấu đã soạn hàng (mig 224): chỉ HĐ đã ghi sổ; đánh dấu lại không ghi đè giờ / người. */
   danh_dau_soan_hang: ({ p_ids, p_da }, { db, user }) => {
     let n = 0

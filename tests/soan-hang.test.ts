@@ -58,15 +58,20 @@ describe("gộp hóa đơn thành đơn tổng", () => {
 })
 
 describe("màn Kho vận › Soạn hàng", () => {
-  const S = readFileSync("src/app/(dashboard)/inventory/soan-hang/page.tsx", "utf8")
-  it("chọn HÓA ĐƠN (mặc định đã xuất), đọc dòng hóa đơn — không phải đơn hàng", () => {
+  // Màn theo mẫu 02/10/2026 tách ra src/components/soan-hang/ — quét chung trang + các khối.
+  const S = ["src/app/(dashboard)/inventory/soan-hang/page.tsx", ...["use-luot-soan.ts", "chon-hoa-don.tsx", "soan-hang-may-tinh.tsx", "soan-hang-dien-thoai.tsx", "to-in-soan-hang.tsx"].map((f) => `src/components/soan-hang/${f}`)]
+    .map((f) => readFileSync(f, "utf8")).join("\n")
+  it("chọn HÓA ĐƠN (chỉ đã ghi sổ), đọc dòng hóa đơn — không phải đơn hàng", () => {
     expect(S).toContain('.from("sales_invoice_lines")')
-    expect(S).toContain('qd.eq("status", "posted")')
+    expect(S).toContain('.eq("status", "posted")')
     expect(S).not.toContain("loadInvoiceableLines")
   })
   it("CHỈ ĐỌC kho / tiền: không ghi bảng nào; RPC duy nhất là đánh dấu đã soạn (mig 224, chủ nhà 02/10/2026)", () => {
     expect(S).not.toMatch(/\.from\("[a-z_]+"\)\s*\.(insert|update|delete|upsert)\(/)
-    expect(Array.from(S.matchAll(/\.rpc\("([a-z_]+)"/g), (m) => m[1])).toEqual(["danh_dau_soan_hang"])
+    // Lượt soạn (mig 225) + đánh dấu (mig 224) — không RPC nào đụng kho / tiền.
+    expect(new Set(Array.from(S.matchAll(/\.rpc\("([a-z_]+)"/g), (m) => m[1]))).toEqual(
+      new Set(["danh_dau_soan_hang", "tao_luot_soan", "cap_nhat_luot_soan", "hoan_tat_luot_soan", "huy_luot_soan"])
+    )
   })
   it("có ở menu Kho vận; phần cũ trong Đơn hàng đã bỏ", () => {
     expect(readFileSync("src/components/layout/sidebar.tsx", "utf8")).toContain('{ label: "Soạn hàng", href: "/inventory/soan-hang"')

@@ -56,6 +56,7 @@ describe("bộ lọc màn Soạn hàng", () => {
       return statSync(p).isDirectory() ? tep(p) : /\.tsx?$/.test(f) ? [p] : []
     })
     const co = tep("src").filter((f) => /soan_luc|danh_dau_soan_hang/.test(readFileSync(f, "utf8")))
-    expect(co.sort()).toEqual(["src/app/(dashboard)/inventory/soan-hang/page.tsx", "src/lib/orders/soan-hang-loc.ts"])
+    expect(co.filter((f) => !f.startsWith("src/components/soan-hang/")).sort()).toEqual(["src/lib/orders/soan-hang-loc.ts"])
+    expect(co.some((f) => f.startsWith("src/components/soan-hang/"))).toBe(true)
   })
 })

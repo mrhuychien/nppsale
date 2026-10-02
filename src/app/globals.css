@@ -134,6 +134,7 @@
 .print-receipt-tt200-only { display: none; }
 .print-payslip-only { display: none; }
 .print-cuoi-ngay-only { display: none; }
+.print-nhan-ro-only { display: none; }
 
 @media print {
   aside, header, nav, .no-print { display: none !important; }
@@ -157,6 +158,9 @@
   html[data-print-mode="cuoi-ngay"] .print-only,
   html[data-print-mode="cuoi-ngay"] [data-testid="bao-cao-tong-hop"] { display: none !important; }
   html[data-print-mode="cuoi-ngay"] .print-cuoi-ngay-only { display: block !important; }
+  /* Soạn hàng — nhãn rổ A, B, C… (chủ nhà 02/10/2026). */
+  html[data-print-mode="nhan-ro"] .print-only { display: none !important; }
+  html[data-print-mode="nhan-ro"] .print-nhan-ro-only { display: block !important; }
 }
 
 /*

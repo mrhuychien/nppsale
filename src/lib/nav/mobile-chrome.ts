@@ -35,6 +35,8 @@ export const OWN_ACTION_BAR_ROUTES = [
   "/inventory/stocktake-adjust",
   /* Thêm khách hàng trên điện thoại (thiết kế 01/10/2026) — thanh đáy Huỷ / Lưu riêng. */
   "/customers/new",
+  /* Soạn hàng trên điện thoại theo mẫu 02/10/2026 — thanh đáy riêng (Bắt đầu nhặt / Đã nhặt đủ…). */
+  "/inventory/soan-hang",
 ] as const
 
 /**
@@ -85,6 +87,7 @@ export const DAU_TRANG_RIENG_ROUTES = [
   "/settings/users",
   "/suppliers",
   "/customers/new",
+  "/inventory/soan-hang",
 ] as const
 
 export function hidesMobileAppBar(pathname: string): boolean {

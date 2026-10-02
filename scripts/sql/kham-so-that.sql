@@ -554,4 +554,12 @@ SELECT 63, 'Mig 224 (Đánh dấu đã soạn hàng)',
        THEN 'CHƯA — màn Soạn hàng không lọc / đánh dấu được hoá đơn đã soạn'
        ELSE 'OK — đã vá' END,
   ''
+UNION ALL
+-- 64. Mig 225 — lượt soạn hàng (nhặt tổng → chia rổ → hoàn tất), dùng chung máy tính + điện thoại
+SELECT 64, 'Mig 225 (Lượt soạn hàng)',
+  CASE WHEN to_regclass('public.luot_soan') IS NULL OR to_regprocedure('public.hoan_tat_luot_soan(uuid)') IS NULL
+       THEN 'CHƯA — màn Soạn hàng không lưu được lượt nhặt / chia rổ'
+       ELSE 'OK — đã vá' END,
+  CASE WHEN to_regclass('public.luot_soan') IS NULL THEN ''
+       ELSE 'Lượt đang soạn: ' || (SELECT count(*) FROM luot_soan WHERE trang_thai = 'dang_soan') END
 ) t ORDER BY stt;

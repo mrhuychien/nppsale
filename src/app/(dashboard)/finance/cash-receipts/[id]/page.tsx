@@ -285,14 +285,17 @@ export default function CashReceiptDetailPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40">
                     <tr>
+                      {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                      <th className="w-10 px-3 py-2 text-center font-semibold">STT</th>
                       <th className="text-left px-3 py-2 font-semibold">Hóa đơn</th>
                       <th className="text-left px-3 py-2 font-semibold">Khách hàng</th>
                       <th className="text-right px-3 py-2 font-semibold w-32">Đã thu</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((l) => (
+                    {lines.map((l, i) => (
                       <tr key={l.id} className="border-t">
+                        <td data-testid="stt-dong" className="w-10 px-3 py-2 text-center tabular-nums text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-2">
                           {/* ⚠ Công nợ tính theo hóa đơn (chủ nhà 24/09/2026): có
                               hóa đơn thì hiện/link hóa đơn; dòng cũ mới lùi về đơn. */}
@@ -326,7 +329,7 @@ export default function CashReceiptDetailPage() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 bg-muted/20">
-                      <td colSpan={2} className="px-3 py-2 text-right font-bold">
+                      <td colSpan={3} className="px-3 py-2 text-right font-bold">
                         Tổng cộng
                       </td>
                       <td className="px-3 py-2 text-right font-black text-base">

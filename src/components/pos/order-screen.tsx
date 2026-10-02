@@ -1516,6 +1516,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                           <span className="grid min-w-0 gap-1">
                             <span className="flex min-w-0 items-baseline gap-2">
                               <span className="truncate text-[14px] font-bold text-[var(--pos-ink)]">
+                                {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                                <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{i + 1}.</span>
                                 {l.name || "— chưa chọn mã —"}
                               </span>
                               {l.sku && (

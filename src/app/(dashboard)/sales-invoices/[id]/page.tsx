@@ -437,6 +437,8 @@ export default function SalesInvoiceDetailPage() {
             <table className="w-full text-sm">
               <thead className="bg-surface-container-low text-[11px] uppercase tracking-[0.07em] text-on-surface-variant">
                 <tr>
+                  {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                  <th className="w-10 py-2.5 pl-4 text-center font-semibold">STT</th>
                   <th className="px-4 py-2.5 text-left font-semibold">Mặt hàng</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Số lượng</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Đơn giá</th>
@@ -447,13 +449,14 @@ export default function SalesInvoiceDetailPage() {
               <tbody>
                 {lines.length === 0 ? (
                   <tr className="border-t">
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                       Hóa đơn không có dòng nào.
                     </td>
                   </tr>
                 ) : (
-                  lines.map((l) => (
+                  lines.map((l, i) => (
                     <tr key={l.id} className="border-t border-outline-variant/30">
+                      <td data-testid="stt-dong" className="w-10 py-2.5 pl-4 text-center tabular-nums text-muted-foreground">{i + 1}</td>
                       <td className="px-4 py-2.5">
                         <div className="font-semibold text-on-surface">{l.product?.name || "—"}</div>
                         {/* ⚠ DÒNG PHỤ NÓI ĐỦ PHÉP TÍNH, đúng như mẫu: mã ·

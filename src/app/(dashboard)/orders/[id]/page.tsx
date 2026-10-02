@@ -71,6 +71,7 @@ import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { tongSauSuaTaiCho } from "@/lib/orders/inline-totals"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 type NextStatus = {
   value: OrderStatus
@@ -1646,6 +1647,8 @@ export default function OrderDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                    <TableHead className="w-10 text-center">STT</TableHead>
                     <TableHead>Sản phẩm</TableHead>
                     <TableHead>ĐVT</TableHead>
                     <TableHead className="text-right">SL</TableHead>
@@ -1656,7 +1659,7 @@ export default function OrderDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.map((line) => {
+                  {lines.map((line, i) => {
                     const edited = editedLines.find((e) => e.id === line.id)
                     const inEdit = linesEditMode && !!edited
                     const liveQty = edited?.quantity ?? line.quantity
@@ -1680,6 +1683,7 @@ export default function OrderDetailPage() {
                     const lockReadonly = inEdit && lock.state !== "mine"
                     return (
                       <TableRow key={line.id}>
+                        <TableCell data-testid="stt-dong" className="w-10 text-center tabular-nums text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-start gap-2">
                             <div className="min-w-0 flex-1">
@@ -1820,15 +1824,16 @@ export default function OrderDetailPage() {
                   })}
                   {lines.length === 0 && addedLines.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                         Chưa có sản phẩm
                       </TableCell>
                     </TableRow>
                   )}
                   {/* Q5 — new draft lines being added in edit mode. */}
                   {linesEditMode &&
-                    addedLines.map((al) => (
+                    addedLines.map((al, k) => (
                       <TableRow key={al.key} className="bg-[#ecfdf3]/40">
+                        <TableCell className="w-10 text-center tabular-nums text-muted-foreground">{lines.length + k + 1}</TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-1.5">
                             <Badge variant="success" className="text-[10px]">
@@ -1893,7 +1898,7 @@ export default function OrderDetailPage() {
               {lines.length === 0 ? (
                 <p className="text-center text-muted-foreground py-6 text-sm">Chưa có sản phẩm</p>
               ) : (
-                lines.map((line) => {
+                lines.map((line, i) => {
                   const edited = editedLines.find((e) => e.id === line.id)
                   const inEdit = linesEditMode && !!edited
                   const liveQty = edited?.quantity ?? line.quantity
@@ -1915,6 +1920,7 @@ export default function OrderDetailPage() {
                   return (
                     <div key={line.id} className="rounded-xl border bg-muted/20 p-3">
                       <p className="font-semibold text-sm leading-tight flex items-center gap-1.5">
+                        <SoThuTu n={i + 1} />
                         {lineLocked && (
                           <Lock className="h-3.5 w-3.5 text-[#b54708] shrink-0" />
                         )}

@@ -20,6 +20,7 @@ import { RETURN_REASONS, RETURN_STATUS_MAP } from "@/lib/constants"
 import { CustomerQuickInfo, type QuickCustomer } from "@/components/orders/customer-quick-info"
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { duongSuaPhieuTra } from "@/lib/returns/loai-phieu"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 interface DrawerReturn {
   id: string
@@ -141,8 +142,9 @@ export function ReturnDrawer({ returnId, onClose }: { returnId: string | null; o
                     <div className="bg-surface-container-low px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
                       {k.ten} · {k.ds.length}
                     </div>
-                    {k.ds.map((l) => (
+                    {k.ds.map((l, i) => (
                       <div key={l.id} className="flex items-start gap-2.5 border-t border-outline-variant/30 px-3 py-2.5">
+                        <SoThuTu n={i + 1} />
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13px] font-bold leading-snug">
                             {l.product?.name || <span className="italic text-on-surface-variant">Sản phẩm đã xoá</span>}

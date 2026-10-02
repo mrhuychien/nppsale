@@ -523,6 +523,8 @@ export default function ReturnDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                      <TableHead className="w-10 text-center">STT</TableHead>
                       <TableHead>Loại</TableHead>
                       <TableHead>Sản phẩm</TableHead>
                       <TableHead>ĐVT</TableHead>
@@ -532,10 +534,11 @@ export default function ReturnDetailPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lines.map((line) => {
+                    {lines.map((line, i) => {
                       const isExchange = !!(line as { is_exchange?: boolean | null }).is_exchange
                       return (
                         <TableRow key={line.id} className={isExchange ? "bg-[#eff8ff]/40" : undefined}>
+                          <TableCell data-testid="stt-dong" className="w-10 text-center tabular-nums text-muted-foreground">{i + 1}</TableCell>
                           <TableCell>
                             {isExchange ? (
                               <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#eff8ff] text-[#175cd3] border border-[#175cd3]/40">
@@ -580,7 +583,7 @@ export default function ReturnDetailPage() {
                     })}
                     {lines.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                           Chưa có sản phẩm trả
                         </TableCell>
                       </TableRow>

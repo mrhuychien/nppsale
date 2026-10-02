@@ -26,6 +26,8 @@ test("kiểm kê trên điện thoại: tải tồn, Khớp, đếm lệch, gử
   await expect(page.getByTestId("kiem-ke-da-dem")).toHaveText("0/2 đã đếm")
   await expect(gui).toHaveText("Nhập tồn thực tế để gửi")
   await expect(man.getByText("Chưa đếm")).toHaveCount(2)
+  // Số thứ tự đầu dòng (chủ nhà 02/10/2026).
+  await expect(man.getByTestId("dong-kiem-ke").getByTestId("stt-dong")).toHaveText(["1", "2"])
 
   // "Khớp" = số đếm bằng hệ thống → đã đếm nhưng không chênh.
   const sua = man.getByTestId("dong-kiem-ke").filter({ hasText: "Sữa hộp" })

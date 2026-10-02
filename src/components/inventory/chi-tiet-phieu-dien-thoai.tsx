@@ -14,6 +14,7 @@ import {
   bangTrangThai, nhanKho, nhanSoLuong, nhanTongSoLuong, slCoSoDong, tomTatDong, type TonePhieu,
 } from "@/lib/inventory/phieu-kho-mobile"
 import { AlertTriangle, Check, CircleX, Package, Store, Trash2 } from "lucide-react"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export interface DongChiTiet {
   id: string
@@ -192,7 +193,7 @@ export function ChiTietPhieuDienThoai({
               </div>
             ) : (
               <ul className="divide-y" data-testid="dong-hang-phieu">
-                {lines.map((l) => {
+                {lines.map((l, i) => {
                   const f = Number(l.conversion_factor_snapshot ?? 1) || 1
                   const tx = Number(l.qty_in_transaction_uom ?? l.quantity) || 0
                   const base = slCoSoDong(l)
@@ -200,6 +201,7 @@ export function ChiTietPhieuDienThoai({
                   const kk = entry.type === "stocktake"
                   return (
                     <li key={l.id} className="flex items-start gap-3 px-3.5 py-2.5">
+                      <SoThuTu n={i + 1} />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium leading-snug">{l.product?.name || "—"}</p>
                         <p className="truncate text-xs text-muted-foreground">

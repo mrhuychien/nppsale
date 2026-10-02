@@ -1062,7 +1062,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                       <TrashButton label={`Bỏ dòng trả ${i + 1}`} onClick={() => setTraSua((s) => ({ ...s, [l.id]: 0 }))} />
                     ) : <span />}
                     <span className="min-w-0">
-                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{l.name}</span>
+                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
+                        {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                        <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{i + 1}.</span>{l.name}
+                      </span>
                       <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
                         <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
                           {l.sku}
@@ -1143,7 +1146,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                   >
                     <TrashButton label={`Xoá dòng trả mới ${i + 1}`} onClick={() => setTraMoi((c) => c.filter((x) => x.key !== a.key))} />
                     <span className="min-w-0">
-                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">{a.name}</span>
+                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
+                        <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{traCu.length + i + 1}.</span>{a.name}
+                      </span>
                       <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
                         <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
                           {a.sku} · mới thêm

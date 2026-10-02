@@ -261,6 +261,8 @@ export default function AdjustmentsPage() {
         <table className="w-full text-xs">
           <thead className="text-muted-foreground bg-muted/20">
             <tr>
+              {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+              <th className="w-8 py-1.5 px-2 text-center font-semibold">STT</th>
               <th className="text-left py-1.5 px-2 font-semibold">SKU</th>
               <th className="text-left py-1.5 px-2 font-semibold">Sản phẩm</th>
               <th className="text-left py-1.5 px-2 font-semibold">Lô</th>
@@ -270,12 +272,13 @@ export default function AdjustmentsPage() {
             </tr>
           </thead>
           <tbody>
-            {(a.lines || []).map((l) => {
+            {(a.lines || []).map((l, i) => {
               const diff = Number(l.quantity)
               const cost = Number(l.unit_cost) || 0
               const value = Math.abs(diff) * cost
               return (
                 <tr key={l.id} className="border-t">
+                  <td data-testid="stt-dong" className="w-8 py-1.5 px-2 text-center tabular-nums text-muted-foreground">{i + 1}</td>
                   <td className="py-1.5 px-2 font-mono">{l.product?.sku || "-"}</td>
                   <td className="py-1.5 px-2">{l.product?.name || "-"}</td>
                   <td className="py-1.5 px-2 font-mono text-muted-foreground">

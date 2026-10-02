@@ -13,6 +13,7 @@ import {
   type TimelineHistoryEntry,
 } from "@/lib/orders/status-tone"
 import type { Invoice, SalesOrder, SalesOrderLine } from "@/types"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 /**
  * Chi tiết đơn trên ĐIỆN THOẠI — theo mẫu thiết kế "Chi tiết đơn".
@@ -186,11 +187,12 @@ export function MobileOrderDetail({
               Chưa có sản phẩm
             </p>
           )}
-          {lines.map((line) => (
+          {lines.map((line, i) => (
             <div
               key={line.id}
               className="flex items-start gap-2.5 border-t border-outline-variant/30 px-3.5 py-2.5"
             >
+              <SoThuTu n={i + 1} />
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-bold leading-snug text-on-surface">
                   {/* "-" khiến người dùng tưởng giao diện hỏng. Sản phẩm bị

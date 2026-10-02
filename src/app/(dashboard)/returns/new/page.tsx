@@ -729,7 +729,11 @@ export default function NewReturnPage() {
                       className="grid gap-3 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">{p?.name ?? "—"}</p>
+                        <p className="truncate text-sm font-semibold">
+                          {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                          <span data-testid="stt-dong" className="mr-1.5 tabular-nums text-muted-foreground">{i + 1}.</span>
+                          {p?.name ?? "—"}
+                        </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {p?.sku ?? "—"} · {l.unit}
                           {ceiling > 0 && ` · ${sold ? "giá đã bán" : "giá bảng"} ${formatCurrency(ceiling)}`}

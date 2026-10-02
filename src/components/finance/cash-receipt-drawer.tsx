@@ -20,6 +20,7 @@ import { errorMessage } from "@/lib/errors"
 import {
   CASH_RECEIPT_SOURCE_LABEL, CASH_RECEIPT_STATUS_LABEL, CASH_RECEIPT_STATUS_VARIANT,
 } from "@/lib/finance/cash-receipt-list"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 interface DrawerReceipt {
   id: string
@@ -137,10 +138,11 @@ export function CashReceiptDrawer({ receiptId, onClose }: { receiptId: string | 
                   <div className="bg-surface-container-low px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant">
                     Khoản thu · {lines.length}
                   </div>
-                  {lines.map((l) => {
+                  {lines.map((l, i) => {
                     const kh = l.receivable?.customer ?? l.order?.customer ?? null
                     return (
                       <div key={l.id} className="flex items-start gap-2.5 border-t border-outline-variant/30 px-3 py-2.5">
+                        <SoThuTu n={i + 1} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-bold leading-snug">
                             {kh?.store_name || "—"}

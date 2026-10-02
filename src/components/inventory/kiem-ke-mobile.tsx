@@ -13,6 +13,7 @@ import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { chenhCuaDong, nutGuiKiemKe, soCoDau, type TomTatKiemKe } from "@/lib/inventory/kiem-ke-mobile"
 import { cn, formatCurrency } from "@/lib/utils"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export interface DongKiemKeMobile {
   key: string
@@ -176,7 +177,7 @@ export function KiemKeMobile({
           </p>
         ) : (
           <div className="space-y-2.5">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               const diff = chenhCuaDong(r)
               const lech = diff !== null && diff !== 0
               return (
@@ -189,6 +190,7 @@ export function KiemKeMobile({
                   )}
                 >
                   <div className="flex items-start gap-2">
+                    <SoThuTu n={i + 1} />
                     <div className="min-w-0 flex-1">
                       <p className="text-[15px] font-semibold leading-tight text-on-surface">{r.name}</p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">

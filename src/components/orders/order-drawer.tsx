@@ -27,6 +27,7 @@ import { isSellEditable } from "@/lib/sell/order-edit"
 import { errorMessage } from "@/lib/errors"
 import type { SalesOrder } from "@/types"
 import { CustomerQuickInfo } from "@/components/orders/customer-quick-info"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 /**
  * Ngăn chi tiết đơn bên phải trên MÁY TÍNH — theo mẫu thiết kế "Đơn hàng".
@@ -339,7 +340,7 @@ export function OrderDrawer({
                     <Skeleton className="h-10" />
                   </div>
                 )}
-                {lines?.map((l) => {
+                {lines?.map((l, i) => {
                   /**
                    * ⚠ THIẾU TÍNH THEO SẢN PHẨM, KHÔNG THEO DÒNG. Hai dòng
                    * cùng một mặt hàng, mỗi dòng 6 thùng trên tồn 10 thùng
@@ -355,6 +356,7 @@ export function OrderDrawer({
                       short > 0 && (oversellAllowed ? "bg-[#fff7e6]" : "bg-error/5")
                     )}
                   >
+                    <SoThuTu n={i + 1} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-bold leading-snug">
                         {l.product?.name || <span className="italic text-on-surface-variant">Sản phẩm đã xoá</span>}

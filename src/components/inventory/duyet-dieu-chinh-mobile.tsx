@@ -17,6 +17,7 @@ import {
   type TomTatPhieuDieuChinh,
 } from "@/lib/inventory/kiem-ke-mobile"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 export interface DongPhieuMobile {
   id: string
@@ -197,12 +198,13 @@ export function DuyetDieuChinhMobile({
                 {moRong && (
                   <div className="divide-y divide-outline-variant/60 border-b border-outline-variant/60" data-testid="dong-kiem-chi-tiet">
                     {lines.length === 0 && <p className="px-3.5 py-3 text-xs text-muted-foreground">Phiếu không có dòng.</p>}
-                    {lines.map((l) => {
+                    {lines.map((l, i) => {
                       const diff = Number(l.quantity)
                       const cost = Number(l.unit_cost) || 0
                       const value = Math.abs(diff) * cost
                       return (
                         <div key={l.id} className="flex items-start justify-between gap-3 px-3.5 py-2.5">
+                          <SoThuTu n={i + 1} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-on-surface">{l.product?.name || "-"}</p>
                             <p className="truncate text-xs text-muted-foreground">

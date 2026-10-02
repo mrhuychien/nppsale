@@ -106,8 +106,10 @@ export function ReturnSummary({ returns }: { returns: ReturnSummaryRow[] }) {
 
             {lines.length > 0 && (
               <div className="mt-2 grid gap-1">
-                {lines.map((l) => (
+                {lines.map((l, i) => (
                   <div key={l.id} className="flex items-baseline gap-2 text-[12px]">
+                    {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                    <span data-testid="stt-dong" className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{i + 1}.</span>
                     <span
                       className={
                         l.is_exchange

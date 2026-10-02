@@ -25,6 +25,7 @@ import { InvoiceMoneySummary } from "@/components/orders/invoice-money-summary"
 import { CustomerQuickInfo } from "@/components/orders/customer-quick-info"
 import { noteBlocksOf } from "@/components/printing/sales-invoice"
 import type { InvoiceRow } from "@/components/sales-invoices/desktop-invoice-table"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 /**
  * Ngăn XEM NHANH hóa đơn bán — cùng khuôn với `order-drawer`.
@@ -238,8 +239,9 @@ export function InvoiceDrawer({
                     <Skeleton className="h-10" />
                   </div>
                 )}
-                {lines?.map((l) => (
+                {lines?.map((l, i) => (
                   <div key={l.id} className="flex items-start gap-2.5 border-t border-outline-variant/30 px-3 py-2.5">
+                    <SoThuTu n={i + 1} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-bold leading-snug">
                         {l.product?.name || (

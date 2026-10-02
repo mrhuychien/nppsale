@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ClipboardCheck, Save, AlertTriangle } from "lucide-react"
 import type { Product, Batch } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { SoThuTu } from "@/components/mobile/so-thu-tu"
 
 type BatchWithProduct = Batch & { product?: Product }
 
@@ -286,6 +287,8 @@ export default function StocktakeCheckPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                      <TableHead className="w-10 text-center">STT</TableHead>
                       <TableHead>Sản phẩm</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Tồn hệ thống</TableHead>
@@ -301,6 +304,7 @@ export default function StocktakeCheckPage() {
 
                       return (
                         <TableRow key={row.productId} className={hasDiff ? "bg-destructive/5" : ""}>
+                          <TableCell data-testid="stt-dong" className="w-10 text-center tabular-nums text-muted-foreground">{index + 1}</TableCell>
                           <TableCell className="font-medium">{row.productName}</TableCell>
                           <TableCell className="font-mono text-xs">{row.sku}</TableCell>
                           <TableCell className="text-right font-semibold">
@@ -352,9 +356,12 @@ export default function StocktakeCheckPage() {
                       key={row.productId}
                       className={`rounded-xl border p-3 ${hasDiff ? "bg-destructive/5 border-destructive/40" : "bg-card"}`}
                     >
-                      <div className="mb-2">
+                      <div className="mb-2 flex items-start gap-2">
+                        <SoThuTu n={index + 1} />
+                        <div className="min-w-0 flex-1">
                         <p className="font-semibold text-sm leading-tight">{row.productName}</p>
                         <p className="font-mono text-xs text-muted-foreground mt-0.5">SKU: {row.sku}</p>
+                        </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2 items-end">
                         <div>

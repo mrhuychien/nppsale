@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation"
 import { AlertTriangle, ArrowLeftRight, Loader2, PackageMinus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useOrg } from "@/hooks/use-org"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -94,6 +95,9 @@ export default function StockIssuePage() {
     [products, term, onSlip]
   )
   const over = useMemo(() => overIssueProducts(lines), [lines])
+  /* Đơn vị cho bán vượt tồn → phiếu xuất kho cũng ghi sổ được khi thiếu (mig 222, chủ nhà 02/10/2026). */
+  const { org } = useOrg()
+  const choAm = org?.allow_oversell === true
 
   const patchLine = (id: string, p: Partial<IssueLine>) =>
     setLines((a) => a.map((l) => (l.id === id ? { ...l, ...p } : l)))
@@ -477,7 +481,9 @@ export default function StockIssuePage() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             {over.map((o) => `${o.name}: cần ${formatInt(o.need)}, kho còn ${formatInt(o.onHand)}`).join(" · ")}.
-            {" "}Ghi sổ sẽ bị từ chối — giảm số lượng, đổi kho, hoặc nhập bù trước.
+            {choAm
+              ? " Đơn vị đang cho bán vượt tồn — vẫn ghi sổ được, kho sẽ thiếu cho tới khi nhập bù / kiểm kê."
+              : " Ghi sổ sẽ bị từ chối — giảm số lượng, đổi kho, hoặc nhập bù trước."}
           </span>
         </div>
       )}

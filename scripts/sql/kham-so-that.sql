@@ -528,4 +528,12 @@ SELECT 60, 'Mig 221 (Nhắc khách chưa gán tuyến)',
        THEN 'CHƯA — cron không ghi được thông báo khách chưa gán tuyến'
        ELSE 'OK — đã vá' END,
   'Khách đang bán chưa có tuyến: ' || (SELECT count(*) FROM customers WHERE status = 'active' AND coalesce(trim(channel), '') = '')
+UNION ALL
+-- 61. Mig 222 — bật "cho bán vượt tồn" thì trả NCC / phiếu xuất kho cũng xuất âm được
+SELECT 61, 'Mig 222 (Xuất âm: trả NCC, phiếu xuất kho)',
+  CASE WHEN position('v_cho_am' IN pg_get_functiondef('public.complete_supplier_return(uuid)'::regprocedure)) = 0
+         OR position('v_cho_am' IN pg_get_functiondef('public.post_stock_issue(uuid)'::regprocedure)) = 0
+       THEN 'CHƯA — trả NCC / phiếu xuất kho vẫn chặn tồn âm dù đã bật cho bán vượt tồn'
+       ELSE 'OK — đã vá' END,
+  CASE WHEN (SELECT bool_or(allow_oversell) FROM organizations) THEN 'Đang bật cho bán vượt tồn' ELSE 'Đang tắt cho bán vượt tồn' END
 ) t ORDER BY stt;

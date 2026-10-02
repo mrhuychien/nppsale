@@ -170,10 +170,10 @@ export default function OrgSettingsPage() {
                 Cho phép bán vượt tồn kho
               </Label>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Bật để nhân viên tạo được đơn dù tồn không đủ (đơn đặt
-                trước). Khi pick, tồn kho sẽ tạm về âm cho đến khi nhập
-                hàng bổ sung. Tắt (mặc định) sẽ chặn ngay trên form và
-                hiện lỗi &ldquo;Vượt tồn kho&rdquo;.
+                Bật để mọi phiếu xuất kho đều xuất được dù tồn không đủ: bán
+                hàng / xuất hoá đơn, trả hàng NCC, phiếu xuất kho (hỏng, biếu…).
+                Tồn kho sẽ thiếu cho tới khi nhập hàng bổ sung hoặc kiểm kê.
+                Tắt (mặc định) thì chặn và báo &ldquo;không đủ tồn&rdquo;.
               </p>
             </div>
             <Switch

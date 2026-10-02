@@ -162,7 +162,7 @@ export default function ReturnDetailPage() {
     let cancelled = false
     createClient()
       .from("users")
-      .select("id, full_name, role")
+      .select("id, full_name, role, is_active")
       .eq("org_id", user.org_id)
       /* Đúng bộ vai trò trigger cho phép — hiện tên mà máy chủ từ chối
          là bẫy người dùng. */
@@ -170,7 +170,8 @@ export default function ReturnDetailPage() {
       .order("full_name")
       .then(({ data }) => {
         if (!cancelled) {
-          setSellers((data as Array<{ id: string; full_name: string; role: string }>) || [])
+          // Người đã nghỉ / tạm khoá không gán được (mig 223).
+          setSellers(((data as Array<{ id: string; full_name: string; role: string; is_active?: boolean | null }>) || []).filter((u) => u.is_active !== false))
         }
       })
     return () => {

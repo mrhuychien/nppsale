@@ -71,7 +71,7 @@ test("điện thoại: danh sách nhân viên theo thiết kế — đầu xanh,
     await expect(ngan.getByRole("button", { name: /Tạm khóa/ })).toBeVisible()
     await expect(ngan.getByRole("button", { name: /Chỉnh sửa/ })).toBeVisible()
     await expect(ngan.getByRole("button", { name: "Mã QR đăng nhập" })).toBeVisible()
-    await expect(ngan.getByRole("button", { name: "Xoá người dùng" })).toBeVisible()
+    await expect(ngan.getByRole("button", { name: "Xoá / cho nghỉ việc" })).toBeVisible()
 
     // Không còn app bar chuẩn chồng lên đầu xanh.
     await expect(page.locator("header").filter({ has: page.getByRole("button", { name: "Mở menu" }) })).toBeHidden()

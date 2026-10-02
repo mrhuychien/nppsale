@@ -536,4 +536,15 @@ SELECT 61, 'Mig 222 (Xuất âm: trả NCC, phiếu xuất kho)',
        THEN 'CHƯA — trả NCC / phiếu xuất kho vẫn chặn tồn âm dù đã bật cho bán vượt tồn'
        ELSE 'OK — đã vá' END,
   CASE WHEN (SELECT bool_or(allow_oversell) FROM organizations) THEN 'Đang bật cho bán vượt tồn' ELSE 'Đang tắt cho bán vượt tồn' END
+UNION ALL
+-- 62. Mig 223 — nhân viên nghỉ việc: bàn giao khách + công nợ về NPP
+SELECT 62, 'Mig 223 (Nhân viên nghỉ việc, nợ về NPP)',
+  CASE WHEN to_regprocedure('public.cho_nhan_vien_nghi(uuid)') IS NULL
+         OR to_regprocedure('public.giao_cong_no_npp(uuid,uuid)') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_cong_no_giu_ve_npp')
+       THEN 'CHƯA — xoá nhân viên đã có chứng từ báo lỗi, chưa có Cho nghỉ việc'
+       ELSE 'OK — đã vá' END,
+  CASE WHEN to_regprocedure('public.cho_nhan_vien_nghi(uuid)') IS NULL THEN ''
+       ELSE 'Nợ NPP đang giữ (chưa phân lại): ' || (SELECT count(*) FROM receivables
+              WHERE status <> 'paid' AND (to_jsonb(receivables) ->> 've_npp_luc') IS NOT NULL) END
 ) t ORDER BY stt;

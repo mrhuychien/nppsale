@@ -8,6 +8,7 @@
  * viết tắt · tên · "Vai trò · SĐT" · nút đăng nhập (Safari, luật ở trang) · ›. Chạm thẻ = xem nhanh.
  */
 
+import { trangThaiNv } from "@/lib/users/nghi-viec"
 import type { KeyboardEvent, ReactNode } from "react"
 import { ChevronRight, Plus, Search, X } from "lucide-react"
 import Link from "@/components/ui/link"
@@ -109,7 +110,8 @@ export function DsNhanVienDienThoai<T extends NvDong>({
         ) : (
           <div className="divide-y divide-outline-variant/40 overflow-hidden rounded-2xl border border-outline-variant/60 bg-card" data-testid="nv-ds">
             {items.map((u) => {
-              const khoa = !u.is_active
+              const tt = trangThaiNv(u)
+              const khoa = tt !== "active"
               const chu = u.role === "owner"
               /* Nút đăng nhập nằm trong thẻ nhưng tự chặn nổi bọt (stopPropagation) → không mở xem nhanh. */
               const phim = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -148,7 +150,7 @@ export function DsNhanVienDienThoai<T extends NvDong>({
                   </div>
                   {khoa && (
                     <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-foreground/80">
-                      Tạm khoá
+                      {tt === "left" ? "Đã nghỉ" : "Tạm khoá"}
                     </span>
                   )}
                   {nutDangNhap(u)}

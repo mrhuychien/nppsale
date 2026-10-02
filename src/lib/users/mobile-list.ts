@@ -8,6 +8,7 @@
 
 import { ROLE_LABELS } from "@/lib/constants"
 import { normalizePhone } from "@/lib/users/phone"
+import { trangThaiNv } from "@/lib/users/nghi-viec"
 
 export interface NvDong {
   id: string
@@ -15,9 +16,11 @@ export interface NvDong {
   role: string
   phone?: string | null
   is_active?: boolean | null
+  /** Đã nghỉ việc (mig 223) — chip riêng "Đã nghỉ", không lẫn vào "Tạm khoá". */
+  left_at?: string | null
 }
 
-/** Khoá lọc: "active" | "locked" | "all" | "role:<vai>". */
+/** Khoá lọc: "active" | "locked" | "left" | "all" | "role:<vai>". */
 export type LocNv = string
 
 export const LOC_NV_MAC_DINH: LocNv = "active"
@@ -35,10 +38,11 @@ const nhanVai = (role: string) => ROLE_LABELS[role] || role
 
 /** Người này có khớp khoá lọc không. */
 export function khopLocNv(u: NvDong, loc: LocNv): boolean {
+  const tt = trangThaiNv(u)
   if (loc === "all") return true
-  if (loc === "locked") return !u.is_active
-  if (loc.startsWith("role:")) return !!u.is_active && u.role === loc.slice(5)
-  return !!u.is_active
+  if (loc === "locked" || loc === "left") return tt === loc
+  if (loc.startsWith("role:")) return tt === "active" && u.role === loc.slice(5)
+  return tt === "active"
 }
 
 /**
@@ -46,7 +50,7 @@ export function khopLocNv(u: NvDong, loc: LocNv): boolean {
  * (hoặc đang chọn); "Đang hoạt động" và "Tất cả" luôn hiện.
  */
 export function chipNhanVien(rows: NvDong[], loc: LocNv): ChipNv[] {
-  const dang = rows.filter((u) => u.is_active)
+  const dang = rows.filter((u) => trangThaiNv(u) === "active")
   const theoVai = new Map<string, number>()
   for (const u of dang) {
     if (u.role === "owner") continue
@@ -59,19 +63,22 @@ export function chipNhanVien(rows: NvDong[], loc: LocNv): ChipNv[] {
     if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
     return nhanVai(a).localeCompare(nhanVai(b), "vi")
   })
-  const khoa = rows.length - dang.length
+  const khoa = rows.filter((u) => trangThaiNv(u) === "locked").length
+  const nghi = rows.filter((u) => trangThaiNv(u) === "left").length
   const out: ChipNv[] = [{ key: "active", label: "Đang hoạt động", count: dang.length }]
   for (const r of vai) out.push({ key: `role:${r}`, label: nhanVai(r), count: theoVai.get(r) ?? 0 })
   if (khoa > 0 || loc === "locked") out.push({ key: "locked", label: "Tạm khoá", count: khoa })
+  if (nghi > 0 || loc === "left") out.push({ key: "left", label: "Đã nghỉ", count: nghi })
   out.push({ key: "all", label: "Tất cả", count: rows.length })
   return out
 }
 
-/** Dòng phụ đầu xanh: "12 đang hoạt động · 1 tạm khoá" (không có người khoá thì bỏ vế sau). */
+/** Dòng phụ đầu xanh: "12 đang hoạt động · 1 tạm khoá · 2 đã nghỉ" (vế bằng 0 thì bỏ). */
 export function dongPhuNhanVien(rows: NvDong[]): string {
-  const dang = rows.filter((u) => u.is_active).length
-  const khoa = rows.length - dang
-  return `${dang} đang hoạt động` + (khoa > 0 ? ` · ${khoa} tạm khoá` : "")
+  const dang = rows.filter((u) => trangThaiNv(u) === "active").length
+  const khoa = rows.filter((u) => trangThaiNv(u) === "locked").length
+  const nghi = rows.filter((u) => trangThaiNv(u) === "left").length
+  return `${dang} đang hoạt động` + (khoa > 0 ? ` · ${khoa} tạm khoá` : "") + (nghi > 0 ? ` · ${nghi} đã nghỉ` : "")
 }
 
 /** Chủ NPP lên đầu, còn lại giữ thứ tự sẵn có (máy chủ đã xếp theo tên). */

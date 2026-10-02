@@ -35,6 +35,17 @@ import {
   type UserColumnKey,
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
+import { NHAN_TRANG_THAI_NV, trangThaiNv } from "@/lib/users/nghi-viec"
+import { XoaNhanVienDialog } from "@/components/users/xoa-nhan-vien-dialog"
+
+function BadgeTrangThai({ u }: { u: User }) {
+  const tt = trangThaiNv(u)
+  return (
+    <Badge variant={tt === "active" ? "success" : tt === "left" ? "outline" : "secondary"} data-testid="trang-thai-nv">
+      {NHAN_TRANG_THAI_NV[tt]}
+    </Badge>
+  )
+}
 
 export default function UsersPage() {
   const { user: currentUser, loading: authLoading } = useRoleGuard("settings")
@@ -43,7 +54,6 @@ export default function UsersPage() {
   const [toggleTarget, setToggleTarget] = useState<User | null>(null)
   const [toggling, setToggling] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const [qrTarget, setQrTarget] = useState<User | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -56,9 +66,13 @@ export default function UsersPage() {
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
-    const { data, error: dataErr } = await supabase.from("users").select("id, full_name, role, phone, is_active").order("full_name")
+    /* `left_at` (mig 223) đọc kèm; DB chưa chạy 223 thì đọc lại không có cột — vẫn hiện được danh sách. */
+    const moi = await supabase.from("users").select("id, full_name, role, phone, is_active, left_at").order("full_name")
+    const { data, error: dataErr } = moi.error
+      ? await supabase.from("users").select("id, full_name, role, phone, is_active").order("full_name")
+      : moi
     if (dataErr) console.error("[settings/users] truy vấn lỗi:", dataErr.message)
-    setUsers((data as User[]) || [])
+    setUsers(((data as unknown) as User[]) || [])
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -95,34 +109,19 @@ export default function UsersPage() {
       />
     ) : null
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    try {
-      const res = await fetch(`/api/admin/users/${deleteTarget.id}`, { method: "DELETE" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Xóa thất bại")
-      toast({ title: `Đã xóa người dùng ${deleteTarget.full_name}` })
-      setDeleteTarget(null)
-      fetchUsers()
-    } catch (err) {
-      toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   const handleToggleActive = async () => {
     if (!toggleTarget) return
     setToggling(true)
     try {
+      const tt = trangThaiNv(toggleTarget)
+      // Nhận lại người đã nghỉ: mở khoá + bỏ dấu nghỉ. Khách / nợ đã về NPP thì NPP tự phân lại.
       const { error } = await supabase
         .from("users")
-        .update({ is_active: !toggleTarget.is_active })
+        .update(tt === "left" ? { is_active: true, left_at: null, left_by: null } : { is_active: tt !== "active" })
         .eq("id", toggleTarget.id)
       if (error) throw error
       toast({
-        title: toggleTarget.is_active ? "Đã tạm khóa người dùng" : "Đã kích hoạt người dùng",
+        title: tt === "active" ? "Đã tạm khóa người dùng" : tt === "left" ? "Đã nhận lại nhân viên" : "Đã kích hoạt người dùng",
       })
       setToggleTarget(null)
       fetchUsers()
@@ -147,11 +146,12 @@ export default function UsersPage() {
   }, [users, search])
   const counts = useMemo(() => ({
     all: locRows.length,
-    active: locRows.filter((u) => u.is_active).length,
-    locked: locRows.filter((u) => !u.is_active).length,
+    active: locRows.filter((u) => trangThaiNv(u) === "active").length,
+    locked: locRows.filter((u) => trangThaiNv(u) === "locked").length,
+    left: locRows.filter((u) => trangThaiNv(u) === "left").length,
   }), [locRows])
   const shown = useMemo(
-    () => (status === "all" ? locRows : locRows.filter((u) => (status === "active") === !!u.is_active)),
+    () => (status === "all" ? locRows : locRows.filter((u) => trangThaiNv(u) === status)),
     [locRows, status]
   )
   const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([status, search]))
@@ -167,13 +167,13 @@ export default function UsersPage() {
     canManage ? (
       <span className={`flex items-center gap-2 ${rong ? "w-full flex-wrap" : "justify-end"}`} onClick={(e) => e.stopPropagation()}>
         <Button size="sm" variant="outline" className={rong ? "h-11 flex-1" : undefined} onClick={() => setToggleTarget(u)}>
-          {u.is_active ? (
+          {trangThaiNv(u) === "active" ? (
             <>
               <Lock className="h-4 w-4 mr-1" /> Tạm khóa
             </>
           ) : (
             <>
-              <Unlock className="h-4 w-4 mr-1" /> Kích hoạt
+              <Unlock className="h-4 w-4 mr-1" /> {trangThaiNv(u) === "left" ? "Nhận lại" : "Kích hoạt"}
             </>
           )}
         </Button>
@@ -192,13 +192,14 @@ export default function UsersPage() {
             <QrCode className="h-4 w-4" />
           </Button>
         )}
-        {isOwner && u.id !== currentUser?.id && (
+        {isOwner && u.id !== currentUser?.id && trangThaiNv(u) !== "left" && (
           <Button
             size="sm"
             variant="outline"
             className={`text-destructive hover:bg-destructive/10 ${rong ? "h-11" : ""}`}
             onClick={() => setDeleteTarget(u)}
-            aria-label="Xoá người dùng"
+            aria-label="Xoá / cho nghỉ việc"
+            title="Xoá / cho nghỉ việc"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -224,7 +225,7 @@ export default function UsersPage() {
       { k: "phone", key: "phone", label: "SĐT", width: "140px", render: (u) => <DocCellText muted>{u.phone}</DocCellText> },
       {
         k: "status", key: "status", label: "Trạng thái", width: "140px",
-        render: (u) => <Badge variant={u.is_active ? "success" : "secondary"}>{u.is_active ? "Đang hoạt động" : "Tạm khóa"}</Badge>,
+        render: (u) => <BadgeTrangThai u={u} />,
       },
       { k: "action", key: "action", label: "Thao tác", width: "380px", align: "right", render: (u) => thaoTac(u) },
     ]
@@ -236,6 +237,7 @@ export default function UsersPage() {
   const chips = [
     { key: "active", label: "Đang hoạt động", count: counts.active, accent: "#22c55e" },
     { key: "locked", label: "Tạm khóa", count: counts.locked, accent: "#98a2b3" },
+    ...(counts.left > 0 || status === "left" ? [{ key: "left", label: "Đã nghỉ", count: counts.left, accent: "#64748b" }] : []),
     { key: "all", label: "Tất cả", count: counts.all, accent: "#181c1e" },
   ]
   const nutTao = isOwner && (
@@ -301,7 +303,7 @@ export default function UsersPage() {
         onClose={() => setXemId(null)}
         title={xem?.full_name ?? "Người dùng"}
         subtitle={xem ? ROLE_LABELS[xem.role] || xem.role : undefined}
-        badge={xem ? <Badge variant={xem.is_active ? "success" : "secondary"}>{xem.is_active ? "Đang hoạt động" : "Tạm khóa"}</Badge> : null}
+        badge={xem ? <BadgeTrangThai u={xem} /> : null}
         fields={xem ? [
           { label: "Vai trò", value: ROLE_LABELS[xem.role] || xem.role },
           { label: "SĐT", value: xem.phone },
@@ -312,27 +314,29 @@ export default function UsersPage() {
       <ConfirmDialog
         open={!!toggleTarget}
         onOpenChange={(open) => !open && setToggleTarget(null)}
-        title={toggleTarget?.is_active ? "Tạm khóa người dùng?" : "Kích hoạt người dùng?"}
+        title={toggleTarget?.is_active ? "Tạm khóa người dùng?" : toggleTarget?.left_at ? "Nhận lại nhân viên?" : "Kích hoạt người dùng?"}
         description={
           toggleTarget?.is_active
             ? `Người dùng "${toggleTarget?.full_name}" sẽ không thể đăng nhập sử dụng hệ thống cho đến khi được kích hoạt lại.`
-            : `Người dùng "${toggleTarget?.full_name}" sẽ được phép đăng nhập và sử dụng hệ thống.`
+            : toggleTarget?.left_at
+              ? `"${toggleTarget?.full_name}" được đăng nhập lại. Khách và công nợ đã bàn giao về NPP không tự quay lại — phân công lại ở màn khách hàng.`
+              : `Người dùng "${toggleTarget?.full_name}" sẽ được phép đăng nhập và sử dụng hệ thống.`
         }
         variant={toggleTarget?.is_active ? "destructive" : "default"}
-        confirmLabel={toggleTarget?.is_active ? "Tạm khóa" : "Kích hoạt"}
+        confirmLabel={toggleTarget?.is_active ? "Tạm khóa" : toggleTarget?.left_at ? "Nhận lại" : "Kích hoạt"}
         onConfirm={handleToggleActive}
         loading={toggling}
       />
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Xóa vĩnh viễn người dùng ${deleteTarget?.full_name}?`}
-        description="Tài khoản + dữ liệu cá nhân sẽ bị xóa không thể khôi phục. Các bản ghi đã tạo (đơn hàng, phiếu kho...) vẫn giữ nhưng mất tham chiếu tới người tạo."
-        variant="destructive"
-        confirmLabel="Xóa vĩnh viễn"
-        onConfirm={handleDelete}
-        loading={deleting}
+      <XoaNhanVienDialog
+        user={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDone={(tb) => {
+          toast({ title: tb })
+          setDeleteTarget(null)
+          setXemId(null)
+          fetchUsers()
+        }}
       />
 
       {qrTarget && (

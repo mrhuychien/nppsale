@@ -11,6 +11,8 @@ import { Trash2, Plus } from "lucide-react"
 import type { CustomerAssignment, User } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { formatCurrency } from "@/lib/utils"
+import { loiNhanVien } from "@/lib/users/nghi-viec"
 
 interface AssignmentManagerProps {
   customerId: string
@@ -23,8 +25,29 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
   const [selectedUser, setSelectedUser] = useState("")
   const [assignRole, setAssignRole] = useState("primary")
   const [loading, setLoading] = useState(false)
+  /* Nợ NPP đang giữ của khách (NV cũ nghỉ việc — mig 223): giao kèm khi phân công NV chính.
+     Chủ nhà 02/10/2026: "khi nghỉ bàn giao khách hàng và công nợ về npp. Npp sẽ phân phối lại sau". */
+  const [noNpp, setNoNpp] = useState<{ so: number; tien: number }>({ so: 0, tien: 0 })
+  const [giaoNo, setGiaoNo] = useState(true)
   const supabase = createClient()
   const { toast } = useToast()
+
+  useEffect(() => {
+    let huy = false
+    supabase
+      .from("receivables")
+      .select("amount, paid")
+      .eq("customer_id", customerId)
+      .not("ve_npp_luc", "is", null)
+      .neq("status", "paid")
+      .then(({ data, error }) => {
+        // DB chưa chạy mig 223 → không có cột → coi như không có nợ NPP giữ.
+        if (huy || error || !data) return
+        const ds = data as Array<{ amount: number | null; paid: number | null }>
+        setNoNpp({ so: ds.length, tien: ds.reduce((t, r) => t + (Number(r.amount) || 0) - (Number(r.paid) || 0), 0) })
+      })
+    return () => { huy = true }
+  }, [customerId, assignments.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function fetchSalesUsers() {
@@ -45,6 +68,16 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
         role: assignRole,
       })
       if (error) throw error
+      if (assignRole === "primary" && noNpp.so > 0 && giaoNo) {
+        const { error: gErr } = await supabase.rpc("giao_cong_no_npp", { p_customer_id: customerId, p_user_id: selectedUser })
+        if (gErr) {
+          toast({ title: "Đã phân công, nhưng chưa giao được công nợ", description: loiNhanVien(gErr.message), variant: "destructive" })
+          setSelectedUser("")
+          onUpdate()
+          return
+        }
+        setNoNpp({ so: 0, tien: 0 })
+      }
       toast({ title: "Đã phân công nhân viên" })
       setSelectedUser("")
       onUpdate()
@@ -128,6 +161,22 @@ export function AssignmentManager({ customerId, assignments, onUpdate }: Assignm
           ))
         )}
       </div>
+
+      {noNpp.so > 0 && (
+        <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="giao-no-npp">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={giaoNo}
+            onChange={(e) => setGiaoNo(e.target.checked)}
+            disabled={assignRole !== "primary"}
+          />
+          <span>
+            NPP đang giữ <b>{noNpp.so} khoản nợ · {formatCurrency(noNpp.tien)}</b> của khách này (NV cũ đã nghỉ).
+            {assignRole === "primary" ? " Giao luôn cho NV chính được phân công." : " Chỉ giao nợ cho NV chính."}
+          </span>
+        </label>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Select value={selectedUser} onValueChange={setSelectedUser}>

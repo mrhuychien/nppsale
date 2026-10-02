@@ -59,11 +59,14 @@ export interface PosSeller {
 export async function loadSellers(sb: SupabaseClient, orgId: string): Promise<PosSeller[]> {
   const { data } = await sb
     .from("users")
-    .select("id, full_name, role")
+    .select("id, full_name, role, is_active")
     .eq("org_id", orgId)
     .in("role", ["sales", "manager", "owner"])
     .order("full_name")
-  return ((data as unknown) as PosSeller[]) ?? []
+  // Người đã nghỉ / tạm khoá không gán được (mig 223). Tên trên chứng từ cũ tra riêng (`DocPeople`).
+  return (((data as unknown) as Array<PosSeller & { is_active?: boolean | null }>) ?? [])
+    .filter((u) => u.is_active !== false)
+    .map((u) => ({ id: u.id, full_name: u.full_name, role: u.role }) as PosSeller)
 }
 
 /* ==================================================================

@@ -172,6 +172,8 @@ export interface User {
   phone: string | null
   /** Tài khoản đăng nhập (alias) — chữ + số + dấu chấm/gạch. */
   is_active: boolean
+  /** Đã nghỉ việc (mig 223) — khác Tạm khoá: khách + công nợ chưa thu đã bàn giao về NPP. */
+  left_at?: string | null
   created_at: string
   /** Cho phép user sửa giá khi tạo / sửa đơn. Default false; owner +
    *  accountant được seed true ở migration 027. */

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { errorMessage } from "@/lib/errors"
+import { loiNhanVien, xoaHanDuoc, type ChungTuNv } from "@/lib/users/nghi-viec"
 
 /**
  * DELETE /api/admin/users/:id - delete user (auth + profile cascade)
@@ -57,6 +58,20 @@ export async function DELETE(
       return NextResponse.json(
         { error: "Không tìm thấy người dùng trong tổ chức" },
         { status: 404 }
+      )
+    }
+
+    /* ⚠ ĐÃ CÓ CHỨNG TỪ THÌ KHÔNG XOÁ (chủ nhà 02/10/2026, mig 223) — ~51 khoá ngoại chặn, bản cũ trả
+       "Database error deleting user". Hỏi trước bằng phiên của chính chủ NPP (RPC tự kiểm quyền). */
+    const { data: ct, error: ctErr } = await supabase.rpc("so_chung_tu_nhan_vien", { p_user_id: targetId })
+    if (ctErr) {
+      console.error("[api/admin/users] đếm chứng từ lỗi:", ctErr.message)
+      return NextResponse.json({ error: loiNhanVien(ctErr.message) }, { status: 500 })
+    }
+    if (!xoaHanDuoc(ct as ChungTuNv)) {
+      return NextResponse.json(
+        { error: "Nhân viên đã có chứng từ — không xoá được, dùng Cho nghỉ việc.", code: "CO_CHUNG_TU", chung_tu: ct },
+        { status: 409 }
       )
     }
 

@@ -254,6 +254,35 @@ function baoCaoTonKho({ p_tu, p_den }, { db }) {
 }
 
 export const rpc = {
+  /* Nhân viên nghỉ việc (mig 223): đếm chứng từ chặn xoá theo vài bảng chính; cho nghỉ = khoá + nợ mở về NPP. */
+  so_chung_tu_nhan_vien: ({ p_user_id }, { db }) => {
+    const dem = (bang, cot) => (db[bang] || []).filter((r) => r[cot] === p_user_id).length
+    const chi_tiet = [["sales_orders", "sales_user_id"], ["sales_invoices", "sales_user_id"], ["receivables", "sales_user_id"]]
+      .map(([bang, cot]) => ({ bang, cot, so: dem(bang, cot) })).filter((d) => d.so > 0)
+    const no = (db.receivables || []).filter((r) => r.sales_user_id === p_user_id && r.status !== "paid")
+    return {
+      tong: chi_tiet.reduce((t, d) => t + d.so, 0), chi_tiet,
+      khach: new Set((db.customer_assignments || []).filter((a) => a.user_id === p_user_id).map((a) => a.customer_id)).size,
+      lich_tuyen: dem("pjp_routes", "sales_user_id"),
+      so_khoan_no: no.length, tien_no: no.reduce((t, r) => t + (r.amount || 0) - (r.paid || 0), 0),
+    }
+  },
+  giao_cong_no_npp: ({ p_customer_id, p_user_id }, { db }) => {
+    const no = (db.receivables || []).filter((r) => r.customer_id === p_customer_id && r.ve_npp_luc && r.status !== "paid")
+    for (const r of no) { r.sales_user_id = p_user_id; r.ve_npp_luc = null }
+    return { so_khoan_no: no.length, tien_no: no.reduce((t, r) => t + (r.amount || 0) - (r.paid || 0), 0) }
+  },
+  cho_nhan_vien_nghi: ({ p_user_id }, { db }) => {
+    const u = (db.users || []).find((x) => x.id === p_user_id)
+    if (!u) throw Object.assign(new Error("KHONG_TIM_THAY_NV"), { code: "P0001" })
+    u.is_active = false
+    u.left_at = new Date().toISOString()
+    const khach = (db.customer_assignments || []).filter((a) => a.user_id === p_user_id).length
+    db.customer_assignments = (db.customer_assignments || []).filter((a) => a.user_id !== p_user_id)
+    const no = (db.receivables || []).filter((r) => r.sales_user_id === p_user_id && r.status !== "paid")
+    for (const r of no) { r.sales_user_id = null; r.ve_npp_luc = u.left_at }
+    return { khach, lich_tuyen: 0, so_khoan_no: no.length, tien_no: no.reduce((t, r) => t + (r.amount || 0) - (r.paid || 0), 0) }
+  },
   /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số) hoặc tên — màn thêm khách chặn tạo trùng số. */
   search_customer_dupes: ({ p_q }, { db }) => {
     const so = String(p_q ?? "").replace(/\D/g, "")

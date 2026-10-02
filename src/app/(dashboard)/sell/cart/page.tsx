@@ -151,7 +151,7 @@ export default function SellCartPage() {
     let cancelled = false
     createClient()
       .from("users")
-      .select("id, full_name, role")
+      .select("id, full_name, role, is_active")
       .eq("org_id", user.org_id)
       /* ⚠ ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP — xem mig 153. Hiện ra
          một cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
@@ -159,7 +159,8 @@ export default function SellCartPage() {
       .order("full_name")
       .then(({ data }) => {
         if (!cancelled) {
-          setSellers((data as Array<{ id: string; full_name: string; role: string }>) || [])
+          // Người đã nghỉ / tạm khoá không gán được (mig 223).
+          setSellers(((data as Array<{ id: string; full_name: string; role: string; is_active?: boolean | null }>) || []).filter((u) => u.is_active !== false))
         }
       })
     return () => { cancelled = true }

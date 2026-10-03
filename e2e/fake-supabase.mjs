@@ -330,8 +330,24 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     let out = rows.filter(match)
     const order = url.searchParams.get("order")
     if (order) {
-      const [col, dir] = order.split(",")[0].split(".")
-      out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (dir === "desc" ? -1 : 1))
+      /* Xếp theo ĐỦ các khoá như PostgREST (`a.desc.nullslast,b.desc,id.asc`) — chỉ xét khoá đầu thì các dòng
+         cùng ngày xếp lộn, danh sách giả khác danh sách thật. Khoá nhúng (`customer(store_name)`) bỏ qua. */
+      const khoa = order.split(",").filter((k) => !k.includes("(")).map((k) => {
+        const [col, ...mo] = k.split(".")
+        const desc = mo.includes("desc")
+        return { col, desc, nullsFirst: mo.includes("nullsfirst") ? true : mo.includes("nullslast") ? false : desc }
+      })
+      out = [...out].sort((a, b) => {
+        for (const { col, desc, nullsFirst } of khoa) {
+          const x = a[col], y = b[col]
+          if (x == null && y == null) continue
+          if (x == null) return nullsFirst ? -1 : 1
+          if (y == null) return nullsFirst ? 1 : -1
+          const c = x > y ? 1 : x < y ? -1 : 0
+          if (c) return desc ? -c : c
+        }
+        return 0
+      })
     }
     const total = out.length
     const range = req.headers.range || req.headers["range"]

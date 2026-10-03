@@ -15,7 +15,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docTheoLoId, fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import type { PosLine, PosLotOption } from "@/lib/pos/types"
 
 /* ==================================================================
@@ -139,6 +139,11 @@ function nhanHan(expires: string | null | undefined): string {
  * ⚠ CHỈ KHO BÁN. Cùng luật với `loadSellRefData`: kho cận date là hàng
  * gần hạn, không bán ra được cho tới khi chuyển vùng (mig 028). Đổ lô
  * cận date vào ô chọn là mời người dùng xuất một lô hệ thống sẽ từ chối.
+ *
+ * ⚠ THEO LÔ ID, ĐỌC HỎNG THÌ NÉM (rà soát 03/10/2026). Một `.in("product_id", ids)` với cả giỏ
+ *   hàng lớn (> ~150 mã) là URL vỡ; bản cũ lại bỏ qua `error` nên ra `{}` — ô chọn lô trống trơn,
+ *   trông như "hết lô", không ai biết là đọc hỏng. `docTheoLoId` chia lô 150 id, mỗi lô phân trang
+ *   đủ theo `id`, và NÉM khi hỏng / vượt trần để nơi gọi quyết định nói gì.
  */
 export async function loadLotsByProduct(
   sb: SupabaseClient,
@@ -146,24 +151,27 @@ export async function loadLotsByProduct(
 ): Promise<Record<string, PosLotOption[]>> {
   const ids = Array.from(new Set(productIds.filter(Boolean)))
   if (ids.length === 0) return {}
-  const res = await fetchAllForAggregate<{
+  const rows = await docTheoLoId<{
     id: string
     product_id: string
     batch_code: string
     expires_at: string | null
-  }>((from, to) =>
-    sb
-      .from("batches")
-      .select("id, product_id, batch_code, expires_at", { count: "exact" })
-      .in("product_id", ids)
-      .gt("qty_on_hand", 0)
-      .eq("warehouse_zone", "sale")
-      .eq("status", "available")
-      .order("id")
-      .range(from, to)
+  }>(
+    ids,
+    (lo, from, to) =>
+      sb
+        .from("batches")
+        .select("id, product_id, batch_code, expires_at", { count: "exact" })
+        .in("product_id", lo)
+        .gt("qty_on_hand", 0)
+        .eq("warehouse_zone", "sale")
+        .eq("status", "available")
+        .order("id")
+        .range(from, to),
+    "Lô hàng"
   )
   const out: Record<string, PosLotOption[]> = {}
-  for (const b of res.rows) {
+  for (const b of rows) {
     ;(out[b.product_id] ??= []).push({
       id: b.id,
       code: b.batch_code,

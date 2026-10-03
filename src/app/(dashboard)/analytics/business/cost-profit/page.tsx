@@ -22,8 +22,8 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchRevenueInvoices,
-  fetchReturnsRows,
+  fetchRevenueInvoicesDu,
+  fetchReturnsRowsDu,
   fetchReturnCosts,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
@@ -123,18 +123,23 @@ export default function CostProfitPage() {
     /* ⚠ MỘT `try/catch` CHO CẢ LƯỢT — kể cả các hàm ở `lib/analytics/sales`
        (đang chuyển sang NÉM khi đọc hỏng). Bắt để BÁO, không phải để nuốt. */
     try {
-      const [orders, prevOrders, retRows, prevRetRows, cogsRes, prevCogsRes, exp, prevExp] =
+      const [invRes, prevInvRes, retRes, prevRetRes, cogsRes, prevCogsRes, exp, prevExp] =
         await Promise.all([
           // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-          fetchRevenueInvoices(supabase, orgId, range),
-          fetchRevenueInvoices(supabase, orgId, prev),
-          fetchReturnsRows(supabase, orgId, range),
-          fetchReturnsRows(supabase, orgId, prev),
+          /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+          fetchRevenueInvoicesDu(supabase, orgId, range),
+          fetchRevenueInvoicesDu(supabase, orgId, prev),
+          fetchReturnsRowsDu(supabase, orgId, range),
+          fetchReturnsRowsDu(supabase, orgId, prev),
           fetchCogsForRange(supabase, orgId, range),
           fetchCogsForRange(supabase, orgId, prev),
           fetchExpenses(orgId, range),
           fetchExpenses(orgId, prev),
         ])
+      const orders = invRes.rows
+      const prevOrders = prevInvRes.rows
+      const retRows = retRes.rows
+      const prevRetRows = prevRetRes.rows
       setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
       setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
       /**
@@ -157,7 +162,10 @@ export default function CostProfitPage() {
       setPrevCogs(prevCogsRes.cogs - tongGiaVonTra(prevRetCosts))
       setExpenses(exp.rows)
       setPrevExpenses(prevExp.rows)
-      setTruncated(exp.truncated || prevExp.truncated)
+      setTruncated(
+        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
+          cogsRes.truncated || prevCogsRes.truncated || exp.truncated || prevExp.truncated
+      )
     } catch (e) {
       console.error("[business/cost-profit] tải lỗi:", e)
       setLoadError(errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận"))

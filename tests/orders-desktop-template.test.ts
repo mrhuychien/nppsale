@@ -148,10 +148,20 @@ describe("Bảng: cột theo mẫu, số liệu thật", () => {
     expect(repAvatar("Nguyễn Thị Hòa").color).toBe(repAvatar("Nguyễn Thị Hòa").color)
   })
 
-  /** ⚠ Sắp xếp là trên TRANG đang xem — nói rõ trong mã, không giả vờ sắp toàn bộ. */
-  it("sắp xếp trong trang, đổi chiều khi bấm lại", () => {
-    expect(TABLE).toContain("if (!sort) return orders")
-    expect(PAGE).toContain('setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))')
+  /**
+   * ⚠ XẾP Ở MÁY CHỦ, KHÔNG TRONG TRANG (rà soát 03/10/2026). Bảng cũ xếp 20 dòng đang xem —
+   *   "Tổng tiền ↓" ra đơn to nhất của 20 dòng chứ không phải của cả kết quả. Nay bảng giữ
+   *   nguyên thứ tự máy chủ trả; màn gửi `.order(...)` theo cột bấm, đổi thứ tự là về trang 1.
+   */
+  it("xếp ở máy chủ: bảng không tự xếp, màn gửi .order theo cột, đổi chiều khi bấm lại", () => {
+    expect(TABLE).toContain("const rows = orders")
+    expect(TABLE).not.toMatch(/\[\.\.\.orders\]\.sort\(/)
+    expect(PAGE).toContain("setSort((cur) => doiSapXep(cur, key))")
+    expect(PAGE).toMatch(/apSapXep\(\s*supabase\.from\("sales_orders"\)[\s\S]*?sort,\s*ORDER_SORT_COLUMNS/)
+    // Thứ tự là một phần của truy vấn: nạp lại khi đổi, và về trang 1.
+    const fetchEnd = PAGE.indexOf("fetchOrders()\n")
+    expect(PAGE.slice(fetchEnd, fetchEnd + 400)).toMatch(/focusTick, sort\]\)/)
+    expect(PAGE).toMatch(/pg\.reset\(\)\s*\}, \[[^\]]*\bsort\]\)/)
   })
 
   it("nút Xuất hàng trên dòng chỉ khi đơn là phiếu tạm và người dùng có quyền", () => {

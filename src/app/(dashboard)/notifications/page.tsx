@@ -101,6 +101,9 @@ export default function NotificationsPage() {
         .select("id, type, title, body, link_url, is_read, created_at", dem ? { count: "exact" } : undefined)
         .eq("user_id", authUser.id)
         .order("created_at", { ascending: false })
+        // ⚠ Mốc phụ `id` (rà soát 03/10/2026): nhiều thông báo cùng một mốc giờ (gửi hàng loạt) — thiếu khoá duy nhất
+        //   thì ranh giới trang do máy chủ tự quyết, thông báo lặp / sót giữa hai nhịp tải.
+        .order("id")
         .range(from, to)
       if (typeFilter !== "all") q = q.eq("type", typeFilter)
       if (readFilter === "unread") q = q.eq("is_read", false)

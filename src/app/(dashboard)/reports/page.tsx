@@ -1,17 +1,30 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
-import { docDuHoacNem, truncationWarning } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, docTheoLoId, truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "./_components/report-load-notice"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
-import { vnDateKey } from "@/lib/orders/status-tone"
-import { REVENUE_INVOICE_STATUS, fetchReturnsRowsDu, type ReturnSummaryRow } from "@/lib/analytics/sales"
+import { REVENUE_INVOICE_STATUS, fetchReturnsRowsDu } from "@/lib/analytics/sales"
+import {
+  cuaSoKy,
+  gopCongNo,
+  hoaDonCanTraNv,
+  mocDoc,
+  momPct,
+  tinhTongQuan,
+  type CongNoTongQuan,
+  type CuaSoKy,
+  type DonTongQuan,
+  type DuLieuTongQuan,
+  type HoaDonTongQuan,
+  type Period,
+} from "./_lib/tong-quan"
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import {
@@ -31,21 +44,7 @@ import {
   ShoppingCart,
   Calendar,
 } from "lucide-react"
-import type { SalesOrder, Receivable, Batch, User } from "@/types"
-
-/**
- * Hóa đơn đã ghi sổ — nguồn của DOANH THU (chủ nhà 24/09/2026: doanh thu
- * tính theo hóa đơn, không theo đơn). `invoice_date` là DATE.
- */
-interface RevenueInvoice {
-  id: string
-  order_id: string
-  invoice_date: string
-  total: number
-  sales_user_id: string | null
-}
-
-type Period = "today" | "week" | "month" | "quarter" | "custom"
+import type { Batch, User } from "@/types"
 
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Hôm nay",
@@ -64,19 +63,12 @@ const TAB_DEFS: { key: TabKey; label: string; icon: typeof TrendingUp }[] = [
   { key: "hr", label: "Nhân sự", icon: Users },
 ]
 
-interface ReportStats {
-  /** Đơn — chỉ để ĐẾM đơn đã đặt (số liệu hoạt động), không cộng tiền. */
-  salesOrders: SalesOrder[]
-  invoices: RevenueInvoice[]
-  /**
-   * Phiếu trả TRỪ DOANH SỐ (mig 192) — `created_at` là NGÀY TRỪ (DATE,
-   * `returns.revenue_date`), cùng luật với công nợ.
-   */
-  returns: ReturnSummaryRow[]
-  receivables: Receivable[]
+interface ReportStats extends DuLieuTongQuan {
   batches: (Batch & { product?: { shelf_life_days: number | null } })[]
   users: User[]
   productCount: number
+  /** Kỳ ĐÃ ĐỌC — phần tính dùng đúng mốc này, không tính lại `now` lúc vẽ. */
+  w: CuaSoKy
 }
 
 export default function ReportsPage() {
@@ -88,18 +80,22 @@ export default function ReportsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>("month")
   const [activeTab, setActiveTab] = useState<TabKey>("sales")
-  const [data, setData] = useState<ReportStats>({
-    salesOrders: [],
+  const [data, setData] = useState<ReportStats>(() => ({
+    orders: [],
     invoices: [],
     returns: [],
     receivables: [],
+    receivableCount: 0,
+    nvCuaHoaDon: new Map(),
     batches: [],
     users: [],
     productCount: 0,
-  })
+    w: cuaSoKy("month"),
+  }))
   const supabase = createClient()
 
   useEffect(() => {
+    let huy = false
     async function fetchAll() {
       if (!user?.org_id) return
       const orgId = user.org_id
@@ -109,50 +105,76 @@ export default function ReportsPage() {
        *   như một doanh nghiệp vừa mở. Mọi phép đọc có mốc `id`: các trang
        *   chạy song song, sắp theo `order_date` thôi thì đơn cùng ngày
        *   lặp/sót giữa hai trang.
+       *
+       * ⚠ ĐỌC THEO KỲ, KHÔNG ĐỌC CẢ SỔ (03/10/2026). Bản cũ tải mọi đơn, mọi hóa đơn,
+       *   phiếu trả 2000–2999 và MỌI phiếu công nợ (kể cả đã thu xong) rồi lọc kỳ ở
+       *   trình duyệt — sổ càng dày trang càng chậm, quá 20.000 dòng thì số thiếu. Nay
+       *   mỗi bảng đọc từ đầu KỲ TRƯỚC (`mocDoc`, để còn so %), công nợ đang mở đọc
+       *   riêng (`status <> 'paid'`, mọi kỳ), tổng số phiếu công nợ đếm ở máy chủ.
+       *   Phần tính (`tinhTongQuan`) giữ nguyên luật cũ. "Tùy chỉnh" = cả sổ.
        */
+      const w = cuaSoKy(period)
+      const moc = mocDoc(w)
       try {
         setLoading(true)
         setLoadError(null)
-        const [ordersRes, invoicesRes, returnsRes, recvRes, batchesRes, usersRes, prodRes] = await Promise.all([
-          // Ba truy vấn này tải cả bảng về để cộng phía trình duyệt. Server
-          // trả tối đa 1.000 dòng mỗi request nên phải lấy đủ qua nhiều trang;
-          // báo cáo thiếu số còn tệ hơn báo cáo chậm.
-          docDuHoacNem<SalesOrder>(
+        const [ordersRes, invoicesRes, returnsRes, openRecvRes, kyRecvRes, recvCountRes, batchesRes, usersRes, prodRes] = await Promise.all([
+          // Đơn — chỉ để ĐẾM đơn đã đặt (số liệu hoạt động), không cộng tiền.
+          docDuHoacNem<DonTongQuan>(
             (from, to) =>
               supabase
                 .from("sales_orders")
                 .select("id, order_date, status", { count: "exact" })
+                .eq("org_id", orgId)
+                .gte("order_date", moc.donTu)
                 .order("order_date", { ascending: false })
                 .order("id")
                 .range(from, to),
             "đọc đơn hàng"
           ),
           // Doanh thu: hóa đơn ĐÃ GHI SỔ, theo ngày hóa đơn — như `dashboard_summary`.
-          docDuHoacNem<RevenueInvoice>(
+          docDuHoacNem<HoaDonTongQuan>(
             (from, to) =>
               supabase
                 .from("sales_invoices")
                 .select("id, order_id, invoice_date, total, sales_user_id", { count: "exact" })
+                .eq("org_id", orgId)
                 .eq("status", REVENUE_INVOICE_STATUS)
+                .gte("invoice_date", moc.ngayTu)
                 .order("invoice_date", { ascending: false })
                 .order("id")
                 .range(from, to),
             "đọc hóa đơn"
           ),
           /* ⚠ DOANH SỐ THUẦN = HÀNG ĐI − HÀNG TRẢ (chủ nhà 25/09/2026: "Rà soát lại
-             toàn bộ doanh số tính bằng số đi - số trả"). Hóa đơn ở trên đọc cả sổ rồi
-             lọc kỳ ở trình duyệt, nên phiếu trả cũng đọc cả sổ (mốc 2000 như kỳ
-             "Tùy chỉnh") — lọc kỳ cùng một cách bên dưới. Đọc hỏng thì NÉM. */
-          fetchReturnsRowsDu(supabase, orgId, { from: "2000-01-01", to: "2999-12-31" }),
-          docDuHoacNem<Receivable>(
+             toàn bộ doanh số tính bằng số đi - số trả"). Phiếu trả theo NGÀY TRỪ
+             (`revenue_date`), cùng mốc với hóa đơn. Đọc hỏng thì NÉM. */
+          fetchReturnsRowsDu(supabase, orgId, { from: moc.ngayTu, to: "2999-12-31" }),
+          // Công nợ ĐANG MỞ — mọi kỳ (thẻ "Công nợ đang mở", "quá hạn").
+          docDuHoacNem<CongNoTongQuan>(
             (from, to) =>
               supabase
                 .from("receivables")
                 .select("id, status, amount, paid, created_at", { count: "exact" })
+                .eq("org_id", orgId)
+                .neq("status", "paid")
                 .order("id")
                 .range(from, to),
-            "đọc công nợ"
+            "đọc công nợ đang mở"
           ),
+          // Phiếu công nợ LẬP trong hai kỳ (kể cả đã thu xong) — để so % và "đã thu".
+          docDuHoacNem<CongNoTongQuan>(
+            (from, to) =>
+              supabase
+                .from("receivables")
+                .select("id, status, amount, paid, created_at", { count: "exact" })
+                .eq("org_id", orgId)
+                .gte("created_at", moc.congNoTuIso)
+                .order("id")
+                .range(from, to),
+            "đọc công nợ trong kỳ"
+          ),
+          supabase.from("receivables").select("id", { count: "exact", head: true }).eq("org_id", orgId),
           // Không ràng buộc kiểu ở đây: Supabase suy luận join `product` thành
           // mảng, ép kiểu ở chỗ dùng cho khớp với mã sẵn có.
           docDuHoacNem(
@@ -179,101 +201,51 @@ export default function ReportsPage() {
           supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "active"),
         ])
         if (prodRes.error) throw new Error(`đếm mặt hàng: ${errorMessage(prodRes.error)}`)
-        setTruncated(ordersRes.truncated || invoicesRes.truncated || returnsRes.truncated || recvRes.truncated || batchesRes.truncated || usersRes.truncated)
+        if (recvCountRes.error) throw new Error(`đếm phiếu công nợ: ${errorMessage(recvCountRes.error)}`)
+        /* NV của hóa đơn gắn phiếu trả: phiếu kỳ này có thể gắn hóa đơn của nhiều tháng
+           trước (ngoài phần đã đọc) — đọc thêm đúng các hóa đơn ấy (đã ghi sổ, như cũ). */
+        const nvCuaHoaDon = new Map(invoicesRes.rows.map((i) => [i.id, i.sales_user_id ?? ""]))
+        const hdCu = await docTheoLoId<{ id: string; sales_user_id: string | null }>(
+          hoaDonCanTraNv(returnsRes.rows, nvCuaHoaDon),
+          (lo, from, to) =>
+            supabase
+              .from("sales_invoices")
+              .select("id, sales_user_id", { count: "exact" })
+              .eq("status", REVENUE_INVOICE_STATUS)
+              .in("id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc NV của hóa đơn gắn phiếu trả"
+        )
+        for (const h of hdCu) nvCuaHoaDon.set(h.id, h.sales_user_id ?? "")
+        if (huy) return
+        setTruncated(
+          ordersRes.truncated || invoicesRes.truncated || returnsRes.truncated || openRecvRes.truncated ||
+            kyRecvRes.truncated || batchesRes.truncated || usersRes.truncated
+        )
         setData({
-          salesOrders: ordersRes.rows,
+          orders: ordersRes.rows,
           invoices: invoicesRes.rows,
           returns: returnsRes.rows,
-          receivables: recvRes.rows,
+          receivables: gopCongNo(openRecvRes.rows, kyRecvRes.rows),
+          receivableCount: recvCountRes.count || 0,
+          nvCuaHoaDon,
           batches: batchesRes.rows as unknown as (Batch & { product?: { shelf_life_days: number | null } })[],
           users: usersRes.rows,
           productCount: prodRes.count || 0,
+          w,
         })
       } catch (err) {
-        setLoadError(errorMessage(err))
+        setLoadError((cu) => (huy ? cu : errorMessage(err)))
       } finally {
-        setLoading(false)
+        if (!huy) setLoading(false)
       }
     }
     fetchAll()
-  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Range for current period + the immediately preceding equal-length
-  // window (used for MoM% comparison). Returned as [start, end].
-  const periodWindows = useMemo(() => {
-    const now = new Date()
-    const end = new Date(now)
-    const start = new Date(now)
-    switch (period) {
-      case "today":
-        start.setHours(0, 0, 0, 0)
-        break
-      case "week":
-        start.setDate(now.getDate() - 7)
-        break
-      case "month":
-        start.setMonth(now.getMonth() - 1)
-        break
-      case "quarter":
-        start.setMonth(now.getMonth() - 3)
-        break
-      default:
-        start.setFullYear(2000)
+    return () => {
+      huy = true
     }
-    const prevEnd = new Date(start)
-    const span = end.getTime() - start.getTime()
-    const prevStart = new Date(start.getTime() - span)
-    return { start, end, prevStart, prevEnd }
-  }, [period])
-
-  const filteredOrders = useMemo(() => {
-    const { start } = periodWindows
-    return data.salesOrders.filter((o) => new Date(o.order_date) >= start)
-  }, [data.salesOrders, periodWindows])
-
-  const prevPeriodOrders = useMemo(() => {
-    const { prevStart, prevEnd } = periodWindows
-    return data.salesOrders.filter((o) => {
-      const t = new Date(o.order_date).getTime()
-      return t >= prevStart.getTime() && t < prevEnd.getTime()
-    })
-  }, [data.salesOrders, periodWindows])
-
-  /* ⚠ `invoice_date` LÀ DATE: so bằng ngày theo giờ VN, không so mốc
-     ISO/UTC — hóa đơn 0h–7h sáng không được rơi sang ngày hôm trước. */
-  const filteredInvoices = useMemo(() => {
-    const tu = vnDateKey(periodWindows.start)
-    return data.invoices.filter((i) => String(i.invoice_date).slice(0, 10) >= tu)
-  }, [data.invoices, periodWindows])
-
-  const prevPeriodInvoices = useMemo(() => {
-    const tu = vnDateKey(periodWindows.prevStart)
-    const den = vnDateKey(periodWindows.prevEnd)
-    return data.invoices.filter((i) => {
-      const d = String(i.invoice_date).slice(0, 10)
-      return d >= tu && d < den
-    })
-  }, [data.invoices, periodWindows])
-
-  /* Phiếu trả theo NGÀY TRỪ (DATE, giờ VN) — cùng mốc với hóa đơn ở trên. */
-  const filteredReturns = useMemo(() => {
-    const tu = vnDateKey(periodWindows.start)
-    return data.returns.filter((r) => String(r.created_at).slice(0, 10) >= tu)
-  }, [data.returns, periodWindows])
-
-  const prevPeriodReturns = useMemo(() => {
-    const tu = vnDateKey(periodWindows.prevStart)
-    const den = vnDateKey(periodWindows.prevEnd)
-    return data.returns.filter((r) => {
-      const d = String(r.created_at).slice(0, 10)
-      return d >= tu && d < den
-    })
-  }, [data.returns, periodWindows])
-
-  const momPct = (curr: number, prev: number): number | null => {
-    if (!Number.isFinite(prev) || prev === 0) return null
-    return ((curr - prev) / prev) * 100
-  }
+  }, [user?.org_id, period]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = () => {
     if (typeof window !== "undefined") window.print()
@@ -282,30 +254,24 @@ export default function ReportsPage() {
   if (authLoading || loading) return <Skeleton className="h-[600px]" />
   if (loadError) return <ReportLoadNotice error={loadError} />
 
-  // KPI — doanh thu = Σ total hóa đơn đã ghi sổ; "đơn đã xuất hàng" = số
-  // đơn KHÁC NHAU có hóa đơn (như `period_orders` của mig 126).
-  const sumInvoices = (rows: RevenueInvoice[]) => rows.reduce((sum, i) => sum + Number(i.total || 0), 0)
-  // ⚠ `credit_note_amount` đã bỏ hàng ĐỔI (mig 055) — trừ thẳng, không kẹp.
-  const sumReturns = (rows: ReturnSummaryRow[]) => rows.reduce((sum, r) => sum + Number(r.credit_note_amount || 0), 0)
-  const countInvoicedOrders = (rows: RevenueInvoice[]) => new Set(rows.map((i) => i.order_id)).size
-  /* ⚠ "Doanh thu thuần" THẬT SỰ THUẦN: hóa đơn − hàng trả trong kỳ (chủ nhà
-     25/09/2026). Bản cũ để nhãn "thuần" trên tổng hóa đơn gộp — cao hơn P&L
-     và dashboard đúng bằng tiền hàng trả. AOV / MoM cũng tính trên số thuần. */
-  const totalRevenue = sumInvoices(filteredInvoices) - sumReturns(filteredReturns)
-  // Tổng đơn hàng là số liệu HOẠT ĐỘNG — vẫn đếm trên đơn.
-  const totalOrders = filteredOrders.length
-  const completedOrders = countInvoicedOrders(filteredInvoices)
-  const aov = completedOrders > 0 ? totalRevenue / completedOrders : 0
-
-  // Previous-period equivalents for MoM%
-  const prevRevenue = sumInvoices(prevPeriodInvoices) - sumReturns(prevPeriodReturns)
-  const prevTotalOrders = prevPeriodOrders.length
-  const prevCompletedOrders = countInvoicedOrders(prevPeriodInvoices)
-  const prevAov = prevCompletedOrders > 0 ? prevRevenue / prevCompletedOrders : 0
-
-  const momRevenue = momPct(totalRevenue, prevRevenue)
-  const momOrders = momPct(totalOrders, prevTotalOrders)
-  const momAov = momPct(aov, prevAov)
+  const periodWindows = data.w
+  const {
+    totalRevenue,
+    totalOrders,
+    completedOrders,
+    aov,
+    momRevenue,
+    momOrders,
+    momAov,
+    openReceivables,
+    overdueCount,
+    receivableCount,
+    paidInPeriod,
+    momOpenRecv,
+    momPaid,
+    momRecvCount,
+    salesByUser,
+  } = tinhTongQuan(data, periodWindows)
 
   const totalStock = data.batches.reduce((s, b) => s + b.qty_on_hand, 0)
   const expiringCount = data.batches.filter((b) => {
@@ -313,37 +279,11 @@ export default function ReportsPage() {
     return days <= 30
   }).length
 
-  const openReceivables = data.receivables
-    .filter((r) => r.status === "open" || r.status === "overdue" || r.status === "partial")
-    .reduce((s, r) => s + (r.amount - r.paid), 0)
-  const overdueCount = data.receivables.filter((r) => r.status === "overdue").length
-
-  // Period-scoped finance MoM: receivables created/paid in current vs
-  // prev period. `created_at` on receivables is reliable; payments live
-  // in a separate table but here we approximate paid-this-period via
-  // `paid` field on rows whose `created_at` is in the window.
-  const inWindow = (s: string | null | undefined, lo: Date, hi: Date) => {
-    if (!s) return false
-    const t = new Date(s).getTime()
+  const inWindow = (v: string | null | undefined, lo: Date, hi: Date) => {
+    if (!v) return false
+    const t = new Date(v).getTime()
     return t >= lo.getTime() && t < hi.getTime()
   }
-  const recvCurrent = data.receivables.filter((r) =>
-    inWindow(r.created_at, periodWindows.start, periodWindows.end)
-  )
-  const recvPrev = data.receivables.filter((r) =>
-    inWindow(r.created_at, periodWindows.prevStart, periodWindows.prevEnd)
-  )
-  const currOpenAmount = recvCurrent
-    .filter((r) => r.status === "open" || r.status === "overdue" || r.status === "partial")
-    .reduce((s, r) => s + (r.amount - r.paid), 0)
-  const prevOpenAmount = recvPrev
-    .filter((r) => r.status === "open" || r.status === "overdue" || r.status === "partial")
-    .reduce((s, r) => s + (r.amount - r.paid), 0)
-  const currPaid = recvCurrent.reduce((s, r) => s + r.paid, 0)
-  const prevPaid = recvPrev.reduce((s, r) => s + r.paid, 0)
-  const momOpenRecv = momPct(currOpenAmount, prevOpenAmount)
-  const momPaid = momPct(currPaid, prevPaid)
-  const momRecvCount = momPct(recvCurrent.length, recvPrev.length)
 
   // HR tab MoM: count of new active users created in window
   const userInWindow = (u: { created_at: string }, lo: Date, hi: Date) =>
@@ -361,21 +301,6 @@ export default function ReportsPage() {
     return acc
   }, {})
 
-  // Doanh số theo nhân viên: người được gán HÓA ĐƠN (mig 182).
-  const salesByUser = new Map<string, number>()
-  filteredInvoices.forEach((i) => {
-    const uid = i.sales_user_id ?? ""
-    salesByUser.set(uid, (salesByUser.get(uid) || 0) + Number(i.total || 0))
-  })
-  /* ⚠ …TRỪ hàng trả của chính người ấy (số đi − số trả, chủ nhà 25/09/2026).
-     NV của phiếu trả (mig 160) trước, chưa gán thì lùi về NV của hóa đơn gắn
-     phiếu — cùng thứ tự với `payroll_returns_for` (mig 192). Tra trên CẢ sổ hóa
-     đơn: phiếu tháng này có thể gắn hóa đơn tháng trước. */
-  const nvCuaHoaDon = new Map(data.invoices.map((i) => [i.id, i.sales_user_id ?? ""]))
-  filteredReturns.forEach((r) => {
-    const uid = r.sales_user_id ?? (r.invoice_id ? nvCuaHoaDon.get(r.invoice_id) : undefined) ?? ""
-    salesByUser.set(uid, (salesByUser.get(uid) || 0) - Number(r.credit_note_amount || 0))
-  })
   const topPerformers = Array.from(salesByUser.entries())
     .map(([uid, total]) => {
       const u = data.users.find((x) => x.id === uid)
@@ -576,7 +501,7 @@ export default function ReportsPage() {
             />
             <KpiCard
               label="Số phiếu công nợ"
-              value={String(data.receivables.length)}
+              value={String(receivableCount)}
               icon={Receipt}
               accent="primary"
               hint="Tổng phiếu"
@@ -584,19 +509,20 @@ export default function ReportsPage() {
             />
             <KpiCard
               label="Đã thanh toán"
-              value={formatCurrency(
-                data.receivables.reduce((s, r) => s + r.paid, 0)
-              )}
+              /* ⚠ ĐÃ THU TRÊN PHIẾU LẬP TRONG KỲ (03/10/2026) — cùng nghĩa với % so kỳ
+                 trước ngay bên cạnh. Bản cũ cộng `paid` của CẢ SỔ (phải tải mọi phiếu đã
+                 thu xong); kỳ "Tùy chỉnh" (cả sổ) vẫn ra đúng số ấy. */
+              value={formatCurrency(paidInPeriod)}
               icon={BarChart3}
               accent="success"
               momPct={momPaid}
-              hint="Tổng đã thu"
+              hint="Đã thu trên phiếu lập trong kỳ"
             />
             <KpiCard
               label="Tỷ lệ quá hạn"
               value={
-                data.receivables.length > 0
-                  ? `${Math.round((overdueCount / data.receivables.length) * 100)}%`
+                receivableCount > 0
+                  ? `${Math.round((overdueCount / receivableCount) * 100)}%`
                   : "0%"
               }
               icon={Percent}

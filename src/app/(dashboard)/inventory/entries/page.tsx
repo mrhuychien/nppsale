@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { PhieuKhoDienThoai } from "@/components/inventory/phieu-kho-dien-thoai"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
@@ -56,6 +57,14 @@ import {
 } from "./list-config"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_PHIEU_KHO: BangSoSanh<StockEntry> = {
+  date: (a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""),
+}
 
 export default function StockEntriesPage() {
   const { user, loading: authLoading } = useRoleGuard("inventory")
@@ -379,7 +388,10 @@ export default function StockEntriesPage() {
 
   const [xemId, setXemId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
-  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `filtered` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(filtered, sort, SO_SANH_PHIEU_KHO), [filtered, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key, sort]))
   const trangThai = (e: StockEntry) => e.status || "posted"
 
   /** Việc làm được với một phiếu — dùng chung cho menu ⋮ của lưới và ngăn xem nhanh. */
@@ -427,7 +439,7 @@ export default function StockEntriesPage() {
       { k: "notes", key: "notes", label: "Ghi chú", width: "minmax(200px,1.5fr)", render: (e) => <DocCellText muted title={e.notes ?? undefined}>{e.notes}</DocCellText> },
       {
         k: "date", key: "date", label: "Ngày", width: "110px",
-        sort: (a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""),
+        sortable: true,
         render: (e) => <DocCellDate date={formatDate(e.created_at)} time={e.created_at ? vnTime(e.created_at) : null} />,
       },
       {
@@ -639,7 +651,7 @@ export default function StockEntriesPage() {
         empty={trongRong}
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} sort={sort} onSortChange={setSort} />}
         cards={null}
       />
 

@@ -10,6 +10,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
+import { docTheoLoId } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
 import { DauTrangTrang } from "@/components/mobile/dau-trang"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { Input } from "@/components/ui/input"
@@ -87,22 +89,33 @@ export function PhieuKhoDienThoai({
     const thieu = ids.filter((id) => !dong.has(id))
     if (thieu.length === 0) return
     let huy = false
-    createClient()
-      .from("stock_entry_lines")
-      .select("entry_id, product_id, quantity, qty_in_base_uom, conversion_factor_snapshot")
-      .in("entry_id", thieu)
-      .then(({ data, error }) => {
+    const supabase = createClient()
+    /* ⚠ ĐỌC THEO LÔ ID, MỖI LÔ PHÂN TRANG ĐỦ (rà soát 03/10/2026). Một `.in()` trơn: (1) URL vỡ khi
+       quá ~150 phiếu, (2) PostgREST cắt ở 1.000 DÒNG — vài phiếu kiểm kê / nhập lớn là phiếu sau
+       hiện SL thiếu mà không báo gì. `docTheoLoId` chia lô 150 id, phân trang theo `id` (khoá duy
+       nhất), hỏng thì NÉM — không ghi "0 dòng" cho phiếu chưa đọc được. */
+    docTheoLoId<DongPhieu>(
+      thieu,
+      (lo, from, to) =>
+        supabase
+          .from("stock_entry_lines")
+          .select("id, entry_id, product_id, quantity, qty_in_base_uom, conversion_factor_snapshot", { count: "exact" })
+          .in("entry_id", lo)
+          .order("id")
+          .range(from, to),
+      "Dòng phiếu kho"
+    )
+      .then((data) => {
         if (huy) return
-        if (error) {
-          console.error("[inventory/entries] đọc dòng phiếu lỗi:", error.message)
-          return
-        }
         setDong((cu) => {
           const m = new Map(cu)
           for (const id of thieu) m.set(id, [])
-          for (const l of (data ?? []) as DongPhieu[]) m.get(l.entry_id)?.push(l)
+          for (const l of data) m.get(l.entry_id)?.push(l)
           return m
         })
+      })
+      .catch((err: unknown) => {
+        if (!huy) console.error("[inventory/entries] đọc dòng phiếu lỗi:", errorMessage(err))
       })
     return () => { huy = true }
   }, [ids, khoMay]) // eslint-disable-line react-hooks/exhaustive-deps

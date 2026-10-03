@@ -542,10 +542,13 @@ describe("M2.4 — /receivables", () => {
     expect(fn).toContain("VN_TZ")
   })
 
-  /** Chip tuổi nợ chỉ lọc danh sách mobile — desktop có bộ lọc riêng. */
-  it("chip tuổi nợ không đụng danh sách desktop", () => {
-    expect(RECEIVABLES).toContain("const mobileReceivables = agingFilter")
-    expect(RECEIVABLES).toMatch(/\{mobileReceivables\.map/)
+  /**
+   * Chip tuổi nợ (chỉ có trên điện thoại) LỌC TRÊN MÁY CHỦ — rà soát 03/10/2026: bản cũ lọc trong 20 khoản của
+   * trang đang tải, chọn "Khẩn cấp" ra trống dù sổ có. Xem tests/ra-soat-loc-may-chu-0310.test.ts.
+   */
+  it("chip tuổi nợ lọc trên máy chủ, không lọc lại trang đã tải", () => {
+    expect(RECEIVABLES).toContain("locTuoiNo(q, agingFilter")
+    expect(RECEIVABLES).not.toContain("mobileReceivables")
   })
 })
 

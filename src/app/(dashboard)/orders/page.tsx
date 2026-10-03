@@ -49,7 +49,8 @@ import {
 import { RouteFilter } from "@/components/orders/route-filter"
 import { StatusChips } from "@/components/ui/status-chips"
 import { trangThaiCuaChon } from "@/lib/list/status-multi"
-import { DesktopOrderTable, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
+import { DesktopOrderTable, ORDER_SORT_COLUMNS, type OrderSort, type OrderSortKey } from "@/components/orders/desktop-order-table"
+import { apSapXep, doiSapXep } from "@/lib/list/sap-xep-may-chu"
 import { OrderDrawer } from "@/components/orders/order-drawer"
 import { orderTone, vnDateKey } from "@/lib/orders/status-tone"
 import { canEditOrder } from "@/lib/orders/edit-permission"
@@ -59,6 +60,7 @@ import {
   invoiceWarnings,
 } from "@/lib/orders/post-invoice"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { cacNgayDangHien, docThongKeNgay, type ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import {
   ORDER_COLUMNS,
@@ -683,10 +685,10 @@ export default function OrdersPage() {
     }
   }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset page về 1 mỗi khi filter đổi.
+  // Reset page về 1 mỗi khi filter / thứ tự xếp đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -694,7 +696,7 @@ export default function OrdersPage() {
     async function fetchOrders() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 đơn đầu vẽ ngay, phần còn lại của trang về sau.
          "Tải thêm" / đổi sang trang dài hơn cùng truy vấn: giữ danh sách đang hiện, không vẽ lại. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from])
+      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from, sort])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ KHÁCH. Giữ nguyên trạng thái "đang nạp" chứ
          không vẽ ra một danh sách thiếu rồi tự sửa. */
@@ -704,11 +706,17 @@ export default function OrdersPage() {
       const build = (select: string, from: number, to: number, dem: boolean) => {
         // audit-ok: `selectResilient` trả lỗi ra ngoài và nơi gọi đưa vào
         // `setLoadError` để hiện lên màn hình.
-        const q = supabase
-          .from("sales_orders")
-          .select(select, dem ? { count: "exact" } : undefined)
-          .order("created_at", { ascending: false })
-          .range(from, to)
+        /* ⚠ XẾP Ở MÁY CHỦ (cột người dùng bấm đứng trước) — xếp trong bảng là xếp trên một trang.
+           Mốc phụ `id`: hai đơn cùng giờ tạo không lặp / sót giữa hai trang.
+           ⚠ MẶC ĐỊNH THEO NGÀY ĐẶT (`order_date`) RỒI MỚI TỚI GIỜ TẠO (rà soát 03/10/2026): điện thoại nhóm đơn theo
+           `order_date`; xếp theo `created_at` thì đơn ghi lùi ngày (đơn nhập bù) rơi vào giữa nhóm ngày khác — cùng
+           một ngày hiện thành hai nhóm tách rời. Như màn Hóa đơn (`invoice_date`, `created_at`). */
+        const q = apSapXep(
+          supabase.from("sales_orders").select(select, dem ? { count: "exact" } : undefined),
+          sort,
+          ORDER_SORT_COLUMNS,
+          (x) => x.order("order_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+        ).range(from, to)
         return applyStatusFilter(applyCommonFilters(q), effectiveStatus)
       }
       // ⚠ `!inner` CHỈ khi đang lọc tuyến. Bật luôn thì đơn nào chưa gắn
@@ -745,7 +753,43 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, sort]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Đầu nhóm ngày trên điện thoại ("N đơn · tổng") — đếm TRÊN MÁY CHỦ cho đúng những ngày đang hiện, cùng bộ lọc
+   * với danh sách (`docThongKeNgay`, rà soát 03/10/2026). Máy tính không có nhóm ngày → không đọc.
+   */
+  const [dayStatsRaw, setDayStats] = useState<{ khoa: string; data: ThongKeNgay | null } | null>(null)
+  const ngayDangHien = cacNgayDangHien(orders, (o) => o.order_date).join(",")
+  /* Số của bộ lọc CŨ không được dán lên danh sách của bộ lọc mới trong lúc chờ đọc lại. */
+  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick])
+  const dayStats = dayStatsRaw?.khoa === khoaLocNgay ? dayStatsRaw.data : null
+  useEffect(() => {
+    if (laMay !== false || !searchReady || !ngayDangHien) return
+    let cancelled = false
+    const days = ngayDangHien.split(",")
+    ;(async () => {
+      const kq = await docThongKeNgay<{ order_date: string; total: number | string | null }>(
+        days,
+        (from, to) =>
+          applyStatusFilter(
+            applyCommonFilters(
+              supabase
+                .from("sales_orders")
+                .select(routeFilter !== "all" ? "id, order_date, total, customer:customers!inner(id)" : "id, order_date, total", { count: "exact" })
+                .in("order_date", days)
+                .order("id")
+                .range(from, to)
+            ),
+            effectiveStatus
+          ),
+        (r) => r.order_date,
+        (r) => Number(r.total) || 0
+      )
+      if (!cancelled) setDayStats({ khoa: khoaLocNgay, data: kq })
+    })()
+    return () => { cancelled = true }
+  }, [laMay, ngayDangHien, searchReady, khoaLocNgay]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Công nợ + hoá đơn MISA của các đơn đang hiện — CHỈ bảng máy tính dùng (cột công nợ, nút xuất
      HĐ điện tử). Điện thoại không đọc. */
@@ -1328,7 +1372,7 @@ export default function OrdersPage() {
 
   const drawerOrder = drawerId ? (orders.find((o) => o.id === drawerId) ?? null) : null
   const onSort = (key: OrderSortKey) =>
-    setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))
+    setSort((cur) => doiSapXep(cur, key))
 
 
   const bulkBar = selectedIds.size > 0 && (() => {
@@ -1691,6 +1735,7 @@ export default function OrdersPage() {
         total={filteredTotal === null ? null : formatCurrency(filteredTotal)}
         count={pg.total}
         orders={filtered}
+        dayStats={dayStats}
         showSalesName={!isSales}
         loading={loading}
         loaded={pg.from + filtered.length}

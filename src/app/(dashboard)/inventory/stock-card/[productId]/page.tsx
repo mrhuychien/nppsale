@@ -21,7 +21,7 @@ import {
   ArrowDownToLine, ArrowUpFromLine, ClipboardList, Package,
   TrendingUp, TrendingDown, AlertCircle,
 } from "lucide-react"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import type { Product, Batch } from "@/types"
 
 /** Một dòng hóa đơn của chính mặt hàng đang xem. */
@@ -94,18 +94,40 @@ export default function StockCardPage() {
   const [loading, setLoading] = useState(true)
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /** Đọc dòng phiếu kho chưa đủ (chạm trần / lỗi) — thẻ kho đang THIẾU, phải nói ra. */
+  const [thieu, setThieu] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [productRes, batchesRes, linesRes, invRes] = await Promise.all([
       supabase.from("products").select("id, sku, name, base_unit").eq("id", productId).maybeSingle(),
-      supabase.from("batches").select("id, batch_code, qty_on_hand, unit_cost, expires_at").eq("product_id", productId).order("expires_at"),
-      supabase
-        .from("stock_entry_lines")
-        .select(
-          "id, batch_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))"
-        )
-        .eq("product_id", productId),
+      /* ⚠ LÔ VÀ DÒNG PHIẾU KHO ĐỌC ĐỦ THEO TRANG (rà soát 03/10/2026). Một `.select()` trơn cắt ở
+         1.000 dòng KHÔNG báo lỗi — mặt hàng chạy có hàng nghìn lần nhập/xuất, thẻ kho mất các lần
+         sau (thứ tự tuỳ Postgres) mà tồn chạy, tổng nhập/xuất vẫn trông bình thường. Lọc phiếu
+         ĐÃ GHI SỔ ngay trên máy chủ (`!inner` + `entry.status = posted` — đúng luật cũ "nháp / huỷ
+         không vào thẻ kho") để nháp / huỷ không chiếm trần. `.order("id")`: các trang chạy song
+         song, mốc phải duy nhất. */
+      fetchAllForAggregate<Batch>((from, to) =>
+        supabase
+          .from("batches")
+          .select("id, batch_code, qty_on_hand, unit_cost, expires_at", { count: "exact" })
+          .eq("product_id", productId)
+          .order("expires_at")
+          .order("id")
+          .range(from, to)
+      ),
+      fetchAllForAggregate<unknown>((from, to) =>
+        supabase
+          .from("stock_entry_lines")
+          .select(
+            "id, batch_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))",
+            { count: "exact" }
+          )
+          .eq("product_id", productId)
+          .eq("entry.status", "posted")
+          .order("id")
+          .range(from, to)
+      ),
       /**
        * Hóa đơn bán có dòng của CHÍNH sản phẩm này.
        *
@@ -130,12 +152,19 @@ export default function StockCardPage() {
           .range(from, to)
       ),
     ])
-    const qErr = ([productRes, batchesRes, linesRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[stock-card/productId] truy vấn lỗi:", qErr.message)
+    if (productRes.error) console.error("[stock-card/productId] truy vấn lỗi:", productRes.error.message)
+    const docLoi = batchesRes.error || linesRes.error
+    if (docLoi) console.error("[stock-card/productId] truy vấn lỗi:", docLoi)
+    setThieu(
+      docLoi
+        ? `Không đọc được đủ thẻ kho: ${docLoi}`
+        : batchesRes.truncated || linesRes.truncated
+          ? truncationWarning()
+          : null
+    )
 
     setProduct((productRes.data as Product) || null)
-    setBatches((batchesRes.data as Batch[]) || [])
+    setBatches(batchesRes.rows)
 
     type LineRow = {
       id: string
@@ -178,8 +207,8 @@ export default function StockCardPage() {
       }
     }
 
-    const rawLines = ((linesRes.data as unknown) as LineRow[] | null) || []
-    // Only posted entries count for the stock card
+    const rawLines = linesRes.rows as LineRow[]
+    // Only posted entries count for the stock card (đã lọc trên máy chủ; giữ lại làm chốt chặn)
     const rows: MovementRow[] = rawLines
       .filter((l) => l.entry && l.entry.status === "posted")
       .map((l) => ({
@@ -228,15 +257,21 @@ export default function StockCardPage() {
 
   // Compute running balance
   const withRunning = useMemo(() => {
-    let running = 0
-    // Seed with "initial" = qty before the first movement = qty_on_hand for batches we haven't moved yet
-    return filtered.map((m) => {
+    const deltaOf = (m: MovementRow) => {
       const meta = TYPE_META[m.entry_type] || TYPE_META.import
-      const delta = meta.sign === "in" ? m.quantity : meta.sign === "out" ? -m.quantity : m.quantity
+      return meta.sign === "out" ? -m.quantity : m.quantity
+    }
+    /* ⚠ LỌC "TỪ NGÀY" THÌ TỒN CHẠY KHÔNG BẮT ĐẦU TỪ 0: cộng sẵn mọi biến động TRƯỚC ngày đầu kỳ
+       (đã tải đủ lịch sử ở trên) làm tồn đầu kỳ. */
+    let running = dateFrom
+      ? movements.reduce((s, m) => (m.date.slice(0, 10) < dateFrom ? s + deltaOf(m) : s), 0)
+      : 0
+    return filtered.map((m) => {
+      const delta = deltaOf(m)
       running += delta
       return { ...m, delta, running }
     })
-  }, [filtered])
+  }, [filtered, movements, dateFrom])
 
   const totals = useMemo(() => {
     let inQty = 0
@@ -289,6 +324,13 @@ export default function StockCardPage() {
           </Button>
         )}
       </PageHeader>
+
+      {thieu && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{thieu}</p>
+        </div>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -5,6 +5,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
+import { apSapXep, xepDuoc, SAP_XEP_CONG_NO_NCC, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { createClient } from "@/lib/supabase/client"
@@ -64,6 +65,8 @@ export default function PayablesPage() {
   const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_CONG_NO_NCC`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
   const pg = usePagination()
   const [debouncedSearch, setDebouncedSearch] = useState("")
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function PayablesPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÊN NCC PHẢI TRA RIÊNG: PostgREST không cho `or` bắc qua bảng
@@ -132,14 +135,17 @@ export default function PayablesPage() {
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
-        let q = supabase
-          .from("payables")
-          .select(select, dem ? { count: "exact" } : undefined)
-          .order("due_date")
-          // ⚠ Mốc phụ `id`: cả chục khoản cùng hạn, thiếu mốc duy nhất
-          //   là một dòng hiện ở hai trang, dòng khác không trang nào.
-          .order("id")
-          .range(from, to)
+        /* ⚠ XẾP Ở MÁY CHỦ — cột người dùng bấm đứng trước; xếp trong bảng là xếp trên một trang. */
+        let q = apSapXep(
+          supabase.from("payables").select(select, dem ? { count: "exact" } : undefined),
+          sort,
+          SAP_XEP_CONG_NO_NCC,
+          (x) => x
+            .order("due_date")
+            // ⚠ Mốc phụ `id`: cả chục khoản cùng hạn, thiếu mốc duy nhất
+            //   là một dòng hiện ở hai trang, dòng khác không trang nào.
+            .order("id")
+        ).range(from, to)
         /**
          * ⚠ TÌM CẢ SỔ, KHÔNG CHỈ TRANG ĐANG XEM (chủ nhà báo 21/09/2026).
          *   Bản cũ chỉ `ilike("invoice_number")` trên máy chủ rồi lọc
@@ -174,7 +180,7 @@ export default function PayablesPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, statusFilter, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, statusFilter, locNC.ready, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT. Máy chủ đã lọc cả số hoá đơn lẫn
@@ -221,19 +227,20 @@ export default function PayablesPage() {
     const cols: Array<DocColumn<Payable> & { k?: PayableColumnKey }> = [
       {
         key: "supplier", label: "Nhà cung cấp", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        sortable: xepDuoc(SAP_XEP_CONG_NO_NCC, "supplier"),
         render: (p) => <span className="block truncate text-sm font-bold">{p.supplier?.name || "-"}</span>,
       },
       {
         k: "invoiceNumber", key: "invoiceNumber", label: "Mã HĐ", width: "140px",
         render: (p) => <DocCodeLink href={`/payables/${p.id}`}>{p.invoice_number || "-"}</DocCodeLink>,
       },
-      { k: "amount", key: "amount", label: "Số tiền", width: "130px", align: "right", sort: (a, b) => Number(a.amount) - Number(b.amount), render: (p) => formatCurrency(p.amount) },
+      { k: "amount", key: "amount", label: "Số tiền", width: "130px", align: "right", sortable: xepDuoc(SAP_XEP_CONG_NO_NCC, "amount"), render: (p) => formatCurrency(p.amount) },
       { k: "paid", key: "paid", label: "Đã trả", width: "130px", align: "right", render: (p) => formatCurrency(p.paid) },
-      { k: "remaining", key: "remaining", label: "Còn lại", width: "140px", align: "right", sort: (a, b) => (a.amount - a.paid) - (b.amount - b.paid), render: (p) => formatCurrency(p.amount - p.paid) },
+      /* ⚠ "Còn lại" KHÔNG XẾP: amount − paid tính ở trình duyệt, sổ không có cột ấy. */
+      { k: "remaining", key: "remaining", label: "Còn lại", width: "140px", align: "right", render: (p) => formatCurrency(p.amount - p.paid) },
       {
         k: "dueDate", key: "dueDate", label: "Hạn trả", width: "110px",
-        sort: (a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""),
+        sortable: xepDuoc(SAP_XEP_CONG_NO_NCC, "dueDate"),
         render: (p) => <DocCellDate date={p.due_date ? formatDate(p.due_date) : "-"} />,
       },
       {
@@ -391,7 +398,7 @@ export default function PayablesPage() {
         }
         pg={pg}
         shownCount={filtered.length}
-        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} />}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={filtered}

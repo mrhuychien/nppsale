@@ -39,6 +39,7 @@ import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import {
@@ -70,6 +71,16 @@ type Row = Omit<SupplierReturn, "supplier"> & {
  * phải lỗi. Nhưng để "—" thì trông y như dữ liệu bị mất.
  */
 const maPhieu = (r: Row) => r.return_code || "chưa sinh mã"
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_TRA_NCC: BangSoSanh<Row> = {
+  date: (a, b) => (a.return_date ?? "").localeCompare(b.return_date ?? ""),
+  supplier: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+  total: (a, b) => Number(a.total) - Number(b.total),
+}
 
 export default function PurchaseReturnsPage() {
   const { loading: authLoading } = useRoleGuard("inventory")
@@ -139,7 +150,10 @@ export default function PurchaseReturnsPage() {
     return chon ? locRows.filter((r) => chon.includes(r.status)) : locRows
   }, [locRows, filter])
 
-  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([filter, search, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `shown` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(shown, sort, SO_SANH_TRA_NCC), [shown, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([filter, search, locNC.key, sort]))
   const tongPhieu = tongChungTu(shown, (r) => r.total, (r) => !tachTrangThai(filter).includes("cancelled") && r.status === "cancelled", !canhBao)
 
   const columns = useMemo(() => {
@@ -152,18 +166,18 @@ export default function PurchaseReturnsPage() {
       },
       {
         k: "date", key: "date", label: "Ngày", width: "110px",
-        sort: (a, b) => (a.return_date ?? "").localeCompare(b.return_date ?? ""),
+        sortable: true,
         render: (r) => <DocCellDate date={formatDate(r.return_date)} />,
       },
       {
         k: "supplier", key: "supplier", label: "NCC", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        sortable: true,
         render: (r) => <span className="block truncate text-sm font-bold">{r.supplier?.name || "—"}</span>,
       },
       { k: "warehouse", key: "warehouse", label: "Kho xuất", width: "140px", render: (r) => <DocCellText muted>{ZONE_LABEL[r.warehouse_zone] || r.warehouse_zone}</DocCellText> },
       {
         k: "total", key: "total", label: "Tổng tiền", width: "140px", align: "right",
-        sort: (a, b) => Number(a.total) - Number(b.total),
+        sortable: true,
         render: (r) => formatCurrency(r.total),
       },
       {
@@ -252,7 +266,7 @@ export default function PurchaseReturnsPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

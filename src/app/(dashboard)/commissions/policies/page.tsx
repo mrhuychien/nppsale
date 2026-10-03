@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
@@ -37,6 +38,14 @@ import {
   DEFAULT_COMMISSION_POLICY_COLUMNS,
   type CommissionPolicyColumnKey,
 } from "./list-config"
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_CHINH_SACH: BangSoSanh<CommissionPolicy> = {
+  name: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+}
 
 export default function CommissionPoliciesPage() {
   const { user } = useAuth()
@@ -83,13 +92,16 @@ export default function CommissionPoliciesPage() {
     () => (status === "all" ? locRows : locRows.filter((p) => (status === "active") === !!p.is_active)),
     [locRows, status]
   )
-  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([status, search]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `shown` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(shown, sort, SO_SANH_CHINH_SACH), [shown, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([status, search, sort]))
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<CommissionPolicy> & { k?: CommissionPolicyColumnKey }> = [
       {
         key: "name", label: "Tên chính sách", width: "minmax(240px,2fr)",
-        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        sortable: true,
         render: (p) => <DocCodeLink href={`/commissions/policies/${p.id}`}>{p.name}</DocCodeLink>,
       },
       { k: "type", key: "type", label: "Loại", width: "180px", render: (p) => <DocCellText>{getTypeLabel(p.type)}</DocCellText> },
@@ -146,7 +158,7 @@ export default function CommissionPoliciesPage() {
         empty={<EmptyState icon={<Settings2 className="h-8 w-8 text-muted-foreground" />} title={policies.length === 0 ? "Chưa có chính sách hoa hồng" : "Không có chính sách khớp"} />}
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

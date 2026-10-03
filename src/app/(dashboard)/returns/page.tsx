@@ -58,8 +58,9 @@ import Link from "@/components/ui/link"
 import type { Return } from "@/types"
 import { ReturnDrawer } from "@/components/returns/return-drawer"
 import { MobileReturnsScreen, BUOC_TAI_TRA } from "@/components/returns/mobile-returns-screen"
+import { cacNgayDangHien, docThongKeNgay, type ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 import { MobileReturnSheet } from "@/components/returns/mobile-return-sheet"
-import { TAB_TRA_MOBILE, viTatTen } from "@/lib/returns/mobile-list"
+import { TAB_TRA_MOBILE, ngayNhomTra, viTatTen } from "@/lib/returns/mobile-list"
 import { useKhoMay } from "@/hooks/use-is-desktop"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
@@ -332,6 +333,39 @@ export default function ReturnsPage() {
    *   cùng bộ lọc với danh sách; chạm trần hoặc lỗi thì `null` → "—".
    */
   const [tongKhoanCo, setTongKhoanCo] = useState<number | null>(null)
+  /**
+   * Đầu nhóm ngày trên điện thoại ("N phiếu · tổng") — đếm TRÊN MÁY CHỦ cho đúng những ngày đang hiện, cùng bộ lọc
+   * với danh sách (`docThongKeNgay`, rà soát 03/10/2026). Phiếu cũ chưa có `return_date` nhóm theo ngày tạo — lọc
+   * `.in("return_date")` không bắt được nó, nên khi danh sách còn phiếu như thế thì để đầu nhóm cộng các phiếu đã tải.
+   */
+  const [dayStatsRaw, setDayStats] = useState<{ khoa: string; data: ThongKeNgay | null } | null>(null)
+  const ngayDangHien = returns.every((r) => !!(r as { return_date?: string | null }).return_date) ? cacNgayDangHien(returns as Array<{ return_date?: string | null; created_at: string }>, ngayNhomTra).join(",") : ""
+  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, taiLai])
+  const dayStats = dayStatsRaw?.khoa === khoaLocNgay ? dayStatsRaw.data : null
+  useEffect(() => {
+    if (laMay !== false || !searchReady || !ngayDangHien) return
+    let cancelled = false
+    const days = ngayDangHien.split(",")
+    ;(async () => {
+      const kq = await docThongKeNgay<{ return_date: string; credit_note_amount: number | string | null }>(
+        days,
+        (from, to) =>
+          apDungLoc(
+            supabase
+              .from("returns")
+              .select("id, return_date, credit_note_amount", { count: "exact" })
+              .in("return_date", days)
+              .order("id")
+              .range(from, to)
+          ) as unknown as PromiseLike<{ data: unknown; error: { message: string } | null; count: number | null }>,
+        (r) => r.return_date,
+        (r) => Number(r.credit_note_amount) || 0
+      )
+      if (!cancelled) setDayStats({ khoa: khoaLocNgay, data: kq })
+    })()
+    return () => { cancelled = true }
+  }, [laMay, ngayDangHien, searchReady, khoaLocNgay]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -474,6 +508,7 @@ export default function ReturnsPage() {
           onOpen={setNganMo}
           notice={canhBaoTran}
           canCreate={!!authUser && hasPermission(authUser.role, "returns", "create")}
+          dayStats={dayStats}
         />
       )}
       <MobileReturnSheet

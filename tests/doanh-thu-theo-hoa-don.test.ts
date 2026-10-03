@@ -157,9 +157,9 @@ describe("màn báo cáo / phân tích: doanh thu từ hóa đơn, không từ �
     expect(donLamDoanhThu(s)).toEqual([])
   })
 
-  it.each(PHAN_TICH)("%s đọc fetchRevenueInvoices, không đọc đơn làm doanh thu", (f) => {
+  it.each(PHAN_TICH)("%s đọc fetchRevenueInvoicesDu, không đọc đơn làm doanh thu", (f) => {
     const s = code(read(f))
-    expect(s).toMatch(/\bfetchRevenueInvoices\(/)
+    expect(s).toContain("fetchRevenueInvoicesDu(")
     expect(s).not.toMatch(/\bfetchDeliveredOrders/)
     expect(donLamDoanhThu(s)).toEqual([])
   })
@@ -198,14 +198,21 @@ describe("màn báo cáo / phân tích: doanh thu từ hóa đơn, không từ �
 })
 
 describe("trang Báo cáo (reports/page.tsx)", () => {
-  const S = code(read(REPORTS_INDEX))
+  /* Phần tính tách sang `reports/_lib/tong-quan.ts` (03/10/2026) — soi cả hai. */
+  const P = code(read(REPORTS_INDEX))
+  const S = P + "\n" + code(read("src/app/(dashboard)/reports/_lib/tong-quan.ts"))
 
   it("doanh thu đọc sales_invoices posted, theo invoice_date, phân trang có mốc id", () => {
-    const q = cauTruyVan(S, "sales_invoices")
-    expect(q).toHaveLength(1)
-    expect(q[0]).toContain(".eq(\"status\", REVENUE_INVOICE_STATUS)")
-    expect(q[0]).toContain("invoice_date")
-    expect(q[0]).toMatch(/\.order\("id"\)\s*\.range\(/)
+    const q = cauTruyVan(P, "sales_invoices")
+    /* Một câu doanh thu (theo kỳ) + một câu tra NV của hóa đơn gắn phiếu trả. */
+    expect(q).toHaveLength(2)
+    for (const c of q) {
+      expect(c).toContain(".eq(\"status\", REVENUE_INVOICE_STATUS)")
+      expect(c).toMatch(/\.order\("id"\)\s*\.range\(/)
+    }
+    const dt = q.filter((c) => c.includes("invoice_date"))
+    expect(dt).toHaveLength(1)
+    expect(dt[0]).toContain('.gte("invoice_date", moc.ngayTu)')
   })
 
   it("đơn chỉ còn để ĐẾM — không đọc `total`, không cộng tiền đơn completed", () => {

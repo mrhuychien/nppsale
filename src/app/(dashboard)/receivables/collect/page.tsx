@@ -26,6 +26,8 @@ import { PaymentReceiptTT200 } from "@/components/printing/payment-receipt-tt200
 import type { Receivable } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { createCashReceipt } from "@/lib/finance/cash-receipt"
+import { docCongNoDeThu } from "@/lib/receivables/doc-cong-no-thu"
+import { truncationWarning } from "@/lib/supabase/aggregate"
 
 /**
  * Nhãn hình thức thu.
@@ -47,6 +49,10 @@ export default function CollectPaymentPage() {
 
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [customerName, setCustomerName] = useState<string | null>(null)
+  /** Khách đang thu — theo `customerId`, hoặc khách của khoản `receivableId` (tra theo id). */
+  const [khachId, setKhachId] = useState(customerIdParam)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [selectedId, setSelectedId] = useState(receivableIdParam)
   const [amount, setAmount] = useState("")
   const [method, setMethod] = useState("cash")
@@ -81,35 +87,30 @@ export default function CollectPaymentPage() {
   const khoaGui = useKhoaGui()
 
   useEffect(() => {
+    let huy = false
     async function fetchData() {
       setFetching(true)
-      let query = supabase
-        .from("receivables")
-        .select("id, amount, paid, due_date, customer:customers(store_name)")
-        .neq("status", "paid")
-        .order("due_date")
-
-      if (customerIdParam) {
-        query = query.eq("customer_id", customerIdParam)
-      }
-
-      const { data , error: qErr } = await query
-      if (qErr) console.error("[receivables/collect] truy vấn lỗi:", qErr.message)
-      /* ⚠ Công nợ ÂM (hàng trả > hàng xuất, mig 186) là DƯ CÓ của khách, không
-         phải khoản để thu — máy chủ cũng chặn thu vào nó (BAD_RECEIVABLE_LINE). */
-      const list = ((data as unknown as Receivable[]) || []).filter((r) => r.amount - (r.paid || 0) > 0)
+      /* ⚠ Đọc ĐỦ (phân trang) và tra đúng khoản `receivableId` — `docCongNoDeThu`, rà soát 03/10/2026. */
+      const kq = await docCongNoDeThu(supabase, { customerId: customerIdParam, receivableId: receivableIdParam })
+      if (huy) return
+      if (kq.error) console.error("[receivables/collect] truy vấn lỗi:", kq.error)
+      setLoadError(kq.error)
+      setTruncated(kq.truncated)
+      const list = kq.list
       setReceivables(list)
+      setKhachId(kq.customerId)
 
-      if (customerIdParam) {
+      if (kq.customerId) {
         if (list.length > 0) {
           setCustomerName(list[0].customer?.store_name || null)
         } else {
           const { data: customerData, error: customerDataErr } = await supabase
             .from("customers")
             .select("store_name")
-            .eq("id", customerIdParam)
+            .eq("id", kq.customerId)
             .single()
           if (customerDataErr) console.error("[receivables/collect] truy vấn lỗi:", customerDataErr.message)
+          if (huy) return
           setCustomerName((customerData as { store_name?: string } | null)?.store_name || null)
         }
       }
@@ -122,6 +123,7 @@ export default function CollectPaymentPage() {
       setFetching(false)
     }
     fetchData()
+    return () => { huy = true }
   }, [customerIdParam, receivableIdParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = useMemo(
@@ -190,7 +192,7 @@ export default function CollectPaymentPage() {
        */
       const daTraHet = amountNum >= remaining
       const receiptId = await createCashReceipt(supabase, {
-        customer_id: selected?.customer_id ?? customerIdParam ?? "",
+        customer_id: selected?.customer_id || khachId || customerIdParam || "",
         method,
         lines: [{ receivable_id: selectedId, amount: amountNum }],
         client_key: khoaGui.lay(),
@@ -251,7 +253,7 @@ export default function CollectPaymentPage() {
     }
   }
 
-  const pageTitle = customerIdParam && customerName
+  const pageTitle = khachId && customerName
     ? `Thu tiền: ${customerName}`
     : "Thu tiền tại hiện trường"
   const backHref = customerIdParam ? `/customers/${customerIdParam}` : "/receivables"
@@ -294,11 +296,25 @@ export default function CollectPaymentPage() {
       <div className="space-y-4 no-print">
       <PageHeader
         title={pageTitle}
-        description={customerIdParam
+        description={khachId
           ? `${receivables.length} công nợ • Tổng còn: ${formatCurrency(totalOutstanding)}`
           : undefined}
         backHref={backHref}
       />
+
+      {/* Lỗi tải / số thiếu — nói ra, không để màn hình trông như "không còn nợ". */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được công nợ</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Danh sách chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {done ? (
         <>
@@ -357,7 +373,7 @@ export default function CollectPaymentPage() {
         </>
       ) : fetching ? (
         <Skeleton className="h-64" />
-      ) : customerIdParam && receivables.length === 0 ? (
+      ) : khachId && receivables.length === 0 && !loadError ? (
         <EmptyState
           icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
           title="Khách hàng này không có công nợ"

@@ -90,7 +90,6 @@ const CON_NO_DOC_DANH_MUC = [
   "src/app/(dashboard)/inventory/batches/new/page.tsx",
   "src/app/(dashboard)/inventory/stock-out/page.tsx",
   "src/app/(dashboard)/inventory/stocktake/page.tsx",
-  "src/app/(dashboard)/inventory/stocktake-adjust/page.tsx",
 ]
 
 /**
@@ -268,7 +267,8 @@ const CON_NO_NUOT_CO_THIEU: string[] = []
  * (màn chuyền cờ xuống một component vẽ hộ).
  */
 function coNoiRa(src: string): boolean {
-  return /CatalogueShortNote/.test(src) || /catalogueTruncated=/.test(src)
+  /* Hoặc DỪNG hẳn và báo (phiếu kiểm kê: thà không tải còn hơn tải một phiếu thiếu mã). */
+  return /CatalogueShortNote/.test(src) || /catalogueTruncated=/.test(src) || /Không tải đủ hàng tồn/.test(src)
 }
 
 describe("đọc thiếu danh mục thì màn hình phải nói ra", () => {

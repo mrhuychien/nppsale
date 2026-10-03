@@ -10,14 +10,19 @@
  *
  * ⚠ MỘT PHÉP DỰNG CỘT, DÙNG CHO CẢ TIÊU ĐỀ LẪN DÒNG — chép hai chỗ là một ngày bật một cột
  *   lên và tiêu đề lệch khỏi dữ liệu đúng một ô.
- * ⚠ SẮP XẾP Ở ĐÂY LÀ TRÊN TRANG ĐANG XEM, y như bảng đơn / hóa đơn. Máy chủ vẫn trả mới
- *   nhất trước.
+ * ⚠ HAI CÁCH SẮP XẾP — chọn đúng theo cách màn nạp dữ liệu:
+ *   - Màn nạp ĐỦ (cả danh sách nằm trong `rows`): cột có `sort` so sánh, bảng tự xếp trong bộ nhớ.
+ *   - Màn PHÂN TRANG Ở MÁY CHỦ: truyền `sort` + `onSortChange`, bảng KHÔNG xếp gì cả — chỉ vẽ
+ *     mũi tên và báo khoá cột; màn gửi `.order(...)` xuống máy chủ (`apSapXep`,
+ *     `src/lib/list/sap-xep-may-chu.ts`). Xếp trong bộ nhớ trên một trang 20 dòng là "Còn lại ↓"
+ *     ra khoản lớn nhất của 20 dòng chứ không phải của cả sổ. Cột bấm được là cột `sortable`.
  */
 
 import { useMemo, useState, type ReactNode } from "react"
 import Link from "@/components/ui/link"
 import { ArrowDown, ArrowUp, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { doiSapXep, type DocSort } from "@/lib/list/sap-xep-may-chu"
 
 export interface DocColumn<T> {
   key: string
@@ -26,9 +31,28 @@ export interface DocColumn<T> {
   /** Rãnh lưới: "140px", "minmax(200px,1.5fr)". */
   width: string
   align?: "right"
-  /** Có thì tiêu đề bấm được để xếp. */
+  /** Màn nạp đủ: có thì tiêu đề bấm được để xếp trong bộ nhớ. Bảng xếp ở máy chủ bỏ qua. */
   sort?: (a: T, b: T) => number
+  /** Bảng xếp ở máy chủ (`onSortChange`): bật thì tiêu đề bấm được. Cột tính ra thì để trống. */
+  sortable?: boolean
   render: (row: T) => ReactNode
+}
+
+/** Cột này có nút xếp không — tách ra để chốt kiểm được hai chế độ. */
+export function cotXepDuoc<T>(c: DocColumn<T>, mayChu: boolean): boolean {
+  return mayChu ? !!c.sortable : !!c.sort
+}
+
+/**
+ * Thứ tự dòng bảng vẽ ra. ⚠ Xếp ở máy chủ thì GIỮ NGUYÊN thứ tự máy chủ trả — xếp lại trong
+ * bộ nhớ là xếp trên một trang.
+ */
+export function sapXepDong<T>(rows: T[], columns: DocColumn<T>[], sort: DocSort | null, mayChu: boolean): T[] {
+  if (mayChu || !sort) return rows
+  const col = columns.find((c) => c.key === sort.key)
+  if (!col?.sort) return rows
+  const dir = sort.dir === "asc" ? 1 : -1
+  return [...rows].sort((a, b) => dir * col.sort!(a, b))
 }
 
 export function DocTable<T extends { id: string }>({
@@ -38,6 +62,8 @@ export function DocTable<T extends { id: string }>({
   onOpen,
   minWidth = 980,
   rowTestId,
+  sort: sortNgoai,
+  onSortChange,
 }: {
   rows: T[]
   /** Các cột ĐANG HIỆN, đúng thứ tự — nơi gọi lọc theo `useListViewPrefs`. */
@@ -48,14 +74,19 @@ export function DocTable<T extends { id: string }>({
   onOpen?: (row: T) => void
   minWidth?: number
   rowTestId?: string
+  /** Xếp ở MÁY CHỦ: thứ tự đang áp (để vẽ mũi tên). Đi cùng `onSortChange`. */
+  sort?: DocSort | null
+  /** Có thì bảng không tự xếp — báo thứ tự mới để màn hỏi lại máy chủ. */
+  onSortChange?: (next: DocSort) => void
 }) {
-  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null)
-  const sorted = useMemo(() => {
-    const col = sort ? columns.find((c) => c.key === sort.key) : null
-    if (!sort || !col?.sort) return rows
-    const dir = sort.dir === "asc" ? 1 : -1
-    return [...rows].sort((a, b) => dir * col.sort!(a, b))
-  }, [rows, columns, sort])
+  const mayChu = !!onSortChange
+  const [sortTaiCho, setSortTaiCho] = useState<DocSort | null>(null)
+  const sort = mayChu ? sortNgoai ?? null : sortTaiCho
+  const sorted = useMemo(() => sapXepDong(rows, columns, sort, mayChu), [rows, columns, sort, mayChu])
+  const bam = (key: string) => {
+    if (onSortChange) onSortChange(doiSapXep(sort, key))
+    else setSortTaiCho((cur) => doiSapXep(cur, key))
+  }
 
   const tracks = [...columns.map((c) => c.width), onOpen ? "64px" : null].filter(Boolean).join(" ")
   const head = "flex items-center px-2 text-[11px] font-extrabold uppercase tracking-[0.06em] text-on-surface-variant"
@@ -70,13 +101,13 @@ export function DocTable<T extends { id: string }>({
           style={{ gridTemplateColumns: tracks }}
         >
           {columns.map((c) =>
-            c.sort ? (
+            cotXepDuoc(c, mayChu) ? (
               <button
                 key={c.key}
                 type="button"
-                onClick={() =>
-                  setSort((cur) => (cur?.key === c.key ? { key: c.key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key: c.key, dir: "asc" }))
-                }
+                data-sort-key={c.key}
+                data-sort-dir={sort?.key === c.key ? sort.dir : undefined}
+                onClick={() => bam(c.key)}
                 className={cn(sortBtn, c.align === "right" && "justify-end")}
               >
                 {c.label}

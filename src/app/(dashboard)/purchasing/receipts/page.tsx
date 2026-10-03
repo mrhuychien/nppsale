@@ -32,6 +32,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import {
@@ -69,6 +70,16 @@ interface Row {
   created_at: string
   completed_at: string | null
   supplier?: { name?: string | null; code?: string | null } | null
+}
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_PHIEU_NHAP: BangSoSanh<Row> = {
+  supplier: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+  date: (a, b) => (a.invoice_date ?? "").localeCompare(b.invoice_date ?? ""),
+  total: (a, b) => Number(a.total) - Number(b.total),
 }
 
 export default function PurchaseReceiptsPage() {
@@ -157,7 +168,10 @@ export default function PurchaseReceiptsPage() {
   )
 
 
-  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([tab, q, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `shown` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(shown, sort, SO_SANH_PHIEU_NHAP), [shown, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([tab, q, locNC.key, sort]))
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<Row> & { k?: PurchaseReceiptColumnKey }> = [
@@ -167,19 +181,19 @@ export default function PurchaseReceiptsPage() {
       },
       {
         k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        sortable: true,
         render: (r) => <span className="block truncate text-sm font-bold">{r.supplier?.name || "—"}</span>,
       },
       { k: "invoiceNumber", key: "invoiceNumber", label: "Số HĐ", width: "130px", render: (r) => <DocCellText muted>{r.invoice_number}</DocCellText> },
       {
         k: "date", key: "date", label: "Ngày", width: "110px",
-        sort: (a, b) => (a.invoice_date ?? "").localeCompare(b.invoice_date ?? ""),
+        sortable: true,
         render: (r) => <DocCellDate date={r.invoice_date ? formatDate(r.invoice_date) : "—"} />,
       },
       { k: "zone", key: "zone", label: "Kho", width: "140px", render: (r) => <DocCellText muted>{r.warehouse_zone ? (ZONE_LABEL[r.warehouse_zone] ?? r.warehouse_zone) : null}</DocCellText> },
       {
         k: "total", key: "total", label: "Cần trả NCC", width: "150px", align: "right",
-        sort: (a, b) => Number(a.total) - Number(b.total),
+        sortable: true,
         render: (r) => formatCurrency(Number(r.total || 0)),
       },
       { k: "status", key: "status", label: "Trạng thái", width: "130px", render: (r) => <Badge variant="secondary">{receiptStatusLabel(r.status)}</Badge> },
@@ -264,7 +278,7 @@ export default function PurchaseReceiptsPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

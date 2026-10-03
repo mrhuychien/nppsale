@@ -65,6 +65,8 @@ export default function InventoryAuditPage() {
           .from("batches")
           .select("product_id, qty_on_hand, unit_cost", { count: "exact" })
           .gt("qty_on_hand", 0)
+          // ⚠ Mốc `id` duy nhất: các trang chạy SONG SONG, không thứ tự là lô lặp / sót.
+          .order("id")
           .range(from, to)
       ),
     ])

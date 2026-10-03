@@ -58,8 +58,10 @@ import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { RouteFilter } from "@/components/orders/route-filter"
 import { StatusChips } from "@/components/ui/status-chips"
 import { trangThaiCuaChon } from "@/lib/list/status-multi"
+import { apSapXep, doiSapXep } from "@/lib/list/sap-xep-may-chu"
 import {
   DesktopInvoiceTable,
+  INVOICE_SORT_COLUMNS,
   type InvoiceRow,
   type InvoiceSort,
   type InvoiceSortKey,
@@ -75,6 +77,7 @@ import { useFieldSearch } from "@/hooks/use-field-search"
 import { TRUONG_HOA_DON } from "@/lib/search/doc-fields"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { cacNgayDangHien, docThongKeNgay, type ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 import {
   periodFrom, nextPeriod,
   kyDangLoc,
@@ -305,7 +308,9 @@ export default function SalesInvoicesPage() {
       lte: (c: string, v: unknown) => T
       or: (f: string) => T
     }>(
-      q: T
+      q: T,
+      /** true = bỏ bộ lọc tuyến (đếm hóa đơn THEO TUYẾN cho ô chọn tuyến — `routeCounts`). */
+      boTuyen = false
     ): T => {
       let x = q
       /**
@@ -320,7 +325,7 @@ export default function SalesInvoicesPage() {
       for (const f of locNC.menhDe) x = x.or(f)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
-      if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
+      if (routeFilter !== "all" && !boTuyen) x = x.eq("customer.channel", routeFilter)
       if (dateFrom) x = x.gte("invoice_date", dateFrom)
       if (dateTo) x = x.lte("invoice_date", dateTo)
       if (amountMin) x = x.gte("total", Number(amountMin))
@@ -350,7 +355,7 @@ export default function SalesInvoicesPage() {
   const khoaTaiRef = useRef<KhoaTai>(null)
 
   const fetchData = useCallback(async () => {
-    if (!laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to, false)) setLoading(true)
+    if (!laTaiThem(khoaTaiRef, [applyFilters, status, pg.from, sort], pg.to, false)) setLoading(true)
     /* ⚠ CHỜ LƯỢT TRA MÃ. Giữ "đang nạp" chứ không vẽ một danh sách
        thiếu rồi tự sửa vài trăm mili giây sau. */
     if (!searchReady) return
@@ -358,11 +363,16 @@ export default function SalesInvoicesPage() {
     const truoc = khoaTaiRef.current
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     const taoQ = (dem: boolean) => {
-      let q = supabase
-        .from("sales_invoices")
-        .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, dem ? { count: "exact" } : undefined)
-        .order("invoice_date", { ascending: false })
-        .order("created_at", { ascending: false })
+      /* ⚠ XẾP Ở MÁY CHỦ (cột người dùng bấm đứng trước) — xếp trong bảng là xếp trên một trang.
+         Mốc phụ `id`: hai hoá đơn cùng giờ không lặp / sót giữa hai trang. */
+      let q = apSapXep(
+        supabase
+          .from("sales_invoices")
+          .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, dem ? { count: "exact" } : undefined),
+        sort,
+        INVOICE_SORT_COLUMNS,
+        (x) => x.order("invoice_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+      )
       q = locTrangThai(q, status)
       q = applyFilters(q as never) as typeof q
       return q
@@ -387,7 +397,7 @@ export default function SalesInvoicesPage() {
     }
     /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 hoá đơn đầu vẽ ngay, phần còn lại về sau. "Tải thêm"
        cùng truy vấn thì không vẽ lại nhịp đầu. */
-    const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to)
+    const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from, sort], pg.to)
     /**
      * ⚠ "TẢI THÊM" CHỈ ĐỌC PHẦN MỚI (tối ưu lượt gọi 27/09/2026). Bản cũ đọc lại cả 0…40 khi đã có
      *   0…20 — mỗi lần bấm là đọc lại mọi dòng đang hiện, kèm hàng trả của chúng.
@@ -433,7 +443,7 @@ export default function SalesInvoicesPage() {
     setLoading(false)
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, applyFilters, searchReady, pg.from, pg.to])
+  }, [status, applyFilters, searchReady, pg.from, pg.to, sort])
 
   /**
    * Tổng tiền của CẢ bộ lọc, cho dải tóm tắt trên điện thoại.
@@ -536,21 +546,82 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key])
+  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key, sort])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
     [routes]
   )
 
-  const routeCounts = useMemo(() => {
-    const m: Record<string, number> = {}
-    for (const r of rows) {
-      const c = r.customer?.channel
-      if (c) m[c] = (m[c] ?? 0) + 1
-    }
-    return m
-  }, [rows])
+  /**
+   * Số hóa đơn theo tuyến cho ô chọn tuyến.
+   * ⚠ ĐẾM TRÊN MÁY CHỦ, CÙNG BỘ LỌC VỚI DANH SÁCH (trừ chính bộ lọc tuyến) — rà soát 03/10/2026: bản cũ đếm
+   *   trong 20 hóa đơn đang tải, tuyến có hàng trăm hóa đơn hiện "3". Cùng cách màn Đơn hàng (`loadRouteCounts`).
+   *   Chỉ đọc khi ô chọn tuyến cần (`canDanhMuc`). Là GỢI Ý xếp tuyến: đọc hỏng thì ghi log, ô vẫn chọn được.
+   */
+  const [routeCounts, setRouteCounts] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (!canDanhMuc || !searchReady || authLoading) return
+    let huy = false
+    ;(async () => {
+      const res = await fetchAllForAggregate<{ customer: { channel: string | null } | null }>((from, to) => {
+        let q = supabase
+          .from("sales_invoices")
+          .select("id, customer:customers!inner(channel)", { count: "exact" })
+        q = locTrangThai(q, status)
+        return (applyFilters(q as never, true) as typeof q).order("id").range(from, to)
+      })
+      if (huy) return
+      if (res.error) {
+        console.warn("[sales-invoices] không đếm được hóa đơn theo tuyến:", res.error)
+        return
+      }
+      const m: Record<string, number> = {}
+      for (const r of res.rows) {
+        const c = r.customer?.channel
+        if (c) m[c] = (m[c] ?? 0) + 1
+      }
+      setRouteCounts(m)
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canDanhMuc, searchReady, authLoading, status, applyFilters, focusTick])
+
+  /**
+   * Đầu nhóm ngày trên điện thoại ("N hoá đơn · tổng") — đếm TRÊN MÁY CHỦ cho đúng những ngày đang hiện, cùng bộ
+   * lọc với danh sách; tiền là SỐ CÒN LẠI sau hàng trả như từng thẻ (mig 192). `docThongKeNgay`, rà soát 03/10/2026.
+   */
+  const [dayStatsRaw, setDayStats] = useState<{ /** `applyFilters` lúc đọc — đổi bộ lọc là hàm mới, số cũ không dán lên danh sách mới. */ khoa: unknown; status: string; data: ThongKeNgay | null } | null>(null)
+  const ngayDangHien = cacNgayDangHien(rows, (r) => r.invoice_date).join(",")
+  const dayStats = dayStatsRaw?.khoa === applyFilters && dayStatsRaw.status === status ? dayStatsRaw.data : null
+  useEffect(() => {
+    if (laMay !== false || !searchReady || authLoading || !ngayDangHien) return
+    let huy = false
+    const days = ngayDangHien.split(",")
+    const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
+    ;(async () => {
+      const kq = await docThongKeNgay<{ id: string; invoice_date: string; total: number | string | null }>(
+        days,
+        (from, to) => {
+          let q = supabase
+            .from("sales_invoices")
+            .select(routeFilter !== "all" ? `id, invoice_date, total, ${cust}` : "id, invoice_date, total", { count: "exact" })
+            .in("invoice_date", days)
+          q = locTrangThai(q, status)
+          return (applyFilters(q as never) as typeof q).order("id").range(from, to)
+        },
+        (r) => r.invoice_date,
+        (r) => Number(r.total) || 0,
+        async (ds) => {
+          const tra = await traTheoHoaDon(supabase, ds.map((r) => r.id))
+          return (r) => (Number(r.total) || 0) - (tra.get(r.id) ?? 0)
+        }
+      )
+      if (!huy) setDayStats({ khoa: applyFilters, status, data: kq })
+    })()
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laMay, ngayDangHien, searchReady, authLoading, status, applyFilters, routeFilter, focusTick])
 
   /**
    * ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT NỮA. Ô tìm nay hỏi máy chủ (xem
@@ -639,7 +710,7 @@ export default function SalesInvoicesPage() {
 
   const drawerInvoice = drawerId ? (rows.find((r) => r.id === drawerId) ?? null) : null
   const onSort = (key: InvoiceSortKey) =>
-    setSort((cur) => (cur?.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))
+    setSort((cur) => doiSapXep(cur, key))
 
   const canEdit = !!user && ["owner", "manager"].includes(user.role)
 
@@ -859,6 +930,7 @@ export default function SalesInvoicesPage() {
           sales_user: r.sales_user,
         }))}
         showSalesName={!isSales}
+        dayStats={dayStats}
         loading={loading}
         loaded={pg.from + filtered.length}
         onLoadMore={() => pg.setPageSize(pg.pageSize + BUOC_TAI_DON)}

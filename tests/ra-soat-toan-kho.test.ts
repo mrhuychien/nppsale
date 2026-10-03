@@ -112,15 +112,8 @@ const CON_NO_GHI_KHONG_KIEM = [
  */
 const CON_NO_MOC_PHAN_TRANG = [
   "src/app/(dashboard)/deliveries/page.tsx",
-  "src/app/(dashboard)/finance/expenses/page.tsx",
-  "src/app/(dashboard)/inventory/stocktake-check/page.tsx",
-  "src/app/(dashboard)/invoices/page.tsx",
-  "src/app/(dashboard)/notifications/page.tsx",
-  "src/app/(dashboard)/orders/page.tsx",
-  "src/app/(dashboard)/products/page.tsx",
   "src/app/(dashboard)/returns/page.tsx",
   "src/app/(dashboard)/sell/drafts/page.tsx",
-  "src/app/(dashboard)/suppliers/page.tsx",
 ]
 
 // =====================================================================
@@ -214,6 +207,9 @@ describe("rà soát: mốc phân trang phải duy nhất", () => {
       const phiaTruoc = src.slice(0, m.index)
       const rpc = phiaTruoc.lastIndexOf('.rpc("receivables_by_customer"')
       if (cot === "customer_id" && rpc >= 0 && rpc > phiaTruoc.lastIndexOf(".from(")) continue
+      // Tương tự: `committed_stock_by_product` GROUP BY theo mặt hàng (mig 137) — `product_id` là khoá của kết quả.
+      const rpcDat = phiaTruoc.lastIndexOf('.rpc("committed_stock_by_product"')
+      if (cot === "product_id" && rpcDat >= 0 && rpcDat > phiaTruoc.lastIndexOf(".from(")) continue
       return true
     }
     return false

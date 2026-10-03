@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { timXepHang } from "@/lib/search"
 import { useAuth } from "@/hooks/use-auth"
@@ -177,12 +178,17 @@ export default function StocktakeAdjustPage() {
   const loadAllStock = async () => {
     // Two-step load so products without any batch still show up (operator
     // can record a positive/negative adjustment against them).
-    const [{ data: prodData, error: prodErr }, batchRes] = await Promise.all([
-      supabase
-        .from("products")
-        .select("id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id")
-        .eq("status", "active")
-        .order("name"),
+    /* ⚠ ĐỌC ĐỦ DANH MỤC, KHÔNG `.select()` TRƠN (rà soát 03/10/2026). PostgREST cắt ở 1.000 dòng:
+       với danh mục > 1.000 mã, mọi mã xếp sau (theo tên) KHÔNG BAO GIỜ lên phiếu kiểm kê — lô của
+       chúng vẫn có tồn mà không ai kiểm, chênh lệch dồn sang lần sau. `loadCatalogue` phân trang
+       theo `id` rồi sắp theo tên trong bộ nhớ. Lô cũng phân trang theo `id` (khoá duy nhất — các
+       trang chạy song song). Đọc hỏng / chạm trần thì DỪNG và báo, không tải một phiếu thiếu. */
+    const [prodRes, batchRes] = await Promise.all([
+      loadCatalogue<Product>(
+        supabase,
+        "id, org_id, sku, name, category, brand, barcode, base_unit, vat_rate, shelf_life_days, status, created_at, description, warranty_info, cost_price, sell_price, track_serial, min_stock, max_stock, shelf_location, weight, weight_unit, direct_sale, images, allow_price_edit, price_edit_max_type, price_edit_max, primary_supplier_id",
+        { activeOnly: true }
+      ),
       // Phiếu kiểm kê phải liệt kê ĐỦ lô đang có tồn — thiếu lô nào là lô
       // đó không được kiểm, chênh lệch sẽ dồn sang lần kiểm sau.
       fetchAllForAggregate<Batch>((from, to) =>
@@ -192,17 +198,25 @@ export default function StocktakeAdjustPage() {
             count: "exact",
           })
           .gt("qty_on_hand", 0)
+          .order("id")
           .range(from, to)
       ),
     ])
+    if (prodRes.truncated || batchRes.error || batchRes.truncated) {
+      if (batchRes.error) console.error("[inventory/stocktake-adjust] truy vấn lô lỗi:", batchRes.error)
+      toast({
+        title: "Không tải đủ hàng tồn",
+        description: batchRes.error || "Danh mục / lô đọc chưa hết — thử lại để phiếu kiểm kê không thiếu mã.",
+        variant: "destructive",
+      })
+      return
+    }
     const batchesByProduct: Record<string, Batch[]> = {}
-    if (prodErr) console.error("[inventory/stocktake-adjust] truy vấn sản phẩm lỗi:", prodErr.message)
-    if (batchRes.error) console.error("[inventory/stocktake-adjust] truy vấn lô lỗi:", batchRes.error)
     for (const b of batchRes.rows) {
       if (!batchesByProduct[b.product_id]) batchesByProduct[b.product_id] = []
       batchesByProduct[b.product_id].push(b)
     }
-    const list: Array<Product & { batches?: Batch[] }> = ((prodData as Product[]) || []).map((p) => ({
+    const list: Array<Product & { batches?: Batch[] }> = prodRes.rows.map((p) => ({
       ...p,
       batches: batchesByProduct[p.id] || [],
     }))

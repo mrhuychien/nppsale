@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import Link from "@/components/ui/link"
 import { ArrowDown, ArrowUp, Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -17,10 +16,17 @@ import type { InvoiceColumnKey } from "@/app/(dashboard)/sales-invoices/list-con
  * cạnh nhau trong cùng một nhóm; avatar cùng một nhân viên mà ra hai màu
  * khác nhau thì người dùng tưởng là hai người.
  *
- * ⚠ SẮP XẾP Ở ĐÂY LÀ TRÊN TRANG ĐANG XEM (50 dòng), không phải trên toàn
- * bộ kết quả — y như bảng đơn. Máy chủ vẫn trả mới nhất trước.
+ * ⚠ SẮP XẾP Ở MÁY CHỦ, KHÔNG Ở BẢNG — y như bảng đơn: bảng chỉ vẽ mũi tên và
+ * báo khoá cột, màn Hóa đơn gửi `.order(INVOICE_SORT_COLUMNS[key])`.
+ * ⚠ "Tổng tiền" KHÔNG XẾP ĐƯỢC: số trên dòng là số CÒN LẠI sau hàng trả (mig 192),
+ * tính ở trình duyệt — xếp theo `total` của tờ là xếp theo một con số không hiện ra.
  */
-export type InvoiceSortKey = "customer" | "date" | "total"
+export type InvoiceSortKey = "customer" | "date"
+/** Khoá cột → cột PostgREST. Khách là bảng nhúng một-một (bí danh `customer`). */
+export const INVOICE_SORT_COLUMNS: Record<InvoiceSortKey, string> = {
+  customer: "customer(store_name)",
+  date: "invoice_date",
+}
 export interface InvoiceSort {
   key: InvoiceSortKey
   dir: "asc" | "desc"
@@ -84,17 +90,8 @@ export function DesktopInvoiceTable({
   sort: InvoiceSort | null
   onSort: (key: InvoiceSortKey) => void
 }) {
-  const rows = useMemo(() => {
-    if (!sort) return invoices
-    const dir = sort.dir === "asc" ? 1 : -1
-    return [...invoices].sort((a, b) => {
-      if (sort.key === "customer") {
-        return dir * (a.customer?.store_name ?? "").localeCompare(b.customer?.store_name ?? "", "vi")
-      }
-      if (sort.key === "total") return dir * (Number(a.total) - Number(b.total))
-      return dir * (a.invoice_date ?? "").localeCompare(b.invoice_date ?? "")
-    })
-  }, [invoices, sort])
+  /* ⚠ KHÔNG XẾP LẠI Ở ĐÂY — `invoices` đã theo thứ tự máy chủ (`sort` chỉ để vẽ mũi tên). */
+  const rows = invoices
 
   const SortIcon = ({ k }: { k: InvoiceSortKey }) =>
     sort?.key === k ? (
@@ -136,7 +133,7 @@ export function DesktopInvoiceTable({
         >
           <span className={head}>Số hóa đơn</span>
           {show("customer") && (
-            <button type="button" onClick={() => onSort("customer")} className={sortBtn}>
+            <button type="button" data-sort-key="customer" onClick={() => onSort("customer")} className={sortBtn}>
               Khách hàng <SortIcon k="customer" />
             </button>
           )}
@@ -146,16 +143,12 @@ export function DesktopInvoiceTable({
           {show("salesUser") && <span className={head}>Tính cho NV</span>}
           {show("createdBy") && <span className={head}>Người tạo</span>}
           {show("date") && (
-            <button type="button" onClick={() => onSort("date")} className={sortBtn}>
+            <button type="button" data-sort-key="date" onClick={() => onSort("date")} className={sortBtn}>
               Ngày xuất <SortIcon k="date" />
             </button>
           )}
           {show("order") && <span className={head}>Đơn gốc</span>}
-          {show("total") && (
-            <button type="button" onClick={() => onSort("total")} className={cn(sortBtn, "justify-end")}>
-              Tổng tiền <SortIcon k="total" />
-            </button>
-          )}
+          {show("total") && <span className={cn(head, "justify-end")}>Tổng tiền</span>}
           {show("status") && <span className={head}>Trạng thái</span>}
           <span className={head} />
         </div>

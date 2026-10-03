@@ -701,7 +701,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     if (ids.length === 0) return
     let huy = false
     ;(async () => {
-      const lo = await loadLotsByProduct(createClient(), ids).catch(() => ({}))
+      const lo = await loadLotsByProduct(createClient(), ids).catch((e) => {
+        /* Lô chỉ là gợi ý — không chặn màn, nhưng phải NÓI RA (rà soát 03/10/2026): im lặng là mọi dòng "không có lô". */
+        console.error("[pos/order] đọc lô lỗi:", errorMessage(e))
+        toast({ title: "Không tải được danh sách lô", description: errorMessage(e), variant: "destructive" })
+        return {}
+      })
       if (huy) return
       setLines((cu) => attachLineExtras(cu, { lotsByProduct: lo }))
     })()

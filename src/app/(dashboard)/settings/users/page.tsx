@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
 import { viMatchAllWords } from "@/lib/search"
@@ -45,6 +46,14 @@ function BadgeTrangThai({ u }: { u: User }) {
       {NHAN_TRANG_THAI_NV[tt]}
     </Badge>
   )
+}
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_NHAN_VIEN: BangSoSanh<User> = {
+  name: (a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? "", "vi"),
 }
 
 export default function UsersPage() {
@@ -154,7 +163,10 @@ export default function UsersPage() {
     () => (status === "all" ? locRows : locRows.filter((u) => trangThaiNv(u) === status)),
     [locRows, status]
   )
-  const { pg, trang } = usePhanTrangTaiCho(shown, JSON.stringify([status, search]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `shown` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(shown, sort, SO_SANH_NHAN_VIEN), [shown, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([status, search, sort]))
 
   /* Điện thoại (thiết kế "ds-nhan-vien"): lọc riêng — mặc định "Đang hoạt động", chip theo vai. Danh sách
      nhân viên ngắn → hiện hết, không phân trang. */
@@ -213,7 +225,7 @@ export default function UsersPage() {
     const cols: Array<DocColumn<User> & { k?: UserColumnKey }> = [
       {
         key: "name", label: "Họ tên", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? "", "vi"),
+        sortable: true,
         render: (u) => (
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-bold">{u.full_name}</span>
@@ -293,7 +305,7 @@ export default function UsersPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(u) => setXemId(u.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(u) => setXemId(u.id)} sort={sort} onSortChange={setSort} />}
         /* Điện thoại: màn riêng theo thiết kế "ds-nhan-vien" (`DsNhanVienDienThoai`). */
         cards={null}
       />

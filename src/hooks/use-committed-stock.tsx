@@ -62,6 +62,10 @@ export function CommittedStockProvider({ children }: { children: React.ReactNode
               count: "exact",
             })
             .select("product_id, committed_base")
+            /* ⚠ Mốc duy nhất ở CẢ phía gọi: `product_id` là khoá của kết quả (GROUP BY). ORDER BY
+               trong thân hàm (mig 137) không ràng buộc được OFFSET/LIMIT PostgREST bọc ngoài —
+               các trang chạy song song, không thứ tự là sót một mặt hàng → "đã đặt" về 0. */
+            .order("product_id")
             .range(from, to)
       )
       if (cancelled) return

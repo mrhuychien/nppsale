@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
@@ -19,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
@@ -46,10 +48,21 @@ import {
   type PromotionFilterKey,
 } from "./list-config"
 
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_KHUYEN_MAI: BangSoSanh<Promotion> = {
+  name: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+  priority: (a, b) => a.priority - b.priority,
+}
+
 export default function PromotionsPage() {
   const { user, loading: authLoading } = useRoleGuard("promotions")
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -79,12 +92,20 @@ export default function PromotionsPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data, error: dataErr } = await supabase
-        .from("promotions")
-        .select("id, name, type, priority, starts_at, ends_at, is_active, created_at")
-        .order("priority", { ascending: false })
-      if (dataErr) console.error("[app/promotions] truy vấn lỗi:", dataErr.message)
-      setPromotions((data as Promotion[]) || [])
+      /* ⚠ Màn lọc ở trình duyệt nên phải TẢI ĐỦ — đọc trơn bị `db.max_rows` cắt ở 1.000 chương trình, im lặng
+         (rà soát 03/10/2026). Mốc phụ `id`: các trang đọc song song không lặp / sót. */
+      const res = await fetchAllForAggregate<Promotion>((from, to) =>
+        supabase
+          .from("promotions")
+          .select("id, name, type, priority, starts_at, ends_at, is_active, created_at", { count: "exact" })
+          .order("priority", { ascending: false })
+          .order("id")
+          .range(from, to)
+      )
+      if (res.error) console.error("[app/promotions] truy vấn lỗi:", res.error)
+      setPromotions(res.rows)
+      setLoadError(res.error)
+      setTruncated(res.truncated)
       setLoading(false)
     }
     fetch()
@@ -191,7 +212,10 @@ export default function PromotionsPage() {
     return c
   }, [promotions, search, typeFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `filtered` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(filtered, sort, SO_SANH_KHUYEN_MAI), [filtered, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([search, typeFilter, statusFilter, activeFilters, locNC.key, sort]))
   const thoiGian = (p: Promotion) => `${p.starts_at ? formatDate(p.starts_at) : "?"} - ${p.ends_at ? formatDate(p.ends_at) : "∞"}`
 
   const columns = useMemo(() => {
@@ -216,11 +240,11 @@ export default function PromotionsPage() {
         : []),
       {
         key: "name", label: "Tên chương trình", width: "minmax(240px,2fr)",
-        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        sortable: true,
         render: (p) => <DocCodeLink href={`/promotions/${p.id}`}>{p.name}</DocCodeLink>,
       },
       { k: "type", key: "type", label: "Loại", width: "160px", render: (p) => <Badge variant="outline">{getTypeLabel(p.type)}</Badge> },
-      { k: "priority", key: "priority", label: "Ưu tiên", width: "100px", align: "right", sort: (a, b) => a.priority - b.priority, render: (p) => p.priority },
+      { k: "priority", key: "priority", label: "Ưu tiên", width: "100px", align: "right", sortable: true, render: (p) => p.priority },
       { k: "period", key: "period", label: "Thời gian", width: "200px", render: (p) => <DocCellText muted>{thoiGian(p)}</DocCellText> },
       {
         k: "status", key: "status", label: "Trạng thái", width: "120px",
@@ -271,6 +295,20 @@ export default function PromotionsPage() {
       <PageHeader className="max-lg:hidden" title="Khuyến mãi" descriptionDesktopOnly description={`${promotions.length} chương trình`}>
         {nutTao}
       </PageHeader>
+
+      {/* Lỗi tải / số thiếu — nói ra, không để danh sách trông như đủ. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được danh sách khuyến mãi</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Danh sách chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
 
       {filterActive("status") && (
         <StatusChips className="max-lg:hidden" active={statusFilter} onPick={setStatusFilter} chips={chips} />
@@ -324,7 +362,7 @@ export default function PromotionsPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(p) => setXemId(p.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

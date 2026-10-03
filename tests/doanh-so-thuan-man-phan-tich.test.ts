@@ -77,8 +77,8 @@ describe("analytics/business/overview — các bảng Top là số thuần", () 
 
   it("đọc phiếu trả (không chỉ tổng), dòng trả và giá vốn hàng trả của cả hai kỳ", () => {
     expect(S).not.toMatch(/\bfetchReturnsValue\(/)
-    expect(S).toContain("fetchReturnsRows(supabase, orgId, range)")
-    expect(S).toContain("fetchReturnsRows(supabase, orgId, prev)")
+    expect(S).toContain("fetchReturnsRowsDu(supabase, orgId, range)")
+    expect(S).toContain("fetchReturnsRowsDu(supabase, orgId, prev)")
     expect(S).toContain("fetchReturnLines(supabase, retIds)")
     expect(S).toContain("fetchReturnLines(supabase, prevRetIds)")
     expect(S).toContain("setCogs(cogsRes.cogs - giaVonTra)")

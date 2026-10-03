@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, FAKE, HOM_NAY_E2E } from "./helpers"
+import { dangNhap, FAKE, HOM_NAY_E2E, nhatKy } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 27/09/2026: "Làm danh sách Phiếu thu format giống Danh sách đơn hàng / Hóa đơn
@@ -80,6 +80,38 @@ test.describe("danh sách phiếu thu — khuôn đơn / hóa đơn", () => {
     await expect(ngan.getByText("PT-E2E-001")).toBeVisible()
     await expect(ngan.getByRole("link", { name: "Chi tiết" })).toHaveAttribute("href", `/finance/cash-receipts/${id(0)}`)
     expect(loi).toEqual([])
+  })
+
+  /**
+   * ⚠ XẾP Ở MÁY CHỦ (rà soát 03/10/2026). Bảng cũ xếp 20 dòng đang xem — bấm "Số tiền ↓" mà
+   *   phiếu lớn nhất nằm ở trang 2 thì không bao giờ thấy nó. Nay bấm tiêu đề là hỏi lại máy chủ
+   *   với `order=expected_amount…`, về trang 1, và phiếu lớn nhất của CẢ bộ lọc lên đầu.
+   */
+  test("máy tính: bấm tiêu đề Số tiền gửi thứ tự xuống máy chủ — phiếu lớn nhất ở trang 2 lên đầu", async ({ page }) => {
+    // Phiếu thứ 23 (trang 2 theo thứ tự mặc định) là phiếu lớn nhất.
+    await fetch(`${FAKE}/rest/v1/cash_receipts?id=eq.${id(22)}`, {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expected_amount: 900000 }),
+    })
+    await dangNhap(page)
+    await page.goto("/finance/cash-receipts")
+    const may = page.locator('[data-doc-list="desktop"]')
+    await expect(may.getByTestId("dong-phieu-thu")).toHaveCount(20)
+    await expect(may.getByText("PT-E2E-023")).toHaveCount(0)
+
+    const truoc = (await nhatKy()).length
+    const nut = may.locator('[data-sort-key="total"]')
+    await nut.click() // tăng dần
+    await nut.click() // giảm dần
+    await expect(nut).toHaveAttribute("data-sort-dir", "desc")
+    await expect(may.getByTestId("dong-phieu-thu").first()).toContainText("PT-E2E-023")
+
+    const goi = ((await nhatKy()).slice(truoc) as Array<{ method: string; path: string; query?: string }>)
+      .filter((r) => r.method === "GET" && r.path === "/rest/v1/cash_receipts" && /[?&]order=/.test(r.query ?? ""))
+      .map((r) => decodeURIComponent(new URLSearchParams(r.query).get("order") ?? ""))
+    // Cột bấm đứng đầu, thứ tự mặc định + mốc `id` theo sau.
+    expect(goi).toContain("expected_amount.desc.nullslast,receipt_date.desc,created_at.desc,id.asc")
+    // Cột tính ra (khách suy từ dòng phiếu) không bấm được.
+    await expect(may.locator('[data-sort-key="customer"]')).toHaveCount(0)
   })
 
   test("điện thoại: đầu xanh (thẻ tổng) + thẻ theo khuôn đơn / hóa đơn", async ({ browser }) => {

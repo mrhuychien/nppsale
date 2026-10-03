@@ -27,6 +27,9 @@ import { StatusChips } from "@/components/ui/status-chips"
 import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { apSapXep, xepDuoc, SAP_XEP_HD_MUA, type DocSort } from "@/lib/list/sap-xep-may-chu"
+import { docTheoLoId } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -87,6 +90,10 @@ export default function PurchaseInvoicesLookupPage() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [filterSheet, setFilterSheet] = useState(false)
   const [xemId, setXemId] = useState<string | null>(null)
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_HD_MUA`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  /** Lỗi đọc — hiện ra, không chỉ ghi log (cột tiền "—" trông như phiếu không gắn NCC). */
+  const [loadError, setLoadError] = useState<string | null>(null)
   const pg = usePagination()
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("purchasing-invoices", LOC_PHIEU_NHAP_MUA)
@@ -104,7 +111,7 @@ export default function PurchaseInvoicesLookupPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, debtFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, debtFilter, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ HAI LƯỢT TRA RIÊNG. Tên NCC nằm ở `suppliers`; SỐ HOÁ ĐƠN nằm ở
@@ -155,15 +162,19 @@ export default function PurchaseInvoicesLookupPage() {
       setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. */
       if (!listSearch.ready) return
-      const { data: entriesData, count, error: qErr } = await taoTruyVan(
-        debtFilter, "id, entry_code, posted_at, created_at, supplier:suppliers(name, code)", { count: "exact" }
-      )
-        .order("created_at", { ascending: false })
-        // ⚠ Mốc phụ duy nhất — hai phiếu cùng giờ không lặp / sót giữa hai trang.
-        .order("id")
-        .range(pg.from, pg.to)
+      /* ⚠ XẾP Ở MÁY CHỦ — cột người dùng bấm đứng trước; xếp trong bảng là xếp trên một trang. */
+      const { data: entriesData, count, error: qErr } = await apSapXep(
+        taoTruyVan(debtFilter, "id, entry_code, posted_at, created_at, supplier:suppliers(name, code)", { count: "exact" }),
+        sort,
+        SAP_XEP_HD_MUA,
+        (x) => x
+          .order("created_at", { ascending: false })
+          // ⚠ Mốc phụ duy nhất — hai phiếu cùng giờ không lặp / sót giữa hai trang.
+          .order("id")
+      ).range(pg.from, pg.to)
       if (qErr) console.error("[purchasing/invoices] truy vấn lỗi:", qErr.message)
       if (cancelled) return
+      let loi = qErr ? errorMessage(qErr, "Không tải được danh sách phiếu nhập") : null
 
       const entries = (entriesData as unknown as Array<Omit<ImportRow, "payable">>) || []
       const ids = entries.map((e) => e.id)
@@ -171,16 +182,30 @@ export default function PurchaseInvoicesLookupPage() {
       // Load payables CHỈ cho entries trên page hiện tại.
       const payByEntry = new Map<string, ImportRow["payable"]>()
       if (ids.length > 0) {
-        const { data: payData, error: payDataErr } = await supabase
-          .from("payables")
-          .select("id, stock_entry_id, amount, paid, status, invoice_number")
-          .in("stock_entry_id", ids)
-        if (payDataErr) console.error("[purchasing/invoices] truy vấn lỗi:", payDataErr.message)
-        for (const p of (payData as Array<{ id: string; stock_entry_id: string; amount: number; paid: number; status: string; invoice_number: string | null }>) || []) {
-          payByEntry.set(p.stock_entry_id, { id: p.id, amount: p.amount, paid: p.paid, status: p.status, invoice_number: p.invoice_number })
+        /* ⚠ ĐỌC THEO LÔ ID (`docTheoLoId`) — trang 200 phiếu dồn vào một `.in()` là chạm trần độ
+           dài URL; lỗi thì NÓI RA (cột tiền "—" trông y như phiếu không gắn NCC). */
+        try {
+          const payData = await docTheoLoId<{ id: string; stock_entry_id: string; amount: number; paid: number; status: string; invoice_number: string | null }>(
+            ids,
+            (lo, from, to) =>
+              supabase
+                .from("payables")
+                .select("id, stock_entry_id, amount, paid, status, invoice_number", { count: "exact" })
+                .in("stock_entry_id", lo)
+                .order("id")
+                .range(from, to),
+            "Công nợ NCC của phiếu nhập"
+          )
+          for (const p of payData) {
+            payByEntry.set(p.stock_entry_id, { id: p.id, amount: p.amount, paid: p.paid, status: p.status, invoice_number: p.invoice_number })
+          }
+        } catch (e) {
+          console.error("[purchasing/invoices] không đọc được công nợ NCC:", e)
+          loi = loi ?? errorMessage(e, "Không đọc được công nợ NCC của các phiếu nhập")
         }
       }
       if (cancelled) return
+      setLoadError(loi)
 
       /* ⚠ KHÔNG LỌC LẠI Ở TRÌNH DUYỆT — máy chủ đã lọc cả ô tìm lẫn
          trạng thái công nợ. Lọc sau phân trang là chỉ lọc trang đang xem. */
@@ -189,7 +214,7 @@ export default function PurchaseInvoicesLookupPage() {
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, debtFilter, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, debtFilter, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Số trên dải lọc công nợ — đếm ở máy chủ, cùng ô tìm + lọc nâng cao. */
   useEffect(() => {
@@ -211,20 +236,20 @@ export default function PurchaseInvoicesLookupPage() {
       { key: "entry_code", label: "Mã phiếu nhập", width: "150px", render: (r) => <DocCodeLink href={`/inventory/entries/${r.id}`}>{r.entry_code}</DocCodeLink> },
       {
         k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.supplier?.name ?? "").localeCompare(b.supplier?.name ?? "", "vi"),
+        sortable: xepDuoc(SAP_XEP_HD_MUA, "supplier"),
         render: (r) => <span className="block truncate text-sm font-bold">{r.supplier?.name || "—"}</span>,
       },
       { k: "invoice_number", key: "invoice_number", label: "Số HĐ", width: "130px", render: (r) => <DocCellText muted>{r.payable?.invoice_number}</DocCellText> },
       {
         k: "date", key: "date", label: "Ngày nhập", width: "110px",
-        sort: (a, b) => (a.posted_at || a.created_at).localeCompare(b.posted_at || b.created_at),
+        sortable: xepDuoc(SAP_XEP_HD_MUA, "date"),
         render: (r) => <DocCellDate date={formatDate(r.posted_at || r.created_at)} />,
       },
       { k: "total", key: "total", label: "Tổng tiền", width: "130px", align: "right", render: (r) => (r.payable ? formatCurrency(r.payable.amount) : "—") },
       { k: "paid", key: "paid", label: "Đã trả", width: "130px", align: "right", render: (r) => (r.payable ? formatCurrency(r.payable.paid) : "—") },
       {
+        /* ⚠ KHÔNG XẾP: còn nợ nằm ở `payables` (đọc riêng theo trang) — xếp được chỉ trên trang đang xem. */
         k: "remaining", key: "remaining", label: "Còn nợ", width: "130px", align: "right",
-        sort: (a, b) => conNo(a) - conNo(b),
         render: (r) => (r.payable ? <span className={conNo(r) > 0 ? "text-error" : ""}>{formatCurrency(conNo(r))}</span> : "—"),
       },
       {
@@ -268,6 +293,14 @@ export default function PurchaseInvoicesLookupPage() {
 
       <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
 
+      {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng / cột tiền "—". */}
+      {loadError && !loading && (
+        <div role="alert" className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải đủ danh sách hoá đơn mua hàng</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+
       <DocListLayout
         toolbar={
           <>
@@ -310,7 +343,7 @@ export default function PurchaseInvoicesLookupPage() {
         }
         pg={pg}
         shownCount={rows.length}
-        table={<DocTable rows={rows} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        table={<DocTable rows={rows} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={rows}

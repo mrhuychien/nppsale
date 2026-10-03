@@ -2,13 +2,11 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { resolve, join } from "node:path"
 import {
-  fetchRevenueInvoices,
   fetchRevenueInvoicesDu,
   fetchInvoiceLines,
-  fetchAllOrders,
-  fetchReturnsValue,
+  fetchAllOrdersDu,
   fetchReturnsValueDu,
-  fetchReturnsRows,
+  fetchReturnsRowsDu,
   fetchCogsForRange,
   fetchOrgRows,
   fetchPostedStockEntries,
@@ -144,8 +142,8 @@ describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
   })
 
   it.each([
-    ["fetchRevenueInvoices", () => fetchRevenueInvoices, "sales_invoices"],
-    ["fetchAllOrders", () => fetchAllOrders, "sales_orders"],
+    ["fetchRevenueInvoicesDu", () => fetchRevenueInvoicesDu, "sales_invoices"],
+    ["fetchAllOrdersDu", () => fetchAllOrdersDu, "sales_orders"],
   ])("%s: đọc hỏng thì NÉM, không trả mảng rỗng", async (_t, ham, bang) => {
     const { client } = postgrestGia({ bang: {}, loi: { [bang]: "rớt mạng" } })
     await expect(ham()(client, ORG, KY)).rejects.toThrow(/rớt mạng/)
@@ -174,8 +172,8 @@ describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
 
   it("phiếu trả: hỏng thì NÉM (cả tổng lẫn danh sách)", async () => {
     const { client } = postgrestGia({ bang: {}, loi: { returns: "hết giờ" } })
-    await expect(fetchReturnsValue(client, ORG, KY)).rejects.toThrow(/hết giờ/)
-    await expect(fetchReturnsRows(client, ORG, KY)).rejects.toThrow(/hết giờ/)
+    await expect(fetchReturnsValueDu(client, ORG, KY)).rejects.toThrow(/hết giờ/)
+    await expect(fetchReturnsRowsDu(client, ORG, KY)).rejects.toThrow(/hết giờ/)
   })
 
   /* Sổ rất cũ: chưa có cả `revenue_date` (mig 192) lẫn `credited_at` (mig 097). */
@@ -188,7 +186,7 @@ describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
     const r = await fetchReturnsValueDu(client, ORG, KY)
     /* 1.200 phiếu × 10 — đủ cả phần vượt 1.000 dòng. */
     expect(r.total).toBe(12000)
-    const rows = await fetchReturnsRows(client, ORG, KY)
+    const { rows } = await fetchReturnsRowsDu(client, ORG, KY)
     expect(rows).toHaveLength(1200)
   })
 

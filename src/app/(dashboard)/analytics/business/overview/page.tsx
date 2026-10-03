@@ -21,9 +21,9 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchRevenueInvoices,
+  fetchRevenueInvoicesDu,
   fetchInvoiceLines,
-  fetchReturnsRows,
+  fetchReturnsRowsDu,
   fetchReturnLines,
   fetchReturnCosts,
   fetchCogsForRange,
@@ -127,10 +127,10 @@ export default function BusinessOverviewPage() {
      */
     try {
       const [
-        orderList,
-        prevOrderList,
-        retRows,
-        prevRetRows,
+        invRes,
+        prevInvRes,
+        retRes,
+        prevRetRes,
         cogsRes,
         prevCogsRes,
         customersRes,
@@ -138,10 +138,12 @@ export default function BusinessOverviewPage() {
         usersRes,
       ] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        fetchRevenueInvoices(supabase, orgId, range),
-        fetchRevenueInvoices(supabase, orgId, prev),
-        fetchReturnsRows(supabase, orgId, range),
-        fetchReturnsRows(supabase, orgId, prev),
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo — bản cũ
+           chỉ `console.warn`, màn vẽ số THIẾU như số đủ. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
         fetchCogsForRange(supabase, orgId, range),
         fetchCogsForRange(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
@@ -175,6 +177,10 @@ export default function BusinessOverviewPage() {
           "đọc danh sách nhân viên"
         ),
       ])
+      const orderList = invRes.rows
+      const prevOrderList = prevInvRes.rows
+      const retRows = retRes.rows
+      const prevRetRows = prevRetRes.rows
       const orderIds = orderList.map((o) => o.id)
       const prevOrderIds = prevOrderList.map((o) => o.id)
       const retIds = retRows.map((r) => r.id)
@@ -235,7 +241,11 @@ export default function BusinessOverviewPage() {
       setCustomers(customersRes.rows)
       setProducts(productsRes.rows)
       setUsers(usersRes.rows)
-      setTruncated(customersRes.truncated || productsRes.truncated || usersRes.truncated)
+      setTruncated(
+        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
+          cogsRes.truncated || prevCogsRes.truncated ||
+          customersRes.truncated || productsRes.truncated || usersRes.truncated
+      )
     } catch (e) {
       console.error("[business/overview] tải lỗi:", e)
       setLoadError(errorMessage(e, "Không tải được số liệu kinh doanh"))

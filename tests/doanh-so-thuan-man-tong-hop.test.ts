@@ -18,7 +18,9 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf-8")
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
 describe("trang Báo cáo (reports/page.tsx) — Doanh thu thuần thật sự thuần", () => {
-  const S = code(read("src/app/(dashboard)/reports/page.tsx"))
+  /* Phần tính tách sang `reports/_lib/tong-quan.ts` (03/10/2026) — soi cả hai. */
+  const P = code(read("src/app/(dashboard)/reports/page.tsx"))
+  const S = P + "\n" + code(read("src/app/(dashboard)/reports/_lib/tong-quan.ts"))
 
   it("đọc phiếu trả theo luật chung, chạm trần thì báo", () => {
     expect(S).toMatch(/fetchReturnsRowsDu\(supabase, orgId,/)
@@ -50,8 +52,9 @@ describe("trang Báo cáo (reports/page.tsx) — Doanh thu thuần thật sự t
     expect(khoi).toContain("filteredReturns.forEach")
     expect(khoi).toContain("r.sales_user_id ?? (r.invoice_id ? nvCuaHoaDon.get(r.invoice_id) : undefined) ?? \"\"")
     expect(khoi).toMatch(/\(salesByUser\.get\(uid\) \|\| 0\) - Number\(r\.credit_note_amount \|\| 0\)/)
-    // Tra NV trên CẢ sổ hóa đơn (phiếu tháng này có thể gắn HĐ tháng trước).
-    expect(khoi).toContain("new Map(data.invoices.map(")
+    // Phiếu tháng này có thể gắn HĐ tháng trước — ngoài phần đã đọc: đọc thêm HĐ ấy.
+    expect(P).toContain("hoaDonCanTraNv(returnsRes.rows, nvCuaHoaDon)")
+    expect(P).toMatch(/for \(const h of hdCu\) nvCuaHoaDon\.set\(h\.id, h\.sales_user_id \?\? ""\)/)
   })
 })
 

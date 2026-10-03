@@ -18,8 +18,8 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchRevenueInvoices,
-  fetchReturnsRows,
+  fetchRevenueInvoicesDu,
+  fetchReturnsRowsDu,
   type RevenueInvoiceRow,
   type ReturnSummaryRow,
 } from "@/lib/analytics/sales"
@@ -77,12 +77,13 @@ export default function CustomersCategoriesPage() {
      * ⚠ Đọc hỏng ở bất kỳ đâu → báo lỗi, không vẽ bảng số 0.
      */
     try {
-      const [orderList, prevOrderList, retRows, prevRetRows, cust] = await Promise.all([
+      const [invRes, prevInvRes, retRes, prevRetRes, cust] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        fetchRevenueInvoices(supabase, orgId, range),
-        fetchRevenueInvoices(supabase, orgId, prev),
-        fetchReturnsRows(supabase, orgId, range),
-        fetchReturnsRows(supabase, orgId, prev),
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -94,12 +95,18 @@ export default function CustomersCategoriesPage() {
           "đọc danh sách khách hàng"
         ),
       ])
+      const orderList = invRes.rows
+      const prevOrderList = prevInvRes.rows
+      const retRows = retRes.rows
+      const prevRetRows = prevRetRes.rows
       setOrders(orderList)
       setPrevOrders(prevOrderList)
       setReturns(retRows)
       setPrevReturns(prevRetRows)
       setCustomers(cust.rows)
-      setTruncated(cust.truncated)
+      setTruncated(
+        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || cust.truncated
+      )
     } catch (e) {
       console.error("[customers/categories] tải lỗi:", e)
       setLoadError(errorMessage(e, "Không tải được số liệu phân loại khách hàng"))

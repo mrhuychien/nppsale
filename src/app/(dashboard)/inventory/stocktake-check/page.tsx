@@ -56,6 +56,9 @@ export default function StocktakeCheckPage() {
         .select("id, product_id, qty_on_hand, product:products(*)", { count: "exact" })
         .gt("qty_on_hand", 0)
         .order("product_id")
+        // ⚠ `product_id` KHÔNG duy nhất (một mã nhiều lô) — thêm mốc `id` để các trang song song
+        // không lặp / sót lô.
+        .order("id")
         .range(from, to)
     )
     if (res.error) console.error("[inventory/stocktake-check] truy vấn lỗi:", res.error)

@@ -17,8 +17,8 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchRevenueInvoices,
-  fetchReturnsRows,
+  fetchRevenueInvoicesDu,
+  fetchReturnsRowsDu,
   type RevenueInvoiceRow,
   type ReturnSummaryRow,
 } from "@/lib/analytics/sales"
@@ -74,16 +74,17 @@ export default function CustomersOverviewPage() {
      *     đối, không tải dòng nào, không phụ thuộc trần 20.000.
      *   - DANH SÁCH (để tra tên và tìm khách Active không mua) đọc đủ theo
      *     trang, mốc `id` duy nhất; chạm trần thì nói ra.
-     *   - Đọc hỏng ở BẤT KỲ đâu (kể cả `fetchRevenueInvoices`) → màn hình
+     *   - Đọc hỏng ở BẤT KỲ đâu (kể cả `fetchRevenueInvoicesDu`) → màn hình
      *     báo lỗi, không vẽ số 0.
      */
     try {
-      const [orderList, prevOrderList, retRows, prevRetRows, cust, total, moi] = await Promise.all([
+      const [invRes, prevInvRes, retRes, prevRetRes, cust, total, moi] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        fetchRevenueInvoices(supabase, orgId, range),
-        fetchRevenueInvoices(supabase, orgId, prev),
-        fetchReturnsRows(supabase, orgId, range),
-        fetchReturnsRows(supabase, orgId, prev),
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -111,12 +112,14 @@ export default function CustomersOverviewPage() {
           "đếm khách hàng mới"
         ),
       ])
-      setOrders(orderList)
-      setPrevOrders(prevOrderList)
-      setReturns(retRows)
-      setPrevReturns(prevRetRows)
+      setOrders(invRes.rows)
+      setPrevOrders(prevInvRes.rows)
+      setReturns(retRes.rows)
+      setPrevReturns(prevRetRes.rows)
       setCustomers(cust.rows)
-      setTruncated(cust.truncated)
+      setTruncated(
+        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || cust.truncated
+      )
       setTotalCustomers(total)
       setNewCustomers(moi)
     } catch (e) {

@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn, formatCurrency } from "@/lib/utils"
 import { groupOrdersByDay, orderTone, vnTime, type OrderTone } from "@/lib/orders/status-tone"
 import { LIST_PERIOD_LABEL, type ListPeriod } from "@/lib/orders/list-summary"
+import type { ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 
 export const BUOC_TAI_DON = 20
 
@@ -89,6 +90,7 @@ export function MobileOrdersScreen({
   countLabel = "đơn hàng",
   toneOf = (o: DonMobile) => orderTone(o.status),
   onOpen,
+  dayStats,
 }: {
   title: string
   userInitials: string
@@ -128,6 +130,12 @@ export function MobileOrdersScreen({
   toneOf?: (o: DonMobile) => OrderTone | null
   /** Có thì bấm thẻ mở ngăn xem nhanh; không thì sang trang chi tiết đơn. */
   onOpen?: (id: string) => void
+  /**
+   * Số đơn + tổng tiền của TỪNG NGÀY đang hiện, đếm trên máy chủ cùng bộ lọc (`docThongKeNgay`). Thiếu ngày nào
+   * (chưa đọc / đọc hỏng) thì đầu nhóm ngày đó cộng các dòng đã tải. Rà soát 03/10/2026: ngày cuối đang hiện bị cắt
+   * giữa chừng nên "N đơn · tổng" cộng trên các dòng đã tải là THIẾU.
+   */
+  dayStats?: ThongKeNgay | null
 }) {
   const groups = groupOrdersByDay(orders)
   const conNua = loaded < count
@@ -222,7 +230,7 @@ export function MobileOrdersScreen({
                 <div className="mb-2 flex items-baseline justify-between px-1">
                   <h2 className="text-base font-bold">{g.label}</h2>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {g.items.length} {unit} · {formatCurrency(g.total)}
+                    {dayStats?.[g.key]?.count ?? g.items.length} {unit} · {formatCurrency(dayStats?.[g.key]?.total ?? g.total)}
                   </span>
                 </div>
                 <div className="divide-y overflow-hidden rounded-2xl border bg-card shadow-sm">

@@ -56,6 +56,8 @@ interface ProductMeta {
   name: string
   base_unit: string
   units?: ProductUnitMeta[]
+  /** `active` / ngừng bán… — mã ngừng bán chỉ lên bảng khi còn tồn. */
+  status?: string | null
 }
 
 /** Build a tooltip showing the qty in every defined unit, e.g.:
@@ -80,7 +82,7 @@ function buildQtyTooltip(qtyBase: number, product: ProductMeta): string {
   return [baseStr, ...extras].join(" = ")
 }
 
-interface PivotRow {
+export interface PivotRow {
   product: ProductMeta
   saleQty: number
   saleValue: number
@@ -88,6 +90,71 @@ interface PivotRow {
   dateValue: number
   totalQty: number
   totalValue: number
+}
+
+/**
+ * Gộp tồn theo kho thành một dòng / mặt hàng.
+ *
+ * ⚠ MÃ NGỪNG BÁN VẪN CÒN TỒN PHẢI LÊN BẢNG (rà soát 03/10/2026). Bản cũ chỉ đọc
+ *   `products.status = 'active'`, nên mã đã ngừng bán mà kho còn hàng bị bỏ qua lặng lẽ
+ *   (`if (!product) continue`) — hàng có thật, có giá trị, mà bảng tồn và file Excel không
+ *   có dòng nào; tổng giá trị tồn cũng thiếu đúng phần ấy. Nay đọc MỌI mã; mã ngừng bán chỉ
+ *   hiện khi có tồn khác 0, còn "hiện cả mã hết tồn" vẫn chỉ thêm mã ĐANG BÁN như trước.
+ */
+export function gopTonTheoSanPham(
+  rows: readonly BalanceRow[],
+  products: ReadonlyMap<string, ProductMeta>,
+  onlyOnHand: boolean
+): PivotRow[] {
+  const dangBan = (p: ProductMeta) => (p.status ?? "active") === "active"
+  const map = new Map<string, PivotRow>()
+  for (const r of rows) {
+    const product = products.get(r.product_id)
+    if (!product) continue
+    const existing =
+      map.get(r.product_id) ?? {
+        product,
+        saleQty: 0,
+        saleValue: 0,
+        dateQty: 0,
+        dateValue: 0,
+        totalQty: 0,
+        totalValue: 0,
+      }
+    const qty = Number(r.qty_in_base_uom || 0)
+    const val = Number(r.value || 0)
+    if (r.warehouse_zone === "date") {
+      existing.dateQty += qty
+      existing.dateValue += val
+    } else {
+      existing.saleQty += qty
+      existing.saleValue += val
+    }
+    existing.totalQty += qty
+    existing.totalValue += val
+    map.set(r.product_id, existing)
+  }
+  // Mã ngừng bán mà hết tồn: không phải hàng để xem ở bảng tồn.
+  map.forEach((v, id) => {
+    if (!dangBan(v.product) && v.saleQty === 0 && v.dateQty === 0) map.delete(id)
+  })
+  // Include products with zero balance so the search can find them (chỉ mã đang bán).
+  products.forEach((p) => {
+    if (!map.has(p.id) && !onlyOnHand && dangBan(p)) {
+      map.set(p.id, {
+        product: p,
+        saleQty: 0,
+        saleValue: 0,
+        dateQty: 0,
+        dateValue: 0,
+        totalQty: 0,
+        totalValue: 0,
+      })
+    }
+  })
+  let arr = Array.from(map.values())
+  if (onlyOnHand) arr = arr.filter((r) => r.totalQty > 0)
+  return arr
 }
 
 export function StockBalanceTable({
@@ -150,10 +217,11 @@ export function StockBalanceTable({
       fetchAllForAggregate<ProductMeta>((from, to) =>
         supabase
           .from("products")
-          .select("id, sku, name, base_unit, units:product_units(unit_name, conversion)", {
+          .select("id, sku, name, base_unit, status, units:product_units(unit_name, conversion)", {
             count: "exact",
           })
-          .eq("status", "active")
+          // ⚠ KHÔNG lọc `status = 'active'`: mã ngừng bán còn tồn vẫn phải lên bảng —
+          // xem `gopTonTheoSanPham`.
           // ⚠ Mốc `id` duy nhất — cùng lý do với truy vấn trên.
           .order("id")
           .range(from, to)
@@ -184,49 +252,7 @@ export function StockBalanceTable({
   }, [user?.org_id])
 
   const pivot = useMemo<PivotRow[]>(() => {
-    const map = new Map<string, PivotRow>()
-    for (const r of rows) {
-      const product = products.get(r.product_id)
-      if (!product) continue
-      const existing =
-        map.get(r.product_id) ?? {
-          product,
-          saleQty: 0,
-          saleValue: 0,
-          dateQty: 0,
-          dateValue: 0,
-          totalQty: 0,
-          totalValue: 0,
-        }
-      const qty = Number(r.qty_in_base_uom || 0)
-      const val = Number(r.value || 0)
-      if (r.warehouse_zone === "date") {
-        existing.dateQty += qty
-        existing.dateValue += val
-      } else {
-        existing.saleQty += qty
-        existing.saleValue += val
-      }
-      existing.totalQty += qty
-      existing.totalValue += val
-      map.set(r.product_id, existing)
-    }
-    // Include products with zero balance so the search can find them.
-    products.forEach((p) => {
-      if (!map.has(p.id) && !onlyOnHand) {
-        map.set(p.id, {
-          product: p,
-          saleQty: 0,
-          saleValue: 0,
-          dateQty: 0,
-          dateValue: 0,
-          totalQty: 0,
-          totalValue: 0,
-        })
-      }
-    })
-    let arr = Array.from(map.values())
-    if (onlyOnHand) arr = arr.filter((r) => r.totalQty > 0)
+    let arr = gopTonTheoSanPham(rows, products, onlyOnHand)
     if (search.trim()) {
       arr = arr.filter((r) => viMatchAllWords(search, r.product.sku, r.product.name))
     }
@@ -455,7 +481,14 @@ export function StockBalanceTable({
                     onClick={() => setDrawerProductId(r.product.id)}
                   >
                     <TableCell className="font-mono text-xs">{r.product.sku}</TableCell>
-                    <TableCell className="font-medium">{r.product.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {r.product.name}
+                      {(r.product.status ?? "active") !== "active" && (
+                        <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                          Ngừng bán
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell
                       className="text-right tabular-nums"
                       title={buildQtyTooltip(r.saleQty, r.product)}

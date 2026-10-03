@@ -28,8 +28,10 @@ import { useFieldSearch } from "@/hooks/use-field-search"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { createClient } from "@/lib/supabase/client"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, docTheoLoId } from "@/lib/supabase/aggregate"
+import { apSapXep, xepDuoc, SAP_XEP_PHIEU_THU, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { hasPermission } from "@/lib/permissions"
+import { errorMessage } from "@/lib/errors"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { vnTime } from "@/lib/orders/status-tone"
 import { periodFrom, nextPeriod, kyDangLoc } from "@/lib/orders/list-summary"
@@ -150,6 +152,11 @@ export default function CashReceiptsListPage() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [filterSheet, setFilterSheet] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_PHIEU_THU`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  /** Lỗi đọc danh sách / dòng phiếu — hiện ra, không chỉ ghi log (ô "—" mãi trông như không có khách). */
+  const [loiDanhSach, setLoiDanhSach] = useState<string | null>(null)
+  const [loiDong, setLoiDong] = useState<string | null>(null)
   const [nguoiThu, setNguoiThu] = useState<Array<{ id: string; full_name: string | null }>>([])
 
   useEffect(() => {
@@ -215,23 +222,27 @@ export default function CashReceiptsListPage() {
   const khoaTaiRef = useRef<KhoaTai>(null)
 
   const fetchData = useCallback(async () => {
-    if (!laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to, false)) setLoading(true)
+    if (!laTaiThem(khoaTaiRef, [applyFilters, status, pg.from, sort], pg.to, false)) setLoading(true)
     /* ⚠ CHỜ LƯỢT TRA MÃ — giữ "đang nạp" chứ không vẽ một danh sách thiếu. */
     if (!searchReady) return
     const luot = ++luotRef.current.ds
     const taoQ = (dem: boolean) => {
-      let q = supabase
-        .from("cash_receipts")
-        .select(COT, dem ? { count: "exact" } : undefined)
-        .order("receipt_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        /* ⚠ Mốc phụ duy nhất — hai phiếu cùng giờ tạo không được lặp / sót giữa hai trang. */
-        .order("id")
+      /* ⚠ XẾP Ở MÁY CHỦ — cột người dùng bấm đứng trước; xếp trong bảng là xếp trên một trang. */
+      let q = apSapXep(
+        supabase.from("cash_receipts").select(COT, dem ? { count: "exact" } : undefined),
+        sort,
+        SAP_XEP_PHIEU_THU,
+        (x) => x
+          .order("receipt_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          /* ⚠ Mốc phụ duy nhất — hai phiếu cùng giờ tạo không được lặp / sót giữa hai trang. */
+          .order("id")
+      )
       q = locTrangThai(q, status)
       return applyFilters(q as never) as typeof q
     }
     /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. */
-    const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from], pg.to)
+    const taiThem = laTaiThem(khoaTaiRef, [applyFilters, status, pg.from, sort], pg.to)
     let daVeDu = false
     const { data, error, count } = await taiHaiNhip<ReceiptRow, KQ>(
       (from, to, dem) => taoQ(dem).range(from, to) as unknown as PromiseLike<KQ>,
@@ -247,6 +258,7 @@ export default function CashReceiptsListPage() {
     )
     if (luot !== luotRef.current.ds) return
     if (error) console.error("[finance/cash-receipts] truy vấn lỗi:", error.message)
+    setLoiDanhSach(error ? errorMessage(error, "Không tải được danh sách phiếu thu") : null)
     const list = data ?? []
     daVeDu = true
     setRows(list)
@@ -258,20 +270,31 @@ export default function CashReceiptsListPage() {
      * ⚠ ĐỌC HỎNG THÌ GIỮ `undefined` — ô hiện "—", không nói "không có khách".
      */
     const ids = list.map((r) => r.id)
-    if (ids.length === 0) return
-    const res = await fetchAllForAggregate<DongPhieuThuTom>((from, to) =>
-      supabase
-        .from("cash_receipt_lines")
-        .select(COT_DONG_PHIEU_THU, { count: "exact" })
-        .in("receipt_id", ids)
-        .order("id")
-        .range(from, to)
-    )
-    if (luot !== luotRef.current.ds) return
-    if (res.error) console.warn("[finance/cash-receipts] không đọc được dòng phiếu:", res.error)
-    else setTomTat((prev) => ({ ...prev, ...tomTatDongPhieuThu(res.rows) }))
+    if (ids.length === 0) { setLoiDong(null); return }
+    /* ⚠ ĐỌC THEO LÔ ID (`docTheoLoId`) — một trang 200 phiếu dồn vào một `.in()` là chạm trần độ
+       dài URL của cổng API; lỗi thì NÓI RA, không chỉ ghi log. */
+    try {
+      const dong = await docTheoLoId<DongPhieuThuTom>(
+        ids,
+        (lo, from, to) =>
+          supabase
+            .from("cash_receipt_lines")
+            .select(COT_DONG_PHIEU_THU, { count: "exact" })
+            .in("receipt_id", lo)
+            .order("id")
+            .range(from, to),
+        "Dòng phiếu thu"
+      )
+      if (luot !== luotRef.current.ds) return
+      setLoiDong(null)
+      setTomTat((prev) => ({ ...prev, ...tomTatDongPhieuThu(dong) }))
+    } catch (e) {
+      if (luot !== luotRef.current.ds) return
+      console.error("[finance/cash-receipts] không đọc được dòng phiếu:", e)
+      setLoiDong(errorMessage(e, "Không đọc được khách / hóa đơn của các phiếu thu"))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, applyFilters, searchReady, pg.from, pg.to])
+  }, [status, applyFilters, searchReady, pg.from, pg.to, sort])
 
   /**
    * Tổng tiền của CẢ bộ lọc. ⚠ KHÔNG CỘNG `rows` (một trang); chạm trần / lỗi → `null` → "—".
@@ -322,7 +345,7 @@ export default function CashReceiptsListPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, collectorFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key])
+  }, [status, collectorFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key, sort])
 
   const clearAdvanced = () => {
     setCollectorFilter("all")
@@ -381,8 +404,9 @@ export default function CashReceiptsListPage() {
         render: (r) => <DocCodeLink href={`/finance/cash-receipts/${r.id}`}>{r.receipt_code}</DocCodeLink>,
       },
       {
+        /* ⚠ KHÔNG XẾP: khách suy từ dòng phiếu (đầu phiếu không có cột khách) — xếp được chỉ
+           trên trang đang xem. */
         k: "customer", key: "customer", label: "Khách hàng", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (nhanNhieu(tomTat?.[a.id]?.khach) ?? "").localeCompare(nhanNhieu(tomTat?.[b.id]?.khach) ?? "", "vi"),
         render: (r) => (
           <span className="block truncate text-sm font-bold">
             {tomTat ? (nhanNhieu(tomTat[r.id]?.khach) ?? "—") : "…"}
@@ -406,17 +430,17 @@ export default function CashReceiptsListPage() {
       },
       {
         k: "date", key: "date", label: "Ngày thu", width: "110px",
-        sort: (a, b) => (a.receipt_date ?? "").localeCompare(b.receipt_date ?? ""),
+        sortable: xepDuoc(SAP_XEP_PHIEU_THU, "date"),
         render: (r) => <DocCellDate date={formatDate(r.receipt_date)} time={r.created_at ? vnTime(r.created_at) : null} />,
       },
       {
         k: "submitted", key: "submitted", label: "Đã nộp", width: "130px", align: "right",
-        sort: (a, b) => Number(a.submitted_amount) - Number(b.submitted_amount),
+        sortable: xepDuoc(SAP_XEP_PHIEU_THU, "submitted"),
         render: (r) => formatCurrency(Number(r.submitted_amount || 0)),
       },
       {
         k: "total", key: "total", label: "Số tiền", width: "140px", align: "right",
-        sort: (a, b) => Number(a.expected_amount) - Number(b.expected_amount),
+        sortable: xepDuoc(SAP_XEP_PHIEU_THU, "total"),
         render: (r) => {
           const lech = Number(r.submitted_amount || 0) - Number(r.expected_amount || 0)
           return (
@@ -488,6 +512,14 @@ export default function CashReceiptsListPage() {
 
       <KetQuaThieu show={searchTruncated && !loading} term={debouncedSearch} />
 
+      {/* Lỗi đọc — hiện rõ thay vì im lặng ra danh sách rỗng / ô "—". */}
+      {(loiDanhSach || loiDong) && !loading && (
+        <div role="alert" className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">{loiDanhSach ? "Không tải được danh sách phiếu thu" : "Không đọc được khách / hóa đơn của phiếu thu"}</p>
+          <p className="mt-0.5 break-words">{loiDanhSach ?? loiDong}</p>
+        </div>
+      )}
+
       <DocListLayout
         toolbar={
           <>
@@ -549,7 +581,7 @@ export default function CashReceiptsListPage() {
         empty={empty}
         pg={pg}
         shownCount={rows.length}
-        table={<DocTable rows={rows} columns={columns} activeId={drawerId} onOpen={(r) => setDrawerId(r.id)} rowTestId="dong-phieu-thu" />}
+        table={<DocTable rows={rows} columns={columns} activeId={drawerId} onOpen={(r) => setDrawerId(r.id)} rowTestId="dong-phieu-thu" sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={rows}

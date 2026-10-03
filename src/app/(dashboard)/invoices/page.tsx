@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
+import { apSapXep, xepDuoc, SAP_XEP_HD_DIEN_TU, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -80,6 +81,8 @@ export default function InvoicesPage() {
   const [misaFilter, setMisaFilter] = useState("all")
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0, error: 0, attention: 0 })
   const [misaCompanyId, setMisaCompanyId] = useState<string | null>(null)
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_HD_DIEN_TU`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
   const pg = usePagination()
   const supabase = createClient()
 
@@ -148,7 +151,7 @@ export default function InvoicesPage() {
   // Reset về trang 1 khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query: filter + sort + pagination ở server.
   useEffect(() => {
@@ -161,17 +164,22 @@ export default function InvoicesPage() {
       if (cancelled) return
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 dòng đầu vẽ ngay, phần còn lại về sau. */
       const taoQ = (from: number, to: number, dem: boolean) => {
-        let q = supabase
-          .from("invoices")
-          .select(
-            // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
-            // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
-            // kế toán không biết phải xử lý gì (NPP-15).
-            "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_invoice_url, misa_lookup_code, misa_error",
-            dem ? { count: "exact" } : undefined
-          )
-          .order("created_at", { ascending: false })
-          .range(from, to)
+        /* ⚠ XẾP Ở MÁY CHỦ — cột người dùng bấm đứng trước; xếp trong bảng là xếp trên một trang.
+           Mốc phụ `id`: hai hoá đơn cùng giờ tạo không lặp / sót giữa hai trang. */
+        let q = apSapXep(
+          supabase
+            .from("invoices")
+            .select(
+              // misa_error đã có sẵn trong DB từ mig 011 nhưng chưa bao giờ được
+              // lấy về, nên hoá đơn trạng thái "Lỗi" không hiện được lý do —
+              // kế toán không biết phải xử lý gì (NPP-15).
+              "id, invoice_number, customer_name, total, status, created_at, issued_at, misa_status, misa_invoice_id, misa_ref_id, misa_inv_no, misa_inv_series, misa_invoice_url, misa_lookup_code, misa_error",
+              dem ? { count: "exact" } : undefined
+            ),
+          sort,
+          SAP_XEP_HD_DIEN_TU,
+          (x) => x.order("created_at", { ascending: false }).order("id")
+        ).range(from, to)
         if (filterActive("search") && debouncedSearch) {
           /* Từng từ, không dấu, số HĐ viết liền (mig 205) — xem `dieuKienTim`. */
           q = q.or(dieuKienTim("invoices", ["invoice_number", "customer_name", "misa_inv_no", "misa_invoice_id"], debouncedSearch, timKd))
@@ -205,7 +213,7 @@ export default function InvoicesPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, statusFilter, misaFilter, activeFilters, locNC.ready, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const filtered = invoices // đã filter server-side
@@ -274,10 +282,10 @@ export default function InvoicesPage() {
       },
       {
         key: "customer", label: "Khách hàng", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "vi"),
+        sortable: xepDuoc(SAP_XEP_HD_DIEN_TU, "customer"),
         render: (inv) => <span className="block truncate text-sm font-bold">{inv.customer_name}</span>,
       },
-      { k: "amount", key: "amount", label: "Tổng tiền", width: "140px", align: "right", sort: (a, b) => Number(a.total) - Number(b.total), render: (inv) => formatCurrency(inv.total) },
+      { k: "amount", key: "amount", label: "Tổng tiền", width: "140px", align: "right", sortable: xepDuoc(SAP_XEP_HD_DIEN_TU, "amount"), render: (inv) => formatCurrency(inv.total) },
       { k: "date", key: "date", label: "Ngày", width: "110px", render: (inv) => <DocCellDate date={ngay(inv)} /> },
       { k: "status", key: "status", label: "Trạng thái", width: "130px", render: (inv) => <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge> },
       { k: "misa", key: "misa", label: "MISA", width: "minmax(150px,1fr)", render: misaCell },
@@ -382,7 +390,7 @@ export default function InvoicesPage() {
         }
         pg={pg}
         shownCount={filtered.length}
-        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(inv) => setXemId(inv.id)} />}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(inv) => setXemId(inv.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={filtered}

@@ -6,6 +6,10 @@
  * Reads `v_stock_movements` filtered by product_id, sorted desc by
  * posted/created. Displays date, type, zone, signed qty (+/-), running
  * balance per zone, and links to the source entry.
+ *
+ * ⚠ ĐỌC ĐỦ, LỌC TRÊN MÁY CHỦ, TỒN SAU CÓ TỒN ĐẦU KỲ (rà soát 03/10/2026) — xem
+ *   `lib/inventory/lich-su-ton`. Chỉ phiếu ĐÃ GHI SỔ: phiếu nháp chưa động vào tồn, cộng nó vào
+ *   "Tồn sau" là ra một số tồn không có thật.
  */
 
 import { useEffect, useMemo, useState } from "react"
@@ -28,6 +32,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDate } from "@/lib/utils"
 import { ExternalLink } from "lucide-react"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
+import { dieuKienDenNgay, tonSauTheoKho } from "@/lib/inventory/lich-su-ton"
 
 interface ProductMeta {
   id: string
@@ -84,61 +90,48 @@ export function StockHistoryDrawer({
   const [zoneFilter, setZoneFilter] = useState<"all" | "sale" | "date">("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  /** Đọc hỏng / chạm trần — lịch sử và "Tồn sau" đang THIẾU, phải nói ra. */
+  const [thieu, setThieu] = useState<string | null>(null)
 
+  /* Kho và "Đến ngày" lọc TRÊN MÁY CHỦ, đọc ĐỦ theo trang (mốc `id` duy nhất — các trang chạy song
+     song). "Từ ngày" KHÔNG lọc trên máy chủ: các dòng trước đó phải về để cộng tồn đầu kỳ. */
   useEffect(() => {
     if (!open || !productId) return
     let cancelled = false
     setLoading(true)
     const supabase = createClient()
-    supabase
-      .from("v_stock_movements")
-      .select(
-        "id, product_id, warehouse_zone, posted_at, created_at, entry_type, entry_status, entry_code, entry_id, transaction_uom, qty_in_transaction_uom, qty_in_base_uom, conversion_factor, unit_cost, signed_qty_in_base_uom"
+    fetchAllForAggregate<MovementRow>((from, to) => {
+      let q = supabase
+        .from("v_stock_movements")
+        .select(
+          "id, product_id, warehouse_zone, posted_at, created_at, entry_type, entry_status, entry_code, entry_id, transaction_uom, qty_in_transaction_uom, qty_in_base_uom, conversion_factor, unit_cost, signed_qty_in_base_uom",
+          { count: "exact" }
+        )
+        .eq("product_id", productId)
+        .eq("entry_status", "posted")
+      if (zoneFilter !== "all") q = q.eq("warehouse_zone", zoneFilter)
+      if (dateTo) q = q.or(dieuKienDenNgay(dateTo))
+      return q.order("id").range(from, to)
+    }).then((res) => {
+      if (cancelled) return
+      if (res.error) console.error("[stock-history-drawer] truy vấn lỗi:", res.error)
+      setThieu(
+        res.error
+          ? `Không đọc được lịch sử tồn: ${res.error}`
+          : res.truncated
+            ? truncationWarning()
+            : null
       )
-      .eq("product_id", productId)
-      .order("posted_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(500)
-      .then(({ data, error }) => {
-        if (cancelled) return
-        if (error) console.error("[stock-history-drawer] truy vấn lỗi:", error.message)
-        setRows((data as MovementRow[]) || [])
-        setLoading(false)
-      })
+      setRows(res.rows)
+      setLoading(false)
+    })
     return () => {
       cancelled = true
     }
-  }, [open, productId])
+  }, [open, productId, zoneFilter, dateTo])
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (zoneFilter !== "all" && r.warehouse_zone !== zoneFilter) return false
-      const t = new Date(r.posted_at || r.created_at).getTime()
-      if (dateFrom && t < new Date(dateFrom).getTime()) return false
-      if (dateTo && t > new Date(dateTo + "T23:59:59").getTime()) return false
-      return true
-    })
-  }, [rows, zoneFilter, dateFrom, dateTo])
-
-  // Running balance per zone (newest → oldest, but balance is from
-  // earliest → display reversed). We compute totalsAfter going forward
-  // chronologically then map back.
-  const balanceById = useMemo(() => {
-    const map = new Map<string, { sale: number; date: number }>()
-    const ordered = [...filtered].sort((a, b) => {
-      const ta = new Date(a.posted_at || a.created_at).getTime()
-      const tb = new Date(b.posted_at || b.created_at).getTime()
-      return ta - tb
-    })
-    let saleBal = 0
-    let dateBal = 0
-    for (const r of ordered) {
-      if (r.warehouse_zone === "date") dateBal += r.signed_qty_in_base_uom
-      else saleBal += r.signed_qty_in_base_uom
-      map.set(r.id, { sale: saleBal, date: dateBal })
-    }
-    return map
-  }, [filtered])
+  /* Tồn sau cộng từ giao dịch ĐẦU TIÊN; dòng trước "Từ ngày" chỉ vào tồn đầu kỳ. */
+  const { dong: filtered } = useMemo(() => tonSauTheoKho(rows, dateFrom), [rows, dateFrom])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -157,8 +150,8 @@ export function StockHistoryDrawer({
             )}
           </SheetTitle>
           <p className="text-xs text-muted-foreground">
-            500 giao dịch gần nhất. Số dương = nhập, số âm = xuất. Tồn sau cộng
-            riêng theo từng kho.
+            Giao dịch đã ghi sổ. Số dương = nhập, số âm = xuất. Tồn sau cộng
+            riêng theo từng kho, tính cả tồn trước ngày đầu kỳ.
           </p>
         </SheetHeader>
 
@@ -189,6 +182,12 @@ export function StockHistoryDrawer({
           />
         </div>
 
+        {thieu && (
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning-container px-3 py-2 text-xs font-semibold text-on-warning-container break-words">
+            {thieu}
+          </p>
+        )}
+
         {loading ? (
           <Skeleton className="h-48 mt-4" />
         ) : filtered.length === 0 ? (
@@ -211,9 +210,7 @@ export function StockHistoryDrawer({
               <tbody>
                 {filtered.map((r) => {
                   const ts = r.posted_at || r.created_at
-                  const balance = balanceById.get(r.id)
-                  const balValue =
-                    r.warehouse_zone === "date" ? balance?.date : balance?.sale
+                  const balValue: number | undefined = r.tonSau
                   const txQty = r.qty_in_transaction_uom ?? r.qty_in_base_uom
                   const txUom = r.transaction_uom || ""
                   const sign = r.signed_qty_in_base_uom < 0 ? "-" : "+"

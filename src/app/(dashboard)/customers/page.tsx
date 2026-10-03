@@ -1,5 +1,6 @@
 "use client"
 
+import { errorMessage } from "@/lib/errors"
 import { CHUA_PHAN_CONG, chonNv } from "@/lib/customers/loc-nhan-vien"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
@@ -17,6 +18,7 @@ import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { locDanhSachMa, catTrangMa, xepTheoMa } from "@/lib/customers/loc-nhanh"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
@@ -95,6 +97,8 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
   const khoaTaiRef = useRef<KhoaTai>(null)
+  /** Danh sách mã của thẻ lọc nhanh SAU khi áp bộ lọc khác — nhớ theo khoá lọc để "Tải thêm" không lọc lại. */
+  const quickLocRef = useRef<{ khoa: string; ids: string[] } | null>(null)
   const [search, setSearch] = useState("")
   const [quick, setQuick] = useState<QuickFilter>("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -166,12 +170,17 @@ export default function CustomersPage() {
       const [totalRes, visitsRes, pjpRes, recvRes] = await Promise.all([
         supabase.from("customers").select("id", { count: "exact", head: true }),
         supabase.from("visit_logs").select("customer_id").eq("visit_date", todayDate),
-        supabase
-          .from("pjp_routes")
-          .select("customer_id, visit_order")
-          .eq("day_of_week", dow)
-          .eq("is_active", true)
-          .order("visit_order"),
+        /* ⚠ Đọc ĐỦ (phân trang) — đọc trơn bị `db.max_rows` cắt ở 1.000 điểm, thẻ "Tuyến hôm nay" thiếu khách. */
+        fetchAllForAggregate<{ customer_id: string; visit_order: number | null }>((from, to) =>
+          supabase
+            .from("pjp_routes")
+            .select("customer_id, visit_order", { count: "exact" })
+            .eq("day_of_week", dow)
+            .eq("is_active", true)
+            .order("visit_order")
+            .order("id")
+            .range(from, to)
+        ),
         fetchAllForAggregate<Pick<Receivable, "customer_id" | "amount" | "paid" | "due_date">>(
           (from, to) =>
             supabase
@@ -183,9 +192,10 @@ export default function CustomersPage() {
         ),
       ])
       if (cancelled) return
-      const qErr = ([totalRes, visitsRes, pjpRes] as Array<{ error?: { message?: string } | null }>)
+      const qErr = ([totalRes, visitsRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (qErr) console.error("[app/customers] truy vấn lỗi:", qErr.message)
+      if (pjpRes.error) console.error("[app/customers] truy vấn tuyến hôm nay lỗi:", pjpRes.error)
 
       setTotalCustomers(totalRes.count ?? 0)
 
@@ -196,8 +206,7 @@ export default function CustomersPage() {
       setVisitedToday(visitsToday)
 
       const stops = new Map<string, number>()
-      const pjpRows =
-        (pjpRes.data as Array<{ customer_id: string; visit_order: number | null }>) || []
+      const pjpRows = pjpRes.rows
       pjpRows.forEach((r, i) => {
         // Nhiều nhân viên có thể cùng xếp một điểm vào hôm nay — giữ lần
         // đầu gặp để số điểm dừng không nhảy giữa hai lần vẽ.
@@ -290,21 +299,16 @@ export default function CustomersPage() {
        * trang ở server: gửi một `in.()` dài hàng nghìn mã là URL vượt
        * trần của proxy và request chết với 414 mà không ai đoán ra vì sao.
        */
-      const idSlice = quickIds ? quickIds.slice(pg.from, pg.to + 1) : null
-
-      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
-        let q = supabase
-          .from("customers")
-          .select(select + chonNv(nvLoc), dem ? { count: "exact" } : undefined)
-          .order("store_name")
+      /* Bộ lọc khác thẻ lọc nhanh (NV / ô tìm / lọc nâng cao / trạng thái / tuyến) — áp chung cho truy vấn
+         danh sách và cho bước lọc danh sách mã bên dưới. */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const apLoc = (q: any) => {
         /* ⚠ LỌC NHÂN VIÊN TRÊN MÁY CHỦ (chủ nhà 03/10/2026: "nhân viên 60 khách mà có 3 khách hiện") — bản cũ lọc
            trong 20 khách của trang đang tải. NV chính đang hoạt động, như cột "Phụ trách". */
         if (nvLoc) {
           q = q.eq("nv_chinh.role", "primary").eq("nv_chinh.status", "active")
           q = nvLoc === CHUA_PHAN_CONG ? q.is("nv_chinh", null) : q.eq("nv_chinh.user_id", nvLoc)
         }
-        if (idSlice) q = q.in("id", idSlice)
-        else q = q.range(from, to)
         if (debouncedSearch) {
           /* Tìm cả theo ĐỊA CHỈ (chủ nhà 26/09/2026) — `tim_kd` cũng có địa chỉ từ mig 203. */
           q = q.or(dieuKienTim("customers", COT_TIM_KHACH, debouncedSearch))
@@ -314,6 +318,55 @@ export default function CustomersPage() {
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         if (channelFilter === CHUA_CO_TUYEN) q = q.or("channel.is.null,channel.eq.")
         else if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+        return q
+      }
+      const coLocKhac = !!(nvLoc || debouncedSearch || locNC.menhDe.length || statusFilter !== "all" || channelFilter !== "all")
+
+      /**
+       * ⚠ THẺ LỌC NHANH + BỘ LỌC KHÁC: lọc TOÀN BỘ danh sách mã trước, rồi mới cắt trang (rà soát 03/10/2026 —
+       *   bản cũ cắt 20 mã rồi mới lọc, trang gần như trống, tổng số sai). Kết quả lọc giữ trong `quickLocRef` để
+       *   "Tải thêm" không đọc lại cả danh sách. `src/lib/customers/loc-nhanh.ts`.
+       */
+      let quickLoc: string[] | null = null
+      if (quickIds) {
+        const khoaLoc = JSON.stringify([quickIds, nvLoc, debouncedSearch, locNC.key, statusFilter, channelFilter, refreshTick])
+        if (quickLocRef.current?.khoa === khoaLoc) quickLoc = quickLocRef.current.ids
+        else {
+          try {
+            quickLoc = await locDanhSachMa(quickIds, coLocKhac, (lo, from, to) =>
+              apLoc(supabase.from("customers").select("id" + chonNv(nvLoc), { count: "exact" }).in("id", lo)).order("id").range(from, to)
+            )
+          } catch (e) {
+            if (cancelled) return
+            setCustomers([])
+            setLoadError(errorMessage(e, "Không lọc được danh sách khách"))
+            pg.setTotal(0)
+            setLoading(false)
+            return
+          }
+          if (cancelled) return
+          quickLocRef.current = { khoa: khoaLoc, ids: quickLoc }
+        }
+        if (quickLoc.length === 0) {
+          setCustomers([])
+          setLoadError(null)
+          pg.setTotal(0)
+          setManagersMap({})
+          setLoading(false)
+          return
+        }
+      }
+      const idSlice = quickLoc ? catTrangMa(quickLoc, pg.from, pg.to) : null
+
+      const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
+        let q = apLoc(
+          supabase
+            .from("customers")
+            .select(select + chonNv(nvLoc), dem ? { count: "exact" } : undefined)
+            .order("store_name")
+        )
+        if (idSlice) q = q.in("id", idSlice)
+        else q = q.range(from, to)
         return q
       }
       const chon = "id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)"
@@ -332,7 +385,7 @@ export default function CustomersPage() {
               if (cancelled) return
               setCustomers(dau.data)
               setLoadError(null)
-              pg.setTotal(quickIds ? quickIds.length : dau.count ?? 0)
+              pg.setTotal(dau.count ?? 0)
               setLoading(false)
             },
             { boQuaDau: taiThem }
@@ -340,14 +393,15 @@ export default function CustomersPage() {
       // Huỷ request khi điều hướng nhanh — không phải lỗi, và không
       // được ghi mảng rỗng đè lên danh sách đang hiện.
       if (cancelled || res.aborted) return
-      const list = res.data
+      /* Thẻ lọc nhanh: giữ thứ tự của danh sách mã (thứ tự ghé / nợ giảm dần), không theo tên. */
+      const list = idSlice ? xepTheoMa(res.data, idSlice) : res.data
       setCustomers(list)
       setLoadError(res.error)
       // Danh sách đã đủ để xem; đơn / lần ghé gần nhất về sau (ô hiện "…" chứ không "Chưa có").
       setLoading(false)
       // Với thẻ lọc nhanh, tổng là độ dài danh sách mã — `count` trả về
       // chỉ đếm trong lát cắt vừa gửi đi.
-      pg.setTotal(quickIds ? quickIds.length : res.count ?? 0)
+      pg.setTotal(quickLoc ? quickLoc.length : res.count ?? 0)
 
       // Load aggregates CHỈ cho khách trên page hiện tại.
       const ids = list.map((c) => c.id)

@@ -334,7 +334,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     if (ids.length === 0) return
     let huy = false
     ;(async () => {
-      const lo = await loadLotsByProduct(createClient(), ids).catch(() => ({}))
+      const lo = await loadLotsByProduct(createClient(), ids).catch((e) => {
+        /* Lô chỉ là gợi ý — không chặn màn, nhưng phải NÓI RA (rà soát 03/10/2026): im lặng là mọi dòng "không có lô". */
+        console.error("[pos/return] đọc lô lỗi:", errorMessage(e))
+        toast({ title: "Không tải được danh sách lô", description: errorMessage(e), variant: "destructive" })
+        return {}
+      })
       if (!huy) setDoiLines((cu) => attachLineExtras(cu, { lotsByProduct: lo }))
     })()
     return () => { huy = true }

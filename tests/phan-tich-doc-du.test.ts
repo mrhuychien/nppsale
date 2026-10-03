@@ -350,10 +350,11 @@ describe("quét: đọc hỏng không được nuốt thành số 0", () => {
  *   xương mãi; bắt rồi nuốt thì ra 0đ. Mỗi lời gọi phải nằm TRONG một khối
  *   `try` và màn phải có chỗ vẽ lỗi (`LoiTaiBaoCao`).
  */
-// Doanh thu nay đọc hóa đơn (`fetchRevenueInvoices` / `fetchInvoiceLines`) thay
-// cho `fetchDeliveredOrders` / `fetchOrderLines` — chủ nhà 24/09/2026.
+// Doanh thu nay đọc hóa đơn (`fetchRevenueInvoicesDu` / `fetchInvoiceLines`) thay
+// cho `fetchDeliveredOrders` / `fetchOrderLines` — chủ nhà 24/09/2026. Chỉ còn bản
+// `…Du` (03/10/2026: bản cũ nuốt cờ chạm trần).
 const HAM_NEM = [
-  "fetchRevenueInvoices", "fetchAllOrders", "fetchReturnsValue", "fetchReturnsRows",
+  "fetchRevenueInvoicesDu", "fetchAllOrdersDu", "fetchReturnsValueDu", "fetchReturnsRowsDu",
   "fetchCogsForRange", "fetchInvoiceLines", "fetchOrderLines", "docDuHoacNem", "docTheoLoId",
 ]
 
@@ -404,8 +405,8 @@ describe("quét: màn Phân tích bắt lỗi của hàm đọc", () => {
   })
 
   it("phép quét còn nhận ra mẫu xấu", () => {
-    expect(goiNgoaiTry("const x = await fetchRevenueInvoices(a, b, c)")).toEqual(["fetchRevenueInvoices"])
-    expect(goiNgoaiTry("try { await fetchRevenueInvoices(a) } catch (e) {}")).toEqual([])
+    expect(goiNgoaiTry("const x = await fetchRevenueInvoicesDu(a, b, c)")).toEqual(["fetchRevenueInvoicesDu"])
+    expect(goiNgoaiTry("try { await fetchRevenueInvoicesDu(a) } catch (e) {}")).toEqual([])
     expect(
       goiNgoaiTry("try { await x() } catch (e) {}\nawait docDuHoacNem<Row>((f, t) => q, 'x')")
     ).toEqual(["docDuHoacNem"])

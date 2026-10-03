@@ -45,7 +45,9 @@ describe("công nợ âm khi hàng trả > hàng xuất", () => {
     expect(body).not.toContain("Math.max(0")
     expect(code(read("src/app/(dashboard)/customers/page.tsx"))).toContain("if (remaining === 0) continue")
     // Dòng âm là dư có, không phải khoản để thu.
-    expect(read("src/app/(dashboard)/receivables/collect/page.tsx")).toContain(".filter((r) => r.amount - (r.paid || 0) > 0)")
+    // Màn thu tiền đọc qua `docCongNoDeThu` (rà soát 03/10/2026 — đọc đủ, tra đúng khoản `receivableId`).
+    expect(read("src/app/(dashboard)/receivables/collect/page.tsx")).toContain("docCongNoDeThu(")
+    expect(read("src/lib/receivables/doc-cong-no-thu.ts")).toContain(".filter((r) => Number(r.amount) - Number(r.paid || 0) > 0)")
   })
 })
 

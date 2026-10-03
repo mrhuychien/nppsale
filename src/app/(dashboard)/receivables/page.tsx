@@ -12,6 +12,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { useListSearch } from "@/hooks/use-list-search"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { apSapXep, xepDuoc, SAP_XEP_CONG_NO, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { MobileRecordCard } from "@/components/ui/mobile-record-card"
 import { LoadMore } from "@/components/ui/load-more"
@@ -19,6 +20,8 @@ import { ColumnPicker } from "@/components/ui/list-view-toolbar"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_CONG_NO_PHAI_THU } from "@/lib/search/list-filter-fields"
+import { locTuoiNo, laNhomTuoiNo, NHOM_TUOI_NO, type NhomTuoiNo } from "@/lib/receivables/tuoi-no"
+import { vnDateKey } from "@/lib/orders/status-tone"
 import { PageHeader } from "@/components/ui/page-header"
 import {
   RECEIVABLE_COLUMNS,
@@ -75,8 +78,13 @@ export default function ReceivablesPage() {
   const isSales = authUser?.role === "sales"
   const isDriver = authUser?.role === "driver"
   const isWarehouse = authUser?.role === "warehouse"
-  // Lọc theo khoảng tuổi nợ — chỉ dùng ở bản mobile (chip dưới thanh).
-  const [agingFilter, setAgingFilter] = useState<string | null>(null)
+  /* Lọc theo khoảng tuổi nợ — chip dưới đầu xanh điện thoại. ⚠ LỌC TRÊN MÁY CHỦ (khoảng `due_date`,
+     `locTuoiNo`), không lọc lại trong 20 khoản đã tải — rà soát 03/10/2026. */
+  const [agingFilter, setAgingFilter] = useState<NhomTuoiNo | null>(null)
+  /** Số khoản của từng chip — đếm trên máy chủ với CÙNG bộ lọc danh sách (tìm / lọc nâng cao). */
+  const [demChip, setDemChip] = useState<Record<"all" | NhomTuoiNo, number> | null>(null)
+  /** "Tất cả" lần cuối KHÔNG lọc tuổi nợ — dự phòng khi lượt đếm chip chưa về / hỏng. */
+  const tongTatCaRef = useRef(0)
   const [receivables, setReceivables] = useState<Receivable[]>([])
   // Tổng + phân nhóm tuổi nợ do DATABASE cộng (migration 093), không tải
   // dữ liệu về trình duyệt nữa.
@@ -97,6 +105,8 @@ export default function ReceivablesPage() {
   } = useListViewPrefs("receivables", DEFAULT_RECEIVABLE_COLUMNS, [], RECEIVABLE_COLUMNS, [])
   /** Khoản nợ đang mở ở ngăn xem nhanh (khuôn danh sách chung, 27/09/2026). */
   const [xemId, setXemId] = useState<string | null>(null)
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_CONG_NO`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("receivables", LOC_CONG_NO_PHAI_THU)
   /* Ô tìm (đầu xanh điện thoại + thanh công cụ máy tính) — tìm cả sổ, không chỉ trang đang tải. */
@@ -139,7 +149,29 @@ export default function ReceivablesPage() {
   // Reset page khi bộ lọc nâng cao đổi.
   useEffect(() => {
     pg.reset()
-  }, [locNC.key, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [locNC.key, debouncedSearch, agingFilter, sort]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Đếm cho chip "Tất cả" + 4 nhóm tuổi nợ: mỗi chip một lượt đếm (HEAD) với cùng bộ lọc của danh sách,
+     để số trên chip = đúng số khoản hiện ra khi bấm chip ấy. "Tất cả" không phụ thuộc chip đang chọn. */
+  useEffect(() => {
+    if (!locNC.ready || !listSearch.ready) return
+    if (debouncedSearch && !listSearch.filter) { setDemChip({ all: 0, current: 0, warning: 0, overdue: 0, critical: 0 }); return }
+    let cancelled = false
+    const homNay = vnDateKey(new Date())
+    const dem = (nhom: NhomTuoiNo | null) => {
+      let q = supabase.from("receivables").select("id", { count: "exact", head: true })
+      for (const f of locNC.menhDe) q = q.or(f)
+      if (listSearch.filter) q = q.or(listSearch.filter)
+      return locTuoiNo(q, nhom, homNay)
+    }
+    Promise.all([dem(null), ...NHOM_TUOI_NO.map((k) => dem(k))]).then((kq) => {
+      if (cancelled) return
+      if (kq.some((r) => r.error)) { setDemChip(null); return }
+      const [all, ...nhom] = kq.map((r) => r.count ?? 0)
+      setDemChip({ all, current: nhom[0], warning: nhom[1], overdue: nhom[2], critical: nhom[3] })
+    })
+    return () => { cancelled = true }
+  }, [locNC.ready, locNC.key, debouncedSearch, listSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Paginated table query (gồm join customer + sales_user).
   useEffect(() => {
@@ -155,21 +187,25 @@ export default function ReceivablesPage() {
       if (!laTaiThem(khoaTaiRef, pg.from, pg.to, false)) setLoading(true)
       // selectResilient: DB thiếu cột → tự thử lại với '*' thay vì rỗng im lặng; luôn trả error.
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
-        let q = supabase
-          .from("receivables")
-          .select(select, dem ? { count: "exact" } : undefined)
-          // Hạn cũ nhất TRƯỚC = quá hạn nhiều ngày nhất trước. NVBH đi
-          // thu cần biết khoản nào gấp nhất, không phải khoản nào mới tạo.
-          // nullsFirst: false để khoản KHÔNG đặt hạn xuống cuối — không có
-          // hạn thì không thể là khoản gấp nhất.
-          .order("due_date", { ascending: true, nullsFirst: false })
-          // ⚠ Mốc phụ `id`: nhiều khoản cùng một hạn — thiếu nó thì ranh
-          // giới trang do máy chủ tự quyết, khoản nợ lặp / sót giữa hai trang.
-          .order("id")
-          .range(from, to)
+        /* ⚠ XẾP Ở MÁY CHỦ: cột người dùng bấm đứng trước thứ tự mặc định — xếp trong bảng là
+           xếp trên 20 dòng đang xem, "Phải thu ↓" không ra khoản lớn nhất của sổ. */
+        let q = apSapXep(
+          supabase.from("receivables").select(select, dem ? { count: "exact" } : undefined),
+          sort,
+          SAP_XEP_CONG_NO,
+          (x) => x
+            // Hạn cũ nhất TRƯỚC = quá hạn nhiều ngày nhất trước. NVBH đi
+            // thu cần biết khoản nào gấp nhất, không phải khoản nào mới tạo.
+            // nullsFirst: false để khoản KHÔNG đặt hạn xuống cuối — không có
+            // hạn thì không thể là khoản gấp nhất.
+            .order("due_date", { ascending: true, nullsFirst: false })
+            // ⚠ Mốc phụ `id`: nhiều khoản cùng một hạn — thiếu nó thì ranh
+            // giới trang do máy chủ tự quyết, khoản nợ lặp / sót giữa hai trang.
+            .order("id")
+        ).range(from, to)
         for (const f of locNC.menhDe) q = q.or(f)
         if (listSearch.filter) q = q.or(listSearch.filter)
-        return q
+        return locTuoiNo(q, agingFilter, vnDateKey(new Date()))
       }
       const res = await taiHaiNhip<Receivable, ResilientResult<Receivable>>(
         (from, to, dem) => selectResilient<Receivable>((sel) => build(sel, from, to, dem),
@@ -190,17 +226,18 @@ export default function ReceivablesPage() {
       setReceivables(res.data)
       setLoadError(res.error)
       pg.setTotal(res.count ?? 0)
+      if (!agingFilter && !res.error) tongTatCaRef.current = res.count ?? 0
       setLoading(false)
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, locNC.ready, locNC.key, debouncedSearch, listSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, locNC.ready, locNC.key, debouncedSearch, listSearch, agingFilter, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<Receivable> & { k?: ReceivableColumnKey }> = [
       {
         key: "customer", label: "Khách hàng", width: "minmax(200px,1.5fr)",
-        sort: (a, b) => (a.customer?.store_name ?? "").localeCompare(b.customer?.store_name ?? "", "vi"),
+        sortable: xepDuoc(SAP_XEP_CONG_NO, "customer"),
         render: (r) => <span className="block truncate text-sm font-bold">{r.customer?.store_name || "-"}</span>,
       },
       {
@@ -210,11 +247,12 @@ export default function ReceivablesPage() {
           : <span className="text-xs text-on-surface-variant">{nhanKhoanNo(r)}</span>),
       },
       { k: "salesUser", key: "salesUser", label: "NV phụ trách", width: "150px", render: (r) => <DocCellText>{r.sales_user?.full_name}</DocCellText> },
-      { k: "amount", key: "amount", label: "Phải thu", width: "130px", align: "right", sort: (a, b) => Number(a.amount) - Number(b.amount), render: (r) => formatCurrency(r.amount) },
+      { k: "amount", key: "amount", label: "Phải thu", width: "130px", align: "right", sortable: xepDuoc(SAP_XEP_CONG_NO, "amount"), render: (r) => formatCurrency(r.amount) },
       { k: "paid", key: "paid", label: "Đã thu", width: "130px", align: "right", render: (r) => formatCurrency(r.paid) },
       {
+        /* ⚠ KHÔNG XẾP: "Còn lại" = amount − paid tính ở trình duyệt, sổ không có cột ấy — xếp
+           trong bảng là xếp trên một trang (xem `SAP_XEP_CONG_NO`). */
         k: "remaining", key: "remaining", label: "Còn lại", width: "150px", align: "right",
-        sort: (a, b) => remainingOf(a) - creditOf(a) - (remainingOf(b) - creditOf(b)),
         render: (r) => {
           /* ⚠ KẸP VỀ 0 VÀ GỌI TÊN PHẦN DƯ. Truy vấn của màn này KHÔNG lọc trạng thái, nên
              dòng đã thu dư (Q11) / công nợ âm (mig 186) vẫn nằm đây; `amount - paid` trần trụi
@@ -227,7 +265,7 @@ export default function ReceivablesPage() {
       },
       {
         k: "dueDate", key: "dueDate", label: "Hạn", width: "110px",
-        sort: (a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""),
+        sortable: xepDuoc(SAP_XEP_CONG_NO, "dueDate"),
         render: (r) => <DocCellDate date={r.due_date ? formatDate(r.due_date) : "-"} />,
       },
       {
@@ -279,12 +317,6 @@ export default function ReceivablesPage() {
   }
 
   // Tổng bốn khoảng — mẫu số của thanh xếp chồng. 0 thì không chia.
-  // Chip tuổi nợ chỉ lọc DANH SÁCH MOBILE — desktop có cột và bộ lọc
-  // riêng, đổi chung sẽ làm hai bên hiểu khác nhau về "đang lọc gì".
-  const mobileReceivables = agingFilter
-    ? receivables.filter((r) => (r.due_date ? getAgingStatus(r.due_date) : "current") === agingFilter)
-    : receivables
-
   const totalAging =
     buckets.current.amount + buckets.warning.amount + buckets.overdue.amount + buckets.critical.amount
 
@@ -299,9 +331,12 @@ export default function ReceivablesPage() {
   /* Tab tuổi nợ của đầu xanh điện thoại — "Tất cả" = bỏ lọc. */
   const MAU_TUOI_NO: Record<BucketKey, string> = { current: "#1e5eff", warning: "#fdb022", overdue: "#f97316", critical: "#d92d20" }
   const tabTuoiNo = [
-    { key: "all", label: "Tất cả", count: pg.total, accent: "#181c1e" },
+    /* ⚠ SỐ TRÊN CHIP = SỐ KHOẢN HIỆN RA KHI BẤM (cùng bộ lọc, đếm trên máy chủ). Bản cũ: "Tất cả" lấy
+       `pg.total` (đổi theo chip đang chọn), bốn nhóm lấy số toàn sổ của `receivables_summary` (bỏ qua ô tìm).
+       Chưa đếm xong / đếm lỗi thì quay về số cũ. */
+    { key: "all", label: "Tất cả", count: demChip?.all ?? (agingFilter ? tongTatCaRef.current : pg.total), accent: "#181c1e" },
     ...(Object.keys(bucketConfig) as BucketKey[]).map((key) => ({
-      key, label: bucketConfig[key].label, count: buckets[key].count, accent: MAU_TUOI_NO[key],
+      key, label: bucketConfig[key].label, count: demChip?.[key] ?? buckets[key].count, accent: MAU_TUOI_NO[key],
     })),
   ]
   const tieuDe = isSales ? "Công nợ của tôi" : "Công nợ"
@@ -434,7 +469,7 @@ export default function ReceivablesPage() {
           search,
           onSearch: setSearch,
           searchPlaceholder: "Tìm khách hàng, SĐT, mã hóa đơn…",
-          chips: { chips: tabTuoiNo, active: agingFilter ?? "all", onPick: (k) => setAgingFilter(k === "all" ? null : k) },
+          chips: { chips: tabTuoiNo, active: agingFilter ?? "all", onPick: (k) => setAgingFilter(laNhomTuoiNo(k) ? k : null) },
           actions: nutDau,
         }}
         mobileSummary={
@@ -499,11 +534,11 @@ export default function ReceivablesPage() {
         }
         pg={pg}
         shownCount={receivables.length}
-        table={<DocTable rows={receivables} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} />}
+        table={<DocTable rows={receivables} columns={columns} activeId={xemId} onOpen={(r) => setXemId(r.id)} sort={sort} onSortChange={setSort} />}
         mobilePager={<LoadMore pg={pg} shown={receivables.length} />}
         cards={
           <div className="space-y-3">
-            {mobileReceivables.map((r) => {
+            {receivables.map((r) => {
               const remaining = remainingOf(r)
               const credit = creditOf(r)
               const aging = r.due_date ? getAgingStatus(r.due_date) : "current"

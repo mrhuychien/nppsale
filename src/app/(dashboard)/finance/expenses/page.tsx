@@ -19,7 +19,7 @@ import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_CHI_PHI } from "@/lib/search/list-filter-fields"
 import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useLuuTrangThai } from "@/hooks/use-luu-trang-thai"
@@ -46,6 +46,7 @@ import {
   DocListLayout, DocListSearch, LocNhanhButton, LocNhanhField, XoaLocButton,
 } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useToast } from "@/hooks/use-toast"
@@ -81,6 +82,15 @@ const TABS = [
 ] as const
 const trangThaiChiPhi = (e: Expense) => (e.is_paid ? "paid" : "unpaid")
 
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_CHI_PHI: BangSoSanh<Expense> = {
+  date: (a, b) => (a.expense_date ?? "").localeCompare(b.expense_date ?? ""),
+  total: (a, b) => Number(a.amount) - Number(b.amount),
+}
+
 export default function ExpensesPage() {
   const { loading: authLoading } = useRoleGuard("settings")
   const { user } = useAuth()
@@ -92,6 +102,8 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   /* ⚠ Mặc định THÁNG NÀY theo giờ Việt Nam (chủ nhà chốt 23/09/2026) — xem `khoangKy`. */
@@ -146,6 +158,9 @@ export default function ExpensesPage() {
         return q
           .order("expense_date", { ascending: false })
           .order("created_at", { ascending: false })
+          // ⚠ Mốc phụ `id` (rà soát 03/10/2026): các trang đọc SONG SONG — hai phiếu cùng ngày, cùng giờ tạo mà
+          //   không có khoá duy nhất thì phiếu lặp / sót giữa hai trang, tổng chi phí lệch im lặng.
+          .order("id")
           .range(from, to)
       }),
       supabase
@@ -161,6 +176,8 @@ export default function ExpensesPage() {
       .find((r) => r?.error)?.error
     if (qErr) console.error("[finance/expenses] truy vấn lỗi:", qErr.message)
     setExpenses(expensesRes.rows as unknown as Expense[])
+    setLoadError(expensesRes.error ?? qErr?.message ?? null)
+    setTruncated(expensesRes.truncated)
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)
   }, [user?.org_id, dateFrom, dateTo, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -206,7 +223,10 @@ export default function ExpensesPage() {
     return { byBucket, total, paid, unpaid }
   }, [filtered])
 
-  const { pg, trang } = usePhanTrangTaiCho(filtered, JSON.stringify([status, categoryFilter, search, dateFrom, dateTo, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `filtered` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(filtered, sort, SO_SANH_CHI_PHI), [filtered, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([status, categoryFilter, search, dateFrom, dateTo, locNC.key, sort]))
 
   const resetForm = () => {
     setFormDate(today.toISOString().slice(0, 10))
@@ -287,7 +307,7 @@ export default function ExpensesPage() {
     const cols: Array<DocColumn<Expense> & { k?: ExpenseColumnKey }> = [
       {
         key: "date", label: "Ngày chi", width: "120px",
-        sort: (a, b) => (a.expense_date ?? "").localeCompare(b.expense_date ?? ""),
+        sortable: true,
         render: (e) => <DocCellDate date={formatDate(e.expense_date)} />,
       },
       { k: "category", key: "category", label: "Danh mục", width: "minmax(160px,1fr)", render: (e) => <DocCellText>{e.category?.name}</DocCellText> },
@@ -311,7 +331,7 @@ export default function ExpensesPage() {
       { k: "method", key: "method", label: "Hình thức", width: "120px", render: (e) => <DocCellText muted>{e.payment_method ? (PAYMENT_LABEL[e.payment_method] ?? e.payment_method) : null}</DocCellText> },
       {
         k: "total", key: "total", label: "Số tiền", width: "140px", align: "right",
-        sort: (a, b) => Number(a.amount) - Number(b.amount),
+        sortable: true,
         render: (e) => formatCurrency(e.amount),
       },
       {
@@ -399,6 +419,20 @@ export default function ExpensesPage() {
         {nutTao}
       </PageHeader>
 
+      {/* Lỗi tải / số thiếu — nói ra, không để tổng chi phí trông như đúng. */}
+      {loadError && (
+        <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
+          <p className="font-semibold">Không tải được chi phí</p>
+          <p className="mt-0.5 break-words">{loadError}</p>
+        </div>
+      )}
+      {truncated && (
+        <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+          <p className="font-semibold">Số liệu chưa đầy đủ</p>
+          <p className="mt-0.5 break-words">{truncationWarning()}</p>
+        </div>
+      )}
+
       <StatusChips className="max-lg:hidden" multi active={status} onPick={setStatus} chips={chips} />
 
       <DocListLayout
@@ -456,7 +490,7 @@ export default function ExpensesPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(e) => setXemId(e.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

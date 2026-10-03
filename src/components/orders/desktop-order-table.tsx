@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import Link from "@/components/ui/link"
 import { ArrowDown, ArrowUp, CheckCircle2, Eye, FileText } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -16,14 +15,21 @@ import type { Invoice, SalesOrder } from "@/types"
  * cái) · Ngày đặt (+ giờ) · SL MH · Tổng tiền · Trạng thái (huy hiệu có
  * chấm màu, "Cần duyệt") · thao tác (Duyệt / xem).
  *
- * ⚠ SẮP XẾP Ở ĐÂY LÀ TRÊN TRANG ĐANG XEM (50 dòng), không phải trên toàn
- * bộ kết quả — máy chủ vẫn trả mới nhất trước. Nói rõ ở tiêu đề cột để
- * người dùng không tưởng "đơn to nhất tháng" nằm đầu bảng.
+ * ⚠ SẮP XẾP Ở MÁY CHỦ, KHÔNG Ở BẢNG. Bảng cũ xếp trong bộ nhớ trên đúng
+ * trang đang xem (20 dòng) — bấm "Tổng tiền ↓" ra đơn to nhất của 20 dòng
+ * chứ không phải của cả kết quả. Nay bảng chỉ vẽ mũi tên và báo khoá cột;
+ * màn Đơn hàng gửi `.order(ORDER_SORT_COLUMNS[key])` xuống máy chủ.
  */
 export type OrderSortKey = "customer" | "date" | "total"
 export interface OrderSort {
   key: OrderSortKey
   dir: "asc" | "desc"
+}
+/** Khoá cột → cột PostgREST. Khách là bảng nhúng một-một (bí danh `customer`). */
+export const ORDER_SORT_COLUMNS: Record<OrderSortKey, string> = {
+  customer: "customer(store_name)",
+  date: "created_at",
+  total: "total",
 }
 
 export type OrderColumn =
@@ -91,17 +97,8 @@ export function DesktopOrderTable({
   sort: OrderSort | null
   onSort: (key: OrderSortKey) => void
 }) {
-  const rows = useMemo(() => {
-    if (!sort) return orders
-    const dir = sort.dir === "asc" ? 1 : -1
-    return [...orders].sort((a, b) => {
-      if (sort.key === "customer") {
-        return dir * (a.customer?.store_name ?? "").localeCompare(b.customer?.store_name ?? "", "vi")
-      }
-      if (sort.key === "total") return dir * (Number(a.total) - Number(b.total))
-      return dir * (a.created_at ?? a.order_date).localeCompare(b.created_at ?? b.order_date)
-    })
-  }, [orders, sort])
+  /* ⚠ KHÔNG XẾP LẠI Ở ĐÂY — `orders` đã theo thứ tự máy chủ (`sort` chỉ để vẽ mũi tên). */
+  const rows = orders
 
   const SortIcon = ({ k }: { k: OrderSortKey }) =>
     sort?.key === k ? (
@@ -150,7 +147,7 @@ export function DesktopOrderTable({
           </span>
           <span className={head}>Mã đơn</span>
           {show("customer") && (
-            <button type="button" onClick={() => onSort("customer")} className={sortBtn}>
+            <button type="button" data-sort-key="customer" onClick={() => onSort("customer")} className={sortBtn}>
               Khách hàng <SortIcon k="customer" />
             </button>
           )}
@@ -160,13 +157,13 @@ export function DesktopOrderTable({
           {show("salesUser") && <span className={head}>Tính cho NV</span>}
           {show("createdBy") && <span className={head}>Người tạo</span>}
           {show("date") && (
-            <button type="button" onClick={() => onSort("date")} className={sortBtn}>
+            <button type="button" data-sort-key="date" onClick={() => onSort("date")} className={sortBtn}>
               Ngày đặt <SortIcon k="date" />
             </button>
           )}
           <span className={cn(head, "justify-end")}>SL MH</span>
           {show("total") && (
-            <button type="button" onClick={() => onSort("total")} className={cn(sortBtn, "justify-end")}>
+            <button type="button" data-sort-key="total" onClick={() => onSort("total")} className={cn(sortBtn, "justify-end")}>
               Tổng tiền <SortIcon k="total" />
             </button>
           )}

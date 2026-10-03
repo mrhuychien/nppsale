@@ -19,6 +19,7 @@ import { cn, formatCurrency } from "@/lib/utils"
 import { RETURN_REASONS, nhanLyDoTra } from "@/lib/constants"
 import { tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { nhomTraTheoNgay, toneTra } from "@/lib/returns/mobile-list"
+import type { ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 
 export const BUOC_TAI_TRA = 20
 
@@ -55,6 +56,7 @@ export function MobileReturnsScreen({
   onOpen,
   notice,
   canCreate = true,
+  dayStats,
 }: {
   title: string
   subtitle: string
@@ -79,6 +81,12 @@ export function MobileReturnsScreen({
   notice?: React.ReactNode
   /** Có quyền tạo phiếu trả (`returns.create`) — mẫu NVBH chỉ XEM thì không hiện nút tạo. */
   canCreate?: boolean
+  /**
+   * Số phiếu + tổng tiền của TỪNG NGÀY đang hiện, đếm trên máy chủ cùng bộ lọc (`docThongKeNgay`, khoá ngày như
+   * `ngayNhomTra`). Thiếu ngày nào thì đầu nhóm ngày đó cộng các phiếu đã tải. Rà soát 03/10/2026: ngày cuối đang
+   * hiện bị cắt giữa chừng nên "N phiếu · tổng" cộng trên các phiếu đã tải là THIẾU.
+   */
+  dayStats?: ThongKeNgay | null
 }) {
   const groups = nhomTraTheoNgay(rows)
   const conNua = rows.length < count
@@ -218,7 +226,7 @@ export function MobileReturnsScreen({
                 <div className="flex items-baseline justify-between px-0.5">
                   <h2 className="text-[13px] font-bold">{g.label}</h2>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {g.items.length} phiếu · {formatCurrency(g.total)}
+                    {dayStats?.[g.key]?.count ?? g.items.length} phiếu · {formatCurrency(dayStats?.[g.key]?.total ?? g.total)}
                   </span>
                 </div>
                 <div className="divide-y overflow-hidden rounded-2xl border bg-card">

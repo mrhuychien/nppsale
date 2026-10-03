@@ -9,6 +9,7 @@ import { usePagination, MAC_DINH_MOI_TRANG } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { apSapXep, xepDuoc, SAP_XEP_NCC, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -66,6 +67,8 @@ export default function SuppliersPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const pg = usePagination()
+  /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_NCC`). */
+  const [sort, setSort] = useState<DocSort | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const locNC = useAdvancedFilter("suppliers", LOC_NHA_CUNG_CAP)
   /** Toàn bộ tên NCC — để phát hiện trùng tên (thiết kế "ds-ncc", 30/09/2026). */
@@ -127,7 +130,7 @@ export default function SuppliersPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, categoryFilter, statusFilter, activeFilters, khoaIdsTrung]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, categoryFilter, statusFilter, activeFilters, khoaIdsTrung, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     async function fetchData() {
@@ -136,11 +139,14 @@ export default function SuppliersPage() {
       // selectResilient: DB thiếu cột thì tự thử lại với '*', và luôn trả error
       // để hiển thị nguyên nhân thay vì danh sách rỗng im lặng.
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
-        let q = supabase
-          .from("suppliers")
-          .select(select, dem ? { count: "exact" } : undefined)
-          .order("name")
-          .range(from, to)
+        /* ⚠ XẾP Ở MÁY CHỦ — xếp trong bảng là xếp trên một trang. Mốc phụ `id`: hai NCC trùng tên
+           không lặp / sót giữa hai trang. */
+        let q = apSapXep(
+          supabase.from("suppliers").select(select, dem ? { count: "exact" } : undefined),
+          sort,
+          SAP_XEP_NCC,
+          (x) => x.order("name").order("id")
+        ).range(from, to)
         if (debouncedSearch) {
           q = q.or(dieuKienTim("suppliers", ["name", "code"], debouncedSearch))
         }
@@ -171,7 +177,7 @@ export default function SuppliersPage() {
       setLoading(false)
     }
     fetchData()
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick, khoaIdsTrung]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, statusFilter, refreshTick, khoaIdsTrung, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterActive = (k: SupplierFilterKey) => activeFilters.includes(k)
   const categories = allCategories
@@ -288,7 +294,7 @@ export default function SuppliersPage() {
       { k: "code", key: "code", label: "Mã NCC", width: "120px", render: (s) => <DocCodeLink href={`/suppliers/${s.id}`}>{s.code}</DocCodeLink> },
       {
         key: "name", label: "Tên", width: "minmax(220px,1.5fr)",
-        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        sortable: xepDuoc(SAP_XEP_NCC, "name"),
         render: (s) => <span className="block truncate text-sm font-bold">{s.name}</span>,
       },
       { k: "category", key: "category", label: "Danh mục", width: "150px", render: (s) => <DocCellText muted>{s.category}</DocCellText> },
@@ -456,7 +462,7 @@ export default function SuppliersPage() {
         empty={rong}
         pg={pg}
         shownCount={filtered.length}
-        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(s) => setXemId(s.id)} />}
+        table={<DocTable rows={filtered} columns={columns} activeId={xemId} onOpen={(s) => setXemId(s.id)} sort={sort} onSortChange={setSort} />}
         /* Điện thoại: màn riêng `MobileSuppliersScreen` (thiết kế "ds-ncc"). */
         cards={null}
       />

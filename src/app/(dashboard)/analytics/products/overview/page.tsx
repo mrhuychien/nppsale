@@ -17,9 +17,9 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
-  fetchRevenueInvoices,
+  fetchRevenueInvoicesDu,
   fetchInvoiceLines,
-  fetchReturnsRows,
+  fetchReturnsRowsDu,
   fetchReturnLines,
   type InvoiceLineRow,
   type RevenueInvoiceRow,
@@ -79,12 +79,13 @@ export default function ProductsOverviewPage() {
      *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
     try {
-      const [orderList, prevOrderList, retRows, prevRetRows, productsRes] = await Promise.all([
+      const [invRes, prevInvRes, retRes, prevRetRes, productsRes] = await Promise.all([
         // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        fetchRevenueInvoices(supabase, orgId, range),
-        fetchRevenueInvoices(supabase, orgId, prev),
-        fetchReturnsRows(supabase, orgId, range),
-        fetchReturnsRows(supabase, orgId, prev),
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -96,6 +97,10 @@ export default function ProductsOverviewPage() {
           "đọc danh mục hàng"
         ),
       ])
+      const orderList = invRes.rows
+      const prevOrderList = prevInvRes.rows
+      const retRows = retRes.rows
+      const prevRetRows = prevRetRes.rows
       const [lineList, prevLineList, retLineList, prevRetLineList] = await Promise.all([
         fetchInvoiceLines(supabase, orderList.map((o) => o.id)),
         fetchInvoiceLines(supabase, prevOrderList.map((o) => o.id)),
@@ -109,7 +114,9 @@ export default function ProductsOverviewPage() {
       setReturnLines(retLineList)
       setPrevReturnLines(prevRetLineList)
       setProducts(productsRes.rows)
-      setTruncated(productsRes.truncated)
+      setTruncated(
+        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || productsRes.truncated
+      )
     } catch (e) {
       console.error("[products/overview] tải lỗi:", e)
       setLoadError(errorMessage(e, "Không tải được số liệu hàng hóa"))

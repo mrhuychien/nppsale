@@ -3,6 +3,7 @@ import {
   fetchAllForAggregate,
   docDuHoacNem,
   docTheoLoId,
+  LO_SONG_SONG,
   truncationWarning,
 } from "@/lib/supabase/aggregate"
 import type { DateRange } from "./period"
@@ -130,10 +131,10 @@ export interface StockExportLineRow {
 /**
  * Kết quả một phép đọc ĐỦ: các dòng, kèm cờ chạm trần `AGGREGATE_ROW_CAP`.
  *
- * ⚠ VÌ SAO CÓ BIẾN THỂ `…Du` BÊN CẠNH HÀM CŨ. Hàm cũ trả mảng trần và
- *   nhiều màn ngoài báo cáo đang gọi nó — đổi kiểu trả về là vỡ họ. Màn
- *   báo cáo gọi bản `…Du` để lấy được cờ `truncated` và NÓI RA; hàm cũ
- *   chỉ còn `console.warn` khi chạm trần. Cả hai đều NÉM khi đọc hỏng.
+ * ⚠ CHỈ CÒN BẢN `…Du` (03/10/2026). Từng có hàm cũ trả mảng trần, chạm trần
+ *   chỉ `console.warn` — sáu màn Phân tích gọi nó và vẽ số THIẾU như số đủ, dải
+ *   cảnh báo không bao giờ hiện. Nay mọi màn gọi bản `…Du` và đưa `truncated`
+ *   lên dải cảnh báo; hàm cũ đã bỏ để không ai gọi lại. Hàm NÉM khi đọc hỏng.
  */
 export interface DocDu<T> {
   rows: T[]
@@ -242,17 +243,6 @@ export async function fetchRevenueInvoicesDu(
   return { rows, truncated: res.truncated }
 }
 
-/** Như trên, cho màn không có chỗ báo cờ chạm trần (chỉ `console.warn`). */
-export async function fetchRevenueInvoices(
-  supabase: SupabaseClient,
-  orgId: string,
-  range: DateRange
-): Promise<RevenueInvoiceRow[]> {
-  const r = await fetchRevenueInvoicesDu(supabase, orgId, range)
-  canhBaoTran(r.truncated, "hóa đơn đã ghi sổ")
-  return r.rows
-}
-
 /**
  * Dòng hóa đơn của các hóa đơn đã chọn — CHIA LÔ + PHÂN TRANG như
  * `fetchOrderLines`.
@@ -310,17 +300,6 @@ export async function fetchAllOrdersDu(
   )
   nemNeuLoi(res.error, "đọc đơn hàng")
   return { rows: res.rows, truncated: res.truncated }
-}
-
-/** Fetch all sales orders within range regardless of status (for order analytics). */
-export async function fetchAllOrders(
-  supabase: SupabaseClient,
-  orgId: string,
-  range: DateRange
-): Promise<SalesOrderRow[]> {
-  const r = await fetchAllOrdersDu(supabase, orgId, range)
-  canhBaoTran(r.truncated, "đơn hàng")
-  return r.rows
 }
 
 /**
@@ -566,6 +545,38 @@ export async function fetchReturnLines(
 }
 
 /**
+ * Số câu ghi chú tối đa trong MỘT `.in("notes", …)` — xem `fetchReturnCosts`.
+ * 50 câu ≈ 5 KB trên URL, ngang một lô 150 uuid (`ID_MOI_LO`).
+ */
+export const GHI_CHU_MOI_LO = 50
+
+/**
+ * Như `docTheoLoId` nhưng lô cỡ `coLo` (nhỏ hơn `ID_MOI_LO`): chia trước thành
+ * các lô `coLo` phần tử, mỗi lô một lượt `docTheoLoId` (nên vẫn phân trang đủ,
+ * hỏng / vượt trần thì NÉM). Chạy tối đa `LO_SONG_SONG` lô cùng lúc, giữ thứ tự.
+ */
+export async function docTheoLoNho<T>(
+  ids: readonly string[],
+  coLo: number,
+  dung: Parameters<typeof docTheoLoId>[1],
+  ten: string
+): Promise<T[]> {
+  const duy = Array.from(new Set(ids))
+  const cacLo: string[][] = []
+  for (let i = 0; i < duy.length; i += coLo) cacLo.push(duy.slice(i, i + coLo))
+  const kq: T[][] = new Array(cacLo.length)
+  let tiep = 0
+  const chay = async () => {
+    while (tiep < cacLo.length) {
+      const i = tiep++
+      kq[i] = await docTheoLoId<T>(cacLo[i], dung, ten)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(LO_SONG_SONG, cacLo.length) }, chay))
+  return ([] as T[]).concat(...kq)
+}
+
+/**
  * Giá vốn hàng khách trả ĐÃ NHẬP LẠI KHO, theo phiếu trả (và theo mặt hàng).
  *
  * ⚠ Doanh số trừ hàng trả thì giá vốn cũng phải trừ giá vốn của chính số hàng ấy,
@@ -581,8 +592,13 @@ export async function fetchReturnCosts(
   const out = new Map<string, { total: number; byProduct: Map<string, number> }>()
   if (returnIds.length === 0) return out
   const noteOf = new Map(returnIds.map((id) => [`Nhập lại từ phiếu trả ${id}`, id]))
-  const entries = await docTheoLoId<{ id: string; notes: string | null }>(
+  /* ⚠ LÔ NHỎ (`GHI_CHU_MOI_LO`), KHÔNG PHẢI 150. Mỗi phần tử ở đây là CẢ CÂU ghi chú
+     chứ không phải một uuid: chữ có dấu mã hoá ra 6–9 ký tự, một câu ≈ 100 ký tự trên
+     URL — lô 150 câu là ~15 KB, vượt trần URL của cổng API. `stock_entries` không có
+     cột trỏ về phiếu trả (chỉ `notes` do `complete_return` ghi), nên khớp theo ghi chú. */
+  const entries = await docTheoLoNho<{ id: string; notes: string | null }>(
     Array.from(noteOf.keys()),
+    GHI_CHU_MOI_LO,
     (lo, from, to) =>
       supabase
         .from("stock_entries")
@@ -673,17 +689,6 @@ export async function fetchReturnsValueDu(
   return { total, truncated: dataRes.truncated }
 }
 
-/** Sum of approved/completed returns within the range. */
-export async function fetchReturnsValue(
-  supabase: SupabaseClient,
-  orgId: string,
-  range: DateRange
-): Promise<number> {
-  const r = await fetchReturnsValueDu(supabase, orgId, range)
-  canhBaoTran(r.truncated, "phiếu trả")
-  return r.total
-}
-
 export interface ReturnSummaryRow {
   id: string
   status: string
@@ -759,16 +764,6 @@ export async function fetchReturnsRowsDu(
     invoice_id: r.invoice_id ?? null,
   }))
   return { rows, truncated: dataRes.truncated }
-}
-
-export async function fetchReturnsRows(
-  supabase: SupabaseClient,
-  orgId: string,
-  range: DateRange
-): Promise<ReturnSummaryRow[]> {
-  const r = await fetchReturnsRowsDu(supabase, orgId, range)
-  canhBaoTran(r.truncated, "phiếu trả")
-  return r.rows
 }
 
 /**

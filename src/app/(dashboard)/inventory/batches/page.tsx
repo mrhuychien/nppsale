@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { usePhanTrangTaiCho } from "@/hooks/use-phan-trang-tai-cho"
@@ -40,6 +41,16 @@ type BatchRow = Batch & { product?: Product }
 
 function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+}
+
+/**
+ * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
+ * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
+ */
+const SO_SANH_LO_HANG: BangSoSanh<BatchRow> = {
+  product: (a, b) => (a.product?.name ?? "").localeCompare(b.product?.name ?? "", "vi"),
+  qtyOnHand: (a, b) => Number(a.qty_on_hand) - Number(b.qty_on_hand),
+  expiresAt: (a, b) => (a.expires_at ?? "").localeCompare(b.expires_at ?? ""),
 }
 
 export default function BatchesPage() {
@@ -168,14 +179,17 @@ export default function BatchesPage() {
     const t = search.trim()
     return t ? ds.filter((b) => viMatchAllWords(t, b.product?.name, b.batch_code, b.location)) : ds
   }, [tab, search, locBatches, saleBatches, dateBatches, fefoBatches, expiring])
-  const { pg, trang } = usePhanTrangTaiCho(theoTab, JSON.stringify([tab, search, locNC.key]))
+  /** Thứ tự người dùng bấm trên tiêu đề — xếp cả `theoTab` TRƯỚC khi chia trang. */
+  const [sort, setSort] = useState<DocSort | null>(null)
+  const daXep = useMemo(() => sapXepTaiCho(theoTab, sort, SO_SANH_LO_HANG), [theoTab, sort])
+  const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([tab, search, locNC.key, sort]))
   const demNguoc = tab === "date" || tab === "fefo" || tab === "expiring"
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<BatchRow> & { k?: BatchColumnKey; khi?: boolean }> = [
       {
         key: "product", label: "Sản phẩm", width: "minmax(220px,2fr)",
-        sort: (a, b) => (a.product?.name ?? "").localeCompare(b.product?.name ?? "", "vi"),
+        sortable: true,
         render: (b) => <span className="block truncate text-sm font-bold">{b.product?.name}</span>,
       },
       { k: "batchCode", key: "batchCode", label: "Mã lô", width: "140px", render: (b) => <DocCodeLink href={`/inventory/batches/${b.id}`}>{b.batch_code}</DocCodeLink> },
@@ -185,11 +199,11 @@ export default function BatchesPage() {
       },
       { k: "location", key: "location", label: "Vị trí", width: "120px", render: (b) => <DocCellText muted>{b.location}</DocCellText> },
       { k: "qtyInitial", key: "qtyInitial", label: "Ban đầu", width: "100px", align: "right", render: (b) => b.qty_initial },
-      { k: "qtyOnHand", key: "qtyOnHand", label: "Tồn", width: "100px", align: "right", sort: (a, b) => Number(a.qty_on_hand) - Number(b.qty_on_hand), render: (b) => b.qty_on_hand },
+      { k: "qtyOnHand", key: "qtyOnHand", label: "Tồn", width: "100px", align: "right", sortable: true, render: (b) => b.qty_on_hand },
       { k: "manufacturedAt", key: "manufacturedAt", label: "NSX", width: "110px", render: (b) => <DocCellDate date={b.manufactured_at ? formatDate(b.manufactured_at) : "-"} /> },
       {
         k: "expiresAt", key: "expiresAt", label: "HSD", width: "130px",
-        sort: (a, b) => (a.expires_at ?? "").localeCompare(b.expires_at ?? ""),
+        sortable: true,
         render: (b) => {
           const status = getExpiryStatus(b.expires_at, b.product?.shelf_life_days ?? undefined)
           return <Badge variant={status === "danger" ? "danger" : status === "warning" ? "warning" : "success"}>{formatDate(b.expires_at)}</Badge>
@@ -347,7 +361,7 @@ export default function BatchesPage() {
         }
         pg={pg}
         shownCount={trang.length}
-        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(b) => setXemId(b.id)} />}
+        table={<DocTable rows={trang} columns={columns} activeId={xemId} onOpen={(b) => setXemId(b.id)} sort={sort} onSortChange={setSort} />}
         cards={
           <DocCardList
             items={trang}

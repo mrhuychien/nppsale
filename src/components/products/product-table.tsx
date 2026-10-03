@@ -11,6 +11,7 @@ import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DocTable, DocCodeLink, DocCellText, type DocColumn } from "@/components/ui/doc-table"
+import type { DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { formatCurrency } from "@/lib/utils"
 import type { Product, PriceList } from "@/types"
@@ -42,6 +43,12 @@ interface ProductTableProps {
   someSelected?: boolean
   activeId?: string | null
   onOpen: (product: ProductRow) => void
+  /**
+   * ⚠ XẾP Ở MÁY CHỦ — màn Sản phẩm phân trang ở máy chủ; bảng chỉ vẽ mũi tên và báo lại.
+   * Chỉ cột Tên xếp được (`.order("name")`); "Giá bán" tính từ bảng giá → không xếp.
+   */
+  sort?: DocSort | null
+  onSortChange?: (next: DocSort) => void
 }
 
 export function ProductTable({
@@ -55,6 +62,8 @@ export function ProductTable({
   someSelected = false,
   activeId,
   onOpen,
+  sort,
+  onSortChange,
 }: ProductTableProps) {
   const columns = useMemo(() => {
     const cols: Array<DocColumn<ProductRow> & { k?: ProductColumnKey }> = [
@@ -83,15 +92,15 @@ export function ProductTable({
       { k: "sku", key: "sku", label: "SKU", width: "130px", render: (p) => <DocCodeLink href={`/products/${p.id}`}>{p.sku}</DocCodeLink> },
       {
         key: "name", label: "Tên sản phẩm", width: "minmax(240px,2fr)",
-        sort: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "vi"),
+        sortable: true,
         render: (p) => <span className="block truncate text-sm font-bold" title={p.name}>{p.name}</span>,
       },
       { k: "category", key: "category", label: "Danh mục", width: "150px", render: (p) => <DocCellText muted>{p.category}</DocCellText> },
       { k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "170px", render: (p) => <DocCellText muted>{p.supplier?.name}</DocCellText> },
       { k: "unit", key: "unit", label: "ĐVT", width: "90px", render: (p) => <DocCellText muted>{p.base_unit}</DocCellText> },
       {
+        /* ⚠ KHÔNG XẾP: giá lấy từ bảng giá (`giaMacDinh`) — xếp được chỉ trên trang đang xem. */
         k: "price", key: "price", label: "Giá bán", width: "130px", align: "right",
-        sort: (a, b) => giaMacDinh(a) - giaMacDinh(b),
         render: (p) => (giaMacDinh(p) > 0 ? formatCurrency(giaMacDinh(p)) : "-"),
       },
       {
@@ -104,7 +113,7 @@ export function ProductTable({
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
   }, [visibleColumns, selectable, selectedIds, allSelected, someSelected, onToggleSelect, onToggleSelectAll])
 
-  return <DocTable rows={products} columns={columns} activeId={activeId} onOpen={onOpen} />
+  return <DocTable rows={products} columns={columns} activeId={activeId} onOpen={onOpen} sort={sort} onSortChange={onSortChange} />
 }
 
 /** Thẻ điện thoại — bố cục cố định, không phụ thuộc cột đang chọn. */

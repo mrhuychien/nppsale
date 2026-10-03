@@ -119,15 +119,24 @@ export default function ProductsPage() {
 
   // Load distinct category list + danh sách NCC (full) cho 2 dropdown.
   async function loadMeta() {
+    /* ⚠ DANH MỤC ĐỌC ĐỦ THEO TRANG (rà soát 03/10/2026). `select("category")` trơn cắt ở 1.000
+       mã: danh mục chỉ có ở các mã sau 1.000 dòng đầu không bao giờ lên ô chọn — không lọc được
+       theo nó. Chỉ lấy dòng có danh mục, mốc `id` duy nhất (các trang chạy song song), rồi gộp. */
     const [catsRes, supRes] = await Promise.all([
-      supabase.from("products").select("category"),
+      fetchAllForAggregate<{ category: string | null }>((from, to) =>
+        supabase
+          .from("products")
+          .select("category", { count: "exact" })
+          .not("category", "is", null)
+          .order("id")
+          .range(from, to)
+      ),
       supabase.from("suppliers").select("id, name").order("name"),
     ])
-    const qErr = ([catsRes, supRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[app/products] truy vấn lỗi:", qErr.message)
+    if (catsRes.error) console.error("[app/products] truy vấn danh mục lỗi:", catsRes.error)
+    if (supRes.error) console.error("[app/products] truy vấn lỗi:", supRes.error.message)
     const cats = new Set<string>()
-    for (const p of (catsRes.data as Array<{ category: string | null }>) || []) {
+    for (const p of catsRes.rows) {
       if (p.category) cats.add(p.category)
     }
     setAllCategories(Array.from(cats).sort())
@@ -157,6 +166,8 @@ export default function ProductsPage() {
         .from("products")
         .select(select, dem ? { count: "exact" } : undefined)
         .order("name", { ascending: sapXep === "name_asc" })
+        /* Mốc phụ `id`: hai sản phẩm trùng tên không lặp / sót giữa hai trang. */
+        .order("id")
         .range(from, to)
       if (debouncedSearch) {
         q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
@@ -311,7 +322,7 @@ export default function ProductsPage() {
       let d = docDemNcc(await loc(supabase.from("products").select("primary_supplier_id, status, count()" as string) as any))
       if (!d) {
         const kq = await fetchAllForAggregate<{ primary_supplier_id: string | null; status: string }>((from, to) =>
-          loc(supabase.from("products").select("primary_supplier_id, status", { count: "exact" })).range(from, to)
+          loc(supabase.from("products").select("primary_supplier_id, status", { count: "exact" })).order("id").range(from, to)
         )
         if (kq.error) console.warn("[app/products] đếm theo NCC lỗi:", kq.error)
         d = kq.error ? null : demNccTuDong(kq.rows)
@@ -527,6 +538,9 @@ export default function ProductsPage() {
             someSelected={someSelected && !allSelected}
             activeId={xemId}
             onOpen={(p) => setXemId(p.id)}
+            /* Bấm "Tên" trên lưới = cùng nút "Tên A–Z / Z–A" của điện thoại — xếp ở máy chủ. */
+            sort={{ key: "name", dir: sapXep === "name_asc" ? "asc" : "desc" }}
+            onSortChange={(s) => setSapXep(s.dir === "asc" ? "name_asc" : "name_desc")}
           />
         }
         /* Điện thoại: màn riêng theo thiết kế "ds-san-pham" (`MobileProductsScreen`). */

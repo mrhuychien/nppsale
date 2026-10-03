@@ -161,6 +161,9 @@ export default function CustomerDetailPage() {
   }>>([])
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [visits, setVisits] = useState<VisitRow[]>([])
+  /** Tổng số lần ghé (đếm HEAD trên máy chủ) — `null` = chưa đếm được, quay về độ dài danh sách. */
+  const [visitCount, setVisitCount] = useState<number | null>(null)
+  const [priceTruncated, setPriceTruncated] = useState(false)
   const [visitDialogOpen, setVisitDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
 
@@ -450,20 +453,25 @@ export default function CustomerDetailPage() {
 
     // Price list
     const groupId = custRes.data?.group_id
-    let priceQuery = supabase
-      .from("price_lists")
-      .select("id, product_id, group_id, unit_name, price, effective_from, effective_to, product:products(name, sku, base_unit), group:customer_groups(name)")
-      .order("product_id")
-    if (groupId) {
-      priceQuery = priceQuery.or(`group_id.eq.${groupId},group_id.is.null`)
-    } else {
-      priceQuery = priceQuery.is("group_id", null)
-    }
-    const priceRes = await priceQuery
-    if (priceRes.error) console.error("[customers/id] truy vấn bảng giá lỗi:", priceRes.error.message)
-    setPriceRows((priceRes.data || []) as unknown as PriceRow[])
+    /* ⚠ ĐỌC ĐỦ (phân trang, rà soát 03/10/2026): bảng giá chung thường hơn 1.000 dòng — đọc trơn bị `db.max_rows`
+       cắt im lặng, tab Bảng giá thiếu mặt hàng. Khoá thứ tự `product_id` + `id` cho các trang song song. */
+    const priceRes = await fetchAllForAggregate<PriceRow>((from, to) => {
+      let q = supabase
+        .from("price_lists")
+        .select("id, product_id, group_id, unit_name, price, effective_from, effective_to, product:products(name, sku, base_unit), group:customer_groups(name)", { count: "exact" })
+      q = groupId ? q.or(`group_id.eq.${groupId},group_id.is.null`) : q.is("group_id", null)
+      return q.order("product_id").order("id").range(from, to)
+    })
+    if (priceRes.error) console.error("[customers/id] truy vấn bảng giá lỗi:", priceRes.error)
+    setPriceRows(priceRes.rows)
+    setPriceTruncated(priceRes.truncated)
 
     // Visit history
+    /* Số trên tab "Ghé thăm (N)" đếm trên máy chủ — danh sách bị `db.max_rows` cắt ở 1.000 lần ghé. */
+    const visitCountReq = supabase
+      .from("visit_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", id)
     const { data: visitData, error: visitDataErr } = await supabase
       .from("visit_logs")
       .select(
@@ -474,6 +482,9 @@ export default function CustomerDetailPage() {
       .order("check_in_at", { ascending: false })
     if (visitDataErr) console.error("[customers/id] truy vấn lỗi:", visitDataErr.message)
     setVisits(((visitData as unknown) as VisitRow[]) || [])
+    const visitCountRes = await visitCountReq
+    if (visitCountRes.error) console.error("[customers/id] đếm lần ghé lỗi:", visitCountRes.error.message)
+    setVisitCount(visitCountRes.error ? null : visitCountRes.count ?? null)
 
     setLoading(false)
   }, [id, laNvbh]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -614,7 +625,7 @@ export default function CustomerDetailPage() {
           <p className="mt-0.5 break-words">{statsError}</p>
         </div>
       )}
-      {statsTruncated && (
+      {(statsTruncated || priceTruncated) && (
         <div className="rounded-xl border border-warning/40 bg-warning-container px-4 py-3 text-sm text-on-warning-container">
           <p className="font-semibold">Số liệu chưa đầy đủ</p>
           <p className="mt-0.5 break-words">{truncationWarning()}</p>
@@ -767,7 +778,7 @@ export default function CustomerDetailPage() {
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="overview">Tổng quan</TabsTrigger>
               <TabsTrigger value="orders">Lịch sử giao dịch</TabsTrigger>
-              <TabsTrigger value="visits">Ghé thăm ({visits.length})</TabsTrigger>
+              <TabsTrigger value="visits">Ghé thăm ({visitCount ?? visits.length})</TabsTrigger>
               <TabsTrigger value="assignments">Phân công ({assignments.length})</TabsTrigger>
               <TabsTrigger value="prices">Bảng giá áp dụng</TabsTrigger>
               <TabsTrigger value="info">Sửa thông tin</TabsTrigger>

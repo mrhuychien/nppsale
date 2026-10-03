@@ -28,7 +28,8 @@ describe("báo cáo nhân viên khớp công nợ", () => {
   })
   it("màn chỉ chốt khi KHÔNG lọc hàng hóa", () => {
     const s = readFileSync(resolve(__dirname, "../src/app/(dashboard)/reports/employees/page.tsx"), "utf-8")
-    expect(s).toContain("const coLocHang = productFilter.length > 0 || categoryFilter.length > 0 || brandFilter.length > 0")
+    // Không còn lọc "Loại hàng" (bỏ trường nhóm hàng, chủ nhà 03/10/2026).
+    expect(s).toContain("const coLocHang = productFilter.length > 0 || brandFilter.length > 0")
     expect(s).toContain("rows = chotTienChungTu(rows, tienHd, tienTra)")
     expect(s).toContain("Number(o.total || 0)")
     expect(s).toContain("Number(r.credit_note_amount || 0)")

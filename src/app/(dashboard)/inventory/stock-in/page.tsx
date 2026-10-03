@@ -34,23 +34,17 @@ import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import Link from "@/components/ui/link"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   ArrowLeft,
   Info,
   Plus,
   Trash2,
   ArrowDownToLine,
-  ExternalLink,
   ScanBarcode,
 } from "lucide-react"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
-import { ProductForm } from "@/components/products/product-form"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import type { Product, PriceList, ProductUnit, Supplier } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { cn } from "@/lib/utils"
@@ -141,12 +135,13 @@ export default function StockInPage() {
   const [lines, setLines] = useState<LineItem[]>([newLine()])
   const [productSearch, setProductSearch] = useState("")
   const [barcodeOpen, setBarcodeOpen] = useState(false)
-  const [createProductOpen, setCreateProductOpen] = useState(false)
-  const [pendingProductSearch, setPendingProductSearch] = useState("")
+  /** Khung tạo nhanh đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — phiếu đang làm giữ nguyên. */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
 
-  // Refetch products and add the newest one to the next empty line so the
+  // Refetch products and add the newly created one to the next empty line so the
   // user can immediately keep filling the import.
-  const refetchProductsAndPickLatest = async () => {
+  const refetchProductsAndPick = async (vuaTaoId: string) => {
     /**
      * ⚠ KÉO ĐỦ DANH MỤC — xem `loadCatalogue`.
      *
@@ -163,12 +158,11 @@ export default function StockInPage() {
     const list = res.rows
     setProducts(list)
     setCatTruncated(res.truncated)
-    const newest = list
-      .slice()
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0]
-    if (newest) {
-      addProductLine(newest.id)
-    }
+    /* ⚠ THÊM ĐÚNG MÃ VỪA TẠO, LẤY TỪ DANH SÁCH VỪA ĐỌC. `productMap` của lượt vẽ này còn là danh mục CŨ
+       (chưa có mã mới) — tra ở đó là không thêm được gì. Mã mới nhất theo `created_at` cũng không chắc là mã
+       vừa tạo (người khác vừa tạo cùng lúc). */
+    const moi = list.find((p) => p.id === vuaTaoId)
+    if (moi) addProductLine(moi.id, moi)
     setProductSearch("")
   }
 
@@ -277,8 +271,8 @@ export default function StockInPage() {
     return anyMatch?.price ?? 0
   }
 
-  function addProductLine(productId: string) {
-    const product = productMap.get(productId)
+  function addProductLine(productId: string, coSan?: ProductWithRelations) {
+    const product = coSan ?? productMap.get(productId)
     if (!product) return
     const availableUnits = getAvailableUnits(product)
     const unitName = product.base_unit
@@ -480,6 +474,9 @@ export default function StockInPage() {
     }
   }
 
+  const coQuyenTaoNcc = duocTaoNhanh(user?.role, "ncc")
+  const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
+
   /** Ô chọn NCC — dùng chung cho màn máy tính và màn điện thoại (hai `id` khác nhau). */
   const nccField = (id: string) => (
     <SearchSelect
@@ -497,16 +494,8 @@ export default function StockInPage() {
         setSupplierId(opt?.id ?? "")
         setSupplier(text)
       }}
-      footer={
-        <Link
-          href="/suppliers/new"
-          target="_blank"
-          className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:bg-surface-low"
-        >
-          <Plus className="h-3 w-3" /> Tạo nhà cung cấp mới
-          <ExternalLink className="ml-auto h-3 w-3" />
-        </Link>
-      }
+      /* Tạo NCC ngay tại chỗ (thay link mở tab mới): tạo xong tự chọn, phiếu đang nhập không mất. */
+      taoMoi={coQuyenTaoNcc ? { nhan: NHAN_TAO_NHANH.ncc, onTao: (chu) => setTaoNcc({ chu }) } : undefined}
     />
   )
 
@@ -547,20 +536,7 @@ export default function StockInPage() {
       onPick={(p) => addProductLine(p.id)}
       emptyHint="Không tìm thấy mã nào khớp."
       hint={catTruncated ? <CatalogueShortNote /> : null}
-      footer={
-        <div className="border-t border-border/50 p-2">
-          <button
-            type="button"
-            onClick={() => {
-              setPendingProductSearch(productSearch)
-              setCreateProductOpen(true)
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-low"
-          >
-            <Plus className="h-3 w-3" /> Tạo sản phẩm mới
-          </button>
-        </div>
-      }
+      taoMoi={coQuyenTaoSp ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) } : undefined}
     />
   )
 
@@ -770,19 +746,18 @@ export default function StockInPage() {
             >
               <ScanBarcode className="h-5 w-5" />
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 shrink-0"
-              onClick={() => {
-                setPendingProductSearch(productSearch)
-                setCreateProductOpen(true)
-              }}
-              title="Tạo sản phẩm mới"
-            >
-              <Plus className="h-5 w-5" />
-            </Button>
+            {coQuyenTaoSp && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0"
+                onClick={() => setTaoSp({ chu: productSearch.trim() })}
+                title="Tạo sản phẩm mới"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+            )}
           </div>
 
 
@@ -993,24 +968,23 @@ export default function StockInPage() {
 
       <BarcodeScanner open={barcodeOpen} onClose={() => setBarcodeOpen(false)} onScan={processBarcodeResult} />
 
-      <Dialog open={createProductOpen} onOpenChange={setCreateProductOpen}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Tạo sản phẩm mới</DialogTitle>
-            <DialogDescription>
-              {pendingProductSearch
-                ? `Sản phẩm vừa tạo sẽ được tự động thêm vào phiếu nhập (đang tìm: "${pendingProductSearch}")`
-                : "Sản phẩm vừa tạo sẽ được tự động thêm vào phiếu nhập."}
-            </DialogDescription>
-          </DialogHeader>
-          <ProductForm
-            onSaved={async () => {
-              setCreateProductOpen(false)
-              await refetchProductsAndPickLatest()
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa="Sản phẩm vừa tạo sẽ được tự động thêm vào phiếu nhập."
+        onDaTao={(p) => void refetchProductsAndPick(p.id)}
+      />
+      <TaoNhanhNcc
+        open={!!taoNcc}
+        onOpenChange={(o) => !o && setTaoNcc(null)}
+        chuBanDau={taoNcc?.chu}
+        onDaTao={(n) => {
+          setSuppliers((ds) => (ds.some((x) => x.id === n.id) ? ds : [...ds, { id: n.id, code: n.code, name: n.name } as Supplier]))
+          setSupplierId(n.id)
+          setSupplier(n.name)
+        }}
+      />
     </>
   )
 }

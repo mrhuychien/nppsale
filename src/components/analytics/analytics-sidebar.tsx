@@ -52,7 +52,7 @@ const NAV: NavSection[] = [
         items: [
           { label: "Tổng quan", href: "/analytics/products/overview" },
           { label: "Tồn kho", href: "/analytics/products/stock" },
-          { label: "Phân loại hàng hóa", href: "/analytics/products/categories" },
+          /* Không còn "Phân loại hàng hóa" — bỏ trường nhóm hàng (chủ nhà 03/10/2026). */
         ],
       },
       {

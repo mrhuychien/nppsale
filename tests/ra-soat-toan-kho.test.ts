@@ -60,7 +60,6 @@ function moiTep(): string[] {
 const CON_NO_GHI_KHONG_KIEM = [
   "src/app/(dashboard)/commissions/policies/[id]/page.tsx",
   "src/app/(dashboard)/customers/page.tsx",
-  "src/app/(dashboard)/customers/routes/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/handover/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/page.tsx",
   "src/app/(dashboard)/deliveries/[id]/settle/page.tsx",
@@ -82,6 +81,8 @@ const CON_NO_GHI_KHONG_KIEM = [
   "src/app/(dashboard)/suppliers/[id]/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",
   "src/components/customers/customer-form.tsx",
+  // Dời từ customers/routes/page.tsx (03/10/2026): đổi mã tuyến kéo theo khách — 0 dòng là hợp lệ (tuyến chưa có khách).
+  "src/components/customers/route-form.tsx",
   "src/components/customers/customer-photo-capture.tsx",
   "src/components/deliveries/pod-capture-sheet.tsx",
   "src/components/layout/notification-bell.tsx",

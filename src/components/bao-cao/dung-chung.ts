@@ -111,8 +111,6 @@ export function luaChonLoc(dm: DanhMucBC | null, k: LoaiLoc): [string, string][]
       return Array.from(dm.nv.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen)
     case "prod":
       return Array.from(dm.sp.entries()).map(([id, s]): [string, string] => [id, s.sku ? `${s.ten} · ${s.sku}` : s.ten]).sort(theoTen)
-    case "pgroup":
-      return giaTriRieng(Array.from(dm.sp.values()).map((s) => s.nhom))
     case "ncc":
       return [...Array.from(dm.ncc.entries()).map(([id, t]): [string, string] => [id, t]).sort(theoTen), [CHUA_CO, CHUA_CO]]
     case "ostatus":

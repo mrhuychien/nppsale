@@ -64,7 +64,6 @@ interface CustomerGroupRow {
 interface ProductRow {
   id: string
   name: string
-  category: string | null
 }
 
 /** Tổng tiền trả (không tính hàng đổi) của các phiếu — cùng số trừ doanh thu. */
@@ -160,7 +159,7 @@ export default function BusinessOverviewPage() {
           (from, to) =>
             supabase
               .from("products")
-              .select("id, name, category", { count: "exact" })
+              .select("id, name", { count: "exact" })
               .eq("org_id", orgId)
               .order("id")
               .range(from, to),
@@ -648,11 +647,13 @@ export default function BusinessOverviewPage() {
 
       <div className="space-y-5">
         <TopListCard
-          title="Top 10 nhóm hàng"
+          /* Đây là NHÓM KHÁCH (`customers.group_id`) — nhãn cũ "nhóm hàng" sai nghĩa, và trường nhóm hàng đã
+             bỏ (chủ nhà 03/10/2026). */
+          title="Top 10 nhóm khách"
           rows={topGroups}
           rowKey={(r) => r.id}
           columns={[
-            { key: "name", label: "Tên nhóm hàng", render: (r) => <span className="font-medium">{r.name}</span> },
+            { key: "name", label: "Tên nhóm khách", render: (r) => <span className="font-medium">{r.name}</span> },
             { key: "revenue", label: "Doanh thu thuần", align: "right", render: (r) => <MoneyCell value={r.revenue} /> },
             { key: "aov", label: "Doanh thu TB/HĐ", align: "right", render: (r) => <MoneyCell value={r.aov} /> },
             { key: "delta", label: "So với kỳ trước", align: "right", render: (r) => <ChangeBadge pct={r.changePct} /> },

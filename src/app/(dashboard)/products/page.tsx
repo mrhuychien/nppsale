@@ -7,7 +7,7 @@ import { useEffect, useState, useRef } from "react"
 import { dieuKienTim } from "@/lib/search/list-search"
 import { usePagination, MAC_DINH_MOI_TRANG } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
-import { DocListLayout, DocListSearch, LocNhanhField, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
@@ -76,12 +76,10 @@ export default function ProductsPage() {
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
   const khoaTaiRef = useRef<KhoaTai>(null)
   const [search, setSearch] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
-  const [allCategories, setAllCategories] = useState<string[]>([])
   const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [importOpen, setImportOpen] = useState(false)
   /** Điện thoại: "Tên A–Z" / "Tên Z–A" (máy tính luôn A–Z). */
@@ -117,29 +115,13 @@ export default function ProductsPage() {
     PRODUCT_FILTERS
   )
 
-  // Load distinct category list + danh sách NCC (full) cho 2 dropdown.
+  /* Danh sách NCC (full) cho ô lọc NCC.
+     ⚠ BỎ TRƯỜNG NHÓM HÀNG / DANH MỤC (chủ nhà 03/10/2026, Update 3.10 mục 2: "gộp Nhóm hàng vào
+     NCC" → "Bỏ luôn trường nhóm hàng"). Cột `products.category` vẫn giữ trong DB (dữ liệu cũ không
+     mất) nhưng không còn ô lọc / cột / ô xem nhanh nào đọc nó — hàng được nhóm theo NCC. */
   async function loadMeta() {
-    /* ⚠ DANH MỤC ĐỌC ĐỦ THEO TRANG (rà soát 03/10/2026). `select("category")` trơn cắt ở 1.000
-       mã: danh mục chỉ có ở các mã sau 1.000 dòng đầu không bao giờ lên ô chọn — không lọc được
-       theo nó. Chỉ lấy dòng có danh mục, mốc `id` duy nhất (các trang chạy song song), rồi gộp. */
-    const [catsRes, supRes] = await Promise.all([
-      fetchAllForAggregate<{ category: string | null }>((from, to) =>
-        supabase
-          .from("products")
-          .select("category", { count: "exact" })
-          .not("category", "is", null)
-          .order("id")
-          .range(from, to)
-      ),
-      supabase.from("suppliers").select("id, name").order("name"),
-    ])
-    if (catsRes.error) console.error("[app/products] truy vấn danh mục lỗi:", catsRes.error)
+    const supRes = await supabase.from("suppliers").select("id, name").order("name")
     if (supRes.error) console.error("[app/products] truy vấn lỗi:", supRes.error.message)
-    const cats = new Set<string>()
-    for (const p of catsRes.rows) {
-      if (p.category) cats.add(p.category)
-    }
-    setAllCategories(Array.from(cats).sort())
     setAllSuppliers((supRes.data as { id: string; name: string }[]) || [])
   }
   useEffect(() => {
@@ -149,11 +131,11 @@ export default function ProductsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, activeFilters, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, supplierFilter, statusFilter, activeFilters, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchProducts()
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, categoryFilter, supplierFilter, statusFilter, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, supplierFilter, statusFilter, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
@@ -174,7 +156,6 @@ export default function ProductsPage() {
       }
       /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
       for (const f of locNC.menhDe) q = q.or(f)
-      if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
       if (supplierFilter === NCC_CHUA_GAN) q = q.is("primary_supplier_id", null)
       else if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
       if (statusFilter !== "all") q = q.eq("status", statusFilter)
@@ -202,8 +183,6 @@ export default function ProductsPage() {
   }
 
   const filterActive = (k: ProductFilterKey) => activeFilters.includes(k)
-
-  const categories = allCategories
 
   // Đã filter server-side toàn bộ — pass-through.
   const filtered = products
@@ -286,7 +265,6 @@ export default function ProductsPage() {
         let q = supabase.from("products").select("id", { count: "exact", head: true })
         if (debouncedSearch) q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
         for (const f of locNC.menhDe) q = q.or(f)
-        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         if (supplierFilter === NCC_CHUA_GAN) q = q.is("primary_supplier_id", null)
         else if (supplierFilter !== "all") q = q.eq("primary_supplier_id", supplierFilter)
         if (st) q = q.eq("status", st)
@@ -298,11 +276,11 @@ export default function ProductsPage() {
       if (!huy) setCounts({ active, inactive, all })
     })()
     return () => { huy = true }
-  }, [debouncedSearch, locNC.key, categoryFilter, supplierFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, supplierFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ĐIỆN THOẠI — SỐ TRÊN CHIP NCC (thiết kế "ds-san-pham" 30/09/2026): theo NCC chính của SP, cùng
-   * ô tìm / lọc nâng cao / danh mục nhưng BỎ NCC (chip là bộ lọc NCC) và BỎ trạng thái (lọc ở máy
+   * ô tìm / lọc nâng cao nhưng BỎ NCC (chip là bộ lọc NCC) và BỎ trạng thái (lọc ở máy
    * khách để còn đếm "N đang bán"). Một lượt gom nhóm (mig 206); máy chủ chưa gom được thì tải hết
    * hai cột rồi đếm.
    */
@@ -315,7 +293,6 @@ export default function ProductsPage() {
       const loc = (q: any) => {
         if (debouncedSearch) q = q.or(dieuKienTim("products", ["name", "sku"], debouncedSearch))
         for (const f of locNC.menhDe) q = q.or(f)
-        if (categoryFilter !== "all") q = q.eq("category", categoryFilter)
         return q
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -330,7 +307,7 @@ export default function ProductsPage() {
       if (!huy) setDemNcc(d)
     })()
     return () => { huy = true }
-  }, [laMay, debouncedSearch, locNC.key, categoryFilter, taiLaiDem]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [laMay, debouncedSearch, locNC.key, taiLaiDem]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [xemId, setXemId] = useState<string | null>(null)
   const [filterSheet, setFilterSheet] = useState(false)
@@ -338,21 +315,6 @@ export default function ProductsPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   const xem = xemId ? (products as ProductRow[]).find((p) => p.id === xemId) ?? null : null
-  const categorySelect = (
-    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-      <SelectTrigger aria-label="Danh mục" className="h-10 w-44 rounded-xl font-semibold">
-        <SelectValue placeholder="Danh mục" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">Tất cả danh mục</SelectItem>
-        {categories.map((c) => (
-          <SelectItem key={c} value={c}>
-            {c}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
   const supplierSelect = (
     <Select value={supplierFilter} onValueChange={setSupplierFilter}>
       <SelectTrigger aria-label="Nhà cung cấp" className="h-10 w-48 rounded-xl font-semibold">
@@ -368,8 +330,8 @@ export default function ProductsPage() {
       </SelectContent>
     </Select>
   )
-  const soLocKhac = (categoryFilter !== "all" ? 1 : 0) + (supplierFilter !== "all" ? 1 : 0)
-  const xoaLocKhac = () => { setCategoryFilter("all"); setSupplierFilter("all") }
+  const soLocKhac = supplierFilter !== "all" ? 1 : 0
+  const xoaLocKhac = () => setSupplierFilter("all")
   const chips = [
     { key: "active", label: "Đang bán", count: counts.active ?? 0, accent: "#22c55e" },
     { key: "inactive", label: "Ngừng bán", count: counts.inactive ?? 0, accent: "#98a2b3" },
@@ -412,8 +374,8 @@ export default function ProductsPage() {
       )}
     </>
   )
-  /* Điện thoại: NCC đã là hàng chip — nút lọc đếm danh mục + lọc nâng cao. */
-  const soLocDienThoai = (categoryFilter !== "all" ? 1 : 0) + locNC.soDangAp
+  /* Điện thoại: NCC đã là hàng chip — nút lọc đếm lọc nâng cao. */
+  const soLocDienThoai = locNC.soDangAp
   const chipsNcc = demNcc ? chipNcc(demNcc, allSuppliers, statusFilter) : [{ key: "all", label: "Tất cả", count: pg.total }]
 
   const rong = (
@@ -492,12 +454,11 @@ export default function ProductsPage() {
           value={search}
           onChange={setSearch}
           activeCount={soLocDienThoai}
-          onClear={() => { setCategoryFilter("all"); locNC.xoa() }}
+          onClear={() => locNC.xoa()}
           open={filterSheet}
           onOpenChange={setFilterSheet}
         >
           <div className="grid gap-4">
-            {filterActive("category") && <LocNhanhField label="Danh mục">{categorySelect}</LocNhanhField>}
             <AdvancedFilter truong={LOC_SAN_PHAM} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
           </div>
         </MobileFilterBar>
@@ -507,7 +468,6 @@ export default function ProductsPage() {
         toolbar={
           <>
             {filterActive("search") && <DocListSearch value={search} onChange={setSearch} placeholder="Tìm theo tên, SKU, nhãn hàng..." />}
-            {filterActive("category") && categorySelect}
             {filterActive("supplier") && supplierSelect}
             <XoaLocButton show={!!search || soLocKhac > 0} onClick={() => { setSearch(""); xoaLocKhac() }} />
           </>
@@ -555,7 +515,6 @@ export default function ProductsPage() {
         badge={xem ? <Badge variant={xem.status === "active" ? "success" : "secondary"}>{xem.status === "active" ? "Đang bán" : "Ngừng"}</Badge> : null}
         fields={xem ? [
           { label: "Tên sản phẩm", value: xem.name, wide: true },
-          { label: "Danh mục", value: xem.category },
           { label: "Nhà cung cấp", value: xem.supplier?.name },
           { label: "ĐVT", value: xem.base_unit },
           { label: "Mã vạch", value: xem.barcode },

@@ -6,8 +6,9 @@ export interface StockValueRow {
   id: string
   sku: string
   name: string
-  category: string
-  /** ⚠ Gộp theo nhóm thì lẫn đơn vị — không hiện. Hiện `qtyTheoDv`. */
+  /** Tên NCC chính. ⚠ Từng là "Nhóm hàng" (`products.category`) — chủ nhà 03/10/2026 bỏ trường. */
+  ncc: string
+  /** ⚠ Gộp theo NCC thì lẫn đơn vị — không hiện. Hiện `qtyTheoDv`. */
   qty: number
   qtyTheoDv: SLTheoDonVi
   /** Giá vốn TB mỗi đơn vị cơ sở; `null` khi dòng gộp nhiều đơn vị cơ sở. */
@@ -32,7 +33,7 @@ export function StockValueView({ rows }: { rows: StockValueRow[] }) {
       columns={[
         { key: "sku", label: "Mã hàng", render: (r) => <span className="font-medium text-primary">{r.sku}</span> },
         { key: "name", label: "Tên hàng", render: (r) => r.name },
-        { key: "cat", label: "Nhóm hàng", render: (r) => r.category },
+        { key: "ncc", label: "Nhà cung cấp", render: (r) => r.ncc },
         { key: "qty", label: "SL tồn", align: "right", render: (r) => hienSLTheoDonVi(r.qtyTheoDv) },
         { key: "cost", label: "Giá vốn TB", align: "right", render: (r) => (r.unit_cost === null ? "—" : formatCurrency(r.unit_cost)) },
         { key: "val", label: "Giá trị tồn", align: "right", render: (r) => <span className="font-semibold">{formatCurrency(r.value)}</span> },

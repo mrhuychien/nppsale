@@ -35,6 +35,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SearchSelect } from "@/components/ui/search-select"
+import { TaoNhanhKhach } from "@/components/tao-nhanh/tao-nhanh-khach"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -187,6 +189,8 @@ export default function NewCashReceiptPage() {
       })),
     [customers]
   )
+  /** Khung tạo nhanh khách đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — phiếu thu giữ nguyên. */
+  const [taoKhach, setTaoKhach] = useState<{ chu: string } | null>(null)
   const [method, setMethod] = useState("cash")
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState("")
@@ -643,6 +647,24 @@ export default function NewCashReceiptPage() {
                   onPick={(o) => setCustomerId(o?.id ?? "")}
                   placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
                   emptyHint="Không tìm thấy khách nào khớp."
+                  taoMoi={
+                    user && duocTaoNhanh(user.role, "khach")
+                      ? { nhan: NHAN_TAO_NHANH.khach, onTao: (chu) => setTaoKhach({ chu }) }
+                      : undefined
+                  }
+                />
+                <TaoNhanhKhach
+                  open={!!taoKhach}
+                  onOpenChange={(o) => !o && setTaoKhach(null)}
+                  chuBanDau={taoKhach?.chu}
+                  onDaTao={(k) => {
+                    setCustomers((ds) =>
+                      ds.some((c) => c.id === k.id)
+                        ? ds
+                        : [...ds, { id: k.id, store_name: k.store_name, owner_name: k.owner_name, phone: k.phone }]
+                    )
+                    setCustomerId(k.id)
+                  }}
                 />
               </div>
               <div className="grid gap-1.5">

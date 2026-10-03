@@ -14,12 +14,12 @@ import { SO_DONG_TRANG } from "@/components/bao-cao/bang"
 
 const dm = danhMucRong()
 dm.sp.set("sua", {
-  ten: "Sữa", sku: "S01", nhom: "Sữa", thuongHieu: "", ncc: "", donViCoSo: "hộp",
+  ten: "Sữa", sku: "S01", thuongHieu: "", ncc: "", donViCoSo: "hộp",
   donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }],
   giaBan: 10, bangGia: [{ ten: "thùng", gia: 200 }],
 })
-dm.sp.set("mi", { ten: "Mì", sku: "M01", nhom: "Mì", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [], giaBan: 5, bangGia: [] })
-dm.sp.set("keo", { ten: "Kẹo", sku: "K01", nhom: "Kẹo", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [], giaBan: 3, bangGia: [] })
+dm.sp.set("mi", { ten: "Mì", sku: "M01", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [], giaBan: 5, bangGia: [] })
+dm.sp.set("keo", { ten: "Kẹo", sku: "K01", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [], giaBan: 3, bangGia: [] })
 
 const hd = (o: Record<string, unknown>) => ({ id: "h1", invoice_code: "HD1", invoice_date: "2026-09-10", order_id: "o1", status: "posted", total: 400, subtotal: 400, vat: 0, customer_id: "k1", sales_user_id: "n1", ...o })
 

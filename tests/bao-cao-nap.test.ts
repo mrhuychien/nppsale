@@ -6,8 +6,8 @@ import { tinhXnt, tinhTon, type BienDong } from "@/lib/bao-cao/nap-kho"
 import { congBan, gomBan, danhMucRong } from "@/lib/bao-cao/cong"
 
 const dm = danhMucRong()
-dm.sp.set("sua", { ten: "Sữa", sku: "S", nhom: "Sữa", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }] })
-dm.sp.set("mi", { ten: "Mì", sku: "M", nhom: "Mì", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [] })
+dm.sp.set("sua", { ten: "Sữa", sku: "S", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }] })
+dm.sp.set("mi", { ten: "Mì", sku: "M", thuongHieu: "", ncc: "", donViCoSo: "gói", donViLon: null, donVi: [] })
 dm.khach.set("k1", { ten: "Cô Ba", nhom: "", kenh: "A", tinh: "", nv: "n1", hanMuc: 1000, hanNo: 7 })
 
 const hd = (o: Record<string, unknown>) => ({ id: "h1", invoice_code: "HD1", invoice_date: "2026-09-10", order_id: "o1", status: "posted", total: 1100, subtotal: 1000, vat: 100, customer_id: "k1", sales_user_id: "n1", ...o })

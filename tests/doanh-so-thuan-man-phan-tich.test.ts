@@ -158,12 +158,14 @@ describe("analytics/products — doanh thu thuần theo mặt hàng", () => {
     expect(khoi(S, "topByQty")).toContain("if (e) e.revenue -= Number(l.line_total || 0)")
   })
 
-  it("categories: nhóm hàng / thương hiệu trừ dòng trả, kỳ trước cũng thế", () => {
+  it("categories: NCC / thương hiệu trừ dòng trả, kỳ trước cũng thế (không còn nhóm hàng — 03/10/2026)", () => {
     const S = read("analytics/products/categories/page.tsx")
     const ag = khoi(S, "aggregate")
     expect(ag).toMatch(/for \(const l of retRows\)[\s\S]*?e\.revenue -= Number\(l\.line_total \|\| 0\)/)
-    expect(S).toContain('aggregate(lines, returnLines, "category")')
-    expect(S).toContain('aggregate(prevLines, prevReturnLines, "category")')
+    expect(S).toContain('aggregate(lines, returnLines, "ncc")')
+    expect(S).toContain('aggregate(prevLines, prevReturnLines, "ncc")')
+    expect(S).not.toMatch(/select\("[^"]*\bcategory\b/)
+    expect(S).not.toContain('"category"')
     expect(S).toContain('aggregate(lines, returnLines, "brand")')
     expect(S).toContain('aggregate(prevLines, prevReturnLines, "brand")')
   })

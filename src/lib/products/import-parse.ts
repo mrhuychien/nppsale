@@ -11,7 +11,6 @@ export type ProductField =
   | "name"
   | "sku"
   | "base_unit"
-  | "category"
   | "supplier_name"
   | "supplier_group"
   | "supplier_brand"
@@ -38,7 +37,6 @@ export interface ParsedProductRow {
   rowNo: number
   sku: string
   name: string
-  category: string | null
   /** Tên NCC từ file — sẽ lookup/create vào suppliers khi nhập. */
   supplier_name: string | null
   barcode: string | null
@@ -107,9 +105,9 @@ const HEADER_MAP: Record<string, ProductField> = {
   "sku": "sku", "ma sku": "sku", "ma hang": "sku", "ma san pham": "sku", "ma sp": "sku",
   // base_unit — KiotViet: "ĐVT"; chú ý KHÔNG map "don vi quy doi"
   "don vi tinh": "base_unit", "dvt": "base_unit", "don vi": "base_unit", "don vi co so": "base_unit",
-  // category — chỉ từ cột nói đúng nghĩa danh mục. Không map "loai hang"
-  // vì KiotViet xuất cố định "Hàng hóa".
-  "danh muc": "category", "nhom": "category",
+  // ⚠ KHÔNG CÒN ĐỌC "Danh mục" / "Nhóm" (= `products.category`): chủ nhà 03/10/2026 "Bỏ luôn trường
+  // nhóm hàng". Cột ấy trong file cũ không map tới trường nào → bị bỏ qua lặng lẽ, file cũ vẫn nhập
+  // được. Hàng nhóm theo NCC.
   // supplier — ba nguồn, xếp theo ĐỘ TIN CẬY chứ không theo vị trí cột
   // (xem `supplier_name` ở phần đọc từng dòng):
   //   1. "Nhà cung cấp" / "NCC"  — nói thẳng ra là NCC
@@ -335,7 +333,6 @@ export function parseProductSheet(aoa: unknown[][]): ParseResult {
       rowNo: i + 1,
       sku: str(get(raw, "sku")),
       name,
-      category: str(get(raw, "category")) || null,
       // Dùng BIẾN đã giải ở trên, không đọc lại cột.
       //
       // ⚠ Chỗ này từng đọc thẳng `get(raw, "supplier_name")` trong khi
@@ -451,7 +448,6 @@ export const TEMPLATE_HEADERS = [
   "Đơn vị tính*",
   "Nhà cung cấp*",
   "SKU",
-  "Danh mục",
   "Mã vạch",
   "Giá vốn",
   "Giá bán",
@@ -469,6 +465,6 @@ export const TEMPLATE_HEADERS = [
 
 /** 2 dòng ví dụ minh hoạ trong file mẫu. */
 export const TEMPLATE_SAMPLE_ROWS: (string | number)[][] = [
-  ["Nước ngọt Coca 330ml", "lon", "Coca-Cola VN", "", "Nước giải khát", "8935001712345", 6000, 8000, 8, 480, 24, "", "active", "thùng", 24],
-  ["Mì gói Hảo Hảo", "gói", "Acecook VN", "", "Thực phẩm khô", "", 3000, 4000, 8, 1200, 50, "", "active", "thùng", 30],
+  ["Nước ngọt Coca 330ml", "lon", "Coca-Cola VN", "", "8935001712345", 6000, 8000, 8, 480, 24, "", "active", "thùng", 24],
+  ["Mì gói Hảo Hảo", "gói", "Acecook VN", "", "", 3000, 4000, 8, 1200, 50, "", "active", "thùng", 30],
 ]

@@ -197,7 +197,7 @@ export default function InventoryAuditPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {p.category || "—"} • ĐVT: {p.base_unit}
+                      ĐVT: {p.base_unit}
                       {stock.batch_count > 0 && ` • ${stock.batch_count} lô`}
                     </p>
                   </div>

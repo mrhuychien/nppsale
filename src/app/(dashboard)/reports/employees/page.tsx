@@ -73,7 +73,6 @@ interface CustomerRow {
 }
 /** Mặt hàng kèm đơn vị quy đổi + bảng giá (`COT_SP_QUY_DOI`). */
 interface ProductRow extends SanPhamHangBan {
-  category?: string | null
   brand?: string | null
 }
 interface StockEntry {
@@ -109,7 +108,7 @@ export default function EmployeesReportPage() {
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
   const [productFilter, setProductFilter] = useState<string[]>([])
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  /* Không còn lọc "Loại hàng" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
@@ -158,7 +157,7 @@ export default function EmployeesReportPage() {
           fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
-            `id, sku, name, base_unit, sell_price, category, brand, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
+            `id, sku, name, base_unit, sell_price, brand, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
           fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
@@ -254,15 +253,14 @@ export default function EmployeesReportPage() {
   // Filter at the line level — applied where lines are iterated.
   const productPasses = useCallback(
     (productId: string) => {
-      if (!productFilter.length && !categoryFilter.length && !brandFilter.length) return true
+      if (!productFilter.length && !brandFilter.length) return true
       const p = productMap.get(productId)
       if (!p) return false
       if (productFilter.length && !productFilter.includes(p.id)) return false
-      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) return false
       if (brandFilter.length && !brandFilter.includes(p.brand || "")) return false
       return true
     },
-    [productFilter, categoryFilter, brandFilter, productMap]
+    [productFilter, brandFilter, productMap]
   )
 
   // Filter at the customer level (group + route) — applied where orders / customers are iterated.
@@ -767,7 +765,7 @@ export default function EmployeesReportPage() {
 
     let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap, giamDon })
     /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — xem `chotTienChungTu`. */
-    const coLocHang = productFilter.length > 0 || categoryFilter.length > 0 || brandFilter.length > 0
+    const coLocHang = productFilter.length > 0 || brandFilter.length > 0
     if (!coLocHang) {
       const tienHd = new Map<string, number>()
       for (const o of invoices) {
@@ -784,7 +782,7 @@ export default function EmployeesReportPage() {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, categoryFilter, brandFilter])
+  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, brandFilter])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -945,15 +943,6 @@ export default function EmployeesReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Loại hàng (chọn nhiều)">
-            <FilterMultiSelect
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={catalogs.categories}
-              placeholder="Tất cả loại hàng"
-              loading={catalogs.loading}
-            />
-          </FilterField>
           <FilterField label="Thương hiệu (chọn nhiều)">
             <FilterMultiSelect
               value={brandFilter}
@@ -963,12 +952,13 @@ export default function EmployeesReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Nhóm hàng / Bảng giá">
+          {/* Lọc theo NHÓM KHÁCH (bảng giá) — không phải nhóm hàng (đã bỏ, chủ nhà 03/10/2026). */}
+          <FilterField label="Bảng giá / Nhóm khách">
             <FilterSearchSelect
               value={groupFilter}
               onChange={setGroupFilter}
               options={catalogs.customerGroups}
-              placeholder="Chọn nhóm hàng"
+              placeholder="Chọn bảng giá"
               loading={catalogs.loading}
             />
           </FilterField>

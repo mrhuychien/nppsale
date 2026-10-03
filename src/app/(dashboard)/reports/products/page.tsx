@@ -53,6 +53,9 @@ import { StockMovementView, type StockMovementRow } from "./_views/stock-movemen
 
 type Variant = "sales" | "profit" | "stock_value" | "movement" | "movement_detail"
 
+/** Khoá dòng gộp của mặt hàng chưa gán NCC (khi "Gộp theo nhà cung cấp"). */
+const CHUA_GAN_NCC = "__chua_gan_ncc__"
+
 const VARIANTS = [
   { key: "sales" as const, label: "Bán hàng" },
   { key: "profit" as const, label: "Lợi nhuận" },
@@ -66,7 +69,6 @@ interface ProductRow extends SanPhamQuyDoi {
   id: string
   sku: string
   name: string
-  category: string | null
   brand?: string | null
   base_unit: string
   primary_supplier_id?: string | null
@@ -124,7 +126,6 @@ export default function ProductsReportPage() {
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
   const [supplierFilter, setSupplierFilter] = useState<string[]>([])
   const [productFilter, setProductFilter] = useState<string[]>([])
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const catalogs = useFilterCatalogs(user?.org_id)
@@ -149,7 +150,7 @@ export default function ProductsReportPage() {
           fetchRevenueInvoicesDu(supabase, orgId, range),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
-            `id, sku, name, category, brand, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
+            `id, sku, name, brand, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
           /* ⚠ CHỈ LÔ CÒN HÀNG. Lô đã hết vẫn nằm trong bảng mãi mãi; đọc cả
              chúng thì trần 1.000 dòng cạn nhanh gấp mấy lần, mà giá trị kho
@@ -216,13 +217,12 @@ export default function ProductsReportPage() {
     for (const p of products) {
       if (supplierFilter.length && !supplierFilter.includes(p.primary_supplier_id || "")) continue
       if (productFilter.length && !productFilter.includes(p.id)) continue
-      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) continue
       const brand = (p as unknown as { brand?: string | null }).brand
       if (brandFilter.length && !brandFilter.includes(brand || "")) continue
       m.set(p.id, p)
     }
     return m
-  }, [products, supplierFilter, productFilter, categoryFilter, brandFilter])
+  }, [products, supplierFilter, productFilter, brandFilter])
 
   const customerMap = useMemo(() => {
     const m = new Map<string, CustomerRow>()
@@ -258,9 +258,15 @@ export default function ProductsReportPage() {
     [search]
   )
 
+  /* Tên NCC theo id — cho cột "Nhà cung cấp" và dòng gộp theo NCC. */
+  const tenNcc = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers])
+
+  /* ⚠ GỘP THEO NHÀ CUNG CẤP, không theo "nhóm hàng" (chủ nhà 03/10/2026, Update 3.10 mục 2: "gộp Nhóm
+     hàng vào NCC" → "Bỏ luôn trường nhóm hàng"). Khoá là NCC chính của mặt hàng; chưa gán → một dòng
+     "Chưa gán NCC". `products.category` không còn được đọc. */
   const groupKey = useCallback(
     (p: ProductRow): string => {
-      if (groupSameType) return p.category || "Khác"
+      if (groupSameType) return p.primary_supplier_id || CHUA_GAN_NCC
       return p.id
     },
     [groupSameType]
@@ -269,11 +275,11 @@ export default function ProductsReportPage() {
   const groupLabel = useCallback(
     (key: string, sample: ProductRow): { sku: string; name: string } => {
       if (groupSameType) {
-        return { sku: key.slice(0, 12).toUpperCase(), name: key }
+        return { sku: "NCC", name: key === CHUA_GAN_NCC ? "Chưa gán NCC" : tenNcc.get(key) || "NCC đã xoá" }
       }
       return { sku: sample.sku, name: sample.name }
     },
-    [groupSameType]
+    [groupSameType, tenNcc]
   )
 
   // -------------------- Bán hàng --------------------
@@ -396,7 +402,7 @@ export default function ProductsReportPage() {
         id: k,
         sku: lbl.sku,
         name: lbl.name,
-        category: p.category || "—",
+        ncc: (p.primary_supplier_id && tenNcc.get(p.primary_supplier_id)) || "—",
         qty: 0,
         qtyTheoDv: {},
         unit_cost: 0,
@@ -423,7 +429,7 @@ export default function ProductsReportPage() {
         unit_cost: Object.keys(rest.qtyTheoDv).length === 1 && _qtyAccum > 0 ? _valAccum / _qtyAccum : null,
       }))
       .sort((a, b) => b.value - a.value)
-  }, [batches, productMap, filterFn, groupKey, groupLabel])
+  }, [batches, productMap, filterFn, groupKey, groupLabel, tenNcc])
 
   // -------------------- Xuất nhập tồn --------------------
   const movementData = useMemo(() => {
@@ -522,10 +528,10 @@ export default function ProductsReportPage() {
       downloadXlsx(`bao-cao-hh-loinhuan-${range.from}-${range.to}`, out)
     } else if (variant === "stock_value") {
       const out: (string | number)[][] = [
-        ["Mã hàng", "Tên hàng", "Nhóm", "SL tồn", "Giá vốn TB", "Giá trị tồn", "Số lô"],
+        ["Mã hàng", "Tên hàng", "Nhà cung cấp", "SL tồn", "Giá vốn TB", "Giá trị tồn", "Số lô"],
       ]
       for (const r of stockValueRows) {
-        out.push([r.sku, r.name, r.category, slXuat(r.qty, r.qtyTheoDv), r.unit_cost ?? "—", r.value, r.batches])
+        out.push([r.sku, r.name, r.ncc, slXuat(r.qty, r.qtyTheoDv), r.unit_cost ?? "—", r.value, r.batches])
       }
       downloadXlsx(`bao-cao-hh-giatrikho-${range.from}-${range.to}`, out)
     } else {
@@ -560,7 +566,7 @@ export default function ProductsReportPage() {
       extraOptions={
         <FilterField label="Tùy chọn">
           <FilterCheckbox
-            label="Gộp theo nhóm hàng"
+            label="Gộp theo nhà cung cấp"
             checked={groupSameType}
             onChange={setGroupSameType}
           />
@@ -593,15 +599,6 @@ export default function ProductsReportPage() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Theo mã, tên hàng (tự do)"
               className="h-9 w-full rounded-md border border-border/60 bg-card px-2 text-sm"
-            />
-          </FilterField>
-          <FilterField label="Loại hàng (chọn nhiều)">
-            <FilterMultiSelect
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={catalogs.categories}
-              placeholder="Tất cả loại hàng"
-              loading={catalogs.loading}
             />
           </FilterField>
           <FilterField label="Thương hiệu (chọn nhiều)">

@@ -272,7 +272,7 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
 
       // 2. Dựng payload từ baseRows (đã group qua groupRowsForImport).
       type Payload = {
-        org_id: string; sku: string; name: string; category: string | null
+        org_id: string; sku: string; name: string
         primary_supplier_id: string | null; barcode: string | null; base_unit: string
         vat_rate: number; cost_price: number; sell_price: number
         min_stock: number; max_stock: number | null
@@ -301,7 +301,6 @@ export function ProductImportDialog({ open, onOpenChange, onImported }: ProductI
           org_id: user.org_id,
           sku,
           name: r.name,
-          category: r.category,
           primary_supplier_id: supplier_id,
           barcode: r.barcode,
           base_unit: r.base_unit,

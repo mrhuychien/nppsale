@@ -25,7 +25,8 @@ interface ProductRow {
   id: string
   sku: string
   name: string
-  category: string | null
+  /** NCC chính. ⚠ Không còn "Nhóm hàng" (`category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */
+  supplier?: { name: string | null } | null
   shelf_life_days: number | null
 }
 
@@ -74,7 +75,7 @@ export default function ProductsStockPage() {
           (from, to) =>
             supabase
               .from("products")
-              .select("id, sku, name, category, shelf_life_days", { count: "exact" })
+              .select("id, sku, name, shelf_life_days, supplier:suppliers!products_primary_supplier_id_fkey(name)", { count: "exact" })
               .eq("org_id", orgId)
               .order("id")
               .range(from, to),
@@ -132,7 +133,7 @@ export default function ProductsStockPage() {
         id: pid,
         sku: productMap.get(pid)?.sku || "—",
         name: productMap.get(pid)?.name || "—",
-        category: productMap.get(pid)?.category || "—",
+        ncc: productMap.get(pid)?.supplier?.name || "—",
         qty: e.qty,
         value: e.value,
         batches: e.batches,
@@ -209,7 +210,7 @@ export default function ProductsStockPage() {
         columns={[
           { key: "sku", label: "SKU", render: (r) => <span className="font-mono text-xs">{r.sku}</span> },
           { key: "name", label: "Tên hàng hóa", render: (r) => <span className="font-medium">{r.name}</span> },
-          { key: "category", label: "Nhóm hàng", render: (r) => r.category },
+          { key: "ncc", label: "Nhà cung cấp", render: (r) => r.ncc },
           { key: "qty", label: "SL tồn", align: "right", render: (r) => <NumberCell value={r.qty} /> },
           { key: "value", label: "Giá trị", align: "right", render: (r) => <MoneyCell value={r.value} /> },
           { key: "batches", label: "Số lô", align: "right", render: (r) => <NumberCell value={r.batches} /> },

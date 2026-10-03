@@ -32,7 +32,6 @@ interface SpTho {
   id: string
   sku: string | null
   name: string
-  category: string | null
   brand: string | null
   primary_supplier_id: string | null
   base_unit: string | null
@@ -56,7 +55,7 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
     }, `đọc ${bang}`)
   const [kh, sp, nv, nhom, tuyen, ncc, pc] = await Promise.all([
     doc<KhachTho>("customers", "id, store_name, phone, address, group_id, channel, province, payment_terms, credit_limit"),
-    doc<SpTho>("products", "id, sku, name, category, brand, primary_supplier_id, base_unit, sell_price, units:product_units(unit_name, conversion), price_lists(unit_name, price, group_id)"),
+    doc<SpTho>("products", "id, sku, name, brand, primary_supplier_id, base_unit, sell_price, units:product_units(unit_name, conversion), price_lists(unit_name, price, group_id)"),
     doc<{ id: string; full_name: string }>("users", "id, full_name"),
     doc<{ id: string; name: string }>("customer_groups", "id, name"),
     doc<{ id: string; code: string | null; name: string }>("sales_routes", "id, code, name"),
@@ -100,7 +99,6 @@ export async function napDanhMuc(sb: SupabaseClient, orgId: string): Promise<Ket
     dm.sp.set(p.id, {
       ten: p.name,
       sku: p.sku || "",
-      nhom: (p.category || "").trim(),
       thuongHieu: (p.brand || "").trim(),
       ncc: p.primary_supplier_id || "",
       donViCoSo: p.base_unit || "",

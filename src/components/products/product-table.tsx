@@ -95,7 +95,7 @@ export function ProductTable({
         sortable: true,
         render: (p) => <span className="block truncate text-sm font-bold" title={p.name}>{p.name}</span>,
       },
-      { k: "category", key: "category", label: "Danh mục", width: "150px", render: (p) => <DocCellText muted>{p.category}</DocCellText> },
+      /* Không còn cột "Danh mục" (Nhóm hàng) — chủ nhà 03/10/2026 bỏ trường; hàng nhóm theo NCC. */
       { k: "supplier", key: "supplier", label: "Nhà cung cấp", width: "170px", render: (p) => <DocCellText muted>{p.supplier?.name}</DocCellText> },
       { k: "unit", key: "unit", label: "ĐVT", width: "90px", render: (p) => <DocCellText muted>{p.base_unit}</DocCellText> },
       {
@@ -136,7 +136,6 @@ export function ProductCards({
           title: p.name,
           total: gia > 0 ? formatCurrency(gia) : "-",
           meta: [p.sku, `ĐVT: ${p.base_unit}`].filter(Boolean).join(" · "),
-          payment: p.category ?? "",
           summary: p.supplier?.name || undefined,
           badge: p.status === "active" ? null : { label: "Ngừng", bg: "#eef1f5", fg: "#565a67" },
         }

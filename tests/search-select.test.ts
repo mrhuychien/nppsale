@@ -101,6 +101,7 @@ describe("phiếu nhập kho dùng ô mới", () => {
 
   /** Vẫn còn đường tạo NCC mới ngay tại chỗ. */
   it("giữ đường tạo NCC mới", () => {
-    expect(STOCKIN).toContain("Tạo nhà cung cấp mới")
+    // 03/10/2026: thành dòng "+ Tạo nhà cung cấp mới" mở khung tạo nhanh tại chỗ (không còn link mở tab mới).
+    expect(STOCKIN).toContain("taoMoi={coQuyenTaoNcc ? { nhan: NHAN_TAO_NHANH.ncc")
   })
 })

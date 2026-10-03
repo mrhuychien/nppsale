@@ -391,12 +391,7 @@ export default function BatchDetailPage() {
                   <span className="font-semibold">{batch.product.brand}</span>
                 </p>
               )}
-              {batch.product?.category && (
-                <p>
-                  <span className="text-muted-foreground">Danh mục: </span>
-                  <span className="font-semibold">{batch.product.category}</span>
-                </p>
-              )}
+              {/* Không còn "Danh mục" (nhóm hàng) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */}
               <p>
                 <span className="text-muted-foreground">Đơn vị cơ sở: </span>
                 <span className="font-semibold">{batch.product?.base_unit || "-"}</span>

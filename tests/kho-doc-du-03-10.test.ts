@@ -141,10 +141,10 @@ describe("Màn kho / sản phẩm — đọc đủ và có mốc `id`", () => {
     expect(s).toMatch(/\.in\("entry_id", lo\)\s*\.order\("id"\)\s*\.range\(from, to\)/)
   })
 
-  it("danh mục sản phẩm đọc đủ theo trang; đếm NCC dự phòng có mốc id", () => {
+  it("danh sách SP không còn đọc danh mục (bỏ trường nhóm hàng 03/10/2026); đếm NCC dự phòng có mốc id", () => {
     const s = code("src/app/(dashboard)/products/page.tsx")
-    expect(s).not.toMatch(/from\("products"\)\.select\("category"\)/)
-    expect(s).toMatch(/select\("category", \{ count: "exact" \}\)\s*\.not\("category", "is", null\)\s*\.order\("id"\)\s*\.range/)
+    expect(s).not.toMatch(/select\("category"/)
+    expect(s).not.toMatch(/\.eq\("category"/)
     expect(s).toMatch(/select\("primary_supplier_id, status", \{ count: "exact" \}\)\)\.order\("id"\)\.range/)
   })
 

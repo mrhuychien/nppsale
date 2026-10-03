@@ -76,7 +76,8 @@ export const LOC_SAN_PHAM: readonly TruongLoc[] = [
   { key: "ten", nhan: "Tên hàng", cot: "name", kieu: "text" },
   { key: "ma", nhan: "Mã hàng", cot: "sku", kieu: "text" },
   { key: "ma_vach", nhan: "Mã vạch", cot: "barcode", kieu: "text" },
-  { key: "nhom", nhan: "Nhóm hàng", cot: "category", kieu: "text" },
+  /* Không còn "Nhóm hàng" (`category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". Điều kiện
+     cũ đã lưu theo khoá "nhom" tự rơi lúc nạp (useAdvancedFilter chỉ giữ khoá còn trong danh sách). */
   { key: "thuong_hieu", nhan: "Thương hiệu", cot: "brand", kieu: "text" },
   { key: "dvt", nhan: "Đơn vị cơ sở", cot: "base_unit", kieu: "text" },
   { key: "gia_ban", nhan: "Giá bán", cot: "sell_price", kieu: "number" },

@@ -139,7 +139,8 @@ describe("taiDanhMucLoc — ô lọc báo cáo đọc đủ", () => {
     expect(lists.products).toHaveLength(1700)
     expect(new Set(lists.products.map((p) => p.id)).size, "hàng trùng/sót giữa các trang").toBe(1700)
     expect(new Set(lists.suppliers.map((s) => s.id)).size).toBe(1200)
-    expect(lists.categories).toHaveLength(7)
+    // Bỏ trường nhóm hàng (chủ nhà 03/10/2026): không còn danh sách "categories" cho ô lọc.
+    expect("categories" in lists).toBe(false)
     expect(lists.drivers).toHaveLength(1)
   })
 

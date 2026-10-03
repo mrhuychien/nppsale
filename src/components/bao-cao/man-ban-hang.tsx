@@ -4,8 +4,10 @@
  * MÀN 2 — BÁN HÀNG (`/bao-cao/ban-hang`). Spec mục 4, thiết kế 26/09/2026.
  * "Bán được gì, cho ai, ai bán, đơn đặt ra sao?"
  * - Nguồn [Hoá đơn] (doanh thu thật) · [Đơn đặt] (số hoạt động — băng hổ phách).
- * - Xem theo: Thời gian · Mặt hàng · Nhóm hàng · Khách · Kênh · Nhân viên (chủ nhà 27/09/2026 bỏ
+ * - Xem theo: Thời gian · Mặt hàng · Nhà cung cấp · Khách · Kênh · Nhân viên (chủ nhà 27/09/2026 bỏ
  *   Thương hiệu, Nhóm khách, Tỉnh). Bấm dòng / cột / thanh = đào sâu; điểm cuối là chứng từ.
+ * - ⚠ Không còn "Nhóm hàng" (`products.category`): chủ nhà 03/10/2026 "gộp Nhóm hàng vào NCC" →
+ *   "Bỏ luôn trường nhóm hàng". Chỗ của nó là "Nhà cung cấp" (NCC chính của mặt hàng).
  * - NVBH: lọc nhân viên khoá vào chính mình, không có chế độ Nhân viên, không có cột lãi.
  */
 import { useMemo, useRef, useState } from "react"
@@ -29,12 +31,12 @@ import { napDonDat } from "@/lib/bao-cao/nap-don-dat"
 import { loadDebtByCustomer } from "@/lib/sell/debt"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
-type Xem = "time" | "prod" | "pgroup" | "cust" | "channel" | "staff" | "docs"
+type Xem = "time" | "prod" | "ncc" | "cust" | "channel" | "staff" | "docs"
 
 const CHIEU: Record<Exclude<Xem, "docs">, { label: string; loc?: LoaiLoc; tiep: Xem }> = {
   time: { label: "Thời gian", tiep: "cust" },
   prod: { label: "Mặt hàng", loc: "prod", tiep: "cust" },
-  pgroup: { label: "Nhóm hàng", loc: "pgroup", tiep: "prod" },
+  ncc: { label: "Nhà cung cấp", loc: "ncc", tiep: "prod" },
   cust: { label: "Khách", loc: "cust", tiep: "prod" },
   channel: { label: "Kênh", loc: "channel", tiep: "cust" },
   staff: { label: "Nhân viên", loc: "staff", tiep: "cust" },
@@ -47,7 +49,8 @@ function khoaChieu(xem: Exclude<Xem, "docs" | "time">, dm: DanhMucBC) {
       case "prod": return l.sp
       case "cust": return l.kh
       case "staff": return l.nv
-      case "pgroup": return dm.sp.get(l.sp)?.nhom || CHUA_CO
+      /* NCC chính của mặt hàng (id) — mặt hàng chưa gán NCC gộp về "(Chưa có)", như ô lọc NCC. */
+      case "ncc": return dm.sp.get(l.sp)?.ncc || CHUA_CO
       case "channel": return dm.khach.get(l.kh)?.kenh || CHUA_CO
     }
   }
@@ -56,13 +59,14 @@ function khoaChieu(xem: Exclude<Xem, "docs" | "time">, dm: DanhMucBC) {
 function tenDong(xem: Exclude<Xem, "docs" | "time">, k: string, dm: DanhMucBC): { n: string; s: string } {
   if (xem === "prod") {
     const p = dm.sp.get(k)
-    return { n: p?.ten || "Không rõ mặt hàng", s: [p?.sku, p?.nhom].filter(Boolean).join(" · ") }
+    return { n: p?.ten || "Không rõ mặt hàng", s: [p?.sku, p?.ncc ? dm.ncc.get(p.ncc) : ""].filter(Boolean).join(" · ") }
   }
   if (xem === "cust") {
     const c = dm.khach.get(k)
     return { n: c?.ten || "Khách đã xoá", s: c?.kenh || "" }
   }
   if (xem === "staff") return { n: dm.nv.get(k) || "Chưa gán nhân viên", s: "" }
+  if (xem === "ncc") return { n: tenGiaTri(dm, "ncc", k), s: "" }
   return { n: k || CHUA_CO, s: "" }
 }
 
@@ -267,7 +271,7 @@ export function ManBanHang() {
               phu(M.nCust),
             ]
             break
-          case "pgroup":
+          case "ncc":
             cot = [M.net, M.share, M.nProd, M.gp, M.margin]
             break
           case "cust":
@@ -538,7 +542,7 @@ export function ManBanHang() {
   // Đường đào sâu
   const tenGoc = `Bán hàng · Theo ${CHIEU[xemGoc as Exclude<Xem, "docs">].label.toLowerCase()}`
   const dao: MatDao[] = [{ label: tenGoc, onClick: () => veBuoc(0) }, ...st.dao.map((s: BuocDao, i: number) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "pgroup", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
+  const loai: LoaiLoc[] = ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
   const nhanKy = `${tenKy(st.ky)} · ${nhanKhoang(ky.a, ky.b)}`
   const dangDao = st.dao.length > 0
   const xemTheo = <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />

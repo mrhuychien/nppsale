@@ -31,6 +31,25 @@ export function sdtTuTimKiem(q: string | null | undefined): string {
   return d.length >= 3 ? d.slice(0, 11) : ""
 }
 
+/**
+ * Chữ đang gõ ở ô tìm khách → ô nào của khách mới được gán sẵn (chủ nhà 03/10/2026: "sang tạo mới có trường
+ * đang search đó luôn"). Trông như SĐT (`sdtTuTimKiem`) → ô SĐT; còn lại → tên cửa hàng.
+ */
+export function chuBanDauKhach(chu: string | null | undefined): { store_name: string; phone: string } {
+  const sdt = sdtTuTimKiem(chu)
+  return sdt ? { store_name: "", phone: sdt } : { store_name: String(chu ?? "").trim(), phone: "" }
+}
+
+/** Khách vừa tạo — đủ cho các ô chọn khách hiện ra và tự chọn (`onDaTao`). */
+export interface KhachVuaTao {
+  id: string
+  store_name: string
+  owner_name: string | null
+  phone: string | null
+  address: string | null
+  channel: string | null
+}
+
 /** "0901000001" → "0901 000 001" (chỉ để hiện). */
 export function dinhDangSdt(d: string): string {
   const s = chuanHoaSdt(d).slice(0, 11)

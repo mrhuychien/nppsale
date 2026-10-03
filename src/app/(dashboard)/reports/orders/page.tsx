@@ -53,7 +53,6 @@ interface ProductMeta {
   id: string
   sku: string
   name: string
-  category?: string | null
   brand?: string | null
   base_unit: string
   units?: { unit_name: string; conversion: number }[] | null
@@ -84,7 +83,7 @@ export default function OrdersReportPage() {
   const [productSearch] = useState("")
   const [customerFilter, setCustomerFilter] = useState<string[]>([])
   const [productFilter, setProductFilter] = useState<string[]>([])
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  /* Không còn lọc "Loại hàng" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
@@ -110,7 +109,7 @@ export default function OrdersReportPage() {
       const orgId = user.org_id
       const [orderRes, productsRes, customersRes, usersRes] = await Promise.all([
         fetchAllOrdersDu(supabase, orgId, range),
-        fetchOrgRows<ProductMeta>(supabase, "products", orgId, "id, sku, name, category, brand, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"),
+        fetchOrgRows<ProductMeta>(supabase, "products", orgId, "id, sku, name, brand, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"),
         fetchOrgRows<CustomerMeta>(supabase, "customers", orgId, "id, store_name, group_id", "đọc khách hàng"),
         fetchOrgRows<UserMeta>(supabase, "users", orgId, "id, full_name", "đọc nhân viên"),
       ])
@@ -210,7 +209,6 @@ export default function OrdersReportPage() {
       if (!p) continue
       // Catalog-backed filters
       if (productFilter.length && !productFilter.includes(p.id)) continue
-      if (categoryFilter.length && !categoryFilter.includes(p.category || "")) continue
       if (brandFilter.length && !brandFilter.includes(p.brand || "")) continue
       if (groupFilter) {
         const o = orders.find((x) => x.id === l.order_id)
@@ -244,7 +242,7 @@ export default function OrdersReportPage() {
       m.set(k, e)
     }
     return Array.from(m.values()).sort((a, b) => b.value - a.value)
-  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch, productFilter, categoryFilter, brandFilter, groupFilter])
+  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch, productFilter, brandFilter, groupFilter])
 
   // -------------------- By transaction --------------------
   type TxRow = {
@@ -364,15 +362,6 @@ export default function OrdersReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Loại hàng (chọn nhiều)">
-            <FilterMultiSelect
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={catalogs.categories}
-              placeholder="Tất cả loại hàng"
-              loading={catalogs.loading}
-            />
-          </FilterField>
           <FilterField label="Thương hiệu (chọn nhiều)">
             <FilterMultiSelect
               value={brandFilter}
@@ -382,12 +371,13 @@ export default function OrdersReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Nhóm hàng / Bảng giá">
+          {/* Lọc theo NHÓM KHÁCH (bảng giá) — không phải nhóm hàng (đã bỏ, chủ nhà 03/10/2026). */}
+          <FilterField label="Bảng giá / Nhóm khách">
             <FilterSearchSelect
               value={groupFilter}
               onChange={setGroupFilter}
               options={catalogs.customerGroups}
-              placeholder="Chọn nhóm hàng"
+              placeholder="Chọn bảng giá"
               loading={catalogs.loading}
             />
           </FilterField>

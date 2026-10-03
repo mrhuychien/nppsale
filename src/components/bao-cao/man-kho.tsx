@@ -3,9 +3,11 @@
 /**
  * MÀN 4 — KHO (`/bao-cao/kho`). Spec mục 6, thiết kế 26/09/2026.
  * "Kho còn gì, trị giá bao nhiêu, hàng nào sắp hết hạn / nằm lâu?"
- * Tồn hiện tại / sắp hết hạn / tồn thấp / chậm bán / nhóm là số TẠI HÔM NAY (không theo kỳ);
+ * Tồn hiện tại / sắp hết hạn / tồn thấp / chậm bán / theo NCC là số TẠI HÔM NAY (không theo kỳ);
  * Xuất – nhập – tồn theo kỳ (+ biểu đồ giá trị tồn theo ngày). Mặt hàng → các lô → thẻ kho.
  * Giá trị / giá vốn: chỉ người có quyền giá vốn mới thấy.
+ * ⚠ Không còn "Nhóm hàng" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng";
+ *   gom hàng theo "Nhà cung cấp". Đường dẫn cũ `xem=pgroup` → về Tồn hiện tại.
  */
 import { useMemo, useRef } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
@@ -24,7 +26,7 @@ import { chiTietBienDong, chiTietTonLo, type SheetXuat } from "@/lib/bao-cao/xua
 import { napTonKho, napBienDong, tinhXnt, NGUONG_KHO, type TonMatHang, type LoKho, type DongXnt } from "@/lib/bao-cao/nap-kho"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
-const XEM = { current: "Tồn hiện tại", xnt: "Xuất – nhập – tồn", exp: "Sắp hết hạn", low: "Tồn thấp", slow: "Chậm bán", pgroup: "Nhóm hàng", ncc: "Nhà cung cấp" } as const
+const XEM = { current: "Tồn hiện tại", xnt: "Xuất – nhập – tồn", exp: "Sắp hết hạn", low: "Tồn thấp", slow: "Chậm bán", ncc: "Nhà cung cấp" } as const
 type XemGoc = keyof typeof XEM
 
 export function ManKho() {
@@ -69,7 +71,7 @@ export function ManKho() {
     ]
     const tenSp = (sp: string) => {
       const p = dm.sp.get(sp)
-      return { _n: p?.ten || "Không rõ mặt hàng", _sub: [p?.sku, p?.nhom].filter(Boolean).join(" · ") }
+      return { _n: p?.ten || "Không rõ mặt hàng", _sub: [p?.sku, p?.ncc ? dm.ncc.get(p.ncc) : ""].filter(Boolean).join(" · ") }
     }
     const giaTriCot = <T extends { giaTri: number }>(label = "Giá trị"): CotBang<DongBang & T> => ({ k: "giaTri", label, f: "money", v: (x) => x.giaTri, cost: true })
     const denLo = (sp: string) => () => daoThem({ l: tenGiaTri(dm, "prod", sp), v: "lots", f: { prod: sp } })
@@ -254,13 +256,13 @@ export function ManKho() {
           )
         }
       }
-    } else if (view === "pgroup" || view === "ncc") {
+    } else if (view === "ncc") {
       type D = DongBang & { k: string; giaTri: number; n: number }
       const m = new Map<string, D>()
       for (const x of ton) {
         const p = dm.sp.get(x.sp)
-        const k = (view === "pgroup" ? p?.nhom : p?.ncc) || CHUA_CO
-        const g = m.get(k) || { k, _n: view === "ncc" ? tenGiaTri(dm, "ncc", k) : k, giaTri: 0, n: 0 }
+        const k = p?.ncc || CHUA_CO
+        const g = m.get(k) || { k, _n: tenGiaTri(dm, "ncc", k), giaTri: 0, n: 0 }
         g.giaTri += x.giaTri
         g.n += 1
         m.set(k, g)
@@ -293,7 +295,7 @@ export function ManKho() {
   }, [nap.data, dm, bd.data, bd.loi, bd.dangTai, JSON.stringify(E), view, a, b, xemGiaVon, homNay])
 
   const dao: MatDao[] = [{ label: `Kho · ${XEM[goc]}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["prod", "pgroup", "ncc"]
+  const loai: LoaiLoc[] = ["prod", "ncc"]
   const xemTheo = <HangChon nhan="Xem theo" ds={(Object.keys(XEM) as XemGoc[]).map((v) => ({ k: v, label: XEM[v], on: v === goc && !st.dao.length, onClick: () => doiXem(v) }))} />
   return (
     <KhungBaoCao

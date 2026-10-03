@@ -28,7 +28,8 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { timXepHang } from "@/lib/search"
 import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
-import { Check, ChevronDown, X } from "lucide-react"
+import { conTroToiDa, dongTaoDangChon, nhanTaoMoi, type TaoMoiCauHinh } from "@/lib/ui/tao-moi"
+import { Check, ChevronDown, Plus, X } from "lucide-react"
 
 export interface SearchSelectOption {
   id: string
@@ -52,6 +53,7 @@ export function SearchSelect({
   disabled,
   id,
   limit = 30,
+  taoMoi,
 }: {
   options: SearchSelectOption[]
   /** Mã đang chọn, hoặc "" khi chưa chọn / đang dùng chữ gõ tay. */
@@ -72,11 +74,18 @@ export function SearchSelect({
   disabled?: boolean
   id?: string
   limit?: number
+  /**
+   * Dòng "+ {nhan}" LUÔN đứng cuối danh sách xổ, kể cả khi không có kết quả (chủ nhà 03/10/2026). Bấm (hoặc
+   * mũi tên xuống tới nó rồi Enter) → `onTao(chữ đang gõ)` và đóng danh sách. Xem `@/lib/ui/tao-moi`.
+   */
+  taoMoi?: TaoMoiCauHinh
 }) {
   const picked = options.find((o) => o.id === valueId) ?? null
   const [open, setOpen] = useState(false)
   const [term, setTerm] = useState("")
   const [active, setActive] = useState(0)
+  /** Đã bấm mũi tên xuống từ lần gõ cuối — xem `dongTaoDangChon`. */
+  const [daBamXuong, setDaBamXuong] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
 
   /**
@@ -100,10 +109,23 @@ export function SearchSelect({
   // Danh sách đổi thì con trỏ phải về đầu, nếu không Enter chọn nhầm mục
   // của lần lọc trước.
   useEffect(() => setActive(0), [term])
+  useEffect(() => setDaBamXuong(false), [term])
 
   const commitFreeText = (text: string) => {
     onPick(null, text)
     setOpen(false)
+  }
+
+  const taoActive = dongTaoDangChon({
+    coTaoMoi: !!taoMoi, active, soKetQua: results.length, choGoTay: allowFreeText, chu: term, daBamXuong,
+  })
+  // Xoá chữ TRƯỚC khi hộp thoại tạo mới lấy tiêu điểm: `onBlur` (gõ tự do) đọc `term` của lượt vẽ ấy.
+  const tao = () => {
+    if (!taoMoi) return
+    const chu = term.trim()
+    setTerm("")
+    setOpen(false)
+    taoMoi.onTao(chu)
   }
 
   const choose = (o: SearchSelectOption) => {
@@ -161,13 +183,15 @@ export function SearchSelect({
             if (e.key === "ArrowDown") {
               e.preventDefault()
               setOpen(true)
-              setActive((i) => Math.min(i + 1, Math.max(0, results.length - 1)))
+              setDaBamXuong(true)
+              setActive((i) => Math.min(i + 1, conTroToiDa(results.length, !!taoMoi)))
             } else if (e.key === "ArrowUp") {
               e.preventDefault()
               setActive((i) => Math.max(0, i - 1))
             } else if (e.key === "Enter") {
               e.preventDefault()
-              if (results[active]) choose(results[active])
+              if (taoActive) tao()
+              else if (results[active]) choose(results[active])
               else if (allowFreeText && term.trim()) commitFreeText(term.trim())
             } else if (e.key === "Escape") {
               setOpen(false)
@@ -219,7 +243,9 @@ export function SearchSelect({
             <p className="px-3 py-3 text-center text-xs text-muted-foreground">
               {term.trim() && allowFreeText
                 ? `Không có trong danh mục — Enter để dùng “${term.trim()}”`
-                : emptyHint || "Không tìm thấy"}
+                : taoMoi
+                  ? "Không có trong danh sách"
+                  : emptyHint || "Không tìm thấy"}
             </p>
           ) : (
             results.map((o, i) => (
@@ -250,6 +276,25 @@ export function SearchSelect({
             ))
           )}
           {footer && <div className="mt-1 border-t border-border/50 pt-1">{footer}</div>}
+          {/* Dòng tạo mới dính đáy khung xổ — danh sách dài cũng thấy ngay, không phải cuộn tới cuối. */}
+          {taoMoi && (
+            <button
+              type="button"
+              data-testid="search-select-tao-moi"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                tao()
+              }}
+              onMouseEnter={() => setActive(results.length)}
+              className={cn(
+                "sticky bottom-0 -mb-1 flex min-h-11 w-full items-center gap-2 border-t border-border/50 bg-card px-3 py-2 text-left text-sm font-semibold text-primary",
+                taoActive ? "bg-muted" : "hover:bg-muted/60"
+              )}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{nhanTaoMoi(taoMoi.nhan, term)}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

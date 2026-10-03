@@ -16,8 +16,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { PAYMENT_TERMS } from "@/lib/constants"
 import { SearchSelect } from "@/components/ui/search-select"
-import { KhachDaCo, LUA_CHON_PHUONG_XA, chuanHoaSdt, taoKhach } from "@/lib/customers/tao-khach"
+import { KhachDaCo, LUA_CHON_PHUONG_XA, chuanHoaSdt, taoKhach, type KhachVuaTao } from "@/lib/customers/tao-khach"
 import { MapPin, Navigation, ExternalLink } from "lucide-react"
+import { TaoNhanhTuyen } from "@/components/tao-nhanh/tao-nhanh-tuyen"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import type { Customer, CustomerGroup } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -37,6 +39,15 @@ interface CustomerFormProps {
   nextHref?: string
   /** SĐT gán sẵn khi tạo mới — từ ô tìm khách không ra kết quả (chủ nhà 01/10/2026). */
   initialPhone?: string
+  /** Tên cửa hàng gán sẵn — chữ đang gõ ở ô tìm khách (khung tạo nhanh, chủ nhà 03/10/2026). */
+  initialName?: string
+  /**
+   * TẠO NHANH TẠI CHỖ: có thì tạo xong KHÔNG chuyển trang mà trả khách vừa tạo cho nơi gọi (tự chọn vào ô
+   * đang làm) — chứng từ dở dang không mất. Form cũng bỏ khung thẻ (đã nằm trong hộp thoại).
+   */
+  onDaTao?: (khach: KhachVuaTao) => void
+  /** Nút Huỷ khi nằm trong khung tạo nhanh (mặc định: lùi trang). */
+  onHuy?: () => void
 }
 
 interface PjpRouteDisplay {
@@ -55,7 +66,7 @@ const DAY_LABELS: Record<number, string> = {
   6: "Thứ 7",
 }
 
-export function CustomerForm({ customer, groups, nextHref, initialPhone }: CustomerFormProps) {
+export function CustomerForm({ customer, groups, nextHref, initialPhone, initialName, onDaTao, onHuy }: CustomerFormProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   /** Chống bấm Lưu 2 lần — `loading` chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt (chủ nhà 01/10/2026). */
@@ -63,8 +74,10 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone }: Custo
   const [gpsLoading, setGpsLoading] = useState(false)
   const [pjpRoutes, setPjpRoutes] = useState<PjpRouteDisplay[]>([])
   const [salesRoutes, setSalesRoutes] = useState<Array<{ code: string; name: string }>>([])
+  /** Khung tạo nhanh tuyến đang mở (kèm chữ đã gõ ở ô tìm tuyến). */
+  const [taoTuyen, setTaoTuyen] = useState<{ chu: string } | null>(null)
   const [form, setForm] = useState<Record<string, string>>({
-    store_name: customer?.store_name || "",
+    store_name: customer?.store_name || initialName || "",
     owner_name: customer?.owner_name || "",
     phone: customer?.phone || initialPhone || "",
     address: customer?.address || "",
@@ -256,6 +269,24 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone }: Custo
       lamCuDanhMucBan()
       xoaNhoNen("nen:khach") // ô lọc khách ở danh sách đơn / hoá đơn thấy khách mới ngay
 
+      // Tạo nhanh tại chỗ: trả khách cho nơi gọi, ở lại trang đang làm.
+      if (onDaTao && !customer) {
+        if (newId) {
+          onDaTao({
+            id: newId,
+            store_name: String(payload.store_name ?? ""),
+            owner_name: (payload.owner_name as string) || null,
+            phone: (payload.phone as string) || null,
+            address: (payload.address as string) || null,
+            channel: (payload.channel as string) || null,
+          })
+        } else {
+          toast({ title: "Đã lưu khách nhưng chưa đọc lại được mã", description: "Gõ tìm lại khách trong ô chọn.", variant: "destructive" })
+          onHuy?.()
+        }
+        return
+      }
+
       /**
        * ⚠ CHỈ QUAY VỀ LUỒNG CŨ KHI THẬT SỰ CÓ MÃ KHÁCH. `newId` rỗng nghĩa
        *   là ghi xong mà không đọc lại được mã (RLS, hoặc cột trả về
@@ -284,50 +315,54 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone }: Custo
   }
 
   const hasGps = form.gps_lat && form.gps_lng
+  const coQuyenTuyen = duocTaoNhanh(user?.role, "tuyen")
+  const tuyenOptions = salesRoutes.map((r) => ({ id: r.code, label: r.name ? `${r.code} — ${r.name}` : r.code }))
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{customer ? "Cập nhật khách hàng" : "Thêm khách hàng mới"}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+  const bieuMau = (
+        <form onSubmit={handleSubmit} className="space-y-4" data-testid="customer-form">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Tên cửa hàng *</Label>
-              <Input value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} required placeholder="VD: Tạp hóa Bà Hai" />
+              <Label htmlFor="cf-store">Tên cửa hàng *</Label>
+              <Input id="cf-store" value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} required placeholder="VD: Tạp hóa Bà Hai" />
             </div>
             <div className="space-y-2">
-              <Label>Tên chủ cửa hàng *</Label>
-              <Input value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} required />
+              <Label htmlFor="cf-owner">Tên chủ cửa hàng *</Label>
+              <Input id="cf-owner" value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} required />
             </div>
             <div className="space-y-2">
-              <Label>Số điện thoại *</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="0901000001" />
+              <Label htmlFor="cf-phone">Số điện thoại *</Label>
+              <Input id="cf-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required placeholder="0901000001" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Tuyến bán hàng *</Label>
-                <Link
-                  href="/customers/routes"
-                  className="text-[10px] text-primary hover:underline"
-                >
-                  Quản lý tuyến
-                </Link>
+                <Label htmlFor="customer-route">Tuyến bán hàng *</Label>
+                {/* Trong khung tạo nhanh không có link rời trang — rời là mất chứng từ đang làm. */}
+                {!onDaTao && (
+                  <Link
+                    href="/customers/routes"
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Quản lý tuyến
+                  </Link>
+                )}
               </div>
-              {salesRoutes.length === 0 ? (
+              {salesRoutes.length === 0 && !coQuyenTuyen ? (
                 <p className="text-xs text-muted-foreground">
-                  Chưa có tuyến. <Link href="/customers/routes" className="text-primary font-semibold hover:underline">Thêm tuyến</Link>
+                  Chưa có tuyến.{" "}
+                  {!onDaTao && <Link href="/customers/routes" className="text-primary font-semibold hover:underline">Thêm tuyến</Link>}
                 </p>
               ) : (
-                <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v })}>
-                  <SelectTrigger><SelectValue placeholder="Chọn tuyến" /></SelectTrigger>
-                  <SelectContent>
-                    {salesRoutes.map((r) => (
-                      <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                /* Ô tìm + "+ Tạo tuyến mới" ở cuối (chủ nhà 03/10/2026) — tạo xong tự chọn, form không mất. */
+                <SearchSelect
+                  id="customer-route"
+                  options={tuyenOptions}
+                  valueId={form.channel}
+                  onPick={(o) => setForm((f) => ({ ...f, channel: o?.id ?? "" }))}
+                  placeholder="Chọn tuyến"
+                  emptyHint="Không có tuyến nào khớp."
+                  limit={100}
+                  taoMoi={coQuyenTuyen ? { nhan: NHAN_TAO_NHANH.tuyen, onTao: (chu) => setTaoTuyen({ chu }) } : undefined}
+                />
               )}
             </div>
 
@@ -349,6 +384,7 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone }: Custo
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Input
+                  id="cf-address"
                   className="sm:col-span-2"
                   value={form.address}
                   onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -498,11 +534,33 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone }: Custo
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={() => router.back()}>Hủy</Button>
+            <Button type="button" variant="outline" onClick={() => (onHuy ? onHuy() : router.back())}>Hủy</Button>
             <Button type="submit" disabled={loading}>{loading ? "Đang lưu..." : (customer ? "Cập nhật" : "Tạo mới")}</Button>
           </div>
         </form>
-      </CardContent>
+  )
+
+  const khungTuyen = (
+    <TaoNhanhTuyen
+      open={!!taoTuyen}
+      onOpenChange={(o) => !o && setTaoTuyen(null)}
+      chuBanDau={taoTuyen?.chu}
+      onDaTao={(t) => {
+        setSalesRoutes((ds) => (ds.some((r) => r.code === t.code) ? ds : [...ds, { code: t.code, name: t.name }]))
+        setForm((f) => ({ ...f, channel: t.code }))
+      }}
+    />
+  )
+
+  // Trong khung tạo nhanh: hộp thoại đã có tiêu đề — không lồng thêm một thẻ.
+  if (onDaTao) return <>{bieuMau}{khungTuyen}</>
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{customer ? "Cập nhật khách hàng" : "Thêm khách hàng mới"}</CardTitle>
+      </CardHeader>
+      <CardContent>{bieuMau}{khungTuyen}</CardContent>
     </Card>
   )
 }

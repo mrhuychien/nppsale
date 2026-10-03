@@ -29,7 +29,7 @@ describe("gọi hàm máy chủ: chưa có hàm thì lùi, lỗi khác thì NÉM
 
 describe("kết quả một lượt → cùng dạng dòng như đọc từng bảng", () => {
   const dm = danhMucRong()
-  dm.sp.set("sua", { ten: "Sữa", sku: "S", nhom: "", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }] })
+  dm.sp.set("sua", { ten: "Sữa", sku: "S", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }] })
   const mot = {
     hd: [{ id: "h1", invoice_code: "HD1", invoice_date: "2026-09-10", order_id: null, status: "posted", total: "1100", subtotal: "1000", vat: "100", customer_id: "k1", sales_user_id: null, posted_by: "u1", payment_terms: "COD" }],
     dong_hd: [{ id: "l1", invoice_id: "h1", product_id: "sua", unit_name: "thùng", conversion_factor: 24, quantity: 1, unit_price: 1000, line_total: 1000, is_exchange: false }],

@@ -8,20 +8,18 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { Plus, Pencil, Trash2, Route, Info } from "lucide-react"
 import type { SalesRoute } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { RouteForm } from "@/components/customers/route-form"
 
 export default function SalesRoutesPage() {
   const { loading: authLoading } = useRoleGuard("customers")
@@ -34,16 +32,7 @@ export default function SalesRoutesPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SalesRoute | null>(null)
-  const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
-
-  const [form, setForm] = useState({
-    code: "",
-    name: "",
-    description: "",
-    sort_order: 0,
-    is_active: true,
-  })
 
   const fetchData = useCallback(async () => {
     if (!user?.org_id) return
@@ -76,78 +65,11 @@ export default function SalesRoutesPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ code: "", name: "", description: "", sort_order: routes.length + 1, is_active: true })
     setDialogOpen(true)
   }
   const openEdit = (r: SalesRoute) => {
     setEditing(r)
-    setForm({
-      code: r.code,
-      name: r.name,
-      description: r.description || "",
-      sort_order: r.sort_order,
-      is_active: r.is_active,
-    })
     setDialogOpen(true)
-  }
-
-  const handleSave = async () => {
-    if (!user?.org_id) return
-    const code = form.code.trim().toUpperCase()
-    const name = form.name.trim()
-    if (!code || !name) {
-      toast({ title: "Thiếu mã hoặc tên tuyến", variant: "destructive" })
-      return
-    }
-    setSaving(true)
-    try {
-      if (editing) {
-        // RLS từ chối = 0 dòng, không lỗi — đếm dòng trước khi đổi mã tuyến
-        // ở hàng nghìn khách theo sau.
-        await ghiPhaiTrungDong(
-          supabase
-            .from("sales_routes")
-            .update({
-              code,
-              name,
-              description: form.description.trim() || null,
-              sort_order: form.sort_order,
-              is_active: form.is_active,
-            })
-            .eq("id", editing.id)
-        )
-        // If the code changed, update every customer row that referenced the old code
-        if (editing.code !== code) {
-          // Nếu bước này hỏng mà bỏ qua: tuyến đã đổi mã nhưng khách hàng
-          // vẫn trỏ mã cũ → khách rơi khỏi mọi báo cáo theo tuyến.
-          await supabase
-            .from("customers")
-            .update({ channel: code })
-            .eq("org_id", user.org_id)
-            .eq("channel", editing.code)
-            .throwOnError()
-        }
-        toast({ title: `Đã cập nhật tuyến ${code}` })
-      } else {
-        const { error } = await supabase.from("sales_routes").insert({
-          org_id: user.org_id,
-          code,
-          name,
-          description: form.description.trim() || null,
-          sort_order: form.sort_order,
-          is_active: form.is_active,
-        })
-        if (error) throw error
-        toast({ title: `Đã tạo tuyến ${code}` })
-      }
-      setDialogOpen(false)
-      fetchData()
-    } catch (err) {
-      const msg = errorMessage(err, "Lỗi khi lưu")
-      toast({ title: "Lỗi", description: msg, variant: "destructive" })
-    } finally {
-      setSaving(false)
-    }
   }
 
   const handleDelete = async (r: SalesRoute) => {
@@ -287,65 +209,17 @@ export default function SalesRoutesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Mã tuyến *</Label>
-              <Input
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                placeholder="GT"
-                className="font-mono uppercase"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tên tuyến *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="General Trade"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Mô tả</Label>
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Chi tiết khu vực, đặc điểm KH..."
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Thứ tự hiển thị</Label>
-                <Input
-                  type="number"
-                  value={form.sort_order}
-                  onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Trạng thái</Label>
-                <label className="flex items-center gap-2 h-10 px-3 rounded-md border cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.is_active}
-                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                    className="h-4 w-4"
-                  />
-                  <span className="text-sm">Đang hoạt động</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Đang lưu..." : editing ? "Cập nhật" : "Tạo tuyến"}
-            </Button>
-          </DialogFooter>
+          {/* `key`: mở lại hộp thoại là biểu mẫu nạp lại đúng tuyến đang sửa / trống cho tuyến mới. */}
+          <RouteForm
+            key={dialogOpen ? editing?.id ?? "moi" : "dong"}
+            editing={editing}
+            thuTuMacDinh={routes.length + 1}
+            onDaLuu={() => {
+              setDialogOpen(false)
+              fetchData()
+            }}
+            onHuy={() => setDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>

@@ -98,7 +98,6 @@ export interface KhachBC {
 export interface SanPhamBC {
   ten: string
   sku: string
-  nhom: string
   thuongHieu: string
   ncc: string
   donViCoSo: string
@@ -141,10 +140,12 @@ export const danhMucRong = (): DanhMucBC => ({
 /**
  * ⚠ Không có Thương hiệu / Nhóm khách / Tỉnh / Bảng giá — chủ nhà 27/09/2026 bỏ khỏi mọi báo cáo
  *   (cả lọc lẫn "Xem theo"). Đường dẫn cũ còn `l_brand`… thì bị bỏ qua khi đọc.
+ * ⚠ Không có NHÓM HÀNG (`pgroup`, = `products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm
+ *   hàng": hàng nhóm theo Nhà cung cấp (`ncc`). Đường dẫn cũ `l_pgroup` / `xem=pgroup` bị bỏ qua.
  */
 export type LoaiLoc =
   | "cust" | "channel" | "staff"
-  | "prod" | "pgroup" | "ncc"
+  | "prod" | "ncc"
   | "ostatus" | "creator" | "pay" | "dstatus"
 
 export interface ThongTinLoc {
@@ -158,7 +159,6 @@ export const LOAI_LOC: Record<LoaiLoc, ThongTinLoc> = {
   channel: { label: "Kênh / tuyến", short: "Kênh", unit: "kênh" },
   staff: { label: "Nhân viên bán", short: "Nhân viên", unit: "NV" },
   prod: { label: "Mặt hàng", unit: "mặt hàng" },
-  pgroup: { label: "Nhóm hàng", unit: "nhóm hàng" },
   ncc: { label: "Nhà cung cấp", short: "NCC", unit: "NCC" },
   ostatus: { label: "Trạng thái đơn", unit: "trạng thái" },
   creator: { label: "Người tạo", unit: "người" },
@@ -186,7 +186,6 @@ export function giaTriChieu(k: LoaiLoc, x: CoChieu, dm: DanhMucBC): string | und
     case "staff": return x.nv
     case "prod": return x.sp
     case "channel": return x.kh === undefined ? undefined : dm.khach.get(x.kh)?.kenh || CHUA_CO
-    case "pgroup": return x.sp === undefined ? undefined : dm.sp.get(x.sp)?.nhom || CHUA_CO
     case "ncc": return x.sp === undefined ? undefined : dm.sp.get(x.sp)?.ncc || CHUA_CO
     case "ostatus": return x.trangThai
     case "creator": return x.nguoiTao

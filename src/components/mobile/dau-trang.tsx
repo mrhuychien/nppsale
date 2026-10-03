@@ -66,6 +66,7 @@ export function DauTrangTrang({
   action,
   className,
   testId = "dau-trang",
+  onBack,
 }: {
   title: string
   subtitle?: ReactNode
@@ -74,6 +75,8 @@ export function DauTrangTrang({
   action?: ReactNode
   className?: string
   testId?: string
+  /** Thay cho điều hướng — khi màn nằm trong một khung tạo nhanh (bấm lùi = đóng khung). */
+  onBack?: () => void
 }) {
   const router = useRouter()
   return (
@@ -84,7 +87,7 @@ export function DauTrangTrang({
       <button
         type="button"
         aria-label="Quay lại"
-        onClick={() => (backHref ? router.push(backHref) : router.back())}
+        onClick={() => (onBack ? onBack() : backHref ? router.push(backHref) : router.back())}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-outline-variant/60 text-on-surface active:bg-surface-container-low"
       >
         <ChevronLeft className="h-5 w-5" />

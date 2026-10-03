@@ -29,9 +29,11 @@ function cotKhach(dm: DanhMucBC, id: string): O[] {
   const k = dm.khach.get(id)
   return [k?.ten || "Khách đã xoá", k?.sdt || "", k?.diaChi || "", k?.kenh || ""]
 }
+/** Mã · Tên · NCC chính. ⚠ Cột thứ ba từng là "Nhóm hàng" (`products.category`) — chủ nhà 03/10/2026
+ *  "Bỏ luôn trường nhóm hàng": hàng nhóm theo Nhà cung cấp. */
 function cotHang(dm: DanhMucBC, id: string): O[] {
   const s = dm.sp.get(id)
-  return [s?.sku || "", s?.ten || (id ? "Không rõ mặt hàng" : "(phiếu không có dòng hàng)"), s?.nhom || ""]
+  return [s?.sku || "", s?.ten || (id ? "Không rõ mặt hàng" : "(phiếu không có dòng hàng)"), s?.ncc ? ten(dm.ncc, s.ncc, "") : ""]
 }
 
 /** Sheet "Chi tiết dòng" của Bán hàng theo hoá đơn — bán (dương) + trả (âm). */
@@ -48,7 +50,7 @@ export function chiTietBan(p: {
   const dau: O[] = [
     "Ngày", "Loại", "Số chứng từ", "Hoá đơn gốc", "Lý do trả", "Nhân viên", "Người lập",
     "Khách hàng", "SĐT", "Địa chỉ", "Tuyến",
-    "Mã hàng", "Tên hàng", "Nhóm hàng", "ĐVT", "SL", "Đơn giá", "Giá bảng", "Chênh lệch giá", "Giảm giá dòng",
+    "Mã hàng", "Tên hàng", "Nhà cung cấp", "ĐVT", "SL", "Đơn giá", "Giá bảng", "Chênh lệch giá", "Giảm giá dòng",
     "Thành tiền dòng", "Giảm giá đơn", "SL quy đổi", "ĐV cơ sở", "DT thuần (phân bổ)",
     ...(p.giaVon ? ["Giá vốn", "Lãi gộp"] : []),
   ]
@@ -93,7 +95,7 @@ export function chiTietDat(p: { dong: readonly DongDat[]; dm: DanhMucBC; don: Re
   const { dm } = p
   const rows: O[][] = [[
     "Ngày đặt", "Số đơn", "Trạng thái", "Nhân viên", "Người tạo", "Khách hàng", "SĐT", "Địa chỉ", "Tuyến",
-    "Mã hàng", "Tên hàng", "Nhóm hàng", "ĐVT", "SL", "Đơn giá", "Giảm giá dòng", "Thành tiền dòng",
+    "Mã hàng", "Tên hàng", "Nhà cung cấp", "ĐVT", "SL", "Đơn giá", "Giảm giá dòng", "Thành tiền dòng",
     "Tiền (phân bổ)", "Đã xuất HĐ", "Chưa xuất",
   ]]
   const ds = [...p.dong].sort((a, b) => a.ngay.localeCompare(b.ngay) || a.don.localeCompare(b.don))
@@ -164,7 +166,7 @@ const NHAN_BIEN_DONG: Record<LoaiBienDong, string> = { nhap: "Nhập", tra: "Tr�
 /** Sheet "Tồn theo lô": từng lô còn tồn của các mặt hàng đang xem (SL theo đơn vị cơ sở). */
 export function chiTietTonLo(ton: readonly TonMatHang[], dm: DanhMucBC, giaVon: boolean): O[][] {
   const rows: O[][] = [[
-    "Mã hàng", "Tên hàng", "Nhóm hàng", "ĐV cơ sở", "Số lô", "Hạn dùng", "Ngày nhập", "Tồn",
+    "Mã hàng", "Tên hàng", "Nhà cung cấp", "ĐV cơ sở", "Số lô", "Hạn dùng", "Ngày nhập", "Tồn",
     ...(giaVon ? ["Giá vốn / ĐV cơ sở", "Giá trị tồn"] : []),
   ]]
   for (const t of ton) {
@@ -181,7 +183,7 @@ export function chiTietTonLo(ton: readonly TonMatHang[], dm: DanhMucBC, giaVon: 
 
 /** Sheet "Biến động kho": từng dòng phiếu kho trong kỳ (+ vào kho, − ra kho). */
 export function chiTietBienDong(ds: readonly BienDong[], dm: DanhMucBC, a: string, b: string, giaVon: boolean): O[][] {
-  const rows: O[][] = [["Ngày", "Loại", "Số phiếu", "Mã hàng", "Tên hàng", "Nhóm hàng", "ĐV cơ sở", "SL", ...(giaVon ? ["Giá vốn", "Giá trị"] : [])]]
+  const rows: O[][] = [["Ngày", "Loại", "Số phiếu", "Mã hàng", "Tên hàng", "Nhà cung cấp", "ĐV cơ sở", "SL", ...(giaVon ? ["Giá vốn", "Giá trị"] : [])]]
   for (const m of ds.filter((x) => x.ngay >= a && x.ngay <= b).sort((x, y) => x.ngay.localeCompare(y.ngay))) {
     rows.push([
       m.ngay, NHAN_BIEN_DONG[m.loai] || m.loai, m.ma, ...cotHang(dm, m.sp), dm.sp.get(m.sp)?.donViCoSo || "", m.sl,

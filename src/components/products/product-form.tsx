@@ -23,7 +23,6 @@ import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 type Tab = "info" | "description" | "warranty"
@@ -38,6 +37,10 @@ interface ProductFormProps {
   onCancel?: () => void
   /** Hide the action footer (parent renders its own). */
   hideFooter?: boolean
+  /** Tên hàng gán sẵn khi tạo mới — chữ đang gõ ở ô tìm mặt hàng (khung tạo nhanh, chủ nhà 03/10/2026). */
+  tenBanDau?: string
+  /** Ẩn nút "Lưu & Tạo thêm hàng" — khung tạo nhanh lưu xong là đóng, quay về phiếu đang làm. */
+  anTaoThem?: boolean
 }
 
 // Bậc thuế dùng chung với sheet sửa dòng trong đơn — xem VAT_RATES.
@@ -67,6 +70,8 @@ export function ProductForm({
   onSaved,
   onCancel,
   hideFooter,
+  tenBanDau,
+  anTaoThem,
 }: ProductFormProps) {
   const { user } = useAuth()
   const supabase = createClient()
@@ -84,8 +89,7 @@ export function ProductForm({
 
   const [form, setForm] = useState({
     sku: product?.sku || "",
-    name: product?.name || "",
-    category: product?.category || "",
+    name: product?.name || tenBanDau?.trim() || "",
     primary_supplier_id: product?.primary_supplier_id || "",
     barcode: product?.barcode || "",
     base_unit: product?.base_unit || "",
@@ -169,12 +173,10 @@ export function ProductForm({
     setSecondaryUnits((prev) => prev.filter((u) => u.tempId !== tempId))
   }
 
-  // Suggestion lists pulled from existing data so the user can pick or
-  // type a brand-new value (KiotViet-style "Tạo mới" inline).
-  const [categorySuggest, setCategorySuggest] = useState<string[]>([])
-  /** Danh sách ngành hàng đọc chưa hết — ô chọn phải nói ra. */
-  const [categoryTruncated, setCategoryTruncated] = useState(false)
-  const [showNewCategory, setShowNewCategory] = useState(false)
+  /*
+   * ⚠ BỎ TRƯỜNG "NHÓM HÀNG" (chủ nhà 03/10/2026: "Bỏ luôn trường nhóm hàng"). Form không đọc danh sách nhóm,
+   *   không hiện ô, và KHÔNG gửi `category` lúc lưu — sửa hàng cũ giữ nguyên nhóm đang có trong sổ (cột vẫn còn).
+   */
   /** Danh sách NCC để gắn vào SP (bắt buộc 1). */
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
 
@@ -182,50 +184,16 @@ export function ProductForm({
   useEffect(() => {
     if (!orgId) return
     let cancelled = false
-    async function load() {
-      const [catsRes, supRes] = await Promise.all([
-        /**
-         * ⚠ KÉO HẾT THEO TRANG, KHÔNG `.select()` TRƠN. Đây là câu đọc
-         *   CẢ BẢNG `products` — PostgREST cắt ở 1.000 dòng, nên ngành
-         *   hàng nào chỉ xuất hiện ở những mã nằm sau vạch ấy sẽ KHÔNG
-         *   có trong ô chọn. Người nhập không thấy "Sữa đặc" trong danh
-         *   sách nên gõ tay một cái mới, và từ đó báo cáo theo ngành
-         *   hàng tách làm hai dòng cho cùng một thứ. Hỏng trong im lặng,
-         *   phát hiện ra thì dữ liệu đã lệch từ lâu.
-         *
-         * ⚠ PHÂN TRANG THEO `id`. Mốc chia trang phải DUY NHẤT; chia
-         *   theo `category` là hai mặt hàng cùng ngành làm các trang
-         *   lặp/sót nhau. Thứ tự hiện ra do `.sort()` ở dưới lo.
-         */
-        fetchAllForAggregate<{ category: string | null }>((from, to) =>
-          supabase
-            .from("products")
-            .select("id, category", { count: "exact" })
-            .eq("org_id", orgId!)
-            .order("id")
-            .range(from, to)
-        ),
-        supabase
-          .from("suppliers")
-          .select("id, name")
-          .eq("org_id", orgId!)
-          .order("name"),
-      ])
-      if (supRes.error) {
-        console.error("[products/product-form] truy vấn lỗi:", supRes.error.message)
-      }
-      if (cancelled) return
-      const cats = new Set<string>()
-      for (const p of catsRes.rows) {
-        if (p.category) cats.add(p.category)
-      }
-      setCategorySuggest(Array.from(cats).sort())
-      /* ⚠ ĐỌC CHƯA HẾT THÌ NÓI RA. Im lặng ở đây là người nhập tin rằng
-         danh sách ngành hàng đã đủ, rồi tạo một ngành hàng trùng. */
-      setCategoryTruncated(catsRes.truncated)
-      setSuppliers((supRes.data as { id: string; name: string }[]) || [])
-    }
-    load()
+    supabase
+      .from("suppliers")
+      .select("id, name")
+      .eq("org_id", orgId)
+      .order("name")
+      .then((supRes) => {
+        if (supRes.error) console.error("[products/product-form] truy vấn lỗi:", supRes.error.message)
+        if (cancelled) return
+        setSuppliers((supRes.data as { id: string; name: string }[]) || [])
+      })
     return () => {
       cancelled = true
     }
@@ -255,7 +223,6 @@ export function ProductForm({
       const payload = {
         sku: form.sku.trim() || genSku(),
         name: form.name.trim(),
-        category: form.category.trim() || null,
         primary_supplier_id: form.primary_supplier_id,
         barcode: form.barcode.trim() || null,
         base_unit: form.base_unit.trim(),
@@ -428,11 +395,7 @@ export function ProductForm({
         <InfoTab
           form={form}
           setForm={setForm}
-          categorySuggest={categorySuggest}
-          categoryTruncated={categoryTruncated}
           suppliers={suppliers}
-          showNewCategory={showNewCategory}
-          setShowNewCategory={setShowNewCategory}
           openSection={openSection}
           toggleSection={toggleSection}
           compact={compact}
@@ -486,7 +449,7 @@ export function ProductForm({
             >
               Bỏ qua
             </Button>
-            {!isEdit ? (
+            {!isEdit && !anTaoThem ? (
               <Button
                 type="submit"
                 variant="outline"
@@ -513,7 +476,6 @@ export function ProductForm({
 type FormState = {
   sku: string
   name: string
-  category: string
   primary_supplier_id: string
   barcode: string
   base_unit: string
@@ -543,12 +505,7 @@ interface SecondaryUnit {
 interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
-  categorySuggest: string[]
-  /** Danh sách trên đọc chưa hết — ô chọn phải nói ra. */
-  categoryTruncated: boolean
   suppliers: { id: string; name: string }[]
-  showNewCategory: boolean
-  setShowNewCategory: (v: boolean) => void
   openSection: Record<string, boolean>
   toggleSection: (key: string) => void
   compact: boolean
@@ -565,11 +522,7 @@ interface InfoTabProps {
 function InfoTab({
   form,
   setForm,
-  categorySuggest,
-  categoryTruncated,
   suppliers,
-  showNewCategory,
-  setShowNewCategory,
   openSection,
   toggleSection,
   compact,
@@ -587,7 +540,7 @@ function InfoTab({
 
   return (
     <div className="space-y-4">
-      {/* Top: code/barcode + name + category/brand + image */}
+      {/* Top: code/barcode + name + NCC + image */}
       <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -626,69 +579,14 @@ function InfoTab({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label>Nhóm hàng</Label>
-                <button
-                  type="button"
-                  onClick={() => setShowNewCategory(!showNewCategory)}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  {showNewCategory ? "Chọn từ danh sách" : "Tạo mới"}
-                </button>
-              </div>
-              {showNewCategory ? (
-                <Input
-                  value={String(form.category || "")}
-                  onChange={(e) => setField("category", e.target.value)}
-                  placeholder="VD: Bánh kẹo"
-                  autoFocus
-                />
-              ) : (
-                <Select
-                  value={String(form.category || "")}
-                  onValueChange={(v) => setField("category", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn nhóm hàng" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categorySuggest.length === 0 ? (
-                      <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                        Chưa có nhóm hàng — bấm &quot;Tạo mới&quot;
-                      </div>
-                    ) : (
-                      categorySuggest.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-              {/*
-                ⚠ ĐỌC THIẾU THÌ NÓI RA, VÀ CHỈ DẪN LỐI THOÁT. Im lặng ở
-                  đây là người nhập không thấy ngành hàng mình cần, tưởng
-                  chưa có, rồi bấm "Tạo mới" và sinh ra một nhãn trùng —
-                  báo cáo theo ngành hàng từ đó tách làm hai dòng cho
-                  cùng một thứ.
-              */}
-              {categoryTruncated && (
-                <p className="text-xs text-[#b54708]">
-                  Danh sách nhóm hàng đọc chưa hết. Tải lại trang trước khi bấm
-                  &quot;Tạo mới&quot;, tránh tạo trùng nhóm đã có.
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>
+              <Label htmlFor="primary_supplier">
                 Nhà cung cấp <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={String(form.primary_supplier_id || "")}
                 onValueChange={(v) => setField("primary_supplier_id", v)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="primary_supplier">
                   <SelectValue placeholder="Chọn nhà cung cấp" />
                 </SelectTrigger>
                 <SelectContent>

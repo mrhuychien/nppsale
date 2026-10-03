@@ -28,13 +28,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
-import { Search } from "lucide-react"
+import { Plus, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import {
   pickerOpenReducer, PICKER_OPEN_INIT, type PickerEvent,
 } from "@/lib/ui/picker-open"
+import { conTroToiDa, nhanTaoMoi, type TaoMoiCauHinh } from "@/lib/ui/tao-moi"
 
 /**
  * Số mục xổ xuống khi ô còn TRỐNG.
@@ -72,6 +73,7 @@ export function ProductPicker<T extends PickerItem>({
   closeOnPick = false,
   className,
   persistent = false,
+  taoMoi,
 }: {
   /** Danh sách ĐÃ lọc theo `term` và đã bỏ mã có trên phiếu. */
   items: T[]
@@ -146,6 +148,8 @@ export function ProductPicker<T extends PickerItem>({
    *   mở lại ô một lần.
    */
   persistent?: boolean
+  /** Dòng "+ {nhan}" luôn ở cuối dải gợi ý, như `SearchSelect` (chủ nhà 03/10/2026) — `onTao(chữ đang gõ)`. */
+  taoMoi?: TaoMoiCauHinh
 }) {
   /**
    * ⚠ LUẬT ĐÓNG/MỞ NẰM Ở `@/lib/ui/picker-open`, KHÔNG NẰM Ở ĐÂY. Nó có
@@ -193,6 +197,15 @@ export function ProductPicker<T extends PickerItem>({
 
   const shown = useMemo(() => items.slice(0, PICKER_PEEK), [items])
 
+  const taoActive = !!taoMoi && active === shown.length
+  const tao = () => {
+    if (!taoMoi) return
+    const chu = term.trim()
+    onTermChange("")
+    gui({ t: "escape" })
+    taoMoi.onTao(chu)
+  }
+
   const pick = useCallback((it: T) => {
     onPick(it)
     onTermChange("")
@@ -238,14 +251,15 @@ export function ProductPicker<T extends PickerItem>({
             if (e.key === "ArrowDown") {
               e.preventDefault()
               gui({ t: "click" })
-              setActive((i) => Math.min(i + 1, shown.length - 1))
+              setActive((i) => Math.min(i + 1, conTroToiDa(shown.length, !!taoMoi)))
             } else if (e.key === "ArrowUp") {
               e.preventDefault()
               setActive((i) => Math.max(i - 1, 0))
             } else if (e.key === "Enter") {
               e.preventDefault()
               const it = shown[active]
-              if (it) pick(it)
+              if (taoActive) tao()
+              else if (it) pick(it)
             } else if (e.key === "Escape") {
               gui({ t: "escape" })
             }
@@ -313,6 +327,25 @@ export function ProductPicker<T extends PickerItem>({
             </ul>
           )}
           {footer}
+          {taoMoi && (
+            <button
+              type="button"
+              data-testid="product-picker-tao-moi"
+              /* mousedown: tiêu điểm không rời ô trước khi cú bấm tới nơi (như `SearchSelect`). */
+              onMouseDown={(e) => {
+                e.preventDefault()
+                tao()
+              }}
+              onMouseEnter={() => setActive(shown.length)}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-2 border-t px-3 py-2 text-left text-sm font-semibold text-primary",
+                taoActive ? "bg-muted" : "hover:bg-muted/60"
+              )}
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{nhanTaoMoi(taoMoi.nhan, term)}</span>
+            </button>
+          )}
           {/*
             ⚠ CHÂN DẢI GỢI Ý CHỈ CÓ Ở CHẾ ĐỘ "Ở LẠI". Dải tự đóng sau
               khi chọn thì một nút "Xong" là thừa — nó đóng một thứ vừa

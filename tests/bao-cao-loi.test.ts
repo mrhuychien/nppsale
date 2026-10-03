@@ -95,11 +95,15 @@ describe("cộng dồn dòng bán", () => {
   it("lọc theo chiều của khách / mặt hàng; loại không áp được thì bỏ qua", () => {
     const dm = danhMucRong()
     dm.khach.set("k1", { ten: "Cô Ba", nhom: "g1", kenh: "Tuyến A", tinh: "Hải Phòng", nv: "n1", hanMuc: 0, hanNo: 0 })
-    dm.sp.set("p1", { ten: "Sữa", sku: "S", nhom: "Sữa", thuongHieu: "", ncc: "c1", donViCoSo: "hộp", donViLon: null })
+    dm.sp.set("p1", { ten: "Sữa", sku: "S", thuongHieu: "", ncc: "c1", donViCoSo: "hộp", donViLon: null })
     expect(quaLoc({ kh: "k1", sp: "p1" }, { channel: ["Tuyến A"], ncc: ["c1"] }, dm)).toBe(true)
     expect(quaLoc({ kh: "k1", sp: "p1" }, { channel: ["Tuyến B"] }, dm)).toBe(false)
     expect(quaLoc({ kh: "k1" }, { ncc: ["c9"] }, dm)).toBe(true) // phiếu thu không có mặt hàng
-    expect(quaLoc({ kh: "k1", sp: "p1" }, { pgroup: ["Sữa"] }, dm)).toBe(true)
+  })
+  it("bỏ Nhóm hàng (chủ nhà 03/10/2026 \"Bỏ luôn trường nhóm hàng\"): không còn lọc / xem pgroup, đường dẫn cũ bỏ qua", () => {
+    expect("pgroup" in LOAI_LOC).toBe(false)
+    const st = docTrangThai(new URLSearchParams("l_pgroup=Sữa&l_ncc=c1"))
+    expect(st.loc).toEqual({ ncc: ["c1"] })
   })
   it("bỏ lọc Thương hiệu / Nhóm khách / Tỉnh (chủ nhà 27/09/2026): đường dẫn cũ không còn lọc", () => {
     for (const k of ["brand", "cgroup", "province"]) expect(k in LOAI_LOC).toBe(false)
@@ -107,7 +111,7 @@ describe("cộng dồn dòng bán", () => {
     expect(st.loc).toEqual({ cust: ["k1"] })
   })
   it("số lượng: đơn vị lớn + đơn vị cơ sở, không cộng lẫn", () => {
-    const sp = { ten: "", sku: "", nhom: "", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 } }
+    const sp = { ten: "", sku: "", thuongHieu: "", ncc: "", donViCoSo: "hộp", donViLon: { ten: "thùng", heSo: 24 } }
     expect(hienSoLuong(sp, 99)).toEqual({ t: "4 thùng 3 hộp", sub: "99 hộp" })
     expect(hienSoLuong(sp, 96)).toEqual({ t: "4 thùng", sub: "96 hộp" })
     expect(hienSoLuong(sp, 5)).toEqual({ t: "5 hộp", sub: "" })

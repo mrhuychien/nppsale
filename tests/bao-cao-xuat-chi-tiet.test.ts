@@ -11,9 +11,10 @@ import { chiTietBan, chiTietDat, chiTietNo, chiTietThu, chiTietTonLo, chiTietBie
 
 const dm = danhMucRong()
 dm.nv.set("nv1", "Đồng Thị Hiền")
+dm.ncc.set("c1", "Vinamilk")
 dm.khach.set("k1", { ten: "Tạp hoá Cô Ba", sdt: "0911111111", diaChi: "1 Lê Lợi", nhom: "", kenh: "T2", tinh: "", nv: "nv1", hanMuc: 0, hanNo: 0 })
 dm.sp.set("sua", {
-  ten: "Sữa hộp", sku: "SUA1", nhom: "Sữa", thuongHieu: "", ncc: "", donViCoSo: "hộp",
+  ten: "Sữa hộp", sku: "SUA1", thuongHieu: "", ncc: "c1", donViCoSo: "hộp",
   donViLon: { ten: "thùng", heSo: 24 }, donVi: [{ ten: "thùng", heSo: 24 }], giaBan: 10000,
   bangGia: [{ ten: "hộp", gia: 10000 }, { ten: "thùng", gia: 230000 }],
 })
@@ -100,13 +101,27 @@ describe("Excel các báo cáo khác — sheet chi tiết", () => {
     expect(chiTietThu([{ id: "t1", ngay: "2026-10-01", tien: 100000, hinhThuc: "Tiền mặt", kh: "k1", nv: "nv1", nguoiThu: "nv1", hd: "h1", maHd: "HD-1" }], dm)[1])
       .toEqual(["2026-10-01", "Tiền mặt", 100000, "Tạp hoá Cô Ba", "0911111111", "HD-1", "Đồng Thị Hiền", "Đồng Thị Hiền"])
     const lo = chiTietTonLo([{ sp: "sua", sl: 30, giaTri: 0, hsd: null, tb30: 0, duBan: 0, banCuoi: "", tonThap: false, chamBan: false, lo: [{ id: "b1", sp: "sua", ma: "L1", sl: 30, gia: 8000, hsd: "2027-01-01", nhap: "2026-09-01" }] }], dm, false)
-    expect(lo[1]).toEqual(["SUA1", "Sữa hộp", "Sữa", "hộp", "L1", "2027-01-01", "2026-09-01", 30])
+    expect(lo[1]).toEqual(["SUA1", "Sữa hộp", "Vinamilk", "hộp", "L1", "2027-01-01", "2026-09-01", 30])
     const bd = chiTietBienDong([
       { ngay: "2026-09-30", sp: "sua", sl: 5, loai: "nhap", ma: "NK-0", phieu: "e0", gia: 8000 },
       { ngay: "2026-10-01", sp: "sua", sl: -24, loai: "ban", ma: "XK-1", phieu: "e1", gia: 8000 },
     ], dm, "2026-10-01", "2026-10-31", true)
     expect(bd).toHaveLength(2)
-    expect(bd[1]).toEqual(["2026-10-01", "Xuất bán", "XK-1", "SUA1", "Sữa hộp", "Sữa", "hộp", -24, 8000, -192000])
+    expect(bd[1]).toEqual(["2026-10-01", "Xuất bán", "XK-1", "SUA1", "Sữa hộp", "Vinamilk", "hộp", -24, 8000, -192000])
+  })
+  it("bỏ trường Nhóm hàng (chủ nhà 03/10/2026): cột thứ ba là Nhà cung cấp ở mọi sheet có mặt hàng", () => {
+    const dat = dungDongDat([], [])
+    const daus = [
+      chiTietBan({ ...ban, dm, giaVon: true })[0],
+      chiTietDat({ dong: dat.dong, dm, don: dat.don })[0],
+      chiTietTonLo([], dm, true)[0],
+      chiTietBienDong([], dm, "2026-10-01", "2026-10-31", true)[0],
+    ]
+    for (const d of daus) {
+      expect(d).not.toContain("Nhóm hàng")
+      expect(d).toContain("Nhà cung cấp")
+    }
+    expect(chiTietBan({ ...ban, dm, giaVon: true })[1][daus[0].indexOf("Nhà cung cấp")]).toBe("Vinamilk")
   })
   it("cả 5 màn báo cáo xuất kèm sheet chi tiết", () => {
     for (const f of ["man-ban-hang", "man-cuoi-ngay", "man-cong-no", "man-kho", "man-tai-chinh"]) {

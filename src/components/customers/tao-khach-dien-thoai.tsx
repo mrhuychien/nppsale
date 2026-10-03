@@ -24,8 +24,10 @@ import { errorMessage } from "@/lib/errors"
 import { cn, formatCurrency } from "@/lib/utils"
 import {
   KhachDaCo, LUA_CHON_PHUONG_XA, chuanHoaSdt, coLoi, dinhDangSdt, laSdtHopLe, loiKhachMoi, taoKhach,
-  timKhachTrungSdt, type LoiKhachMoi,
+  timKhachTrungSdt, type KhachVuaTao, type LoiKhachMoi,
 } from "@/lib/customers/tao-khach"
+import { TaoNhanhTuyen } from "@/components/tao-nhanh/tao-nhanh-tuyen"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 
 const TT = [
   { value: "Chuyển khoản", label: "Chuyển khoản" },
@@ -97,19 +99,28 @@ export function TaoKhachDienThoai({
   groups,
   nextHref,
   sdtBanDau,
+  tenBanDau,
+  onDaTao,
+  onHuy,
 }: {
   groups: { id: string; name: string }[]
   /** Tạo xong quay về đây kèm `?picked=` (luồng bán hàng). */
   nextHref?: string
   /** SĐT từ ô tìm khách không ra kết quả (chủ nhà 01/10/2026). */
   sdtBanDau?: string
+  /** Tên cửa hàng gán sẵn — chữ đang gõ ở ô tìm khách (khung tạo nhanh, chủ nhà 03/10/2026). */
+  tenBanDau?: string
+  /** Tạo nhanh tại chỗ: tạo xong trả khách cho nơi gọi, KHÔNG chuyển trang / không hiện màn "Đã thêm". */
+  onDaTao?: (khach: KhachVuaTao) => void
+  /** Nút Huỷ / lùi khi nằm trong khung tạo nhanh. */
+  onHuy?: () => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const [f, setF] = useState<Form>({ ...RONG, phone: chuanHoaSdt(sdtBanDau ?? "") })
+  const [f, setF] = useState<Form>({ ...RONG, phone: chuanHoaSdt(sdtBanDau ?? ""), store_name: tenBanDau ?? "" })
   const [vat, setVat] = useState(false)
   const [moBan, setMoBan] = useState(false)
   const [daThu, setDaThu] = useState(false)
@@ -121,6 +132,9 @@ export function TaoKhachDienThoai({
   const [trung, setTrung] = useState<KhachDaCo | null>(null)
   const [xong, setXong] = useState<{ id: string | null; ten: string; meta: string } | null>(null)
   const [tuyen, setTuyen] = useState<Array<{ code: string; name: string }>>([])
+  /** Khung tạo nhanh tuyến đang mở (kèm chữ đã gõ ở ô tìm tuyến). */
+  const [taoTuyen, setTaoTuyen] = useState<{ chu: string } | null>(null)
+  const coQuyenTuyen = duocTaoNhanh(user?.role, "tuyen")
 
   useEffect(() => {
     supabase
@@ -192,6 +206,19 @@ export function TaoKhachDienThoai({
         ...(gps ? { gps_lat: gps.lat, gps_lng: gps.lng } : {}),
       }
       const kq = await taoKhach(supabase, user, payload)
+      if (onDaTao) {
+        if (kq.ghiChu) toast({ title: "Đã tạo khách hàng", description: kq.ghiChu, variant: kq.phanCongLoi ? "destructive" : undefined })
+        if (kq.id) {
+          onDaTao({
+            id: kq.id, store_name: f.store_name.trim(), owner_name: f.owner_name.trim() || null, phone: sdt,
+            address: f.address.trim() || null, channel: f.channel || null,
+          })
+        } else {
+          toast({ title: "Đã lưu khách nhưng chưa đọc lại được mã", description: "Gõ tìm lại khách trong ô chọn.", variant: "destructive" })
+          onHuy?.()
+        }
+        return
+      }
       if (kq.ghiChu || nextHref) toast({ title: "Đã tạo khách hàng", description: kq.ghiChu ?? undefined, variant: kq.phanCongLoi ? "destructive" : undefined })
       if (nextHref && kq.id) {
         router.push(`${nextHref}?picked=${encodeURIComponent(kq.id)}`)
@@ -259,7 +286,7 @@ export function TaoKhachDienThoai({
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-surface-container-low">
-      <DauTrangTrang title="Thêm khách hàng" subtitle="Chỉ cần tên, SĐT và địa chỉ" backHref={nextHref ?? "/customers"} />
+      <DauTrangTrang title="Thêm khách hàng" subtitle="Chỉ cần tên, SĐT và địa chỉ" backHref={nextHref ?? "/customers"} onBack={onHuy} />
       <div className="flex flex-col gap-5 p-3.5 pb-28">
         <Phan title="Cửa hàng">
           <O nhan="Tên cửa hàng" batBuoc loi={loi.store_name}>
@@ -311,11 +338,12 @@ export function TaoKhachDienThoai({
             nhan="Tuyến bán hàng"
             batBuoc
             loi={loi.channel}
-            phai={<Link href="/customers/routes" className="text-xs font-semibold text-primary">Quản lý tuyến</Link>}
+            phai={onDaTao ? undefined : <Link href="/customers/routes" className="text-xs font-semibold text-primary">Quản lý tuyến</Link>}
           >
-            {tuyen.length === 0 ? (
+            {tuyen.length === 0 && !coQuyenTuyen ? (
               <p className="text-xs text-muted-foreground">
-                Chưa có tuyến nào. <Link href="/customers/routes" className="font-semibold text-primary">Thêm tuyến</Link> trước khi tạo khách.
+                Chưa có tuyến nào.{" "}
+                {onDaTao ? "Nhờ quản lý thêm tuyến" : <Link href="/customers/routes" className="font-semibold text-primary">Thêm tuyến</Link>} trước khi tạo khách.
               </p>
             ) : (
               <div className={cn("rounded-xl", loi.channel && "ring-1 ring-destructive")}>
@@ -327,6 +355,7 @@ export function TaoKhachDienThoai({
                   placeholder="Chọn tuyến"
                   emptyHint="Không có tuyến nào khớp."
                   limit={100}
+                  taoMoi={coQuyenTuyen ? { nhan: NHAN_TAO_NHANH.tuyen, onTao: (chu) => setTaoTuyen({ chu }) } : undefined}
                 />
               </div>
             )}
@@ -403,7 +432,7 @@ export function TaoKhachDienThoai({
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-[96px_1fr] gap-2 border-t border-outline-variant/60 bg-card px-3.5 pb-[max(20px,env(safe-area-inset-bottom))] pt-3">
-        <button type="button" onClick={() => (nextHref ? router.push(nextHref) : router.back())} className="h-[52px] rounded-[14px] border border-outline-variant/60 text-sm font-semibold">
+        <button type="button" onClick={() => (onHuy ? onHuy() : nextHref ? router.push(nextHref) : router.back())} className="h-[52px] rounded-[14px] border border-outline-variant/60 text-sm font-semibold">
           Huỷ
         </button>
         <button
@@ -416,6 +445,16 @@ export function TaoKhachDienThoai({
           {dangLuu ? "Đang lưu…" : "Lưu khách hàng"}
         </button>
       </div>
+
+      <TaoNhanhTuyen
+        open={!!taoTuyen}
+        onOpenChange={(o) => !o && setTaoTuyen(null)}
+        chuBanDau={taoTuyen?.chu}
+        onDaTao={(t) => {
+          setTuyen((ds) => (ds.some((r) => r.code === t.code) ? ds : [...ds, { code: t.code, name: t.name }]))
+          set("channel", t.code)
+        }}
+      />
     </div>
   )
 }

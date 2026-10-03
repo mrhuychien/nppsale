@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -46,7 +46,6 @@ export default function InventoryReportPage() {
   const [salesLines, setSalesLines] = useState<SalesOrderLine[]>([])
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [brandFilter, setBrandFilter] = useState<string>("")
   const [productFilter, setProductFilter] = useState<string>("")
   const [loading, setLoading] = useState(true)
@@ -129,28 +128,24 @@ export default function InventoryReportPage() {
     fetch()
   }, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const categories = useMemo(() => {
-    const set = new Set<string>()
-    for (const b of batchesAll) {
-      const c = b.product?.category
-      if (c) set.add(c)
-    }
-    return Array.from(set).sort()
-  }, [batchesAll])
+  /* ⚠ BỎ "Ngành hàng" / "Nhóm" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng".
+     Lọc và phân bổ theo NHÀ CUNG CẤP (NCC chính của mặt hàng). */
+  const tenNcc = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers])
+  const nccCua = useCallback(
+    (p: Product | undefined) => (p?.primary_supplier_id && tenNcc.get(p.primary_supplier_id)) || "Chưa gán NCC",
+    [tenNcc]
+  )
 
   const batches = useMemo(() => {
     return batchesAll.filter((b) => {
       if (supplierFilter !== "all" && b.product?.primary_supplier_id !== supplierFilter) {
         return false
       }
-      if (categoryFilter !== "all" && (b.product?.category || "") !== categoryFilter) {
-        return false
-      }
       if (brandFilter && (b.product?.brand || "") !== brandFilter) return false
       if (productFilter && b.product_id !== productFilter) return false
       return true
     })
-  }, [batchesAll, supplierFilter, categoryFilter, brandFilter, productFilter])
+  }, [batchesAll, supplierFilter, brandFilter, productFilter])
 
   const stats = useMemo(() => {
     const totalItems = batches.reduce((sum, b) => sum + b.qty_on_hand, 0)
@@ -173,11 +168,11 @@ export default function InventoryReportPage() {
     return { totalItems, uniqueSkus, expiringCount, lowStockCount, totalValue, stockByProduct }
   }, [batches])
 
-  const categoryBreakdown = useMemo(() => {
+  const nccBreakdown = useMemo(() => {
     const map = new Map<string, number>()
     batches.forEach((b) => {
-      const cat = b.product?.category || "Khác"
-      map.set(cat, (map.get(cat) || 0) + b.qty_on_hand)
+      const ncc = nccCua(b.product)
+      map.set(ncc, (map.get(ncc) || 0) + b.qty_on_hand)
     })
     const total = Array.from(map.values()).reduce((a, b) => a + b, 0) || 1
     return Array.from(map.entries())
@@ -188,7 +183,7 @@ export default function InventoryReportPage() {
       }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5)
-  }, [batches])
+  }, [batches, nccCua])
 
   /**
    * ĐÃ GỠ — biểu đồ "Xu hướng tồn kho" từng vẽ bằng Math.random().
@@ -220,7 +215,7 @@ export default function InventoryReportPage() {
         id: b.id,
         sku: b.product?.sku || "—",
         name: b.product?.name || "—",
-        category: b.product?.category || "—",
+        ncc: nccCua(b.product),
         unit: b.product?.base_unit || "—",
         qty: b.qty_on_hand,
         batchCode: b.batch_code,
@@ -241,7 +236,7 @@ export default function InventoryReportPage() {
         id: `slow-${b.id}`,
         sku: b.product?.sku || "—",
         name: b.product?.name || "—",
-        category: b.product?.category || "—",
+        ncc: nccCua(b.product),
         unit: b.product?.base_unit || "—",
         qty: b.qty_on_hand,
         batchCode: b.batch_code,
@@ -256,7 +251,7 @@ export default function InventoryReportPage() {
       seen.add(r.sku)
       return true
     })
-  }, [batches, salesLines])
+  }, [batches, salesLines, nccCua])
 
   if (authLoading || loading) return <Skeleton className="h-[500px]" />
   if (loadError) return <ReportLoadNotice error={loadError} />
@@ -288,7 +283,7 @@ export default function InventoryReportPage() {
 
       <ReportLoadNotice truncated={truncated} />
 
-      {/* Bộ lọc — NCC + Ngành hàng (§3.2) */}
+      {/* Bộ lọc — NCC + Thương hiệu + Hàng hóa (§3.2). Không còn "Ngành hàng" (chủ nhà 03/10/2026). */}
       <Card className="rounded-2xl border-dashed print:hidden">
         <CardContent className="grid gap-4 pt-6 md:grid-cols-3">
           <div className="space-y-1.5">
@@ -304,24 +299,6 @@ export default function InventoryReportPage() {
                 {suppliers.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Ngành hàng
-            </label>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả ngành hàng</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -460,11 +437,11 @@ export default function InventoryReportPage() {
           </CardContent>
         </Card>
 
-        {/* 40% - Category donut */}
+        {/* 40% - Donut theo nhà cung cấp */}
         <Card className="lg:col-span-2 bg-surface-lowest/80 backdrop-blur-sm border border-border/40 shadow-sm">
           <CardContent className="p-6 lg:p-8">
-            <h3 className="text-lg font-bold text-foreground mb-6">Phân bổ theo danh mục</h3>
-            {categoryBreakdown.length === 0 ? (
+            <h3 className="text-lg font-bold text-foreground mb-6">Phân bổ theo nhà cung cấp</h3>
+            {nccBreakdown.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-8">Chưa có dữ liệu</p>
             ) : (
               <>
@@ -488,7 +465,7 @@ export default function InventoryReportPage() {
                       ]
                       const circumference = 2 * Math.PI * 40
                       let offset = 0
-                      return categoryBreakdown.map((c, i) => {
+                      return nccBreakdown.map((c, i) => {
                         const dash = (c.pct / 100) * circumference
                         const seg = (
                           <circle
@@ -516,7 +493,7 @@ export default function InventoryReportPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {categoryBreakdown.map((c, i) => (
+                  {nccBreakdown.map((c, i) => (
                     <div key={c.name} className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={cn("h-2 w-2 rounded-full shrink-0", donutColors[i % donutColors.length])} />
@@ -575,7 +552,7 @@ export default function InventoryReportPage() {
                           <TableCell>
                             <div className="text-sm font-semibold text-foreground">{r.name}</div>
                             <div className="text-[10px] text-muted-foreground">
-                              Nhóm: {r.category}
+                              NCC: {r.ncc}
                             </div>
                           </TableCell>
                           <TableCell className="text-sm">{r.unit}</TableCell>
@@ -637,7 +614,7 @@ export default function InventoryReportPage() {
                             {r.name}
                           </h3>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            Nhóm: {r.category} • ĐVT: {r.unit}
+                            NCC: {r.ncc} • ĐVT: {r.unit}
                           </p>
                         </div>
                         <Badge variant={variant} className="shrink-0">{label}</Badge>

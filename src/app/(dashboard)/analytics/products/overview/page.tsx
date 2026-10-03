@@ -34,7 +34,8 @@ interface ProductRow {
   id: string
   sku: string
   name: string
-  category: string | null
+  /** NCC chính. ⚠ Không còn "Nhóm hàng" (`category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */
+  supplier?: { name: string | null } | null
   brand: string | null
   status: string
 }
@@ -90,7 +91,7 @@ export default function ProductsOverviewPage() {
           (from, to) =>
             supabase
               .from("products")
-              .select("id, sku, name, category, brand, status", { count: "exact" })
+              .select("id, sku, name, brand, status, supplier:suppliers!products_primary_supplier_id_fkey(name)", { count: "exact" })
               .eq("org_id", orgId)
               .order("id")
               .range(from, to),
@@ -228,7 +229,7 @@ export default function ProductsOverviewPage() {
         id: p.id,
         sku: p.sku,
         name: p.name,
-        category: p.category || "—",
+        ncc: p.supplier?.name || "—",
       }))
   }, [products, lines])
 
@@ -347,7 +348,7 @@ export default function ProductsOverviewPage() {
         columns={[
           { key: "sku", label: "Mã SKU", render: (r) => <span className="font-mono text-xs">{r.sku}</span> },
           { key: "name", label: "Tên hàng hóa", render: (r) => <span className="font-medium">{r.name}</span> },
-          { key: "category", label: "Nhóm hàng", render: (r) => r.category },
+          { key: "ncc", label: "Nhà cung cấp", render: (r) => r.ncc },
         ]}
         emptyText="Tất cả sản phẩm active đều có phát sinh bán trong kỳ"
       />

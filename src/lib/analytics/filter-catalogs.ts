@@ -22,7 +22,6 @@ interface Catalogs {
   allUsers: FilterOption[]        // every active user
   drivers: FilterOption[]
   products: FilterOption[]
-  categories: FilterOption[]      // distinct product.category
   brands: FilterOption[]          // distinct product.brand
   customerGroups: FilterOption[]  // bảng giá / nhóm khách
   routes: FilterOption[]          // sales_routes (kênh bán)
@@ -90,11 +89,11 @@ export async function taiDanhMucLoc(
           .range(from, to),
       "đọc danh sách nhân viên"
     ),
-    docDuHoacNem<{ id: string; sku: string; name: string; category: string | null; brand: string | null }>(
+    docDuHoacNem<{ id: string; sku: string; name: string; brand: string | null }>(
       (from, to): Trang =>
         supabase
           .from("products")
-          .select("id, sku, name, category, brand", { count: "exact" })
+          .select("id, sku, name, brand", { count: "exact" })
           .eq("org_id", orgId)
           .eq("status", "active")
           .order("name")
@@ -140,16 +139,12 @@ export async function taiDanhMucLoc(
 
   const products = prodRes.rows.map((p) => ({ id: p.id, label: p.name, hint: p.sku }))
 
-  // Distinct categories + brands from products list
-  const catSet = new Set<string>()
+  /* Thương hiệu (distinct). ⚠ Không còn danh sách "nhóm hàng / loại hàng" (`products.category`) —
+     chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng"; lọc hàng theo NCC (`suppliers`). */
   const brandSet = new Set<string>()
   for (const p of prodRes.rows) {
-    if (p.category) catSet.add(p.category)
     if (p.brand) brandSet.add(p.brand)
   }
-  const categories: FilterOption[] = Array.from(catSet)
-    .sort()
-    .map((c) => ({ id: c, label: c }))
   const brands: FilterOption[] = Array.from(brandSet)
     .sort()
     .map((b) => ({ id: b, label: b }))
@@ -175,7 +170,6 @@ export async function taiDanhMucLoc(
         .filter((u) => u.role === "driver")
         .map((u) => ({ id: u.id, label: u.full_name })),
       products,
-      categories,
       brands,
       customerGroups: groupRes.rows.map((g) => ({ id: g.id, label: g.name })),
       routes: routeRes.rows.map((r) => ({ id: r.id, label: r.name, hint: r.code })),
@@ -191,7 +185,6 @@ const TRONG: CatalogLists = {
   allUsers: EMPTY,
   drivers: EMPTY,
   products: EMPTY,
-  categories: EMPTY,
   brands: EMPTY,
   customerGroups: EMPTY,
   routes: EMPTY,

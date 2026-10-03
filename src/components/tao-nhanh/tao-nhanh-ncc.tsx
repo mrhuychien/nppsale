@@ -9,19 +9,21 @@ export function TaoNhanhNcc({
   onOpenChange,
   chuBanDau,
   onDaTao,
+  moTa = "Tạo xong NCC được chọn luôn vào phiếu đang làm.",
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Chữ đang gõ ở ô tìm NCC — thành tên NCC. */
   chuBanDau?: string
   onDaTao: (ncc: NccVuaTao) => void
+  moTa?: string
 }) {
   return (
     <KhungTaoNhanh
       open={open}
       onOpenChange={onOpenChange}
       tieuDe="Thêm nhà cung cấp mới"
-      moTa="Tạo xong NCC được chọn luôn vào phiếu đang làm."
+      moTa={moTa}
       testId="tao-nhanh-ncc"
     >
       {open && (

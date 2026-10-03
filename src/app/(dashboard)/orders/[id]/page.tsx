@@ -72,6 +72,10 @@ import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { tongSauSuaTaiCho } from "@/lib/orders/inline-totals"
 import { SoThuTu } from "@/components/mobile/so-thu-tu"
+import { DongTaoMoi } from "@/components/ui/dong-tao-moi"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 
 type NextStatus = {
   value: OrderStatus
@@ -293,6 +297,11 @@ export default function OrderDetailPage() {
   >([])
   /** Danh mục đọc chưa hết — cả hai ô dùng nó phải nói ra. */
   const [swapTruncated, setSwapTruncated] = useState(false)
+  /**
+   * Khung tạo nhanh SP (chủ nhà 03/10/2026, Update 3.10) — mở từ hộp "Thêm sản phẩm mới vào đơn" (`them`) hay
+   * "Đổi sản phẩm" của dòng `lineId` (`doi`). Tạo xong làm đúng việc của hộp đã mở.
+   */
+  const [taoSp, setTaoSp] = useState<{ chu: string; dich: "them" } | { chu: string; dich: "doi"; lineId: string } | null>(null)
   const [swapDialogFor, setSwapDialogFor] = useState<string | null>(null)
   const [swapSearch, setSwapSearch] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -2943,6 +2952,18 @@ export default function OrderDetailPage() {
                 </button>
               ))
             })()}
+            {duocTaoNhanh(user?.role, "san-pham") && swapDialogFor && (
+              <DongTaoMoi
+                nhan={NHAN_TAO_NHANH["san-pham"]}
+                chu={swapSearch}
+                testId="doi-sp-tao-moi"
+                className="border-t-0"
+                onTao={(chu) => {
+                  setTaoSp({ chu, dich: "doi", lineId: swapDialogFor })
+                  setSwapDialogFor(null)
+                }}
+              />
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground">
             Đổi SP sẽ reset batch_id để thủ kho chọn lô khác. Giá đơn vị giữ
@@ -2993,6 +3014,18 @@ export default function OrderDetailPage() {
                 </button>
               ))
             })()}
+            {duocTaoNhanh(user?.role, "san-pham") && (
+              <DongTaoMoi
+                nhan={NHAN_TAO_NHANH["san-pham"]}
+                chu={addLineSearch}
+                testId="them-dong-tao-moi"
+                className="border-t-0"
+                onTao={(chu) => {
+                  setTaoSp({ chu, dich: "them" })
+                  setAddLineDialogOpen(false)
+                }}
+              />
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground">
             SP mới sẽ được thêm với SL=1 và đơn giá mặc định. Bạn có thể chỉnh
@@ -3002,6 +3035,23 @@ export default function OrderDetailPage() {
       </Dialog>
 
 
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa={taoSp?.dich === "doi" ? "Tạo xong sản phẩm thay luôn vào dòng đang đổi." : "Tạo xong sản phẩm được thêm luôn vào đơn."}
+        onDaTao={(sp) => {
+          /* Ghép vào danh mục (VAT của dòng thêm tra ở `swapCatalog`) rồi làm đúng việc của hộp đã mở. */
+          const moi = {
+            id: sp.id, name: sp.name, sku: sp.sku, sell_price: Number(sp.sell_price || 0),
+            base_unit: sp.base_unit, vat_rate: sp.vat_rate ?? null,
+          }
+          setSwapCatalog((ds) => gopVuaTao(ds, [moi]))
+          if (taoSp?.dich === "doi") applySwap(taoSp.lineId, moi)
+          else appendAddedLine(moi)
+        }}
+      />
 
       {/* Modal thông tin khách — mở từ tên khách ở đầu trang. */}
       <CustomerQuickView

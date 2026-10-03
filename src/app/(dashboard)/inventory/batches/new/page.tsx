@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
@@ -11,7 +11,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchSelect } from "@/components/ui/search-select"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import type { Product } from "@/types"
@@ -21,6 +26,8 @@ export default function NewBatchPage() {
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("inventory")
   const [products, setProducts] = useState<Product[]>([])
+  /** Danh mục đọc chưa hết — ô tìm phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
   const [productId, setProductId] = useState("")
   const [batchCode, setBatchCode] = useState("")
   const [manufacturedAt, setManufacturedAt] = useState("")
@@ -28,23 +35,25 @@ export default function NewBatchPage() {
   const [location, setLocation] = useState("")
   const [loading, setLoading] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
+  /** Khung tạo nhanh sản phẩm đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026). */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
-    async function fetch() {
-      const { data, error: dataErr } = await supabase
-        .from("products")
-        .select("id, sku, name")
-        .eq("status", "active")
-        .order("name")
-      if (dataErr) console.error("[batches/new] truy vấn lỗi:", dataErr.message)
-      setProducts((data as Product[]) || [])
+    /* ⚠ KÉO ĐỦ DANH MỤC (`loadCatalogue`), không dừng ở 1.000 mã đầu — mã sau đó không tạo được lô. */
+    loadCatalogue<Product>(supabase, "id, sku, name, barcode", { activeOnly: true }).then((res) => {
+      setProducts(res.rows)
+      setCatTruncated(res.truncated)
       setProductsLoading(false)
-    }
-    fetch()
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const productOptions = useMemo(
+    () => products.map((p) => ({ id: p.id, label: p.name, hint: p.sku || null, keywords: [p.sku, p.barcode].filter(Boolean).join(" ") })),
+    [products]
+  )
 
   if (authLoading || productsLoading) return <Skeleton className="h-96" />
 
@@ -119,15 +128,32 @@ export default function NewBatchPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Sản phẩm *</Label>
-                <Select value={productId} onValueChange={setProductId}>
-                  <SelectTrigger><SelectValue placeholder="Chọn sản phẩm" /></SelectTrigger>
-                  <SelectContent>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.sku} - {p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="batch-product">Sản phẩm *</Label>
+                {/* Ô tìm (thay `<Select>` liệt kê hết) — cuối danh sách là "+ Tạo sản phẩm mới", tạo tại chỗ. */}
+                <SearchSelect
+                  id="batch-product"
+                  options={productOptions}
+                  valueId={productId}
+                  onPick={(o) => setProductId(o?.id ?? "")}
+                  placeholder="Tên hàng, mã SKU hoặc mã vạch…"
+                  emptyHint="Không tìm thấy mã nào khớp."
+                  taoMoi={
+                    duocTaoNhanh(user?.role, "san-pham")
+                      ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) }
+                      : undefined
+                  }
+                />
+                {catTruncated && <CatalogueShortNote />}
+                <TaoNhanhSanPham
+                  open={!!taoSp}
+                  onOpenChange={(o) => !o && setTaoSp(null)}
+                  chuBanDau={taoSp?.chu}
+                  moTa="Tạo xong sản phẩm được chọn luôn cho lô này."
+                  onDaTao={(sp) => {
+                    setProducts((ds) => gopVuaTao(ds, [sp]))
+                    setProductId(sp.id)
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Mã lô *</Label>

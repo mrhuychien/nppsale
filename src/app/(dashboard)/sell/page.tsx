@@ -2,7 +2,7 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, ListChecks, RefreshCw } from "lucide-react"
+import { Search, ScanBarcode, ChevronLeft, ChevronRight, User, ListChecks, RefreshCw, Plus } from "lucide-react"
 import { docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { useSellCart } from "@/hooks/use-sell-cart"
 import { useSellData } from "@/hooks/use-sell-data"
@@ -23,6 +23,14 @@ import { toast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewOrderHref } from "@/lib/nav/pos-preview"
+import { useAuth } from "@/hooks/use-auth"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { duocTaoNhanh, NHAN_TAO_NHANH } from "@/lib/tao-nhanh/quyen"
+import { nhanTaoMoi } from "@/lib/ui/tao-moi"
+import { createClient } from "@/lib/supabase/client"
+import { loadOneSellProduct } from "@/lib/sell/ref-data"
+import { docLaiKhongNem, sanPhamBanTuMoiTao } from "@/lib/sell/tao-nhanh"
+import type { Product } from "@/types"
 
 /** Trần số thẻ vẽ một lúc — 1.700 thẻ thì điện thoại đứng hình. */
 const RENDER_CAP = 60
@@ -53,7 +61,9 @@ export default function SellPage() {
     customerById,
     filterProducts,
     listMemory,
+    themVaoDanhMucBan,
   } = useSellData()
+  const { user } = useAuth()
   /* Bấm "Làm mới sản phẩm" xong thì báo giờ cập nhật (chủ nhà 28/09/2026). */
   const vuaBamLamMoi = useRef(false)
   useEffect(() => {
@@ -286,6 +296,23 @@ export default function SellPage() {
   const onStep = useCallback((p: PricedProduct, unit: string, delta: number) => stepRef.current(p, unit, delta), [])
   const onPickUnit = useCallback((productId: string, u: string) => setUnitSel((s) => ({ ...s, [productId]: u })), [])
 
+  /**
+   * ⚠ TẠO SẢN PHẨM TẠI CHỖ (chủ nhà 03/10/2026, Update 3.10 mục 4–5: "Tương tự sản phẩm cũng vậy" / "Update
+   *   ngược … cho sell bán hàng trên mobile"). Lưu xong: đọc lại đủ dòng (bảng giá + đơn vị), đưa vào danh mục
+   *   của luồng bán, rồi thêm 1 đơn vị cơ sở vào đơn Y NHƯ chạm thẻ (`step`) — chọn từng mã thì sang Đơn hàng,
+   *   chọn nhiều thì ở lại.
+   * ⚠ CHỈ khi có `products.create` (NVBH không có — chủ nhà 26/09/2026 bỏ quyền Sản phẩm của NVBH) và KHÔNG ở
+   *   bước chọn hàng TRẢ: hàng khách trả lại là hàng mình đã bán, không phải mặt hàng mới.
+   */
+  const duocTaoSp = !returning && duocTaoNhanh(user?.role, "san-pham")
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const daTaoSp = async (saved: Product) => {
+    const docLai = await docLaiKhongNem(() => loadOneSellProduct(createClient(), saved.id))
+    const p = sanPhamBanTuMoiTao(saved, docLai)
+    themVaoDanhMucBan(p)
+    stepRef.current(p, selectedUnitOf({}, p), 1)
+  }
+
   const cartCount = cart.cart.length
   const soDonViTra = cart.returnLines.reduce((t, l) => t + l.qty, 0)
   const showTabs = frequentIds.length > 0 && !q.trim()
@@ -339,6 +366,18 @@ export default function SellPage() {
             <span className="flex h-8 items-center rounded-[10px] border border-border px-2.5 text-[12px] font-medium text-on-surface-variant">
               {bangGia}
             </span>
+          )}
+          {duocTaoSp && (
+            <button
+              type="button"
+              onClick={() => setTaoSp({ chu: q.trim() })}
+              aria-label="Thêm sản phẩm"
+              title="Thêm sản phẩm mới — tạo xong thêm luôn vào đơn"
+              data-testid="sell-them-san-pham"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-border text-primary"
+            >
+              <Plus className="h-[18px] w-[18px]" strokeWidth={2.6} />
+            </button>
           )}
           {/* ⚠ CHỌN NHIỀU MÃ (tuỳ chọn) — bật tới khi người dùng tự tắt (lưu trên máy). */}
           {!returning && nutChonNhieu}
@@ -497,15 +536,30 @@ export default function SellPage() {
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[112px] rounded-[14px]" />)
         ) : list.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            {q.trim()
-              ? `Không tìm thấy sản phẩm khớp “${q.trim()}”`
-              : /* ⚠ 0 dòng cũng là thứ ta nhận khi phiên hết hạn / RLS chặn —
-                   có cảnh báo thì cảnh báo mới là câu trả lời. */
-                loadWarnings.length > 0
-                ? "Không lấy được danh mục — xem lý do ở khung vàng phía trên."
-                : "Chưa có sản phẩm nào"}
-          </p>
+          <div className="flex flex-col items-center gap-3 py-10">
+            <p className="text-center text-sm text-muted-foreground">
+              {q.trim()
+                ? `Không tìm thấy sản phẩm khớp “${q.trim()}”`
+                : /* ⚠ 0 dòng cũng là thứ ta nhận khi phiên hết hạn / RLS chặn —
+                     có cảnh báo thì cảnh báo mới là câu trả lời. */
+                  loadWarnings.length > 0
+                  ? "Không lấy được danh mục — xem lý do ở khung vàng phía trên."
+                  : "Chưa có sản phẩm nào"}
+            </p>
+            {/* Tìm không ra → tạo luôn mặt hàng mang đúng chữ vừa gõ (Update 3.10 mục 1). Danh mục hỏng thì
+                không mời tạo — mặt hàng có thể đã có, chỉ là chưa tải được. */}
+            {duocTaoSp && q.trim() && loadWarnings.length === 0 && (
+              <button
+                type="button"
+                data-testid="sell-tao-san-pham"
+                onClick={() => setTaoSp({ chu: q.trim() })}
+                className="flex min-h-11 max-w-full items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-left text-sm font-bold text-primary-foreground"
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 truncate">{nhanTaoMoi(NHAN_TAO_NHANH["san-pham"], q)}</span>
+              </button>
+            )}
+          </div>
         ) : (
           list.map((p) => {
             const unit = unitOf(p)
@@ -529,6 +583,29 @@ export default function SellPage() {
           })
         )}
       </div>
+
+      {/* Dòng tạo mới cuối danh sách khi có chữ tìm — kết quả gần giống chưa chắc là mặt hàng đang cần. */}
+      {duocTaoSp && !loading && list.length > 0 && q.trim() && (
+        <button
+          type="button"
+          data-testid="sell-tao-san-pham-cuoi"
+          onClick={() => setTaoSp({ chu: q.trim() })}
+          className="mx-3 mb-3 flex min-h-12 items-center gap-2 rounded-[14px] border border-dashed border-primary/40 bg-surface-container-lowest px-3 py-2 text-left text-[14px] font-semibold text-primary"
+        >
+          <Plus className="h-4 w-4 shrink-0" strokeWidth={2.6} />
+          <span className="min-w-0 flex-1 truncate">{nhanTaoMoi(NHAN_TAO_NHANH["san-pham"], q)}</span>
+        </button>
+      )}
+
+      {duocTaoSp && (
+        <TaoNhanhSanPham
+          open={!!taoSp}
+          onOpenChange={(o) => !o && setTaoSp(null)}
+          chuBanDau={taoSp?.chu}
+          moTa="Tạo xong sản phẩm được thêm luôn vào đơn đang làm."
+          onDaTao={(p) => void daTaoSp(p)}
+        />
+      )}
 
       {/* ---------- THANH ĐÁY (không đè lên thẻ; không còn thanh nav) ---------- */}
       {returning ? (

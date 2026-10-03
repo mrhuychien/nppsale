@@ -15,7 +15,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import Link from "@/components/ui/link"
+import { SearchSelect } from "@/components/ui/search-select"
+import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import type { Supplier, StockEntry } from "@/types"
 import { errorMessage } from "@/lib/errors"
 
@@ -33,6 +36,8 @@ export default function NewPayablePage() {
     due_date: "",
     notes: "",
   })
+  /** Khung tạo nhanh NCC đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — phiếu đang làm giữ nguyên. */
+  const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
@@ -136,23 +141,30 @@ export default function NewPayablePage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Nhà cung cấp *</Label>
-                <Select
-                  value={form.supplier_id}
-                  onValueChange={(v) => setForm({ ...form, supplier_id: v, stock_entry_id: "" })}
-                >
-                  <SelectTrigger><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.code} - {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Link href="/suppliers/new" className="text-xs text-primary hover:underline">
-                  + Tạo NCC mới
-                </Link>
+                <Label htmlFor="payable-supplier">Nhà cung cấp *</Label>
+                {/* Ô tìm (thay `<Select>` liệt kê hết) — cuối danh sách là "+ Tạo nhà cung cấp mới", tạo tại chỗ. */}
+                <SearchSelect
+                  id="payable-supplier"
+                  options={suppliers.map((s) => ({ id: s.id, label: s.name, hint: s.code || null, keywords: s.code }))}
+                  valueId={form.supplier_id}
+                  onPick={(o) => setForm((f) => ({ ...f, supplier_id: o?.id ?? "", stock_entry_id: "" }))}
+                  placeholder="Gõ tên hoặc mã NCC…"
+                  emptyHint="Không có NCC nào khớp."
+                  taoMoi={
+                    duocTaoNhanh(user?.role, "ncc")
+                      ? { nhan: NHAN_TAO_NHANH.ncc, onTao: (chu) => setTaoNcc({ chu }) }
+                      : undefined
+                  }
+                />
+                <TaoNhanhNcc
+                  open={!!taoNcc}
+                  onOpenChange={(o) => !o && setTaoNcc(null)}
+                  chuBanDau={taoNcc?.chu}
+                  onDaTao={(n) => {
+                    setSuppliers((ds) => gopVuaTao(ds, [{ id: n.id, code: n.code, name: n.name } as Supplier]))
+                    setForm((f) => ({ ...f, supplier_id: n.id, stock_entry_id: "" }))
+                  }}
+                />
               </div>
 
               <div className="space-y-2">

@@ -18,6 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchSelect } from "@/components/ui/search-select"
+import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
@@ -41,6 +45,8 @@ interface ProductFormProps {
   tenBanDau?: string
   /** Ẩn nút "Lưu & Tạo thêm hàng" — khung tạo nhanh lưu xong là đóng, quay về phiếu đang làm. */
   anTaoThem?: boolean
+  /** NCC gán sẵn khi tạo mới — NCC của phiếu nhập / trả NCC đang làm (chủ nhà 03/10/2026, Update 3.10). */
+  nccBanDau?: string
 }
 
 // Bậc thuế dùng chung với sheet sửa dòng trong đơn — xem VAT_RATES.
@@ -72,6 +78,7 @@ export function ProductForm({
   hideFooter,
   tenBanDau,
   anTaoThem,
+  nccBanDau,
 }: ProductFormProps) {
   const { user } = useAuth()
   const supabase = createClient()
@@ -90,7 +97,7 @@ export function ProductForm({
   const [form, setForm] = useState({
     sku: product?.sku || "",
     name: product?.name || tenBanDau?.trim() || "",
-    primary_supplier_id: product?.primary_supplier_id || "",
+    primary_supplier_id: product?.primary_supplier_id || nccBanDau || "",
     barcode: product?.barcode || "",
     base_unit: product?.base_unit || "",
     // Sản phẩm đã có thì giữ nguyên thuế của nó; chỉ sản phẩm MỚI
@@ -396,6 +403,7 @@ export function ProductForm({
           form={form}
           setForm={setForm}
           suppliers={suppliers}
+          onNccVuaTao={(n) => setSuppliers((ds) => gopVuaTao(ds, [n]))}
           openSection={openSection}
           toggleSection={toggleSection}
           compact={compact}
@@ -506,6 +514,8 @@ interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   suppliers: { id: string; name: string }[]
+  /** NCC vừa tạo tại chỗ — ghép vào danh sách để ô chọn hiện được tên. */
+  onNccVuaTao: (ncc: { id: string; name: string }) => void
   openSection: Record<string, boolean>
   toggleSection: (key: string) => void
   compact: boolean
@@ -523,6 +533,7 @@ function InfoTab({
   form,
   setForm,
   suppliers,
+  onNccVuaTao,
   openSection,
   toggleSection,
   compact,
@@ -532,6 +543,8 @@ function InfoTab({
   removeSecondaryUnit,
 }: InfoTabProps) {
   const { user } = useAuth()
+  /** Khung tạo nhanh NCC (chữ đang gõ) — lồng trong khung tạo sản phẩm cũng được: hộp thoại chồng hộp thoại. */
+  const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm({ ...form, [key]: value })
   const skuVal = form.sku
@@ -582,27 +595,30 @@ function InfoTab({
               <Label htmlFor="primary_supplier">
                 Nhà cung cấp <span className="text-destructive">*</span>
               </Label>
-              <Select
-                value={String(form.primary_supplier_id || "")}
-                onValueChange={(v) => setField("primary_supplier_id", v)}
-              >
-                <SelectTrigger id="primary_supplier">
-                  <SelectValue placeholder="Chọn nhà cung cấp" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.length === 0 ? (
-                    <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                      Chưa có NCC — vào /suppliers để tạo.
-                    </div>
-                  ) : (
-                    suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              {/* Ô tìm (chủ nhà 03/10/2026, Update 3.10) — cuối danh sách là "+ Tạo nhà cung cấp mới", tạo tại chỗ. */}
+              <SearchSelect
+                id="primary_supplier"
+                options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+                valueId={String(form.primary_supplier_id || "")}
+                onPick={(o) => setForm((f) => ({ ...f, primary_supplier_id: o?.id ?? "" }))}
+                placeholder="Gõ tên NCC…"
+                emptyHint="Không có NCC nào khớp."
+                taoMoi={
+                  duocTaoNhanh(user?.role, "ncc")
+                    ? { nhan: NHAN_TAO_NHANH.ncc, onTao: (chu) => setTaoNcc({ chu }) }
+                    : undefined
+                }
+              />
+              <TaoNhanhNcc
+                open={!!taoNcc}
+                onOpenChange={(o) => !o && setTaoNcc(null)}
+                chuBanDau={taoNcc?.chu}
+                moTa="Tạo xong NCC được gắn luôn vào sản phẩm đang tạo."
+                onDaTao={(n) => {
+                  onNccVuaTao({ id: n.id, name: n.name })
+                  setForm((f) => ({ ...f, primary_supplier_id: n.id }))
+                }}
+              />
             </div>
           </div>
         </div>

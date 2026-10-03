@@ -12,6 +12,7 @@ export function TaoNhanhSanPham({
   open,
   onOpenChange,
   chuBanDau,
+  nccBanDau,
   onDaTao,
   moTa = "Tạo xong sản phẩm được thêm luôn vào phiếu đang làm.",
 }: {
@@ -19,6 +20,8 @@ export function TaoNhanhSanPham({
   onOpenChange: (open: boolean) => void
   /** Chữ đang gõ ở ô tìm mặt hàng — thành tên hàng. */
   chuBanDau?: string
+  /** NCC gán sẵn (NCC của phiếu đang làm) — người dùng vẫn đổi được. */
+  nccBanDau?: string
   onDaTao: (sanPham: Product) => void
   moTa?: string
 }) {
@@ -28,6 +31,7 @@ export function TaoNhanhSanPham({
         <ProductForm
           variant="compact"
           tenBanDau={chuBanDau}
+          nccBanDau={nccBanDau}
           anTaoThem
           onSaved={(p) => {
             onDaTao(p)

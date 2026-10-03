@@ -81,13 +81,14 @@ const MIEN_TRU = [
  * quan / nhóm hàng / tồn kho) đã đọc đủ theo trang — xoá tên. Chốt chạy
  * mã thật cho chúng ở `tests/phan-tich-doc-du.test.ts`.
  *
+ * ⚠ 03/10/2026 (Update 3.10, ô chọn có "+ Tạo mới"): cấu hình thưởng và tạo lô đổi `<Select>` sang ô tìm trên
+ * cả danh mục (`loadCatalogue`) — xoá tên.
+ *
  * ⚠ SỬA MÀN NÀO THÌ XOÁ TÊN MÀN ẤY. Chốt ngay dưới đòi mỗi tên ở đây
  * phải THẬT SỰ còn đọc kiểu cũ — nên không nhét được một màn đã sửa
  * vào đây để né, và sửa xong mà quên xoá thì cũng đỏ.
  */
 const CON_NO_DOC_DANH_MUC = [
-  "src/app/(dashboard)/hr/bonus-config/page.tsx",
-  "src/app/(dashboard)/inventory/batches/new/page.tsx",
   "src/app/(dashboard)/inventory/stock-out/page.tsx",
   "src/app/(dashboard)/inventory/stocktake/page.tsx",
 ]

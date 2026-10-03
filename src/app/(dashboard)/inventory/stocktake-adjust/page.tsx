@@ -27,6 +27,9 @@ import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { tomTatKiemKe } from "@/lib/inventory/kiem-ke-mobile"
 import { KiemKeMobile } from "@/components/inventory/kiem-ke-mobile"
+import { DongTaoMoi } from "@/components/ui/dong-tao-moi"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 
 interface AdjustRow {
   key: string
@@ -66,6 +69,14 @@ export default function StocktakeAdjustPage() {
   const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
+  /**
+   * Khung tạo nhanh SP, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026, Update 3.10). Đếm được hàng chưa có trong
+   * danh mục là chuyện thật ở kiểm kê — tạo xong thêm luôn một dòng (tồn hệ thống 0, chưa có lô).
+   */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const taoMoiSp = duocTaoNhanh(user?.role, "san-pham")
+    ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu: string) => { setSearchOpen(false); setTaoSp({ chu }) } }
+    : undefined
   /** Số SKU đang có tồn — cho nút "Tải toàn bộ tồn kho (N SKU)" trên điện thoại. */
   const [soSkuTon, setSoSkuTon] = useState<number | null>(null)
 
@@ -386,6 +397,7 @@ export default function StocktakeAdjustPage() {
         saving={saving}
         onGui={handleSave}
         onHuy={() => router.back()}
+        taoMoi={taoMoiSp}
       />
     </div>
     <div className="hidden space-y-4 lg:block">
@@ -451,7 +463,7 @@ export default function StocktakeAdjustPage() {
               className="pl-10 pr-10"
             />
             <ScanBarcode className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            {searchOpen && matches.length > 0 && (
+            {searchOpen && (matches.length > 0 || taoMoiSp) && (
               <div className="absolute z-20 top-full mt-1 w-full bg-card border rounded-xl shadow-lg max-h-64 overflow-y-auto">
                 {matches.map((p) => {
                   const onHand = (p.batches || []).reduce((s, b) => s + Number(b.qty_on_hand || 0), 0)
@@ -480,6 +492,15 @@ export default function StocktakeAdjustPage() {
                     </button>
                   )
                 })}
+                {taoMoiSp && (
+                  <DongTaoMoi
+                    nhan={taoMoiSp.nhan}
+                    chu={search}
+                    testId="kiem-ke-tao-moi"
+                    className={matches.length === 0 ? "border-t-0" : undefined}
+                    onTao={taoMoiSp.onTao}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -630,6 +651,14 @@ export default function StocktakeAdjustPage() {
         </div>
       )}
     </div>
+    {/* Một khung cho cả hai bố cục (điện thoại / máy tính). */}
+    <TaoNhanhSanPham
+      open={!!taoSp}
+      onOpenChange={(o) => !o && setTaoSp(null)}
+      chuBanDau={taoSp?.chu}
+      moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào phiếu kiểm kê."
+      onDaTao={(sp) => addRow({ ...sp, batches: [] })}
+    />
     </>
   )
 }

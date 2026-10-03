@@ -22,7 +22,11 @@
  * đúng cùng mấy dòng hàng.
  */
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
+import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -79,9 +83,13 @@ export function PurchaseReturnForm({
   actions: React.ReactNode
   extras?: Record<string, PickerExtra>
 }) {
+  const { user } = useAuth()
+  /** Khung tạo nhanh NCC (chữ đang gõ) + NCC vừa tạo tại chỗ — danh mục của màn gọi chưa có (chủ nhà 03/10/2026). */
+  const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
+  const [nccMoi, setNccMoi] = useState<Supplier[]>([])
   const supplierOptions: SearchSelectOption[] = useMemo(
-    () => suppliers.map((s) => ({ id: s.id, label: s.name, hint: s.code || null, keywords: s.code })),
-    [suppliers]
+    () => gopVuaTao(suppliers, nccMoi).map((s) => ({ id: s.id, label: s.name, hint: s.code || null, keywords: s.code })),
+    [suppliers, nccMoi]
   )
 
   return (
@@ -114,8 +122,22 @@ export function PurchaseReturnForm({
                 valueId={value.supplierId}
                 onPick={(o) => onChange({ supplierId: o?.id ?? "" })}
                 placeholder="Gõ tên hoặc mã NCC…"
-                emptyHint="Không có NCC nào khớp. Thêm NCC ở mục Nhà cung cấp trước."
+                emptyHint="Không có NCC nào khớp."
                 disabled={submitting}
+                taoMoi={
+                  duocTaoNhanh(user?.role, "ncc")
+                    ? { nhan: NHAN_TAO_NHANH.ncc, onTao: (chu) => setTaoNcc({ chu }) }
+                    : undefined
+                }
+              />
+              <TaoNhanhNcc
+                open={!!taoNcc}
+                onOpenChange={(o) => !o && setTaoNcc(null)}
+                chuBanDau={taoNcc?.chu}
+                onDaTao={(n) => {
+                  setNccMoi((ds) => gopVuaTao(ds, [{ id: n.id, code: n.code, name: n.name } as Supplier]))
+                  onChange({ supplierId: n.id })
+                }}
               />
             </div>
             <div className="space-y-2">

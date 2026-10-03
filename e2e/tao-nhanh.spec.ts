@@ -117,8 +117,10 @@ test("phiếu nhập kho: tạo sản phẩm tại chỗ — dòng hàng vừa t
   await expect(khung.getByText("Nhóm hàng")).toHaveCount(0)
   await expect(khung.getByRole("button", { name: /Tạo thêm hàng/ })).toHaveCount(0)
   await khung.locator("#base_unit").fill("hộp")
+  // NCC của SP nay là ô tìm (Update 3.10) — gõ rồi chọn trong danh sách xổ.
   await khung.locator("#primary_supplier").click()
-  await page.getByRole("option", { name: "Vinamilk" }).click()
+  await khung.locator("#primary_supplier").fill("Vinamilk")
+  await khung.getByTestId("search-select-xo").getByRole("button", { name: /^Vinamilk/ }).click()
   await khung.getByRole("button", { name: "Lưu", exact: true }).click()
   await expect(khung).toHaveCount(0)
 
@@ -126,6 +128,65 @@ test("phiếu nhập kho: tạo sản phẩm tại chỗ — dòng hàng vừa t
   const ghi = await (await api("products?name=eq.S%E1%BB%AFa%20chua%20m%E1%BB%9Bi&select=*")).json()
   expect(ghi).toHaveLength(1)
   expect(ghi[0].category ?? null).toBeNull()
+})
+
+/* ---------------- Đợt 2: các ô chọn còn lại ---------------- */
+
+test("công nợ NCC: ô NCC là ô tìm — tạo NCC tại chỗ, tự chọn, số tiền đang gõ còn nguyên", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/payables/new")
+  // Link mở trang tạo NCC cũ đã bỏ.
+  await expect(page.getByRole("link", { name: "+ Tạo NCC mới" })).toHaveCount(0)
+  const hd = page.getByPlaceholder("VD: HD-2024-001")
+  await hd.fill("HD-CN-01")
+
+  const o = page.locator("#payable-supplier")
+  await o.click()
+  await o.fill("NCC Hải Hà Mới")
+  await expect(xo(page)).toContainText("Không có trong danh sách")
+  await xo(page).getByRole("button", { name: "Tạo nhà cung cấp mới “NCC Hải Hà Mới”" }).click()
+
+  const khung = page.getByTestId("tao-nhanh-ncc")
+  await expect(khung.getByPlaceholder("VD: Công ty TNHH ABC")).toHaveValue("NCC Hải Hà Mới")
+  await khung.getByRole("button", { name: "Tạo mới" }).click()
+  await expect(khung).toHaveCount(0)
+
+  await expect(page).toHaveURL(/\/payables\/new$/)
+  await expect(o).toHaveValue("NCC Hải Hà Mới")
+  await expect(hd).toHaveValue("HD-CN-01")
+  // Đã chọn NCC thật: ô phiếu nhập (chỉ mở khi có NCC) bật lên.
+  await expect(page.getByRole("combobox").filter({ hasText: "Chọn phiếu nhập" })).toBeEnabled()
+})
+
+test("biểu mẫu SP lồng khung NCC: tạo NCC ngay trong khung tạo sản phẩm, gắn luôn vào SP", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/inventory/stock-in")
+  const tim = page.locator("#si-add-product")
+  await tim.click()
+  await tim.fill("Sữa chua mới")
+  await page.getByTestId("product-picker-tao-moi").filter({ visible: true }).click()
+
+  const khungSp = page.getByTestId("tao-nhanh-san-pham")
+  await khungSp.locator("#base_unit").fill("hộp")
+  const ncc = khungSp.locator("#primary_supplier")
+  await ncc.click()
+  await ncc.fill("NCC Hải Hà Mới")
+  await khungSp.getByTestId("search-select-xo").getByRole("button", { name: "Tạo nhà cung cấp mới “NCC Hải Hà Mới”" }).click()
+
+  const khungNcc = page.getByTestId("tao-nhanh-ncc")
+  await expect(khungNcc.getByPlaceholder("VD: Công ty TNHH ABC")).toHaveValue("NCC Hải Hà Mới")
+  await khungNcc.getByRole("button", { name: "Tạo mới" }).click()
+  await expect(khungNcc).toHaveCount(0)
+  // Khung SP còn nguyên chữ đã gõ, NCC vừa tạo đã gắn.
+  await expect(khungSp.locator("#name")).toHaveValue("Sữa chua mới")
+  await expect(ncc).toHaveValue("NCC Hải Hà Mới")
+  await khungSp.getByRole("button", { name: "Lưu", exact: true }).click()
+  await expect(khungSp).toHaveCount(0)
+
+  await expect(page).toHaveURL(/\/inventory\/stock-in$/)
+  const [sp] = await (await api("products?name=eq.S%E1%BB%AFa%20chua%20m%E1%BB%9Bi&select=*")).json()
+  const [n] = await (await api("suppliers?name=eq.NCC%20H%E1%BA%A3i%20H%C3%A0%20M%E1%BB%9Bi&select=id")).json()
+  expect(sp.primary_supplier_id).toBe(n.id)
 })
 
 test.describe("điện thoại", () => {
@@ -152,5 +213,28 @@ test.describe("điện thoại", () => {
     await expect(khung).toHaveCount(0)
     await expect(page).toHaveURL(/\/finance\/cash-receipts\/new$/)
     await expect(page.locator("#cr-customer")).toHaveValue("Cô Bảy Mới")
+  })
+
+  test("phiếu trả hàng: tạo sản phẩm tại chỗ — dòng hàng vừa tạo được thêm luôn vào phiếu", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/returns/new")
+    const tim = page.locator("#ret-add-product")
+    await tim.click()
+    await tim.fill("Sữa chua mới")
+    await expect(page.getByTestId("product-picker-tao-moi").filter({ visible: true })).toHaveText("Tạo sản phẩm mới “Sữa chua mới”")
+    await page.getByTestId("product-picker-tao-moi").filter({ visible: true }).click()
+
+    const khung = page.getByTestId("tao-nhanh-san-pham")
+    await expect(khung.locator("#name")).toHaveValue("Sữa chua mới")
+    await khung.locator("#base_unit").fill("hộp")
+    await khung.locator("#primary_supplier").click()
+    await khung.locator("#primary_supplier").fill("Vinamilk")
+    await khung.getByTestId("search-select-xo").getByRole("button", { name: /^Vinamilk/ }).click()
+    await khung.getByRole("button", { name: "Lưu", exact: true }).click()
+    await expect(khung).toHaveCount(0)
+
+    await expect(page).toHaveURL(/\/returns\/new$/)
+    await expect(page.getByText("Chưa có mặt hàng nào. Chọn từ đơn ở trên hoặc tìm trong danh mục.")).toHaveCount(0)
+    await expect(page.getByText("Sữa chua mới").filter({ visible: true }).first()).toBeVisible()
   })
 })

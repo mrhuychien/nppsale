@@ -563,6 +563,7 @@ export default function StockInPage() {
           nccHint={nccHint}
           picker={productPicker(true)}
           onScan={() => setBarcodeOpen(true)}
+          onTaoSanPham={coQuyenTaoSp ? () => setTaoSp({ chu: productSearch }) : undefined}
           onDiscard={discardDraft}
           onSubmit={handleSubmit}
           saving={saving}

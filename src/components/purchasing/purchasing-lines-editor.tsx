@@ -37,6 +37,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency, formatInt } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import {
@@ -83,8 +88,12 @@ export interface PurchasingLinesValue {
   lines: ReceiptLine[]
 }
 
+/** Cùng hình dạng danh mục các màn mua hàng nạp (`loadCatalogue` ở phiếu nhập / trả NCC). */
+const COT_SAN_PHAM_MUA =
+  "id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)"
+
 export function PurchasingLinesEditor({
-  products,
+  products: danhMuc,
   catalogueTruncated = false,
   value,
   onChange,
@@ -126,6 +135,12 @@ export function PurchasingLinesEditor({
   /** "Cần trả NCC" hay "NCC hoàn lại". */
   totalLabel: string
 }) {
+  const { user } = useAuth()
+  /** Khung tạo nhanh sản phẩm + mã vừa tạo tại chỗ (chủ nhà 03/10/2026) — danh mục của màn gọi chưa có mã ấy. */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const [spMoi, setSpMoi] = useState<ReceiptProduct[]>([])
+  const products = useMemo(() => gopVuaTao(danhMuc, spMoi), [danhMuc, spMoi])
+  const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
   const [term, setTerm] = useState("")
   /**
    * Tạm bỏ lọc theo NCC — đường thoát cho lúc mã bị gán nhầm NCC.
@@ -195,6 +210,13 @@ export function PurchasingLinesEditor({
     setTerm("")
   }
 
+  /** Tạo xong: đọc lại mã kèm đơn vị quy đổi, ghép vào danh mục rồi thêm luôn một dòng. */
+  const daTaoSanPham = async (p: ReceiptProduct) => {
+    const moi = (await docSanPhamVuaTao<ReceiptProduct>(createClient(), p.id, COT_SAN_PHAM_MUA)) ?? p
+    setSpMoi((ds) => gopVuaTao(ds, [moi]))
+    addProduct(moi)
+  }
+
   const toggleDiscountMode = (l: ReceiptLine) =>
     patchLine(l.id, {
       discount_mode: l.discount_mode === "percent" ? "amount" : "percent",
@@ -222,7 +244,7 @@ export function PurchasingLinesEditor({
             id="pr-find"
             term={term}
             onTermChange={setTerm}
-            disabled={products.length === 0 || submitting}
+            disabled={(products.length === 0 && !coQuyenTaoSp) || submitting}
             items={hits.map((p) => ({
               ...p,
               title: p.name,
@@ -239,6 +261,11 @@ export function PurchasingLinesEditor({
               ].filter(Boolean).join(" · "),
             }))}
             onPick={(p) => addProduct(p)}
+            taoMoi={
+              coQuyenTaoSp
+                ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) }
+                : undefined
+            }
             renderMeta={(p) => {
               const x = extras[p.id]
               return (
@@ -746,6 +773,13 @@ export function PurchasingLinesEditor({
           )}
         </DialogContent>
       </Dialog>
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        onDaTao={(p) => void daTaoSanPham(p as ReceiptProduct)}
+      />
     </>
   )
 }

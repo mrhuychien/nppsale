@@ -25,6 +25,8 @@ import {
   peekSellRefData,
   isSellCatalogFresh,
   addSellCustomer,
+  addSellProduct,
+  lamCuDanhMucBan,
   isCachedCatalogFresh,
   seedSellRefData,
   refreshSellStockShared,
@@ -32,6 +34,7 @@ import {
   sellCatalogAt,
 } from "@/lib/sell/ref-store"
 import { locXepHang, taoMucTim, viQueryWords } from "@/lib/search"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import type { Customer } from "@/types"
 
 /**
@@ -81,6 +84,11 @@ interface SellDataValue {
   customerById: (id: string | null) => Customer | undefined
   /** Thêm khách đọc riêng từ máy chủ (không có trong danh mục đã tải) — xem `loadOneSellCustomer`. */
   addCustomer: (c: Customer) => void
+  /**
+   * Thêm sản phẩm vừa TẠO NHANH ở /sell (chủ nhà 03/10/2026, Update 3.10) — dạng danh mục bán (kèm bảng giá +
+   * đơn vị, xem `sanPhamBanTuMoiTao`), để thẻ / giỏ / tìm kiếm thấy ngay, không tải lại 1.700 dòng.
+   */
+  themVaoDanhMucBan: (p: SellProduct) => void
   /**
    * Lọc theo CHỈ MỤC đã chuẩn hoá sẵn — xem `viSearchKey`. Trả mảng con
    * của `products` ĐÃ XẾP HẠNG theo độ khớp (chữ rỗng: thứ tự gốc).
@@ -210,7 +218,15 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
 
   const addCustomer = useCallback((c: Customer) => {
     addSellCustomer(c)
-    setCustomers((ds) => (ds.some((x) => x.id === c.id) ? ds : [...ds, c]))
+    setCustomers((ds) => gopVuaTao(ds, [c]))
+  }, [])
+
+  const themVaoDanhMucBan = useCallback((p: SellProduct) => {
+    addSellProduct(p)
+    /* ⚠ Một lượt tải lại đang bay (bắt đầu TRƯỚC khi tạo) về sau sẽ thay danh sách bằng bản chưa có hàng này —
+       đánh dấu danh mục cũ để lần kiểm sau tải lại đủ (có hàng mới), không để giỏ trỏ vào mã vắng mặt mãi. */
+    lamCuDanhMucBan()
+    setProducts((ds) => gopVuaTao(ds, [p]))
   }, [])
 
   const productIndex = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
@@ -270,6 +286,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       productById: (id) => productIndex.get(id),
       customerById: (id) => (id ? customerIndex.get(id) : undefined),
       addCustomer,
+      themVaoDanhMucBan,
       filterProducts,
       filterCustomers,
       listMemory,
@@ -287,6 +304,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
       productIndex,
       customerIndex,
       addCustomer,
+      themVaoDanhMucBan,
       filterProducts,
       filterCustomers,
     ]

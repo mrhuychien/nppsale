@@ -50,6 +50,9 @@ import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import { vatLabel } from "@/lib/constants"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
@@ -91,6 +94,10 @@ interface Props {
   /** Nơi quay về khi huỷ hoặc xong. */
   backHref: string
 }
+
+/** Cột danh mục của màn hóa đơn — dùng lại khi đọc mã vừa tạo tại chỗ (cần bảng giá + đơn vị như mã cũ). */
+const COT_DANH_MUC_HD =
+  "id, sku, name, barcode, base_unit, vat_rate, sell_price, status, price_lists(*), units:product_units(*)"
 
 export function InvoiceEditor({
   orderId, orderCode, priceGroupId, reissueOf = null, priceWarnPct = 10, backHref,
@@ -305,7 +312,7 @@ export function InvoiceEditor({
     let cancelled = false
     loadCatalogue<PricedProduct>(
       supabase,
-      "id, sku, name, barcode, base_unit, vat_rate, sell_price, status, price_lists(*), units:product_units(*)",
+      COT_DANH_MUC_HD,
       { activeOnly: true }
     )
       .then((res) => {
@@ -460,6 +467,41 @@ export function InvoiceEditor({
       (a, b) => a + Number(b.qty_on_hand ?? 0), 0
     )
     setRows((prev) => withStock(prev, row.key, sum))
+  }
+
+  /** Thêm một dòng hàng đổi / trả kèm đơn — mặc định là TRẢ (xem chú thích ở ô "Thêm hàng đổi / trả"). */
+  const addReturn = (p: PricedProduct) => {
+    seqRef.current += 1
+    setRetAdds((prev) => [
+      ...prev,
+      {
+        key: `ra${seqRef.current}`,
+        productId: p.id,
+        name: p.name,
+        unit: p.base_unit,
+        qty: 1,
+        /* ⚠ GIÁ TRẢ LẤY THEO NHÓM GIÁ CỦA KHÁCH, y
+           như dòng bán — trả theo giá bảng chung là
+           hoàn cho khách nhiều hơn số họ đã trả. */
+        price: unitPriceFor(p, p.base_unit, priceGroupId),
+        vatRate: Number(p.vat_rate ?? 0),
+        isExchange: false,
+      },
+    ])
+  }
+
+  /**
+   * TẠO SẢN PHẨM TẠI CHỖ (chủ nhà 03/10/2026, Update 3.10) — từ ô thêm hàng bán (`ban`) hay ô hàng đổi / trả
+   * (`tra`). Tạo xong đọc lại mã kèm bảng giá + đơn vị, ghép vào `catalog` (sheet sửa dòng tra ở đó) rồi thêm
+   * đúng một dòng theo ô đã mở khung.
+   */
+  const [taoSp, setTaoSp] = useState<{ chu: string; dich: "ban" | "tra" } | null>(null)
+  const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
+  const daTaoSanPham = async (sp: PricedProduct, dich: "ban" | "tra") => {
+    const moi = (await docSanPhamVuaTao<PricedProduct>(supabase, sp.id, COT_DANH_MUC_HD)) ?? sp
+    setCatalog((ds) => gopVuaTao(ds, [moi]))
+    if (dich === "ban") void addProduct(moi)
+    else addReturn(moi)
   }
 
   const submit = async () => {
@@ -766,7 +808,7 @@ export function InvoiceEditor({
                 label="Thêm mã hàng không có trong đơn"
                 placeholder="Tên hàng, mã SKU hoặc mã vạch…"
                 emptyHint="Không tìm thấy mã nào khớp, hoặc mã đó đã có trên hóa đơn."
-                disabled={catalog.length === 0}
+                disabled={catalog.length === 0 && !coQuyenTaoSp}
                 term={term}
                 onTermChange={setTerm}
                 items={hits.map((p) => ({
@@ -775,6 +817,11 @@ export function InvoiceEditor({
                   subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
                 }))}
                 onPick={(p) => addProduct(p)}
+                taoMoi={
+                  coQuyenTaoSp
+                    ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu, dich: "ban" }) }
+                    : undefined
+                }
                 /*
                   ⚠ CHỌN ĐƠN VỊ NGAY TẠI DÒNG GỢI Ý, VÌ SAU KHI THÊM
                     KHÔNG SỬA ĐƯỢC NỮA. Bảng hóa đơn hiện `unitName` ở
@@ -980,7 +1027,7 @@ export function InvoiceEditor({
                     label="Thêm hàng đổi / trả"
                     placeholder="Tên hàng, mã SKU hoặc mã vạch…"
                     emptyHint="Không tìm thấy mã nào khớp."
-                    disabled={catalog.length === 0}
+                    disabled={catalog.length === 0 && !coQuyenTaoSp}
                     term={retTerm}
                     onTermChange={setRetTerm}
                     items={searchAddable(catalog, retTerm, new Set(), PICKER_PEEK).map((p) => ({
@@ -988,25 +1035,12 @@ export function InvoiceEditor({
                       title: p.name,
                       subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
                     }))}
-                    onPick={(p) => {
-                      seqRef.current += 1
-                      setRetAdds((prev) => [
-                        ...prev,
-                        {
-                          key: `ra${seqRef.current}`,
-                          productId: p.id,
-                          name: p.name,
-                          unit: p.base_unit,
-                          qty: 1,
-                          /* ⚠ GIÁ TRẢ LẤY THEO NHÓM GIÁ CỦA KHÁCH, y
-                             như dòng bán — trả theo giá bảng chung là
-                             hoàn cho khách nhiều hơn số họ đã trả. */
-                          price: unitPriceFor(p, p.base_unit, priceGroupId),
-                          vatRate: Number(p.vat_rate ?? 0),
-                          isExchange: false,
-                        },
-                      ])
-                    }}
+                    onPick={(p) => addReturn(p)}
+                    taoMoi={
+                      coQuyenTaoSp
+                        ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu, dich: "tra" }) }
+                        : undefined
+                    }
                   />
                 </div>
               </CardContent>
@@ -1095,6 +1129,21 @@ export function InvoiceEditor({
           </div>
         </>
       )}
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa={
+          taoSp?.dich === "tra"
+            ? "Sản phẩm vừa tạo sẽ được thêm luôn vào hàng đổi / trả."
+            : "Sản phẩm vừa tạo sẽ được thêm luôn vào hóa đơn."
+        }
+        onDaTao={(sp) => {
+          const dich = taoSp?.dich ?? "ban"
+          void daTaoSanPham(sp as PricedProduct, dich)
+        }}
+      />
 
       {/*
         Ô SỬA DÒNG — CÙNG MỘT SHEET VỚI MÀN SỬA ĐƠN HÀNG.

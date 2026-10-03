@@ -43,7 +43,13 @@ import {
   type IssueLine, type IssueProduct,
 } from "@/lib/inventory/stock-issue"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { errorMessage } from "@/lib/errors"
+
+/** Cột danh mục của màn này — dùng lại khi đọc mã vừa tạo tại chỗ. */
+const COT_SP_XUAT = "id, name, sku, barcode, base_unit, units:product_units(*)"
 
 export default function StockIssuePage() {
   const { loading: authLoading } = useRoleGuard("inventory")
@@ -70,13 +76,16 @@ export default function StockIssuePage() {
   const [term, setTerm] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const seqRef = useRef(0)
+  /** Khung tạo nhanh sản phẩm đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026). */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
 
   useEffect(() => {
     if (!user?.org_id) return
     let cancelled = false
     /* ⚠ KÉO ĐỦ DANH MỤC, không dừng ở 1.000 mã đầu — xem `loadCatalogue`. */
     loadCatalogue<IssueProduct>(
-      supabase, "id, name, sku, barcode, base_unit, units:product_units(*)",
+      supabase, COT_SP_XUAT,
       { orgId: user.org_id }
     ).then((res) => {
       if (cancelled) return
@@ -380,7 +389,7 @@ export default function StockIssuePage() {
             id="si-find"
             term={term}
             onTermChange={setTerm}
-            disabled={products.length === 0 || submitting}
+            disabled={(products.length === 0 && !coQuyenTaoSp) || submitting}
             items={hits.map((p) => ({
               ...p,
               title: p.name,
@@ -388,6 +397,19 @@ export default function StockIssuePage() {
             }))}
             onPick={(p) => addProduct(p)}
             hint={catTruncated ? <CatalogueShortNote /> : null}
+            taoMoi={coQuyenTaoSp ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) } : undefined}
+          />
+          {/* Tạo xong: ghép mã vào danh mục (bản đã nạp chưa có) rồi thêm luôn một dòng. */}
+          <TaoNhanhSanPham
+            open={!!taoSp}
+            onOpenChange={(o) => !o && setTaoSp(null)}
+            chuBanDau={taoSp?.chu}
+            moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào phiếu xuất."
+            onDaTao={async (sp) => {
+              const moi = (await docSanPhamVuaTao<IssueProduct>(supabase, sp.id, COT_SP_XUAT)) ?? sp
+              setProducts((ds) => gopVuaTao(ds, [moi]))
+              void addProduct(moi)
+            }}
           />
         </CardContent>
       </Card>

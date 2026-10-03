@@ -28,6 +28,11 @@ import { newOrderHref } from "@/lib/nav/new-order"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { errorMessage } from "@/lib/errors"
 import { CompactSelect } from "@/components/ui/compact-select"
+import { SearchSelect } from "@/components/ui/search-select"
+import { TaoNhanhKhach } from "@/components/tao-nhanh/tao-nhanh-khach"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 interface PjpRoute {
   id?: string
@@ -77,6 +82,8 @@ export default function PjpPage() {
   const [routes, setRoutes] = useState<PjpRoute[]>([])
   const [todayVisits, setTodayVisits] = useState<VisitLog[]>([])
   const [customers, setCustomers] = useState<{ id: string; store_name: string; address: string | null }[]>([])
+  /** Khung tạo nhanh khách đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — tuyến đang xếp giữ nguyên. */
+  const [taoKhach, setTaoKhach] = useState<{ chu: string } | null>(null)
   const [activeDay, setActiveDay] = useState<number>(getTodayDow())
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
 
@@ -136,15 +143,19 @@ export default function PjpPage() {
   // Fetch available customers for adding (manager only)
   const fetchCustomers = useCallback(async () => {
     if (!user || !isManager) return
-    const { data, error: dataErr2 } = await supabase
-      .from("customers")
-      .select("id, store_name, address")
-      .eq("org_id", user.org_id)
-      .eq("status", "active")
-      .order("store_name")
-      .limit(500)
-    if (dataErr2) console.error("[sales/pjp] truy vấn lỗi:", dataErr2.message)
-    if (data) setCustomers(data)
+    /* ⚠ ĐỌC ĐỦ THEO TRANG, không `.limit(500)` — khách thứ 501 trở đi không xếp được vào tuyến. */
+    const res = await fetchAllForAggregate<{ id: string; store_name: string; address: string | null }>((from, to) =>
+      supabase
+        .from("customers")
+        .select("id, store_name, address", { count: "exact" })
+        .eq("org_id", user.org_id)
+        .eq("status", "active")
+        .order("store_name")
+        .order("id")
+        .range(from, to)
+    )
+    if (res.error) console.error("[sales/pjp] truy vấn lỗi:", res.error)
+    else setCustomers(res.rows)
   }, [user, isManager, supabase])
 
   useEffect(() => {
@@ -157,8 +168,8 @@ export default function PjpPage() {
   const dayRoutes = routes.filter((r) => r.day_of_week === activeDay)
 
   // Add customer to day
-  const addCustomerToDay = (customerId: string) => {
-    const cust = customers.find((c) => c.id === customerId)
+  const addCustomerToDay = (customerId: string, coSan?: { id: string; store_name: string; address: string | null }) => {
+    const cust = coSan ?? customers.find((c) => c.id === customerId)
     if (!cust) return
     const alreadyExists = routes.some((r) => r.day_of_week === activeDay && r.customer_id === customerId)
     if (alreadyExists) return
@@ -517,16 +528,32 @@ export default function PjpPage() {
               <CardTitle className="text-base">Thêm khách hàng</CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Chọn xong là thêm vào ngày và ô trở về trống — như bản cũ. */}
-              <CompactSelect
-                ariaLabel="Thêm khách hàng"
-                value=""
-                onChange={(v) => { if (v) addCustomerToDay(v) }}
-                emptyLabel="-- Chọn khách hàng --"
+              {/* Chọn xong là thêm vào ngày và ô trở về trống — như bản cũ. Ô tìm (đủ danh sách khách), cuối
+                  danh sách là "+ Tạo khách hàng mới": tạo tại chỗ rồi thêm luôn vào ngày đang xem. */}
+              <SearchSelect
+                id="pjp-add-customer"
+                valueId=""
+                onPick={(o) => { if (o) addCustomerToDay(o.id) }}
+                placeholder="Gõ tên cửa hàng hoặc địa chỉ…"
+                emptyHint="Không tìm thấy khách nào khớp."
                 options={customers
                   .filter((c) => !dayRoutes.some((r) => r.customer_id === c.id))
-                  .map((c) => ({ value: c.id, label: c.store_name }))}
-                className="h-10 w-full rounded-lg bg-card px-3 text-sm"
+                  .map((c) => ({ id: c.id, label: c.store_name, hint: c.address }))}
+                taoMoi={
+                  duocTaoNhanh(user?.role, "khach")
+                    ? { nhan: NHAN_TAO_NHANH.khach, onTao: (chu) => setTaoKhach({ chu }) }
+                    : undefined
+                }
+              />
+              <TaoNhanhKhach
+                open={!!taoKhach}
+                onOpenChange={(o) => !o && setTaoKhach(null)}
+                chuBanDau={taoKhach?.chu}
+                onDaTao={(k) => {
+                  const moi = { id: k.id, store_name: k.store_name, address: k.address }
+                  setCustomers((ds) => gopVuaTao(ds, [moi]))
+                  addCustomerToDay(k.id, moi)
+                }}
               />
             </CardContent>
           </Card>

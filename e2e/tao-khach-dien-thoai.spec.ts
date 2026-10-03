@@ -75,13 +75,13 @@ test("SĐT đã có khách → báo 'đã có khách hàng' tại chỗ, không 
   expect(ghi).toHaveLength(1)
 })
 
-test("chọn khách ở /sell: tìm SĐT không ra → tạo khách mới kèm số và đường quay về", async ({ page }) => {
+test("chọn khách ở /sell: tìm SĐT không ra → tạo khách mới TẠI CHỖ, gán sẵn số (Update 3.10)", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/sell/customer")
   await page.getByLabel("Tìm khách hàng").fill(SDT)
   await page.getByTestId("tao-khach-voi-sdt").click()
-  await expect(page).toHaveURL(/\/customers\/new\?next=\/sell\/customer&sdt=0912345678/)
-  await expect(page.getByTestId("tk-phone")).toHaveValue("0912 345 678")
+  await expect(page).toHaveURL(/\/sell\/customer$/)
+  await expect(page.getByTestId("tao-nhanh-khach").getByTestId("tk-phone")).toHaveValue("0912 345 678")
 })
 
 test.describe("máy tính", () => {

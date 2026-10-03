@@ -129,7 +129,8 @@ describe("nối dây", () => {
   })
   it("tìm không ra → nút tạo khách mới kèm số (danh sách khách + chọn khách /sell)", () => {
     expect(read("src/app/(dashboard)/customers/page.tsx")).toContain("`/customers/new?sdt=${sdtTim}`")
-    expect(read("src/app/(dashboard)/sell/customer/page.tsx")).toContain("`/customers/new?next=/sell/customer${sdtTim ? `&sdt=${sdtTim}` : \"\"}`")
+    // /sell: từ 03/10/2026 tạo tại chỗ (`TaoNhanhKhach`), chữ tìm — SĐT hay tên — gán sẵn qua `chuBanDauKhach`.
+    expect(read("src/app/(dashboard)/sell/customer/page.tsx")).toContain("chuBanDau={taoKhach?.chu}")
   })
   it("form máy tính: tuyến bắt buộc, chống bấm 2 lần, tạo qua taoKhach", () => {
     const s = read("src/components/customers/customer-form.tsx")

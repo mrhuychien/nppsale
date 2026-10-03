@@ -222,6 +222,20 @@ export async function loadOneSellCustomer(supabase: unknown, id: string): Promis
   return r.data ?? null
 }
 
+/**
+ * ĐỌC RIÊNG MỘT SẢN PHẨM theo cột của danh mục bán (kèm bảng giá + đơn vị) — sản phẩm vừa tạo nhanh ở /sell
+ * (chủ nhà 03/10/2026, Update 3.10). `null` = không đọc được dòng ấy; lỗi thì NÉM.
+ */
+export async function loadOneSellProduct(supabase: unknown, id: string): Promise<SellProduct | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any
+  const doc = (cols: string) => sb.from("products").select(cols).eq("id", id).maybeSingle() as Promise<{ data: SellProduct | null; error: { message: string } | null }>
+  let r = await doc(PROD_COLS)
+  if (r.error) r = await doc("*, price_lists(*), units:product_units(*)")
+  if (r.error) throw new Error(r.error.message)
+  return r.data ?? null
+}
+
 /** Lô KHO BÁN còn hàng — nguồn của tồn kho trên màn bán. */
 function docLoBan(sb: Client) {
   return (

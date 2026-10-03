@@ -101,6 +101,15 @@ export function addSellCustomer(c: SellRefData["customers"][number]): void {
   memo = { ...memo, data: { ...memo.data, customers: [...memo.data.customers, c] } }
 }
 
+/**
+ * Thêm một sản phẩm vừa tạo nhanh ở /sell (chủ nhà 03/10/2026, Update 3.10) vào bản trong RAM — rời màn rồi
+ * quay lại vẫn thấy, không đợi tải lại danh mục.
+ */
+export function addSellProduct(p: SellRefData["products"][number]): void {
+  if (!memo || memo.data.products.some((x) => x.id === p.id)) return
+  memo = { ...memo, data: { ...memo.data, products: [...memo.data.products, p] } }
+}
+
 /** Ghi bản danh mục đọc từ máy (IndexedDB) làm gốc, để làm mới TỒN KHO trên nó. */
 export function seedSellRefData(data: SellRefData, catalogAt: number): void {
   if (!memo) memo = { data, at: 0, catalogAt, phien: phienTrenMay() }

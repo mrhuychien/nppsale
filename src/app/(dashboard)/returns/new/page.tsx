@@ -19,6 +19,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchSelect } from "@/components/ui/search-select"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TaoNhanhKhach } from "@/components/tao-nhanh/tao-nhanh-khach"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useToast } from "@/hooks/use-toast"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
@@ -221,6 +225,9 @@ export default function NewReturnPage() {
 
   const [q, setQ] = useState("")
   const [saving, setSaving] = useState(false)
+  /** Khung tạo nhanh khách / sản phẩm đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — phiếu giữ nguyên. */
+  const [taoKhach, setTaoKhach] = useState<{ chu: string } | null>(null)
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -580,6 +587,22 @@ export default function NewReturnPage() {
                 onPick={(o) => setCustomerId(o?.id ?? "")}
                 placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
                 emptyHint="Không tìm thấy khách nào khớp."
+                taoMoi={
+                  duocTaoNhanh(user?.role, "khach")
+                    ? { nhan: NHAN_TAO_NHANH.khach, onTao: (chu) => setTaoKhach({ chu }) }
+                    : undefined
+                }
+              />
+              <TaoNhanhKhach
+                open={!!taoKhach}
+                onOpenChange={(o) => !o && setTaoKhach(null)}
+                chuBanDau={taoKhach?.chu}
+                onDaTao={(k) => {
+                  setCustomers((ds) =>
+                    gopVuaTao(ds, [{ id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? "", phone: k.phone ?? "" }])
+                  )
+                  setCustomerId(k.id)
+                }}
               />
             </div>
 
@@ -702,13 +725,33 @@ export default function NewReturnPage() {
               emptyHint="Không tìm thấy mã nào khớp."
               term={q}
               onTermChange={setQ}
-              disabled={products.length === 0}
+              disabled={products.length === 0 && !duocTaoNhanh(user?.role, "san-pham")}
               items={found.map((p) => ({
                 ...p,
                 title: p.name,
                 subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
               }))}
               onPick={(p) => addFromCatalog(p)}
+              taoMoi={
+                duocTaoNhanh(user?.role, "san-pham")
+                  ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) }
+                  : undefined
+              }
+            />
+            {/* Tạo xong: ghép mã vào danh mục (`productById` tra ở đó) rồi thêm luôn một dòng. */}
+            <TaoNhanhSanPham
+              open={!!taoSp}
+              onOpenChange={(o) => !o && setTaoSp(null)}
+              chuBanDau={taoSp?.chu}
+              moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào phiếu trả."
+              onDaTao={(sp) => {
+                const moi: ProductLite = {
+                  id: sp.id, name: sp.name, sku: sp.sku, barcode: sp.barcode ?? null,
+                  base_unit: sp.base_unit, vat_rate: sp.vat_rate ?? null, sell_price: sp.sell_price ?? null,
+                }
+                setProducts((ds) => gopVuaTao(ds, [moi]))
+                addFromCatalog(moi)
+              }}
             />
 
             {lines.length === 0 ? (

@@ -46,10 +46,12 @@ describe("nút tạo khách trên màn chọn khách", () => {
     expect(PICKER).toContain('aria-label="Tạo khách hàng mới"')
   })
 
-  it("mang theo đường quay về luồng bán hàng", () => {
-    // Kèm `&sdt=` khi ô tìm đang là SĐT (chủ nhà 01/10/2026).
-    expect(PICKER).toContain("`/customers/new?next=/sell/customer${sdtTim ? `&sdt=${sdtTim}` : \"\"}`")
-    expect(PICKER).toContain("router.push(taoMoiHref)")
+  /** Chủ nhà 03/10/2026 (Update 3.10 mục 5): tạo TẠI CHỖ, gán sẵn chữ đang tìm — không sang /customers/new nữa. */
+  it("mở tạo nhanh tại chỗ, mang theo chữ đang tìm", () => {
+    const btn = PICKER.indexOf('aria-label="Tạo khách hàng mới"')
+    expect(PICKER.slice(PICKER.lastIndexOf("<button", btn), btn)).toContain("setTaoKhach({ chu: q.trim() })")
+    expect(PICKER).toContain("<TaoNhanhKhach")
+    expect(PICKER).not.toContain("/customers/new?next=/sell/customer")
   })
 })
 

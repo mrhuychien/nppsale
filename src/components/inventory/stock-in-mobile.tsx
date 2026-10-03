@@ -13,7 +13,7 @@
 import { KHO_NHAN, type KhoNhan } from "@/lib/inventory/post-import"
 import { CompactSelect } from "@/components/ui/compact-select"
 import { useState, type ReactNode } from "react"
-import { ScanBarcode, Tag, Trash2 } from "lucide-react"
+import { PackagePlus, ScanBarcode, Tag, Trash2 } from "lucide-react"
 import { DauTrangTrang } from "@/components/mobile/dau-trang"
 import { MoneyInput } from "@/components/ui/money-input"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -60,6 +60,11 @@ export interface StockInMobileProps {
   /** Ô tìm mặt hàng (ProductPicker) của trang. */
   picker: ReactNode
   onScan: () => void
+  /**
+   * Mở khung tạo sản phẩm của trang (điền sẵn chữ đang tìm) — chủ nhà 03/10/2026, Update 3.10: "thêm nút thêm
+   * sản phẩm ở top". Không có quyền tạo thì trang không truyền → nút không hiện.
+   */
+  onTaoSanPham?: () => void
   onDiscard: () => void
   onSubmit: () => void
   saving: boolean
@@ -197,6 +202,18 @@ export function StockInMobile(p: StockInMobileProps) {
               >
                 <ScanBarcode className="h-[18px] w-[18px]" />
               </button>
+              {p.onTaoSanPham && (
+                <button
+                  type="button"
+                  aria-label="Thêm sản phẩm"
+                  title="Tạo sản phẩm mới"
+                  onClick={p.onTaoSanPham}
+                  data-testid="nk-m-them-san-pham"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-primary/10 text-primary"
+                >
+                  <PackagePlus className="h-[18px] w-[18px]" />
+                </button>
+              )}
             </div>
 
             {dong.length === 0 && (

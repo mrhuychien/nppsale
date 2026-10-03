@@ -12,12 +12,17 @@
  *   - Bước "Phiếu" (như 2b): thẻ NCC, dòng hàng (chạm → sheet sửa dòng như 3a), thông tin
  *     phiếu, tổng tiền dưới đáy bấm mở chi tiết, hai nút Lưu tạm / Hoàn thành.
  * ⚠ Nút Back của điện thoại ở bước Phiếu quay về bước Thêm hàng (history), không rời màn.
+ *
+ * TẠO NHANH TẠI CHỖ (chủ nhà 03/10/2026, Update 3.10): "khi tìm kiếm hàng thêm nút thêm sản phẩm ở top,
+ * cạnh nút chọn nhiều sản phẩm. — Khi tìm kiếm ncc, thêm nút thêm NCC" · "Khi tạo xong sản phẩm hoặc NCC
+ * -> bấm xong thì quay về phần đang làm … add luôn". Tấm trượt kín màn, điền sẵn chữ đang tìm; lưu xong
+ * hàng mới vào phiếu (như chạm thẻ), NCC mới được chọn cho phiếu — phiếu đang làm giữ nguyên.
  */
 
 import { bottomSheetBox, useViewportInsets } from "@/hooks/use-viewport-insets"
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, ChevronUp, ListChecks, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronUp, ListChecks, PackagePlus, Plus, Search, Truck, Trash2, TriangleAlert, X } from "lucide-react"
 import { chamTheHang, docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
@@ -36,9 +41,21 @@ import {
   type GiamGiaPhieu,
 } from "@/lib/purchasing/phieu-mobile"
 import { SoThuTu } from "@/components/mobile/so-thu-tu"
+import { useAuth } from "@/hooks/use-auth"
+import { createClient } from "@/lib/supabase/client"
+import { duocTaoNhanh, NHAN_TAO_NHANH } from "@/lib/tao-nhanh/quyen"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
+import type { Product } from "@/types"
+import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 
 /** Trần số thẻ vẽ một lúc — như /sell. */
 const RENDER_CAP = 60
+
+type NccMuc = { id: string; name: string; code?: string | null }
+
+/** Cột danh mục như trang nạp (`loadCatalogue` ở hai trang) — đọc lại hàng vừa tạo kèm đơn vị quy đổi. */
+const COT_HANG_MOI = "id, name, sku, barcode, base_unit, cost_price, vat_rate, shelf_life_days, primary_supplier_id, units:product_units(*)"
 
 export interface PhieuNccValue {
   supplierId: string
@@ -121,9 +138,20 @@ export function PhieuNccMobile({
     setChonNhieu(v)
   }
 
+  /* Tạo nhanh: hàng / NCC vừa tạo sống ở đây tới khi trang nạp lại danh mục. */
+  const { user } = useAuth()
+  const duocTaoSp = duocTaoNhanh(user?.role, "san-pham")
+  const duocTaoNcc = duocTaoNhanh(user?.role, "ncc")
+  const [hangMoi, setHangMoi] = useState<ReceiptProduct[]>([])
+  const [nccMoi, setNccMoi] = useState<NccMuc[]>([])
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
+  const dsHang = useMemo(() => gopVuaTao(products, hangMoi), [products, hangMoi])
+  const dsNcc = useMemo(() => gopVuaTao(suppliers, nccMoi), [suppliers, nccMoi])
+
   const lines = value.lines
-  const supplier = suppliers.find((s) => s.id === value.supplierId) ?? null
-  const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
+  const supplier = dsNcc.find((s) => s.id === value.supplierId) ?? null
+  const byId = useMemo(() => new Map(dsHang.map((p) => [p.id, p])), [dsHang])
 
   /* ⚠ Back của điện thoại ở bước Phiếu → về bước Thêm hàng, không rời màn. */
   useEffect(() => {
@@ -144,8 +172,8 @@ export function PhieuNccMobile({
 
   /* Hàng của NCC đang chọn (mặt hàng chưa gán NCC vẫn hiện — xem `inSupplierScope`). */
   const trongPhamVi = useMemo(
-    () => products.filter((p) => inSupplierScope(p as { primary_supplier_id?: string | null }, value.supplierId)),
-    [products, value.supplierId]
+    () => dsHang.filter((p) => inSupplierScope(p as { primary_supplier_id?: string | null }, value.supplierId)),
+    [dsHang, value.supplierId]
   )
   const danhSach = useMemo(() => {
     const kq = timXepHang(trongPhamVi, dq, (x) => [x.sku, x.barcode, x.name], { nho: "hang" }).ketQua
@@ -174,6 +202,23 @@ export function PhieuNccMobile({
     if (kq.sangPhieu) moPhieu()
   }
 
+  /**
+   * Hàng vừa tạo: đọc lại kèm đơn vị quy đổi (form chỉ trả dòng `products`), cho vào danh mục rồi THÊM như
+   * chạm thẻ — 1 đơn vị cơ sở; chọn từng mã thì sang phiếu, chọn nhiều thì ở lại (`chamTheHang`).
+   * ⚠ Đọc lại lỗi vẫn thêm được (chỉ thiếu đơn vị quy đổi) — không bắt làm lại hàng đã tạo.
+   */
+  const daTaoHang = async (sp: Product) => {
+    let moi: ReceiptProduct = { ...sp, units: [] }
+    try {
+      const doc = await docSanPhamVuaTao<ReceiptProduct>(createClient(), sp.id, COT_HANG_MOI)
+      if (doc) moi = { ...moi, ...doc, units: doc.units ?? [] }
+    } catch {
+      /* giữ bản form trả về */
+    }
+    setHangMoi((ds) => [...ds.filter((x) => x.id !== moi.id), moi])
+    cham(moi, moi.base_unit, false)
+  }
+
   const hopLe = validReceiptLines(lines)
   /**
    * GIẢM GIÁ PHIẾU TRƯỚC THUẾ + VAT MỘT MỨC CHO CẢ PHIẾU (chủ nhà 30/09/2026). Số gõ (đ / %) và
@@ -189,7 +234,7 @@ export function PhieuNccMobile({
     const v = String(t.vat)
     if (value.discount !== d || value.vatOverride !== v) onChange({ discount: d, vatOverride: v })
   }, [t.discount, t.vat]) // eslint-disable-line react-hooks/exhaustive-deps
-  const ngoaiNcc = value.supplierId ? linesOutOfSupplierScope(lines, products as Array<{ id: string; primary_supplier_id?: string | null }>, value.supplierId) : []
+  const ngoaiNcc = value.supplierId ? linesOutOfSupplierScope(lines, dsHang as Array<{ id: string; primary_supplier_id?: string | null }>, value.supplierId) : []
   const chuaGia = dongChuaCoGia(lines)
   const chuaXong = !value.supplierId ? "Chọn NCC" : hopLe.length === 0 ? "Chưa có hàng" : null
 
@@ -218,7 +263,20 @@ export function PhieuNccMobile({
               <button type="button" aria-label="Quay lại" onClick={() => router.push(backHref)} className="-ml-2 grid h-9 w-9 place-items-center text-on-surface">
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <h1 className="min-w-0 flex-1 text-[19px] font-bold text-on-surface">{chu.them}</h1>
+              <h1 className="min-w-0 flex-1 truncate text-[19px] font-bold text-on-surface">{chu.them}</h1>
+              {duocTaoSp && (
+                <button
+                  type="button"
+                  aria-label="Thêm sản phẩm"
+                  title={q.trim() ? `Tạo sản phẩm mới “${q.trim()}”` : NHAN_TAO_NHANH["san-pham"]}
+                  onClick={() => setTaoSp({ chu: q })}
+                  data-testid="them-san-pham"
+                  className="flex h-9 shrink-0 items-center gap-1 rounded-[10px] bg-primary/10 px-2.5 text-[13px] font-semibold text-primary"
+                >
+                  <PackagePlus className="h-[18px] w-[18px]" />
+                  Thêm SP
+                </button>
+              )}
               <button
                 type="button"
                 aria-pressed={chonNhieu}
@@ -266,9 +324,21 @@ export function PhieuNccMobile({
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-[14px]" />)
             ) : danhSach.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                {q.trim() ? `Không tìm thấy sản phẩm khớp “${q.trim()}”` : "Chưa có sản phẩm nào"}
-              </p>
+              <div className="flex flex-col items-center gap-3 py-10 text-center" data-testid="hang-trong">
+                <p className="text-sm text-muted-foreground">
+                  {q.trim() ? `Không tìm thấy sản phẩm khớp “${q.trim()}”` : "Chưa có sản phẩm nào"}
+                </p>
+                {duocTaoSp && (
+                  <button
+                    type="button"
+                    onClick={() => setTaoSp({ chu: q })}
+                    className="tap flex max-w-full items-center gap-1.5 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground"
+                  >
+                    <PackagePlus className="h-[18px] w-[18px] shrink-0" />
+                    <span className="truncate">{q.trim() ? `Thêm sản phẩm “${q.trim()}”` : "Thêm sản phẩm"}</span>
+                  </button>
+                )}
+              </div>
             ) : (
               danhSach.map((p) => (
                 <TheHangNcc
@@ -519,13 +589,34 @@ export function PhieuNccMobile({
 
       <ChonNccSheet
         open={nccOpen}
-        suppliers={suppliers}
+        suppliers={dsNcc}
         valueId={value.supplierId}
         onPick={(id) => {
           onChange({ supplierId: id })
           setNccOpen(false)
         }}
         onClose={() => setNccOpen(false)}
+        /* ⚠ Đóng tấm chọn rồi mới mở khung tạo — hai hộp thoại chồng nhau giành tiêu điểm. */
+        onTaoMoi={duocTaoNcc ? (chu) => { setNccOpen(false); setTaoNcc({ chu }) } : undefined}
+      />
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        /* NCC của phiếu điền sẵn — hàng mới hiện ngay trong danh sách hàng của NCC này. */
+        nccBanDau={value.supplierId || undefined}
+        moTa={kind === "nhap" ? "Tạo xong sản phẩm được thêm luôn vào phiếu nhập." : "Tạo xong sản phẩm được thêm luôn vào phiếu trả."}
+        onDaTao={(sp) => void daTaoHang(sp)}
+      />
+      <TaoNhanhNcc
+        open={!!taoNcc}
+        onOpenChange={(o) => !o && setTaoNcc(null)}
+        chuBanDau={taoNcc?.chu}
+        onDaTao={(n) => {
+          setNccMoi((ds) => [...ds.filter((x) => x.id !== n.id), { id: n.id, name: n.name, code: n.code }])
+          onChange({ supplierId: n.id })
+        }}
       />
 
       <SuaDongSheet
@@ -713,13 +804,15 @@ function Hang({ label, value }: { label: string; value: string }) {
 
 /** Chọn NCC — như màn chọn khách (2c): ô tìm + danh sách. */
 function ChonNccSheet({
-  open, suppliers, valueId, onPick, onClose,
+  open, suppliers, valueId, onPick, onClose, onTaoMoi,
 }: {
   open: boolean
   suppliers: Array<{ id: string; name: string; code?: string | null }>
   valueId: string
   onPick: (id: string) => void
   onClose: () => void
+  /** Có quyền tạo NCC thì có — nhận chữ đang tìm (thành tên NCC). */
+  onTaoMoi?: (chu: string) => void
 }) {
   const [q, setQ] = useState("")
   useEffect(() => {
@@ -739,7 +832,20 @@ function ChonNccSheet({
         data-testid="chon-ncc-sheet"
       >
         <div className="flex flex-col gap-2.5 border-b border-border/60 px-4 pb-3 pt-2">
-          <p className="text-[16px] font-bold">Chọn nhà cung cấp</p>
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 text-[16px] font-bold">Chọn nhà cung cấp</p>
+            {onTaoMoi && (
+              <button
+                type="button"
+                onClick={() => onTaoMoi(q)}
+                data-testid="them-ncc"
+                className="flex h-9 shrink-0 items-center gap-1 rounded-[10px] bg-primary/10 px-3 text-[13px] font-semibold text-primary"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.6} />
+                Thêm NCC
+              </button>
+            )}
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
             <input
@@ -773,6 +879,22 @@ function ChonNccSheet({
                 {s.id === valueId && <span className="text-[12px] font-semibold text-primary">Đang chọn</span>}
               </button>
             ))
+          )}
+          {/* Dòng tạo mới ở CUỐI danh sách (kể cả khi không khớp NCC nào) — như ô chọn có tìm (`taoMoi`). */}
+          {onTaoMoi && (
+            <button
+              type="button"
+              onClick={() => onTaoMoi(q)}
+              data-testid="tao-ncc-moi"
+              className="flex min-h-[52px] items-center gap-3 px-4 py-3 pb-[calc(var(--safe-b)+12px)] text-left text-[15px] font-semibold text-primary"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-dashed border-primary/50">
+                <Plus className="h-4 w-4" strokeWidth={2.6} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                {q.trim() ? `${NHAN_TAO_NHANH.ncc} “${q.trim()}”` : NHAN_TAO_NHANH.ncc}
+              </span>
+            </button>
           )}
         </div>
       </SheetContent>

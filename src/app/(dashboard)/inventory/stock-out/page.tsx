@@ -47,6 +47,10 @@ import {
 } from "lucide-react"
 import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DongTaoMoi } from "@/components/ui/dong-tao-moi"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import type {
   Batch,
   Customer,
@@ -491,6 +495,10 @@ export default function StockOutPage() {
   }
 
   const clearSelection = () => setSelectedIds(new Set())
+
+  /** Khung tạo nhanh SP đổi dự phòng, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — tạo xong thêm luôn một dòng. */
+  const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
 
   // T-12: lazy load full catalog for the swap picker.
   const openSwapPicker = async () => {
@@ -1402,6 +1410,19 @@ export default function StockOutPage() {
                 </button>
               ))
             })()}
+            {/* Cuối danh sách, kể cả khi không có kết quả: tạo SP tại chỗ (đóng hộp chọn, mở khung tạo). */}
+            {coQuyenTaoSp && (
+              <DongTaoMoi
+                nhan={NHAN_TAO_NHANH["san-pham"]}
+                chu={swapSearch}
+                testId="swap-tao-moi"
+                className="border-t-0"
+                onTao={(chu) => {
+                  setSwapPickerOpen(false)
+                  setTaoSp({ chu })
+                }}
+              />
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground">
             SP chọn ở đây sẽ ghi vào phiếu xuất kèm với hàng theo đơn. Khi lái xe trả về,
@@ -1409,6 +1430,21 @@ export default function StockOutPage() {
           </p>
         </DialogContent>
       </Dialog>
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào hàng đem đi đổi."
+        onDaTao={async (sp) => {
+          type SpDoi = (typeof productCatalog)[number]
+          const moi =
+            (await docSanPhamVuaTao<SpDoi>(supabase, sp.id, "id, sku, name, base_unit, units:product_units(unit_name, conversion)")) ??
+            { id: sp.id, sku: sp.sku, name: sp.name, base_unit: sp.base_unit, units: [] }
+          setProductCatalog((ds) => gopVuaTao(ds, [{ ...moi, units: moi.units ?? [] }]))
+          addSwapItem({ ...moi, units: moi.units ?? [] })
+        }}
+      />
 
       {/*
         ĐÃ GỠ dải "[SYS] updated … · server: wms-edge-01 · merge_code=… ·

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -21,6 +21,12 @@ import {
 import { Save, Plus, Trash2, ChevronLeft, ChevronRight, Loader2, Package, ListOrdered, Target } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { SearchSelect } from "@/components/ui/search-select"
+import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
+import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { loadCatalogue } from "@/lib/products/load-catalogue"
+import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import type {
   HrMonthlyBonus,
   KpiMetricConfig,
@@ -122,6 +128,33 @@ export default function BonusConfigPage() {
   const [notes, setNotes] = useState("")
   const [products, setProducts] = useState<ProductOption[]>([])
   const [productUnits, setProductUnits] = useState<ProductUnitOption[]>([])
+  /** Danh mục đọc chưa hết — ô chọn SP phải nói ra. */
+  const [catTruncated, setCatTruncated] = useState(false)
+  /** Khung tạo nhanh sản phẩm: chữ đã gõ + dòng thưởng đang chọn SP (chủ nhà 03/10/2026, Update 3.10). */
+  const [taoSp, setTaoSp] = useState<{ chu: string; idx: number } | null>(null)
+  const coQuyenTaoSp = duocTaoNhanh(authUser?.role, "san-pham")
+  const productOptions = useMemo(
+    () => [
+      { id: "_all", label: "— Mọi sản phẩm —" },
+      ...products.map((pp) => ({ id: pp.id, label: pp.name, hint: pp.sku || null, keywords: pp.sku })),
+    ],
+    [products]
+  )
+  /** Gán SP cho dòng thưởng `idx` — đổi SP thì ĐVT về đơn vị cơ sở của SP mới (tránh giữ ĐVT không thuộc SP đó). */
+  const ganSanPham = (idx: number, newProductId: string | null, ds: ProductOption[] = products) =>
+    setPerUnit((cur) => {
+      const p = cur[idx]
+      if (!p) return cur
+      // null → giữ unit_name cũ vì đã là "mọi SP".
+      let newUnit = p.unit_name
+      if (newProductId) {
+        const newProd = ds.find((pp) => pp.id === newProductId)
+        if (newProd) newUnit = newProd.base_unit
+      }
+      const next = [...cur]
+      next[idx] = { ...p, product_id: newProductId, unit_name: newUnit }
+      return next
+    })
 
   const period = `${year}-${String(month).padStart(2, "0")}`
 
@@ -142,19 +175,17 @@ export default function BonusConfigPage() {
         .eq("org_id", authUser.org_id)
         .order("period", { ascending: false })
         .limit(12),
-      supabase
-        .from("products")
-        .select("id, sku, name, base_unit")
-        .eq("org_id", authUser.org_id)
-        .order("name", { ascending: true }),
+      /* ⚠ KÉO ĐỦ DANH MỤC (`loadCatalogue`), không dừng ở 1.000 mã đầu — mã sau đó không cài thưởng được. */
+      loadCatalogue<ProductOption>(supabase, "id, sku, name, base_unit", { orgId: authUser.org_id }),
       supabase
         .from("product_units")
         .select("product_id, unit_name"),
     ])
-    const qErr = ([currentRes, historyRes, productsRes, unitsRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr = ([currentRes, historyRes, unitsRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[hr/bonus-config] truy vấn lỗi:", qErr.message)
-    setProducts((productsRes.data as ProductOption[]) || [])
+    setProducts(productsRes.rows)
+    setCatTruncated(productsRes.truncated)
     setProductUnits((unitsRes.data as ProductUnitOption[]) || [])
 
     if (currentRes.data) {
@@ -356,6 +387,7 @@ export default function BonusConfigPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
+          {catTruncated && <CatalogueShortNote />}
           {perUnit.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               Chưa có thưởng đầu thùng nào
@@ -379,35 +411,19 @@ export default function BonusConfigPage() {
                     <Label className="text-xs uppercase text-muted-foreground">
                       Sản phẩm
                     </Label>
-                    <Select
-                      value={p.product_id || "_all"}
-                      onValueChange={(v) => {
-                        const next = [...perUnit]
-                        const newProductId = v === "_all" ? null : v
-                        // Khi đổi SP → reset unit_name về base_unit của SP mới
-                        // (tránh giữ ĐVT không thuộc SP đó). null → giữ
-                        // unit_name cũ vì đã là "mọi SP".
-                        let newUnit = p.unit_name
-                        if (newProductId) {
-                          const newProd = products.find((pp) => pp.id === newProductId)
-                          if (newProd) newUnit = newProd.base_unit
-                        }
-                        next[idx] = { ...p, product_id: newProductId, unit_name: newUnit }
-                        setPerUnit(next)
-                      }}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Chọn SP" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_all">— Mọi sản phẩm —</SelectItem>
-                        {products.map((pp) => (
-                          <SelectItem key={pp.id} value={pp.id}>
-                            {pp.sku} — {pp.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchSelect
+                      id={`bonus-product-${idx}`}
+                      options={productOptions}
+                      valueId={p.product_id || "_all"}
+                      onPick={(o) => ganSanPham(idx, !o || o.id === "_all" ? null : o.id)}
+                      placeholder="Chọn SP"
+                      emptyHint="Không tìm thấy mã nào khớp."
+                      taoMoi={
+                        coQuyenTaoSp
+                          ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu, idx }) }
+                          : undefined
+                      }
+                    />
                   </div>
                   <div className="col-span-2">
                     <Label className="text-xs uppercase text-muted-foreground">ĐVT</Label>
@@ -787,6 +803,19 @@ export default function BonusConfigPage() {
           </CardContent>
         </Card>
       )}
+
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa="Tạo xong sản phẩm được chọn luôn cho dòng thưởng đang sửa."
+        onDaTao={(sp) => {
+          const moi: ProductOption = { id: sp.id, sku: sp.sku, name: sp.name, base_unit: sp.base_unit }
+          const ds = gopVuaTao(products, [moi])
+          setProducts(ds)
+          if (taoSp) ganSanPham(taoSp.idx, moi.id, ds)
+        }}
+      />
     </div>
   )
 }

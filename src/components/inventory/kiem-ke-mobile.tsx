@@ -14,6 +14,8 @@ import { SEARCH_FIELD_PROPS, HIDE_NATIVE_CLEAR } from "@/lib/ui/search-field"
 import { chenhCuaDong, nutGuiKiemKe, soCoDau, type TomTatKiemKe } from "@/lib/inventory/kiem-ke-mobile"
 import { cn, formatCurrency } from "@/lib/utils"
 import { SoThuTu } from "@/components/mobile/so-thu-tu"
+import { DongTaoMoi } from "@/components/ui/dong-tao-moi"
+import type { TaoMoiCauHinh } from "@/lib/ui/tao-moi"
 
 export interface DongKiemKeMobile {
   key: string
@@ -54,6 +56,7 @@ export function KiemKeMobile({
   saving,
   onGui,
   onHuy,
+  taoMoi,
 }: {
   rows: DongKiemKeMobile[]
   tomTat: TomTatKiemKe
@@ -73,6 +76,8 @@ export function KiemKeMobile({
   saving: boolean
   onGui: () => void
   onHuy: () => void
+  /** Dòng "+ Tạo sản phẩm mới" cuối danh sách gợi ý (chủ nhà 03/10/2026) — trang quyết quyền. */
+  taoMoi?: TaoMoiCauHinh
 }) {
   const nut = nutGuiKiemKe(tomTat, saving)
   const rong = tomTat.totalDiffValue
@@ -125,7 +130,7 @@ export function KiemKeMobile({
             />
             <ScanBarcode className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
           </div>
-          {searchOpen && matches.length > 0 && (
+          {searchOpen && (matches.length > 0 || taoMoi) && (
             <div className="absolute inset-x-0 top-12 z-20 max-h-72 overflow-y-auto rounded-xl border bg-card shadow-lg" data-testid="kiem-ke-goi-y">
               {matches.map((p) => {
                 const ton = (p.batches || []).reduce((s, b) => s + Number(b.qty_on_hand || 0), 0)
@@ -153,6 +158,18 @@ export function KiemKeMobile({
                   </button>
                 )
               })}
+              {taoMoi && (
+                <DongTaoMoi
+                  nhan={taoMoi.nhan}
+                  chu={search}
+                  testId="kiem-ke-tao-moi"
+                  className={matches.length === 0 ? "border-t-0" : undefined}
+                  onTao={(chu) => {
+                    onSearchOpen(false)
+                    taoMoi.onTao(chu)
+                  }}
+                />
+              )}
             </div>
           )}
           <button

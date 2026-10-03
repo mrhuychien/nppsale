@@ -233,7 +233,8 @@ describe("Danh sách khách hàng", () => {
    * thêm cột không được đổi nghĩa bộ lọc đang có.
    */
   it("bộ lọc theo NVBH vẫn chỉ tính người chính", () => {
-    expect(LIST).toContain('if (a.role === "primary" && !repMap[a.customer_id])')
+    // Lọc trên máy chủ từ 03/10/2026 (tests/khach-loc-nhan-vien.test.ts) — vẫn chỉ người CHÍNH đang hoạt động.
+    expect(LIST).toContain('q.eq("nv_chinh.role", "primary").eq("nv_chinh.status", "active")')
   })
 
   it("cột Phụ trách có trong cấu hình và hiện mặc định", () => {

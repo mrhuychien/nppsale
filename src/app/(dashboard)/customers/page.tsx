@@ -1,5 +1,6 @@
 "use client"
 
+import { CHUA_PHAN_CONG, chonNv } from "@/lib/customers/loc-nhan-vien"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_KHACH_HANG } from "@/lib/search/list-filter-fields"
@@ -142,7 +143,6 @@ export default function CustomersPage() {
   )
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
   const [salesUsers, setSalesUsers] = useState<Array<{ id: string; full_name: string }>>([])
-  const [primaryRepMap, setPrimaryRepMap] = useState<Record<string, string>>({})
   const [managersMap, setManagersMap] = useState<Record<string, Manager[]>>({})
   const router = useRouter()
   const supabase = createClient()
@@ -238,6 +238,9 @@ export default function CustomersPage() {
     return () => { cancelled = true }
   }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Bộ lọc nhân viên đang áp (`null` = không lọc). NVBH chỉ thấy khách của mình nên không có bộ lọc này. */
+  const nvLoc = !isSales && activeFilters.includes("sales") && salesUserFilter !== "all" ? salesUserFilter : null
+
   // Reset page khi filter/search đổi.
   useEffect(() => {
     pg.reset()
@@ -263,7 +266,7 @@ export default function CustomersPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
-      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick, pg.from])
+      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, nvLoc, quickIds, refreshTick, pg.from])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /**
        * ⚠ THẺ LỌC RỖNG THÌ DỪNG, ĐỪNG GỬI `in.()`. Một `.in("id", [])`
@@ -277,7 +280,7 @@ export default function CustomersPage() {
         setLoadError(null)
         pg.setTotal(0)
         setDebts((d) => d)
-        setPrimaryRepMap({}); setManagersMap({})
+        setManagersMap({})
         setLoading(false)
         return
       }
@@ -292,8 +295,14 @@ export default function CustomersPage() {
       const build = (select: string, from = pg.from, to = pg.to, dem = true) => {
         let q = supabase
           .from("customers")
-          .select(select, dem ? { count: "exact" } : undefined)
+          .select(select + chonNv(nvLoc), dem ? { count: "exact" } : undefined)
           .order("store_name")
+        /* ⚠ LỌC NHÂN VIÊN TRÊN MÁY CHỦ (chủ nhà 03/10/2026: "nhân viên 60 khách mà có 3 khách hiện") — bản cũ lọc
+           trong 20 khách của trang đang tải. NV chính đang hoạt động, như cột "Phụ trách". */
+        if (nvLoc) {
+          q = q.eq("nv_chinh.role", "primary").eq("nv_chinh.status", "active")
+          q = nvLoc === CHUA_PHAN_CONG ? q.is("nv_chinh", null) : q.eq("nv_chinh.user_id", nvLoc)
+        }
         if (idSlice) q = q.in("id", idSlice)
         else q = q.range(from, to)
         if (debouncedSearch) {
@@ -343,15 +352,14 @@ export default function CustomersPage() {
       // Load aggregates CHỈ cho khách trên page hiện tại.
       const ids = list.map((c) => c.id)
       if (ids.length === 0) {
-        setPrimaryRepMap({}); setManagersMap({})
+        setManagersMap({})
         setLoading(false)
         return
       }
       /* Chủ nhà 27/09/2026: bỏ hai cột "Đơn gần nhất" / "Lần ghé gần nhất" — phần đọc chậm nhất
          của màn (1.000 dòng đơn + 1.000 dòng ghé thăm, rồi hỏi bù từng khách). */
       // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
-      // những người cùng vào một điểm bán. Bộ lọc theo NVBH bên dưới
-      // vẫn chỉ lấy người CHÍNH — xem repMap.
+      // những người cùng vào một điểm bán. Bộ lọc theo NV (máy chủ, `nvLoc`) vẫn chỉ lấy người CHÍNH.
       const assignsRes = await supabase
         .from("customer_assignments")
         .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
@@ -367,13 +375,6 @@ export default function CustomersPage() {
         user?: { id: string; full_name: string; is_active: boolean | null } | null
       }
       const assignRows = (assignsRes.data as unknown as AssignRow[]) || []
-      const repMap: Record<string, string> = {}
-      for (const a of assignRows) {
-        // Bộ lọc "nhân viên phụ trách" vẫn hiểu là người CHÍNH — giữ
-        // nguyên hành vi cũ, đừng để việc thêm cột đổi nghĩa bộ lọc.
-        if (a.role === "primary" && !repMap[a.customer_id]) repMap[a.customer_id] = a.user_id
-      }
-      setPrimaryRepMap(repMap)
 
       // Ngành hàng của những người đang phụ trách trang này.
       const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
@@ -410,7 +411,7 @@ export default function CustomersPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, statusFilter, channelFilter, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, statusFilter, channelFilter, nvLoc, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -444,15 +445,8 @@ export default function CustomersPage() {
 
   const filterActive = (k: CustomerFilterKey) => activeFilters.includes(k)
 
-  // Sales rep filter client-side (cần primaryRepMap đã load cho page hiện tại).
-  // Các filter khác đã server-side.
-  const filtered = customers.filter((c) => {
-    if (filterActive("sales") && salesUserFilter !== "all") {
-      if (salesUserFilter === "_none" ? primaryRepMap[c.id] : primaryRepMap[c.id] !== salesUserFilter)
-        return false
-    }
-    return true
-  })
+  // Mọi bộ lọc (kể cả nhân viên — `nvLoc`) chạy trên máy chủ.
+  const filtered = customers
 
   /** Đang xem tuyến hôm nay và không gõ tìm → xếp theo điểm dừng. */
   const routeMode = quick === "today" && !debouncedSearch
@@ -793,7 +787,7 @@ export default function CustomersPage() {
                 <SelectTrigger aria-label="Nhân viên" className="h-10 w-48 rounded-xl font-semibold"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả nhân viên</SelectItem>
-                  <SelectItem value="_none">Chưa phân công</SelectItem>
+                  <SelectItem value={CHUA_PHAN_CONG}>Chưa phân công</SelectItem>
                   {salesUsers.map((u) => (
                     <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
                   ))}

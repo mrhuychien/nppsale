@@ -253,8 +253,24 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     if (!db[table]) { db[table] = []; entry.unknownTable = true }
     const rows = db[table]
     const filters = []
+    /* Bảng NHÚNG trong select (`alias:bang!inner(...)` / `!left`): lọc `alias.cot` áp lên các dòng nhúng (mảng
+       hoặc một đối tượng); `!inner` thì dòng cha phải còn ít nhất một dòng nhúng khớp; `alias=is.null` = phép
+       loại (anti-join) như PostgREST — vd khách "Chưa phân công" (customers × customer_assignments). */
+    const nhung = new Map()
+    for (const m of (url.searchParams.get("select") || "").matchAll(/(\w+):\w+(!inner|!left)?\(/g)) nhung.set(m[1], { inner: m[2] === "!inner", loc: [], rong: null })
     for (const [k, v] of url.searchParams) {
       if (RESERVED.has(k)) continue
+      const cham = k.indexOf(".")
+      if (cham > 0 && !k.includes("->>") && nhung.has(k.slice(0, cham))) {
+        const f = filterFn(k.slice(cham + 1), v)
+        if (f) nhung.get(k.slice(0, cham)).loc.push(f)
+        else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]
+        continue
+      }
+      if (nhung.has(k) && (v === "is.null" || v === "not.is.null")) {
+        nhung.get(k).rong = v === "is.null"
+        continue
+      }
       if (k === "or") {
         const f = orFn(v)
         if (f) filters.push(f)
@@ -271,7 +287,18 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       if (f) filters.push(f)
       else entry.ignored = [...(entry.ignored ?? []), `${k}=${v}`]
     }
-    const match = (r) => filters.every((f) => f(r))
+    const quaNhung = (r) => {
+      for (const [alias, n] of nhung) {
+        if (!n.loc.length && n.rong === null) continue
+        const v = r[alias]
+        const ds = (Array.isArray(v) ? v : v == null ? [] : [v]).filter((e) => n.loc.every((f) => f(e)))
+        if (n.inner && ds.length === 0) return false
+        if (n.rong === true && ds.length > 0) return false
+        if (n.rong === false && ds.length === 0) return false
+      }
+      return true
+    }
+    const match = (r) => filters.every((f) => f(r)) && quaNhung(r)
 
     if (req.method === "POST") {
       const input = Array.isArray(json) ? json : [json]

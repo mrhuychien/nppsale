@@ -292,7 +292,10 @@ export default function StocktakeAdjustPage() {
         return {
           ...r,
           actual,
-          diff: actual - r.systemQty,
+          /* ⚠ TỒN LẺ (2,5) → CHÊNH LẺ (−0,5). Cột `quantity` nay là numeric (mig 228) — bản cũ integer nên
+             phiếu kiểm kê hàng tồn lẻ không lưu được. Làm tròn 6 chữ số như `qty_in_base_uom` để khỏi gửi
+             đuôi số thực kiểu 0,30000000000000004. */
+          diff: Math.round((actual - r.systemQty) * 1e6) / 1e6,
         }
       })
       .filter((r) => !isNaN(r.actual) && r.diff !== 0)

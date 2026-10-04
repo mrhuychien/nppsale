@@ -23,6 +23,7 @@ import {
   type InvoiceLineRow,
   fetchReturnsValueDu,
   fetchCogsForRange,
+  fetchReturnCosts,
 } from "@/lib/analytics/sales"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -145,7 +146,13 @@ export default function FinanceReportPage() {
       /* Hóa đơn không có cột giảm giá: giảm = Σ dòng − subtotal (mig 183).
          ⚠ `total` ĐÃ trừ giảm giá, nên dòng (1) phải là total + giảm — lấy
          total rồi trừ giảm lần nữa là trừ HAI lần. */
-      const dong = await fetchInvoiceLines(supabase, invoiceList.map((o) => o.id))
+      /* ⚠ GIÁ VỐN (4) = giá vốn xuất − giá vốn hàng trả ĐÃ NHẬP LẠI KHO (CLAUDE.md: "Lãi gộp = doanh thu
+         thuần − (giá vốn − giá vốn hàng trả đã nhập kho)"). Doanh thu thuần đã trừ hàng trả (2.2); bản cũ
+         không trừ giá vốn của chính số hàng ấy → lợi nhuận gộp thấp oan, lệch /reports/finance/pnl. */
+      const [dong, giaVonTra] = await Promise.all([
+        fetchInvoiceLines(supabase, invoiceList.map((o) => o.id)),
+        fetchReturnCosts(supabase, retRes.ids),
+      ])
       const dongTheoHd = new Map<string, InvoiceLineRow[]>()
       for (const l of dong) {
         const a = dongTheoHd.get(l.invoice_id) || []
@@ -163,7 +170,9 @@ export default function FinanceReportPage() {
       setRevenue(totalRevenue)
       setDiscount(totalDiscount)
       setReturnsValue(retVal)
-      setCogs(cogsRes.cogs)
+      let tongGiaVonTra = 0
+      giaVonTra.forEach((c) => { tongGiaVonTra += c.total })
+      setCogs(cogsRes.cogs - tongGiaVonTra)
 
       const exps = expensesRes.rows.map((e) => ({
         amount: Number(e.amount || 0),
@@ -232,7 +241,7 @@ export default function FinanceReportPage() {
       out.push(["  Giá trị hàng bán bị trả lại (2.2)", returnsValue])
       out.push(["Giảm trừ Doanh thu (2)", totalDeduction])
       out.push(["Doanh thu thuần (3=1-2)", netRevenue])
-      out.push(["Giá vốn hàng bán (4)", cogs])
+      out.push(["Giá vốn hàng bán (4) — đã trừ giá vốn hàng trả nhập kho", cogs])
       out.push(["Lợi nhuận gộp (5=3-4)", grossProfit])
       for (const c of expensesByCategory) {
         out.push([`  ${c.name} [${BUCKET_LABEL[c.bucket] || c.bucket}]`, c.amount])
@@ -430,7 +439,7 @@ function IncomeStatement(p: IncomeProps) {
         <Row label="Chiết khấu hóa đơn (2.1)" value={p.discount} level={1} sub accent="primary" />
         <Row label="Giá trị hàng bán bị trả lại (2.2)" value={p.returnsValue} level={1} sub accent="primary" />
         <Row label="Doanh thu thuần (3 = 1-2)" value={p.netRevenue} bold accent="primary" />
-        <Row label="Giá vốn hàng bán (4)" value={p.cogs} bold />
+        <Row label="Giá vốn hàng bán (4) — đã trừ giá vốn hàng trả nhập kho" value={p.cogs} bold />
         <Row
           label="Lợi nhuận gộp về bán hàng (5 = 3-4)"
           value={p.grossProfit}

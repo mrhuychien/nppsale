@@ -18,12 +18,22 @@ async function gieo(bang: string, rows: unknown[]) {
   })
   expect(r.ok).toBe(true)
 }
+/* Dọn dữ liệu đã gieo — Supabase giả dùng chung cả lượt chạy, để lại là làm lệch bộ chạy sau (vd kiểm kê điện thoại đếm thêm mã). */
+async function xoa(bang: string, ids: string[]) {
+  await fetch(`${FAKE}/rest/v1/${bang}?id=in.(${ids.join(",")})`, { method: "DELETE" })
+}
 const phieu = (id: string, code: string, type: string, status: string, posted_at: string) => ({
   id, entry_code: code, type, status, posted_at, created_at: posted_at, supplier: null, creator: { full_name: "Hoàng Văn Em" },
 })
 const hang = (page: Page, ma: string) => page.locator("tbody tr").filter({ hasText: ma })
 /** Cột cuối-1 là "Tồn sau" (cột cuối là giá vốn). */
 const tonSau = (page: Page, ma: string) => hang(page, ma).locator("td").nth(-2)
+
+test.afterAll(async () => {
+  await xoa("stock_entry_lines", ["dk-l1", "dk-l2", "dk-l3", "dk-l4"])
+  await xoa("batches", ["dk-b1"])
+  await xoa("products", [SP])
+})
 
 test.beforeAll(async () => {
   await gieo("products", [{ id: SP, org_id: ORG, sku: "DK-TK1", name: "Nước ngọt thẻ kho", base_unit: "lon", sell_price: 10000, status: "active" }])

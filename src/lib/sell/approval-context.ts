@@ -1,5 +1,6 @@
 import type { ApprovalRules } from "@/types"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { vnDateKey } from "@/lib/orders/status-tone"
 
 /**
  * Ngữ cảnh để chấm quy tắc duyệt: quy tắc của NPP + công nợ.
@@ -78,11 +79,19 @@ export async function loadApprovalContext(
 
   const rows = recRes.rows
   const now = opts.now ?? Date.now()
+  /**
+   * ⚠ SO KHOÁ NGÀY THEO GIỜ VN, KHÔNG SO MỐC GIỜ. `due_date` là DATE;
+   *   `new Date("2026-10-04")` là 00:00 UTC = 07:00 sáng giờ VN, nên so mốc
+   *   thì từ 07:00 ngày đến hạn khoản nợ đã bị tính QUÁ HẠN. Luật tuổi nợ
+   *   của dự án (`daysOverdueOf`, mig 140 `vn_today()`): đến hạn HÔM NAY là
+   *   chưa quá hạn — chỉ ngày đến hạn TRƯỚC hôm nay (lịch VN) mới quá hạn.
+   */
+  const homNay = vnDateKey(new Date(now))
   return {
     rules: (rulesRes.data as ApprovalRules) ?? null,
     customerDebt: rows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
     customerOverdue: rows
-      .filter((r) => r.due_date && new Date(r.due_date).getTime() < now)
+      .filter((r) => r.due_date && String(r.due_date).slice(0, 10) < homNay)
       .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
     repPortfolioDebt: repRes.rows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
     failed: !!(

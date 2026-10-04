@@ -88,7 +88,9 @@ export default function SellEditLoaderPage() {
               // đảo chỗ — nhìn như đơn vừa bị ai sửa.
               .order("product_id", { ascending: true })
               .order("unit_name", { ascending: true })
-          const COT = "product_id, unit_name, quantity, unit_price, conversion_factor, note"
+          /* ⚠ `line_discount` PHẢI ĐỌC — thiếu nó thì dòng có giảm giá nạp lại như
+             một giá bị sửa xuống dưới giá bảng, nút lưu bị khoá (đội test 04/10/2026). */
+          const COT = "product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, note"
           const r = await doc(`${COT}, vat_rate`)
           return r.error ? doc(COT) : r
         })(),

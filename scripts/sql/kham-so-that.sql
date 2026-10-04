@@ -562,4 +562,61 @@ SELECT 64, 'Mig 225 (Lượt soạn hàng)',
        ELSE 'OK — đã vá' END,
   CASE WHEN to_regclass('public.luot_soan') IS NULL THEN ''
        ELSE 'Lượt đang soạn: ' || (SELECT count(*) FROM luot_soan WHERE trang_thai = 'dang_soan') END
+UNION ALL
+-- 65. Mig 226 — sửa lỗi bán hàng: quyền giảm giá chốt ở máy chủ, ngày đơn giờ VN, mốc gửi thẳng, SL > 0
+SELECT 65, 'Mig 226 (Quyền giảm giá ở máy chủ, ngày đơn giờ VN)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_quyen_gia_dong_don')
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_quyen_giam_don')
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_don_moi_moc_gui')
+         OR (SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+             JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+             WHERE d.adrelid = 'public.sales_orders'::regclass AND a.attname = 'order_date') NOT ILIKE '%vn_today%'
+       THEN 'CHƯA — NVBH ghi được giảm giá vượt quyền qua RPC; đơn 0h–7h mang ngày hôm qua'
+       ELSE 'OK — đã vá' END,
+  'Dòng đơn SL ≤ 0 / giá âm: ' || (SELECT count(*) FROM sales_order_lines WHERE quantity <= 0 OR unit_price < 0 OR line_discount < 0)
+    || ' · NV bật giảm giá: ' || (SELECT count(*) FROM users WHERE role NOT IN ('owner', 'accountant') AND allow_discount)
+UNION ALL
+-- 66. Mig 227 — ngày VN cho HĐ / phiếu thu, khoá ghi thẳng công nợ NCC + credited_at, phiếu trả giá / thuế âm,
+--     huỷ riêng phiếu kho của chứng từ đã đảo, Sửa HĐ giữ người giữ nợ
+SELECT 66, 'Mig 227 (HĐ / trả hàng / công nợ / NCC — lỗi đội test 04/10)',
+  CASE WHEN position('(mig 227)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) = 0
+         OR position('(mig 227)' IN pg_get_functiondef('public.create_cash_receipt(jsonb)'::regprocedure)) = 0
+         OR position('(mig 227)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+         OR position('(mig 227)' IN pg_get_functiondef('public.cancel_stock_entry(uuid, text)'::regprocedure)) = 0
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_khoa_ghi_thang_no_ncc')
+       THEN 'CHƯA — HĐ / phiếu thu 0h–7h mang ngày hôm qua, công nợ NCC ghi thẳng được, huỷ riêng được phiếu kho của HĐ đã huỷ'
+       ELSE 'OK — đã vá' END,
+  'NCC paid ≠ Σ phiếu chi: ' || (SELECT count(*) FROM payables p
+      WHERE abs(COALESCE(p.paid, 0) - COALESCE((SELECT sum(pp.amount) FROM payable_payments pp WHERE pp.payable_id = p.id), 0)) >= 0.01)
+  || ' · dòng trả giá / thuế âm: ' || (SELECT count(*) FROM return_lines WHERE unit_price < 0 OR vat_rate < 0 OR vat_rate > 1)
+  || ' · phiếu kho của chứng từ đã đảo bị huỷ riêng: ' || (SELECT count(*) FROM stock_entries se WHERE se.status = 'cancelled'
+      AND (se.notes LIKE 'Hoàn kho do huỷ hóa đơn %' OR se.notes LIKE 'Nhập lại từ phiếu trả %'
+           OR EXISTS (SELECT 1 FROM sales_invoices si WHERE si.stock_entry_id = se.id AND si.status <> 'posted')))
+  || ' · nợ HĐ bị đẩy về NPP lúc Sửa HĐ: ' || (SELECT count(*) FROM receivables r JOIN sales_invoices si ON si.id = r.invoice_id
+      WHERE si.replaced_from IS NOT NULL AND r.ve_npp_luc = si.created_at)
+UNION ALL
+-- 67. Mig 228 — cổng vai 166, thẻ kho theo kho, kiểm kê số lẻ, mã đơn / mã PO theo NPP, giá vốn + mốc ngày giờ VN,
+--     phải thu trên bảng cân đối trừ dư có
+SELECT 67, 'Mig 228 (Sửa lỗi kho & báo cáo)',
+  CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND prosrc LIKE '%(mig 166)%'
+               AND proname IN ('post_stock_issue', 'complete_supplier_return', 'cancel_supplier_return')) < 3
+         OR (SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+               WHERE attrelid = 'public.stock_entry_lines'::regclass AND attname = 'quantity') <> 'numeric'
+         OR to_regclass('public.idx_sales_orders_code') IS NULL
+         OR EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_orders_order_code_key')
+         OR EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'purchase_orders_po_code_key')
+         OR position('Asia/Ho_Chi_Minh' IN pg_get_functiondef('public.finance_pnl(date,date)'::regprocedure)) = 0
+         OR position('Asia/Ho_Chi_Minh' IN pg_get_functiondef('public.finance_cash_flow(date,date)'::regprocedure)) = 0
+         OR position('Đảo phiếu trả' IN pg_get_functiondef('public.bao_cao_so_ban(date,date)'::regprocedure)) = 0
+         OR position(':dich' IN pg_get_viewdef('public.v_stock_movements'::regclass)) = 0
+       THEN 'CHƯA — NVBH ghi sổ được phiếu xuất kho / trả NCC; thẻ kho theo kho sai khi chuyển kho; kiểm kê số lẻ không lưu; NPP thứ hai trùng mã đơn; giá vốn P&L gồm HĐ huỷ, lệch ngày UTC'
+       ELSE 'OK — đã vá' END,
+  'Thẻ kho ≠ tồn lô theo kho: ' || (
+    SELECT count(*) FROM (
+      SELECT b.org_id, b.product_id, b.warehouse_zone, sum(b.qty_on_hand) AS ton
+        FROM batches b GROUP BY 1, 2, 3) t
+     WHERE abs(t.ton - COALESCE((SELECT sum(m.signed_qty_in_base_uom) FROM v_stock_movements m
+                                  WHERE m.org_id = t.org_id AND m.product_id = t.product_id
+                                    AND m.warehouse_zone = t.warehouse_zone AND m.entry_status = 'posted'), 0)) > 0.0001)
+    || ' mặt hàng-kho (dữ liệu cũ / lô đổi kho tự động có thể lệch)'
 ) t ORDER BY stt;

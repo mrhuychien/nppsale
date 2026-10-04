@@ -124,9 +124,12 @@ describe("/sell: giảm giá cả đơn", () => {
     expect(cartTotals(g, 0, { value: 9_999_999, unit: "vnd" }).subtotal).toBe(0)
     expect(cartTotals(g, 0).docDiscount).toBe(0)
   })
-  it("giảm đơn tính trên tiền hàng SAU giảm dòng", () => {
-    const g = [l({ qty: 2, discount: { value: 50, unit: "pct" } })] // 100.000
-    expect(cartTotals(g, 0, { value: 10, unit: "pct" }).docDiscount).toBe(10_000)
+  /* ⚠ SỬA THEO LỖI L-TS2 (đội test 04/10/2026): ca này từng khẳng định "% giảm
+     đơn tính trên tiền SAU giảm dòng" — ngược spec §6 và POS (`posTotals`). */
+  it("giảm đơn % tính trên TIỀN GỘP (trước giảm dòng), kẹp không vượt tiền hàng", () => {
+    const g = [l({ qty: 2, discount: { value: 50, unit: "pct" } })] // gộp 200.000, sau giảm dòng 100.000
+    expect(cartTotals(g, 0, { value: 10, unit: "pct" }).docDiscount).toBe(20_000)
+    expect(cartTotals(g, 0, { value: 80, unit: "pct" })).toMatchObject({ docDiscount: 100_000, subtotal: 0 })
   })
   it("gói đơn gửi subtotal / total đã trừ giảm đơn", async () => {
     const { buildOrderPayload } = await import("../src/lib/sell/create-order")
@@ -140,7 +143,7 @@ describe("/sell: giảm giá cả đơn", () => {
   })
   it("màn giỏ có ô giảm đơn theo quyền giảm giá (kẹp trần), chốt lại lúc gửi; khoá chống lặp đổi theo giảm đơn", () => {
     expect(CART).toMatch(/cart\.cart\.length > 0 && quyenGiam\.allowed && \(\s*<GiamGiaDon/)
-    expect(CART).toContain("cart.setDocDiscount(kepGiamGia(d, cart.totals.subtotal + cart.totals.docDiscount, quyenGiam))")
+    expect(CART).toContain("cart.setDocDiscount(kepGiamGia(d, tienGopOf(cart.cart), quyenGiam))")
     expect(CART).toMatch(/const loiGiam = kiemQuyenGiamGia\(cart\.cart, cart\.totals, quyenGiam, cart\.docDiscountGoc \?\? 0\)\s*if \(loiGiam\) throw new Error\(loiGiam\)/)
     expect(CART).toContain("nguoiDungTen, cart.docDiscount ?? null]")
   })

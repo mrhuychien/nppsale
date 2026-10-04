@@ -5,7 +5,9 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  *
  * Thay cho `sendDraftForApproval` của luồng cũ. Workflow v2 không còn bước
  * duyệt, nên đây chỉ là một lần đổi trạng thái. Mốc `submitted_at` do
- * trigger trong migration 119 tự đóng — client không tự đoán giờ.
+ * trigger trong migration 119 tự đóng — client không tự đoán giờ. (Mig 119
+ * chỉ bắt đường draft → submitted này; đơn GỬI THẲNG lúc tạo được trigger
+ * INSERT của mig 226 đóng mốc + ghi lịch sử.)
  *
  * ⚠ `.eq("status", "draft")` KHÔNG phải để cho đẹp: hai người cùng mở một
  * đơn, một người gửi trước, người kia bấm sau thì lệnh thứ hai không được

@@ -9,7 +9,7 @@ import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { useSellData } from "@/hooks/use-sell-data"
 import { LineEditSheet, Stepper } from "@/components/sell/line-edit-sheet"
 import {
-  kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, vatChungCuaDong,
+  kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, tienGopOf, vatChungCuaDong,
   type DiscountInput,
 } from "@/lib/sell/cart"
 import { returnPriceViolation } from "@/lib/sell/returns"
@@ -654,14 +654,16 @@ export default function SellCartPage() {
           )}
         </div>
 
-        {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chỉ khi có quyền giảm giá (mig 185), kẹp trần. */}
+        {/* ⚠ GIẢM GIÁ CẢ ĐƠN — chỉ khi có quyền giảm giá (mig 185), kẹp trần.
+            Nền `%` và nền trần là TIỀN GỘP (`tienGopOf`), cùng nền với `cartTotals`
+            và POS — đội test 04/10/2026 (L-TS2). */}
         {cart.cart.length > 0 && quyenGiam.allowed && (
           <GiamGiaDon
             value={cart.docDiscount ?? { value: 0, unit: "vnd" }}
-            base={cart.totals.subtotal + cart.totals.docDiscount}
+            base={tienGopOf(cart.cart)}
             amount={cart.totals.docDiscount}
             rules={quyenGiam}
-            onChange={(d) => cart.setDocDiscount(kepGiamGia(d, cart.totals.subtotal + cart.totals.docDiscount, quyenGiam))}
+            onChange={(d) => cart.setDocDiscount(kepGiamGia(d, tienGopOf(cart.cart), quyenGiam))}
           />
         )}
 

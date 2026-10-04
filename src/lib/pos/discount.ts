@@ -31,9 +31,16 @@ export interface DiscountInput {
   unit: DiscountUnit
 }
 
-/** Tiền hàng của một dòng TRƯỚC khi giảm. */
+/**
+ * Tiền hàng của một dòng TRƯỚC khi giảm = SL × giá, làm tròn TIỀN về đồng.
+ *
+ * ⚠ KHÔNG LÀM TRÒN SỐ LƯỢNG. Ô số lượng cho gõ số lẻ (1,5 thùng) và máy chủ ghi
+ * `line_total = quantity × unit_price` bằng numeric — làm tròn SL ở đây thì cột
+ * Thành tiền hiện 40.000 trong khi HĐ ghi 30.000, và giảm giá dòng quy về đơn giá
+ * sai làm công nợ ghi sai tiền (đội test 04/10/2026).
+ */
 export function lineGross(qty: number, price: number): number {
-  return Math.max(0, Math.round(Number(qty) || 0) * (Number(price) || 0))
+  return Math.max(0, Math.round((Number(qty) || 0) * (Number(price) || 0)))
 }
 
 /**

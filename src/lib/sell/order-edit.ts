@@ -3,7 +3,7 @@ import { insertReturnLines } from "@/lib/orders/create"
 import type { ReturnCartLine } from "@/lib/sell/returns"
 import { conversionFor, unitPriceFor } from "@/lib/sell/pricing"
 import type { SellProduct } from "@/lib/sell/ref-data"
-import type { CartLine } from "@/lib/sell/cart"
+import { giaTruocGiamTuSo, type CartLine } from "@/lib/sell/cart"
 import { toOrderLine } from "@/lib/sell/create-order"
 import { decideStatus, type StatusDecisionInput } from "@/lib/sell/submit"
 
@@ -26,6 +26,8 @@ export interface OrderLineRow {
   note?: string | null
   /** Thuế dòng (mig 183). NULL / vắng = đơn cũ → thuế mặt hàng. */
   vat_rate?: number | null
+  /** Khoản giảm dòng đã ghi (so giá bảng). Vắng = 0 — xem `giaTruocGiamTuSo`. */
+  line_discount?: number | null
 }
 
 /**
@@ -48,17 +50,23 @@ export function orderLinesToCart(
   const byId = new Map(products.map((p) => [p.id, p]))
   return rows.map((r) => {
     const p = byId.get(r.product_id)
+    const qty = Number(r.quantity) || 1
+    const listPrice = p ? unitPriceFor(p, r.unit_name, groupId) : Number(r.unit_price) || 0
+    /* ⚠ GIẢM GIÁ DÒNG ĐÃ LƯU dựng lại thành (giá trước giảm + khoản giảm), không để
+       đơn giá sau giảm nằm như một giá bị sửa xuống dưới giá bảng (L-TS1). */
+    const g = giaTruocGiamTuSo({ unitPrice: Number(r.unit_price) || 0, lineDiscount: r.line_discount, qty, listPrice })
     return {
       productId: r.product_id,
       unit: r.unit_name,
-      qty: Number(r.quantity) || 1,
-      price: Number(r.unit_price) || 0,
-      listPrice: p ? unitPriceFor(p, r.unit_name, groupId) : Number(r.unit_price) || 0,
+      qty,
+      price: g.price,
+      listPrice,
       note: r.note ?? "",
       conversion:
         Number(r.conversion_factor) || (p ? conversionFor(p, r.unit_name) : 1),
       /* ⚠ Thuế ĐÃ CHỌN trên dòng đơn đi trước thuế danh mục (mig 183). */
       vatRate: r.vat_rate != null ? Number(r.vat_rate) : Number(p?.vat_rate ?? 0),
+      ...(g.discount ? { discount: g.discount, giamGoc: g.giamGoc } : {}),
     }
   })
 }

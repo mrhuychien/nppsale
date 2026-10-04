@@ -62,7 +62,7 @@ import { RETURN_REASONS } from "@/lib/constants"
 import { useToast } from "@/hooks/use-toast"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
-import { cartTotals, priceViolation, ceilingFor } from "@/lib/sell/cart"
+import { cartTotals, priceViolation, ceilingFor, giaTruocGiamTuSo } from "@/lib/sell/cart"
 import { unitPriceFor, conversionFor, sellableUnits, stockInUnit } from "@/lib/sell/pricing"
 import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom } from "@/lib/pricing"
 import { isSaleLineOverstock } from "@/lib/orders/stock-check"
@@ -542,32 +542,41 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             /* ⚠ BỎ DÒNG HÀNG ĐỔI. RPC trả cả dòng trả/đổi kèm đơn; chúng
                không phải dòng hàng BÁN và không thuộc bảng này. */
             .filter((r) => !r.isExchange && r.orderLineId)
-            .map((r) => ({
-              key: newKey(),
-              productId: r.productId,
-              sku: r.sku ?? "",
-              name: r.productName,
-              unit: r.unitName,
-              units: [{ unit_name: r.unitName, conversion: r.conversionFactor }],
-              qty: r.orderedQty,
-              price: r.unitPrice,
+            .map((r) => {
               /* ⚠ GIÁ BẢNG TRA LẠI THEO KHÁCH CỦA ĐƠN. Đơn đã lưu chỉ
                  ghi `unit_price`; không tra lại thì mọi dòng trông như
                  đúng giá bảng và chốt chặn giá im lặng. */
-              listPrice: (() => {
+              const listPrice = (() => {
                 const p = productById(r.productId)
                 return p ? unitPriceFor(p, r.unitName, head.customer?.group_id ?? null) : r.unitPrice
-              })(),
-              /* ⚠ THUẾ CỦA DÒNG ĐƠN (mig 183), không phải thuế danh mục —
-                 đơn cũ chưa có thì RPC tự rơi về thuế mặt hàng. */
-              vatRate: Number(r.vatRate) || 0,
-              discount: { value: 0, unit: "vnd" as const },
-              stock: r.availableBase,
-              ordered: r.orderedQty,
-              /* ⚠ SÀN CỦA STEPPER — spec §7.1. */
-              issued: r.invoicedQty,
-              note: r.note ?? undefined,
-            }))
+              })()
+              /* ⚠ GIẢM GIÁ DÒNG ĐÃ LƯU dựng lại thành (giá trước giảm + khoản giảm) —
+                 nạp `unit_price` (đã trừ giảm) với giảm 0 thì dòng thành "giá dưới
+                 giá bảng" và `coGiaXau` chặn lưu một đơn chưa sửa gì (đội test
+                 04/10/2026, L-TS1). Cùng luật `/sell` (`orderLinesToCart`). */
+              const g = giaTruocGiamTuSo({ unitPrice: r.unitPrice, lineDiscount: r.lineDiscount, qty: r.orderedQty, listPrice })
+              return {
+                key: newKey(),
+                productId: r.productId,
+                sku: r.sku ?? "",
+                name: r.productName,
+                unit: r.unitName,
+                units: [{ unit_name: r.unitName, conversion: r.conversionFactor }],
+                qty: r.orderedQty,
+                price: g.price,
+                listPrice,
+                /* ⚠ THUẾ CỦA DÒNG ĐƠN (mig 183), không phải thuế danh mục —
+                   đơn cũ chưa có thì RPC tự rơi về thuế mặt hàng. */
+                vatRate: Number(r.vatRate) || 0,
+                discount: g.discount ?? { value: 0, unit: "vnd" as const },
+                giamGoc: g.giamGoc,
+                stock: r.availableBase,
+                ordered: r.orderedQty,
+                /* ⚠ SÀN CỦA STEPPER — spec §7.1. */
+                issued: r.invoicedQty,
+                note: r.note ?? undefined,
+              }
+            })
         )
 
         /* ⚠ GIẢM GIÁ CẢ ĐƠN ĐÃ LƯU PHẢI NẠP LẠI (mig 183). Trước đây ô này về 0
@@ -905,6 +914,15 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
       if (!user?.org_id || !user.id) return
       if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
       if (lines.length === 0) { toast({ title: "Đơn chưa có mặt hàng nào", variant: "destructive" }); return }
+      /* ⚠ DÒNG SỐ LƯỢNG 0 KHÔNG ĐI XUỐNG SỔ (mig 226: SL > 0). Stepper sửa đơn cho về 0 (sàn = số
+         đã xuất); để nguyên là máy chủ từ chối cả đơn — nói ra dòng nào, để người dùng xoá. */
+      {
+        const dongRong = lines.findIndex((l) => !(Number(l.qty) > 0))
+        if (dongRong >= 0) {
+          toast({ title: `Dòng ${dongRong + 1} số lượng 0`, description: "Xoá dòng đó hoặc nhập số lượng rồi lưu lại.", variant: "destructive" })
+          return
+        }
+      }
       /**
        * ⚠ GIÁ NGOÀI HẠN MỨC CHẶN LƯU. Đây là chốt chặn duy nhất giữa một
        * cú gõ nhầm và việc cho không hàng — màn đơn cũ chặn ở đây, và
@@ -912,7 +930,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
        */
       {
         const loi = kiemGiamGia(
-          lines.map((l) => ({ giam: discountAmount(l.discount, lineGross(l.qty, l.price)), tienHang: lineGross(l.qty, l.price) })),
+          lines.map((l) => {
+            const giam = discountAmount(l.discount, lineGross(l.qty, l.price))
+            /* Khoản giảm ĐÃ CÓ trên đơn đang sửa (NPP đặt), không tăng thì không chặn. */
+            return { giam: giam <= (l.giamGoc ?? 0) ? 0 : giam, tienHang: lineGross(l.qty, l.price) }
+          }),
           { giam: totals.docDiscount, tienHang: totals.gross },
           quyenGiam,
           giamDonGoc

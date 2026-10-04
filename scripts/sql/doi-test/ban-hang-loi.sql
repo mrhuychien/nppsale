@@ -72,6 +72,12 @@ BEGIN
       (SELECT status FROM sales_orders WHERE id = r.order_id),
       coalesce((SELECT submitted_at::text FROM sales_orders WHERE id = r.order_id), 'NULL'),
       (SELECT count(*) FROM order_status_history WHERE order_id = r.order_id AND to_status = 'submitted')));
+  -- (thêm sau khi sửa — mig 226) lịch sử có đúng MỘT dòng 'submitted', người ghi là NVBH.
+  PERFORM pg_temp.ghi('L1b', 'đơn gửi thẳng có MỘT dòng lịch sử draft → submitted, đúng người gửi',
+    (SELECT count(*) FROM order_status_history WHERE order_id = r.order_id AND from_status = 'draft' AND to_status = 'submitted'
+       AND changed_by = 'e0000000-0000-0000-0000-000000000004') = 1
+      AND (SELECT count(*) FROM order_status_history WHERE order_id = r.order_id) = 1,
+    format('lịch sử = %s dòng', (SELECT count(*) FROM order_status_history WHERE order_id = r.order_id)));
 END $t$;
 
 -- L2 ---------------------------------------------------------------------
@@ -131,6 +137,135 @@ BEGIN
   PERFORM pg_temp.ghi('L5b', 'dòng đơn số lượng 0 bị chặn', e <> 'OK' AND pg_temp.so_don('22222222-0000-0000-0000-000000000006') = 0, left(e, 60));
   e := pg_temp.thu(format('SELECT create_order_with_lines(%L::jsonb)', pg_temp.tai('22222222-0000-0000-0000-000000000007', pg_temp.dong(1, -10000))));
   PERFORM pg_temp.ghi('L5c', 'dòng đơn đơn giá âm bị chặn', e <> 'OK' AND pg_temp.so_don('22222222-0000-0000-0000-000000000007') = 0, left(e, 60));
+END $t$;
+
+-- ====================================================================
+-- HỒI QUY SAU KHI SỬA (mig 226) — đường ĐÚNG không bị chặn nhầm, đường lách bị chặn.
+--   Đơn mẫu: khách nhóm b…01, giá bảng lon = 9.500. Giảm đơn chỉ kiểm lúc chốt giao
+--   dịch (DEFERRED) → mỗi bước ép `SET CONSTRAINTS … IMMEDIATE` để kiểm ngay.
+-- ====================================================================
+RESET ROLE;  -- hàm phụ dưới đây do postgres sở hữu
+CREATE FUNCTION pg_temp.tai2(crid uuid, lines jsonb, subtotal numeric, nv text DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT jsonb_build_object('client_request_id', crid,
+    'order', jsonb_build_object('order_code', 'T' || left(crid::text, 8) || right(crid::text, 4), 'customer_id', (SELECT v FROM ctx WHERE k = 'kh'),
+                                'status', 'submitted', 'sales_user_id', nv, 'subtotal', subtotal, 'vat', 0, 'total', subtotal),
+    'lines', lines) $f$;
+CREATE FUNCTION pg_temp.chot() RETURNS text LANGUAGE plpgsql AS $f$
+BEGIN SET CONSTRAINTS trg_quyen_giam_don IMMEDIATE; SET CONSTRAINTS trg_quyen_giam_don DEFERRED; RETURN 'OK';
+EXCEPTION WHEN OTHERS THEN SET CONSTRAINTS trg_quyen_giam_don DEFERRED; RETURN SQLERRM; END $f$;
+CREATE FUNCTION pg_temp.tao(crid uuid, lines jsonb, subtotal numeric, nv text DEFAULT NULL) RETURNS text LANGUAGE plpgsql AS $f$
+BEGIN
+  PERFORM create_order_with_lines(pg_temp.tai2(crid, lines, subtotal, nv));
+  SET CONSTRAINTS trg_quyen_giam_don IMMEDIATE; SET CONSTRAINTS trg_quyen_giam_don DEFERRED;
+  RETURN 'OK';
+EXCEPTION WHEN OTHERS THEN SET CONSTRAINTS trg_quyen_giam_don DEFERRED; RETURN SQLERRM; END $f$;
+CREATE FUNCTION pg_temp.don_cua(crid uuid) RETURNS uuid LANGUAGE sql SECURITY DEFINER AS
+  $f$ SELECT id FROM sales_orders WHERE client_request_id = crid $f$;
+
+-- G = giá bảng lon của khách mẫu (tra bằng chính hàm máy chủ — khách mẫu khác nhau giữa các sổ thử).
+CREATE FUNCTION pg_temp.g() RETURNS numeric LANGUAGE sql SECURITY DEFINER AS $f$
+  SELECT public._gia_bang_don_vi('c0000000-0000-0000-0000-000000000001', 'lon',
+           (SELECT group_id FROM customers WHERE id = (SELECT v FROM ctx WHERE k = 'kh'))) $f$;
+
+SET LOCAL ROLE authenticated;
+
+-- L6 ---------------------------------------------------------------------
+DO $t$
+DECLARE e text; g numeric := pg_temp.g();
+BEGIN
+  -- Chủ NPP: toàn quyền — giảm 30% dòng, giảm cả đơn một nửa.
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000001', true);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000016', pg_temp.dong(10, g * 0.7, g * 3), g * 7);
+  PERFORM pg_temp.ghi('L6', 'chủ NPP toàn quyền giảm giá dòng (30%) — không bị chặn', e = 'OK', e);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000026', pg_temp.dong(10, g), g * 5);
+  PERFORM pg_temp.ghi('L6b', 'chủ NPP toàn quyền giảm cả đơn (50%)', e = 'OK', e);
+END $t$;
+
+-- L7 ---------------------------------------------------------------------
+DO $t$
+DECLARE e text; g numeric := pg_temp.g();
+BEGIN
+  -- NVBH trần 10%: đúng 10% ghi được; 11% bị chặn.
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-0000000000b7', true);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000017', pg_temp.dong(10, g * 0.9, g), g * 9);
+  PERFORM pg_temp.ghi('L7', 'NVBH trần 10%: giảm đúng 10% vẫn ghi được', e = 'OK', e);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000027', pg_temp.dong(10, g * 0.89, g * 1.1), g * 8.9);
+  PERFORM pg_temp.ghi('L7b', 'NVBH trần 10%: giảm 11% bị chặn', e LIKE 'DISCOUNT_OVER_LIMIT%', left(e, 70));
+  -- Giảm cả đơn: 10% trên tiền gộp ghi được, 20% bị chặn.
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000037', pg_temp.dong(10, g), g * 9);
+  PERFORM pg_temp.ghi('L7c', 'NVBH trần 10%: giảm đơn 10% ghi được', e = 'OK', e);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000047', pg_temp.dong(10, g), g * 8);
+  PERFORM pg_temp.ghi('L7d', 'NVBH trần 10%: giảm đơn 20% bị chặn', e LIKE 'DISCOUNT_OVER_LIMIT%', e);
+END $t$;
+
+-- L8 ---------------------------------------------------------------------
+DO $t$
+DECLARE e text; g numeric := pg_temp.g();
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000004', true);
+  -- Đường lách: hạ thẳng đơn giá dưới giá bảng, line_discount = 0.
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000018', pg_temp.dong(10, g / 2, 0), g * 5);
+  PERFORM pg_temp.ghi('L8', 'NVBH không quyền: bán dưới giá bảng (line_discount = 0) bị chặn',
+    e LIKE 'DISCOUNT_NOT_ALLOWED%' AND pg_temp.so_don('22222222-0000-0000-0000-000000000018') = 0, left(e, 70));
+  -- Đúng giá bảng: ghi bình thường.
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000028', pg_temp.dong(10, g, 0), g * 10);
+  PERFORM pg_temp.ghi('L8b', 'NVBH không quyền: đơn đúng giá bảng ghi bình thường', e = 'OK', e);
+  -- Giảm cả đơn khi không có quyền: bị chặn lúc chốt.
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000038', pg_temp.dong(10, g, 0), g * 9.5);
+  PERFORM pg_temp.ghi('L8c', 'NVBH không quyền: giảm cả đơn bị chặn', e LIKE 'DISCOUNT_NOT_ALLOWED%giảm giá đơn%', e);
+END $t$;
+
+-- L9 ---------------------------------------------------------------------
+DO $t$
+DECLARE e text; d uuid; g numeric := pg_temp.g();
+BEGIN
+  -- Chủ NPP lập đơn GIÚP NVBH (không quyền giảm): giảm dòng 15.000 + giảm đơn 5.000.
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000001', true);
+  e := pg_temp.tao('22222222-0000-0000-0000-000000000019', pg_temp.dong(10, g - 1500, 15000), (g - 1500) * 10 - 5000,
+                   'e0000000-0000-0000-0000-000000000004');
+  d := pg_temp.don_cua('22222222-0000-0000-0000-000000000019');
+  PERFORM pg_temp.ghi('L9', 'chủ NPP lập đơn giúp NVBH có giảm giá', e = 'OK' AND d IS NOT NULL, e);
+
+  -- NVBH sửa: gấp đôi SL, giữ khoản giảm dòng 15.000 (theo đồng) — hai lệnh RỜI như applyOrderEdit.
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000004', true);
+  e := pg_temp.thu(format('UPDATE sales_order_lines SET quantity = 20, unit_price = %s, line_discount = 15000, line_total = %s WHERE order_id = %L',
+                          g - 750, (g - 750) * 20, d));
+  PERFORM pg_temp.ghi('L9b', 'NVBH không quyền sửa đơn NPP đã giảm, KHÔNG tăng khoản giảm dòng → lưu được', e = 'OK', e);
+  e := pg_temp.thu(format('UPDATE sales_orders SET subtotal = %s, total = %s WHERE id = %L', (g - 750) * 20 - 5000, (g - 750) * 20 - 5000, d));
+  IF e = 'OK' THEN e := pg_temp.chot(); END IF;
+  PERFORM pg_temp.ghi('L9c', 'NVBH giữ nguyên giảm cả đơn 5.000 khi SL tăng → lưu được', e = 'OK', e);
+
+  -- Giảm SL (Σ dòng tụt dưới subtotal cũ), giữ giảm dòng 15.000 + giảm đơn 5.000 — vẫn lưu được.
+  e := pg_temp.thu(format('UPDATE sales_order_lines SET quantity = 5, unit_price = %s, line_total = %s WHERE order_id = %L',
+                          g - 3000, (g - 3000) * 5, d));
+  PERFORM pg_temp.ghi('L9d', 'NVBH giảm SL, khoản giảm dòng giữ 15.000 → lưu được', e = 'OK', e);
+  e := pg_temp.thu(format('UPDATE sales_orders SET subtotal = %s, total = %s WHERE id = %L', (g - 3000) * 5 - 5000, (g - 3000) * 5 - 5000, d));
+  IF e = 'OK' THEN e := pg_temp.chot(); END IF;
+  PERFORM pg_temp.ghi('L9e', 'NVBH giảm SL, giảm đơn giữ 5.000 → lưu được (ảnh chụp giảm gốc)', e = 'OK', e);
+
+  -- Tăng khoản giảm: bị chặn (dòng và đơn).
+  e := pg_temp.thu(format('UPDATE sales_order_lines SET unit_price = %s, line_discount = 22500, line_total = %s WHERE order_id = %L',
+                          g - 4500, (g - 4500) * 5, d));
+  PERFORM pg_temp.ghi('L9f', 'NVBH không quyền TĂNG giảm dòng → bị chặn', e LIKE 'DISCOUNT_NOT_ALLOWED%', left(e, 70));
+  e := pg_temp.thu(format('UPDATE sales_orders SET subtotal = %s, total = %s WHERE id = %L', (g - 3000) * 5 - 12000, (g - 3000) * 5 - 12000, d));
+  IF e = 'OK' THEN e := pg_temp.chot(); END IF;
+  PERFORM pg_temp.ghi('L9g', 'NVBH không quyền TĂNG giảm cả đơn → bị chặn', e LIKE 'DISCOUNT_NOT_ALLOWED%', e);
+  PERFORM pg_temp.ghi('L9h', 'ảnh chụp giảm gốc không nằm lại sau khi đầu đơn lưu',
+    NOT EXISTS (SELECT 1 FROM giam_don_goc WHERE order_id = d), '');
+END $t$;
+
+-- L10 --------------------------------------------------------------------
+DO $t$
+DECLARE r record;
+BEGIN
+  -- Đơn nháp: không đóng mốc gửi, không ghi lịch sử; mốc ghi sẵn thì giữ nguyên.
+  PERFORM set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000004', true);
+  SELECT * INTO r FROM create_order_with_lines(pg_temp.tai('22222222-0000-0000-0000-000000000020', pg_temp.dong(1, 10000))
+                                               || jsonb_build_object('order', pg_temp.tai('22222222-0000-0000-0000-000000000020', '[]')->'order' || '{"status":"draft"}'));
+  PERFORM pg_temp.ghi('L10', 'đơn nháp: không mốc gửi, không lịch sử',
+    (SELECT submitted_at IS NULL AND status = 'draft' FROM sales_orders WHERE id = r.order_id)
+      AND NOT EXISTS (SELECT 1 FROM order_status_history WHERE order_id = r.order_id),
+    format('status=%s', (SELECT status FROM sales_orders WHERE id = r.order_id)));
 END $t$;
 
 RESET ROLE;

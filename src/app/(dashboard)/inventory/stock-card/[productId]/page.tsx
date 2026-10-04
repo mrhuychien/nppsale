@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import type { Product, Batch } from "@/types"
+import { chieuCua, tonChayTheKho, type ChieuTheKho } from "@/lib/inventory/the-kho"
 
 /** Một dòng hóa đơn của chính mặt hàng đang xem. */
 type InvLineRow = {
@@ -73,14 +74,21 @@ type MovementRow = {
    * tên là sai.
    */
   supplier_name: string | null
+  /** Phiếu chuyển kho: kho nguồn → kho đích (để hiện "Kho bán → Kho date"). */
+  zone_from: string | null
+  zone_to: string | null
 }
 
-const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: "in" | "out" | "adjust" }> = {
-  import: { icon: ArrowDownToLine, label: "Nhập", color: "text-tertiary bg-[#ecfdf3]", sign: "in" },
-  export: { icon: ArrowUpFromLine, label: "Xuất", color: "text-error bg-error-container", sign: "out" },
-  transfer: { icon: Package, label: "Chuyển", color: "text-[#175cd3] bg-[#eff8ff]", sign: "adjust" },
-  stocktake: { icon: ClipboardList, label: "Kiểm kê", color: "text-primary bg-primary/10", sign: "adjust" },
+/* ⚠ `sign` lấy từ `chieuCua` (src/lib/inventory/the-kho.ts) — chuyển kho là 'move': đổi chỗ, tồn TỔNG không đổi. */
+const TYPE_META: Record<string, { icon: typeof Package; label: string; color: string; sign: ChieuTheKho }> = {
+  import: { icon: ArrowDownToLine, label: "Nhập", color: "text-tertiary bg-[#ecfdf3]", sign: chieuCua("import") },
+  export: { icon: ArrowUpFromLine, label: "Xuất", color: "text-error bg-error-container", sign: chieuCua("export") },
+  transfer: { icon: Package, label: "Chuyển", color: "text-[#175cd3] bg-[#eff8ff]", sign: chieuCua("transfer") },
+  stocktake: { icon: ClipboardList, label: "Kiểm kê", color: "text-primary bg-primary/10", sign: chieuCua("stocktake") },
 }
+
+const TEN_KHO: Record<string, string> = { sale: "Kho bán", date: "Kho date" }
+const tenKho = (z: string | null) => (z ? TEN_KHO[z] ?? z : "?")
 
 export default function StockCardPage() {
   const { productId } = useParams<{ productId: string }>()
@@ -120,7 +128,7 @@ export default function StockCardPage() {
         supabase
           .from("stock_entry_lines")
           .select(
-            "id, batch_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))",
+            "id, batch_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code), entry:stock_entries!inner(id, entry_code, type, status, posted_at, created_at, warehouse_zone, dest_warehouse_zone, supplier:suppliers(name), creator:users!stock_entries_created_by_fkey(full_name))",
             { count: "exact" }
           )
           .eq("product_id", productId)
@@ -183,6 +191,8 @@ export default function StockCardPage() {
         status: string
         posted_at: string | null
         created_at: string
+        warehouse_zone?: string | null
+        dest_warehouse_zone?: string | null
         supplier?: { name?: string } | null
         creator?: { full_name?: string } | null
       } | null
@@ -236,6 +246,8 @@ export default function StockCardPage() {
         invoice_date: invByEntry[l.entry!.id]?.date ?? null,
         customer_name: invByEntry[l.entry!.id]?.customer ?? null,
         supplier_name: l.entry!.supplier?.name ?? null,
+        zone_from: l.entry!.warehouse_zone ?? null,
+        zone_to: l.entry!.dest_warehouse_zone ?? null,
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -247,38 +259,19 @@ export default function StockCardPage() {
     fetchData()
   }, [fetchData])
 
-  const filtered = useMemo(() => {
-    return movements.filter((m) => {
-      if (dateFrom && m.date.slice(0, 10) < dateFrom) return false
-      if (dateTo && m.date.slice(0, 10) > dateTo) return false
-      return true
-    })
-  }, [movements, dateFrom, dateTo])
-
-  // Compute running balance
-  const withRunning = useMemo(() => {
-    const deltaOf = (m: MovementRow) => {
-      const meta = TYPE_META[m.entry_type] || TYPE_META.import
-      return meta.sign === "out" ? -m.quantity : m.quantity
-    }
-    /* ⚠ LỌC "TỪ NGÀY" THÌ TỒN CHẠY KHÔNG BẮT ĐẦU TỪ 0: cộng sẵn mọi biến động TRƯỚC ngày đầu kỳ
-       (đã tải đủ lịch sử ở trên) làm tồn đầu kỳ. */
-    let running = dateFrom
-      ? movements.reduce((s, m) => (m.date.slice(0, 10) < dateFrom ? s + deltaOf(m) : s), 0)
-      : 0
-    return filtered.map((m) => {
-      const delta = deltaOf(m)
-      running += delta
-      return { ...m, delta, running }
-    })
-  }, [filtered, movements, dateFrom])
+  /* Lọc kỳ theo NGÀY GIỜ VN + tồn chạy (tồn đầu kỳ = mọi biến động trước "Từ ngày"; chuyển kho không đổi
+     tồn tổng) — `tonChayTheKho`, có test riêng. */
+  const withRunning = useMemo(
+    () => tonChayTheKho(movements, dateFrom, dateTo).dong,
+    [movements, dateFrom, dateTo]
+  )
 
   const totals = useMemo(() => {
     let inQty = 0
     let outQty = 0
     let inValue = 0
     let outValue = 0
-    for (const m of filtered) {
+    for (const m of withRunning) {
       const meta = TYPE_META[m.entry_type] || TYPE_META.import
       if (meta.sign === "in") {
         inQty += m.quantity
@@ -289,7 +282,7 @@ export default function StockCardPage() {
       }
     }
     return { inQty, outQty, inValue, outValue }
-  }, [filtered])
+  }, [withRunning])
 
   const currentOnHand = batches.reduce((s, b) => s + (Number(b.qty_on_hand) || 0), 0)
   const inventoryValue = batches.reduce(
@@ -501,7 +494,12 @@ export default function StockCardPage() {
                         {m.batch_code || "-"}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {isIn ? `+${m.quantity}` : meta.sign === "adjust" && m.quantity > 0 ? `+${m.quantity}` : "-"}
+                        {meta.sign === "move" ? (
+                          /* Chuyển kho: đổi chỗ, không phải nhập — hiện chiều đi, không cộng vào tổng nhập. */
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {tenKho(m.zone_from)} → {tenKho(m.zone_to)}: {m.quantity}
+                          </span>
+                        ) : isIn ? `+${m.quantity}` : meta.sign === "adjust" && m.quantity > 0 ? `+${m.quantity}` : "-"}
                         {isIn && m.unit_name && m.unit_name !== product?.base_unit && (
                           <span className="block text-[11px] font-normal text-muted-foreground">{m.qtyGd} {m.unit_name}</span>
                         )}
@@ -566,7 +564,9 @@ export default function StockCardPage() {
                         </div>
                         <div className="shrink-0 text-right">
                           <p className={`font-bold text-sm ${isIn ? "text-tertiary" : isOut ? "text-error" : ""}`}>
-                            {isIn ? "+" : isOut ? "-" : "Δ"}{m.quantity}
+                            {meta.sign === "move"
+                              ? `${tenKho(m.zone_from)} → ${tenKho(m.zone_to)}: ${m.quantity}`
+                              : `${isIn ? "+" : isOut ? "-" : "Δ"}${m.quantity}`}
                           </p>
                           <p className="text-[10px] text-muted-foreground">
                             Tồn: {m.running}

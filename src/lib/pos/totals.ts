@@ -105,8 +105,11 @@ export function posTotals(i: {
     vat += (g - giam) * (Number(l.vatRate) || 0)
   }
   vat = Math.round(vat)
-  // ⚠ Trên TIỀN GỘP — xem đầu tệp.
-  const docDiscount = i.docDiscount ? discountAmount(i.docDiscount, gross) : 0
+  // ⚠ Trên TIỀN GỘP — xem đầu tệp. KẸP không vượt tiền hàng SAU giảm dòng:
+  //   giảm dòng 50% + giảm đơn 80% trên gộp mà không kẹp thì số ròng âm và
+  //   phần âm thành "Ghi có cho khách" — tặng tiền dưới dạng công nợ âm. Cùng
+  //   kẹp với `cartTotals` của /sell (đội test 04/10/2026, L-TS2).
+  const docDiscount = i.docDiscount ? Math.min(gross - lineDiscount, discountAmount(i.docDiscount, gross)) : 0
   const other = Number(i.other) || 0
   const returnCredit = Math.max(0, Number(i.returnCredit) || 0)
   /**

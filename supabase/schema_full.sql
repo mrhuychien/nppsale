@@ -39367,3 +39367,1976 @@ SELECT 'mig 225: lượt soạn hàng' AS buoc,
             THEN 'OK' ELSE 'THIẾU' END AS ket_qua,
        (SELECT count(*) FROM luot_soan WHERE trang_thai = 'dang_soan') AS luot_dang_soan;
 
+
+-- ####################################################################
+-- # 226_sua_loi_ban_hang.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 226 — SỬA LỖI BÁN HÀNG / ĐƠN HÀNG (đội test 04/10/2026)
+--
+-- VÌ SAO
+--   · Quyền giảm giá — chủ nhà 24/09/2026 (mig 185): "Cho phép giảm giá, set tối đa theo % hoặc
+--     giá trị (nếu để trống, ko giới hạn) chức năng này có thể bật/tắt tuỳ chỉnh cho từng nhân viên
+--     bán hàng … Mặc định là tắt … Nhà phân phối thì toàn quyền giảm giá dòng và giảm giá đơn."
+--     CLAUDE.md §Quyền: "Tiền … chỉ đổi qua RPC"; "Giảm giá: nhân viên theo users.allow_discount
+--     + trần discount_max_* (mig 185); chủ NPP / kế toán toàn quyền".
+--     LỖI: mig 185 chỉ thêm cột, KHÔNG hàm / trigger nào đọc chúng — luật chỉ nằm ở giao diện
+--     (`kiemGiamGia`). NVBH tắt quyền vẫn ghi được dòng giảm 300.000 qua `create_order_with_lines`;
+--     NVBH trần 10% ghi được giảm 50%; và hạ thẳng `unit_price` dưới giá bảng (line_discount = 0)
+--     thì không ai chặn — đường lách quanh chính luật ấy.
+--   · Ngày đặt đơn — CLAUDE.md: "so bằng ngày theo giờ VN". `sales_orders.order_date` mặc định
+--     CURRENT_DATE = ngày UTC (máy chủ chạy UTC — mig 140): đơn tạo 00:00–07:00 giờ VN mang ngày
+--     HÔM QUA, trong khi Tổng quan NVBH / báo cáo cuối ngày so order_date với ngày VN.
+--   · Đơn GỬI THẲNG (INSERT status 'submitted' — đường chính của /sell và POS) không có mốc
+--     `submitted_at` và không có dòng lịch sử 'submitted': trigger đóng mốc (mig 119/124) và trigger
+--     ghi lịch sử chỉ chạy khi UPDATE status. Bước "Gửi đơn" trên dòng thời gian đơn trống giờ.
+--   · Dòng đơn số lượng âm / 0 / đơn giá âm ghi được (không CHECK, RPC không kiểm) — dòng âm kéo
+--     tổng đơn và số "Đặt hàng" xuống; dòng 0 là dòng ma.
+--
+-- CÁCH LÀM
+--   1. `order_date DEFAULT public.vn_today()` (mig 140). KHÔNG đổi timezone cả DB (cảnh báo mig 140).
+--      KHÔNG sửa ngày các đơn cũ — sổ dùng chung với production, cần chủ nhà quyết (bảng tóm tắt đếm).
+--   2. Trigger INSERT trên sales_orders: đơn vào thẳng 'submitted' → đóng mốc submitted_at; đơn vào
+--      ở trạng thái khác 'draft' → ghi một dòng order_status_history (draft → trạng thái ấy). KHÔNG
+--      đoán mốc cho đơn cũ (luật mig 119).
+--   3. Trigger `trg_quyen_gia_dong_don` (BEFORE INSERT/UPDATE/DELETE trên sales_order_lines) — bắt
+--      cả đường RPC lẫn ghi thẳng qua RLS:
+--        · SL > 0, đơn giá ≥ 0, giảm dòng ≥ 0 (mọi người).
+--        · Giảm THẬT của dòng = MAX(line_discount, SL × (giá bảng − đơn giá)) — giá bảng tra theo
+--          đúng đơn vị + nhóm giá của khách (`_gia_bang_don_vi`, cùng 4 bậc với `unitPriceFor`).
+--          Bán dưới giá bảng mà ghi line_discount = 0 vẫn là giảm giá.
+--        · Chủ NPP / kế toán: toàn quyền (như `userDiscountRulesFrom`). Người khác: tắt quyền thì
+--          không được giảm; có trần thì ≤ trần (% trên tiền hàng dòng trước giảm, hoặc số đồng).
+--        · SỬA dòng mà KHÔNG tăng khoản giảm so với dòng cũ (đơn NPP đã giảm) → cho qua — cùng luật
+--          `giamGoc` / `giamDonGoc` ở giao diện.
+--        · Dung sai SL × 0,5 + 1 đồng: đơn giá sau giảm làm tròn về đồng (`netPriceOf`).
+--   4. Giảm giá CẢ ĐƠN (= Σ SL × đơn giá − subtotal, như `giamCuaChungTu`): constraint trigger
+--      DEFERRABLE INITIALLY DEFERRED trên sales_orders (đơn mới: dòng hàng chèn SAU đầu đơn). Khoản
+--      giảm gốc khi sửa đơn: ảnh chụp `giam_don_goc` lấy ở lần đổi dòng đầu tiên (ứng dụng sửa
+--      dòng và sửa đầu đơn bằng hai lệnh rời — không ảnh chụp thì đã mất số cũ).
+--   5. CHECK trên bảng khi sổ chưa có dòng vi phạm (có thì để chủ nhà xem trước — bảng tóm tắt).
+--      ⚠ KHÔNG viết lại `create_order_with_lines`: thân đang chạy là bản 169 + vá chuỗi của mig 183
+--        (thuế dòng). RPC chạy một giao dịch, trigger dòng nổ (câu BAD_PAYLOAD / DISCOUNT_* tiếng
+--        Việt) là đầu đơn vừa chèn cũng không còn — đủ, không cần chép lại cả hàm.
+--
+-- ⚠ Hàm trigger SECURITY DEFINER nội bộ: REVOKE EXECUTE (luật mig 166).
+-- ====================================================================
+
+-- ── 1. Ngày đặt đơn theo lịch VN ─────────────────────────────────────────────────────────────────
+ALTER TABLE public.sales_orders ALTER COLUMN order_date SET DEFAULT public.vn_today();
+
+-- ── 2. Đơn gửi thẳng: mốc submitted_at + lịch sử ──────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._don_moi_moc_gui()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $fn$
+BEGIN
+  IF NEW.status = 'submitted' AND NEW.submitted_at IS NULL THEN
+    NEW.submitted_at := now();
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._don_moi_moc_gui() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_don_moi_moc_gui ON public.sales_orders;
+CREATE TRIGGER trg_don_moi_moc_gui
+  BEFORE INSERT ON public.sales_orders
+  FOR EACH ROW EXECUTE FUNCTION public._don_moi_moc_gui();
+
+-- SECURITY DEFINER: order_status_history không có chính sách INSERT cho người dùng (như
+-- log_order_status_change). Người ghi: chỉ khi có hồ sơ users (khoá ngoại changed_by).
+CREATE OR REPLACE FUNCTION public._don_moi_lich_su()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'draft' THEN
+    INSERT INTO order_status_history (order_id, from_status, to_status, changed_by)
+    VALUES (NEW.id, 'draft', NEW.status, (SELECT u.id FROM users u WHERE u.id = (SELECT auth.uid())));
+  END IF;
+  RETURN NULL;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._don_moi_lich_su() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_don_moi_lich_su ON public.sales_orders;
+CREATE TRIGGER trg_don_moi_lich_su
+  AFTER INSERT ON public.sales_orders
+  FOR EACH ROW EXECUTE FUNCTION public._don_moi_lich_su();
+
+-- ── 3. Giá bảng của đúng (mặt hàng + đơn vị + nhóm giá) — cùng 4 bậc với `unitPriceFor` ───────────
+--   Bảng giá nhóm → bảng giá chung → giá bán đơn vị cơ sở → giá cơ sở × hệ số. Trùng dòng giá thì
+--   lấy giá THẤP nhất (không bao giờ chặt hơn màn hình). 0 = chưa có giá → không có sàn.
+CREATE OR REPLACE FUNCTION public._gia_bang_don_vi(p_product uuid, p_unit text, p_nhom uuid)
+RETURNS numeric
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $fn$
+DECLARE
+  v numeric;
+  v_co_so text;
+  v_he_so numeric;
+BEGIN
+  IF p_nhom IS NOT NULL THEN
+    SELECT min(pl.price) INTO v FROM price_lists pl
+    WHERE pl.product_id = p_product AND pl.unit_name = p_unit AND pl.group_id = p_nhom;
+    IF v IS NOT NULL THEN RETURN v; END IF;
+  END IF;
+  SELECT min(pl.price) INTO v FROM price_lists pl
+  WHERE pl.product_id = p_product AND pl.unit_name = p_unit AND pl.group_id IS NULL;
+  IF v IS NOT NULL THEN RETURN v; END IF;
+
+  SELECT p.base_unit, COALESCE(p.sell_price, 0) INTO v_co_so, v FROM products p WHERE p.id = p_product;
+  IF NOT FOUND THEN RETURN 0; END IF;
+  IF p_unit = v_co_so THEN RETURN v; END IF;
+
+  SELECT pu.conversion INTO v_he_so FROM product_units pu
+  WHERE pu.product_id = p_product AND pu.unit_name = p_unit;
+  IF v_he_so IS NOT NULL AND p_unit IS DISTINCT FROM v_co_so THEN
+    v := public._gia_bang_don_vi(p_product, v_co_so, p_nhom);
+    IF v > 0 THEN RETURN v * v_he_so; END IF;
+  END IF;
+  RETURN 0;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._gia_bang_don_vi(uuid, text, uuid) FROM PUBLIC, anon, authenticated;
+
+-- Khoản giảm CẢ ĐƠN hiện có trên sổ — cùng luật `giamCuaChungTu`: Σ SL × đơn giá (dòng SL > 0) −
+-- subtotal; chênh ≤ MAX(1, số dòng) là sai số làm tròn, coi như không giảm.
+CREATE OR REPLACE FUNCTION public._giam_don_hien_tai(p_order uuid)
+RETURNS numeric
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $fn$
+  WITH d AS (
+    SELECT round(COALESCE(sum(l.quantity * l.unit_price), 0)) AS tien, count(*) AS n
+    FROM sales_order_lines l WHERE l.order_id = p_order AND l.quantity > 0
+  )
+  SELECT CASE WHEN d.tien - round(COALESCE(so.subtotal, 0)) > GREATEST(1, d.n)
+              THEN d.tien - round(COALESCE(so.subtotal, 0)) ELSE 0 END
+  FROM sales_orders so, d
+  WHERE so.id = p_order
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._giam_don_hien_tai(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Ảnh chụp khoản giảm đơn TRƯỚC lần sửa dòng — chỉ hàm trigger đọc/ghi (RLS bật, không chính sách).
+CREATE TABLE IF NOT EXISTS public.giam_don_goc (
+  order_id uuid PRIMARY KEY REFERENCES public.sales_orders(id) ON DELETE CASCADE,
+  giam     numeric NOT NULL DEFAULT 0,
+  chup_luc timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.giam_don_goc ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.giam_don_goc FROM PUBLIC, anon, authenticated;
+COMMENT ON TABLE public.giam_don_goc IS
+  'Mig 226: khoản giảm cả đơn trước lần sửa dòng đầu tiên, để trigger quyền giảm đơn so với số cũ. Trigger tự xoá khi đầu đơn lưu xong.';
+
+-- Người đang ghi được toàn quyền giá không? (chủ NPP / kế toán — như `userDiscountRulesFrom`).
+-- Không có phiên (máy chủ / migration / cron) cũng coi là toàn quyền.
+CREATE OR REPLACE FUNCTION public._quyen_giam_cua(p_uid uuid)
+RETURNS TABLE (toan_quyen boolean, duoc_giam boolean, loai_tran text, tran numeric)
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $fn$
+  SELECT COALESCE(u.role IN ('owner', 'accountant'), true) OR p_uid IS NULL,
+         COALESCE(u.allow_discount, false),
+         COALESCE(u.discount_max_type, 'pct'),
+         u.discount_max_value
+  FROM (SELECT 1) x
+  LEFT JOIN users u ON u.id = p_uid
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._quyen_giam_cua(uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public._nhan_tran_giam(p_loai text, p_tran numeric)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $fn$
+  SELECT CASE WHEN p_loai = 'vnd'
+              THEN 'tối đa ' || replace(to_char(round(p_tran), 'FM999,999,999,999'), ',', '.') || 'đ'
+              ELSE 'tối đa ' || replace(trim_scale(p_tran)::text, '.', ',') || '%' END
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._nhan_tran_giam(text, numeric) FROM PUBLIC, anon, authenticated;
+
+-- ── 3b. Trigger dòng đơn ──────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._chot_gia_dong_don()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_order  uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.order_id ELSE NEW.order_id END;
+  q        record;
+  v_nhom   uuid;
+  v_bang   numeric;
+  v_giam   numeric;
+  v_goc    numeric := 0;
+  v_tien   numeric;
+  v_tran   numeric;
+  v_sai    numeric;
+BEGIN
+  -- (a) Chỉ kiểm khi dòng mới / xoá, hoặc đổi thứ ảnh hưởng tiền. Cập nhật `invoiced_qty` của RPC xuất
+  --     hàng không đụng giá — cho qua, kể cả dòng cũ của sổ.
+  IF TG_OP = 'UPDATE'
+     AND NEW.quantity IS NOT DISTINCT FROM OLD.quantity
+     AND NEW.unit_price IS NOT DISTINCT FROM OLD.unit_price
+     AND NEW.line_discount IS NOT DISTINCT FROM OLD.line_discount
+     AND NEW.product_id IS NOT DISTINCT FROM OLD.product_id
+     AND NEW.unit_name IS NOT DISTINCT FROM OLD.unit_name THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO q FROM public._quyen_giam_cua((SELECT auth.uid()));
+
+  -- (b) Ảnh chụp giảm đơn gốc TRƯỚC lần đổi dòng đầu tiên của người BỊ GIỚI HẠN quyền, kể từ lần
+  --     đầu đơn lưu gần nhất (trigger đầu đơn xoá ảnh khi lưu xong). Ứng dụng sửa dòng và sửa đầu
+  --     đơn bằng hai lệnh RỜI — tới lúc đầu đơn lưu thì dòng đã đổi, không còn cách nào khác biết
+  --     khoản giảm cũ.
+  IF NOT q.toan_quyen
+     AND NOT EXISTS (SELECT 1 FROM giam_don_goc g WHERE g.order_id = v_order)
+     AND EXISTS (SELECT 1 FROM sales_orders so WHERE so.id = v_order AND so.status IN ('draft', 'submitted')) THEN
+    INSERT INTO giam_don_goc (order_id, giam)
+    VALUES (v_order, COALESCE(public._giam_don_hien_tai(v_order), 0))
+    ON CONFLICT (order_id) DO NOTHING;
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+
+  IF NEW.quantity IS NULL OR NEW.quantity <= 0 THEN
+    RAISE EXCEPTION 'BAD_PAYLOAD: số lượng của dòng hàng phải lớn hơn 0 (bỏ dòng thay vì để 0).'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.unit_price IS NULL OR NEW.unit_price < 0 THEN
+    RAISE EXCEPTION 'BAD_PAYLOAD: đơn giá của dòng hàng không được âm.' USING ERRCODE = 'P0001';
+  END IF;
+  IF COALESCE(NEW.line_discount, 0) < 0 THEN
+    RAISE EXCEPTION 'BAD_PAYLOAD: giảm giá dòng không được âm.' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- (c) Quyền giảm giá (mig 185).
+  IF q.toan_quyen THEN RETURN NEW; END IF;
+
+  SELECT c.group_id INTO v_nhom
+  FROM sales_orders so JOIN customers c ON c.id = so.customer_id
+  WHERE so.id = NEW.order_id;
+  v_bang := COALESCE(public._gia_bang_don_vi(NEW.product_id, NEW.unit_name, v_nhom), 0);
+
+  -- Giảm THẬT: phần ghi ở line_discount, hoặc phần đơn giá thấp hơn giá bảng — lấy số lớn hơn.
+  v_giam := GREATEST(COALESCE(NEW.line_discount, 0),
+                     CASE WHEN v_bang > 0 THEN NEW.quantity * (v_bang - NEW.unit_price) ELSE 0 END, 0);
+  IF TG_OP = 'UPDATE' AND OLD.product_id = NEW.product_id AND OLD.unit_name = NEW.unit_name THEN
+    v_goc := GREATEST(COALESCE(OLD.line_discount, 0),
+                      CASE WHEN v_bang > 0 THEN OLD.quantity * (v_bang - OLD.unit_price) ELSE 0 END, 0);
+  END IF;
+  v_sai := NEW.quantity * 0.5 + 1;
+
+  -- Không tăng khoản giảm đã có (đơn NPP đã giảm) → cho qua.
+  IF v_giam <= v_goc + v_sai THEN RETURN NEW; END IF;
+
+  IF NOT q.duoc_giam THEN
+    RAISE EXCEPTION 'DISCOUNT_NOT_ALLOWED: Bạn không có quyền giảm giá dòng (kể cả bán dưới giá bảng) — bỏ giảm giá ở các dòng rồi gửi lại.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF q.tran IS NOT NULL THEN
+    v_tien := NEW.quantity * NEW.unit_price + v_giam;
+    v_tran := CASE WHEN q.loai_tran = 'vnd' THEN q.tran
+                   ELSE floor(v_tien * LEAST(100, q.tran) / 100) END;
+    IF v_giam > v_tran + v_sai THEN
+      RAISE EXCEPTION 'DISCOUNT_OVER_LIMIT: Giảm giá dòng vượt mức cho phép (%).', public._nhan_tran_giam(q.loai_tran, q.tran)
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._chot_gia_dong_don() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_quyen_gia_dong_don ON public.sales_order_lines;
+CREATE TRIGGER trg_quyen_gia_dong_don
+  BEFORE INSERT OR UPDATE OR DELETE ON public.sales_order_lines
+  FOR EACH ROW EXECUTE FUNCTION public._chot_gia_dong_don();
+
+-- ── 4. Giảm giá cả đơn — kiểm lúc chốt giao dịch ────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._chot_giam_don()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  q       record;
+  v_status text;
+  v_giam  numeric;
+  v_goc   numeric;
+  v_tien  numeric;
+  v_n     bigint;
+  v_tran  numeric;
+BEGIN
+  -- Ảnh chụp chỉ sống tới khi đầu đơn lưu xong — đọc rồi xoá, với MỌI người ghi.
+  DELETE FROM giam_don_goc g WHERE g.order_id = NEW.id RETURNING g.giam INTO v_goc;
+
+  SELECT * INTO q FROM public._quyen_giam_cua((SELECT auth.uid()));
+  IF q.toan_quyen THEN RETURN NULL; END IF;
+
+  SELECT so.status INTO v_status FROM sales_orders so WHERE so.id = NEW.id;
+  IF v_status IS NULL OR v_status NOT IN ('draft', 'submitted') THEN RETURN NULL; END IF;
+
+  v_giam := COALESCE(public._giam_don_hien_tai(NEW.id), 0);
+  IF TG_OP = 'INSERT' THEN
+    v_goc := 0;
+  ELSIF v_goc IS NULL THEN
+    -- Không đổi dòng nào từ lần lưu trước: dòng hiện tại + subtotal CŨ cho đúng khoản giảm cũ.
+    SELECT CASE WHEN round(COALESCE(sum(l.quantity * l.unit_price), 0)) - round(COALESCE(OLD.subtotal, 0)) > GREATEST(1, count(*))
+                THEN round(COALESCE(sum(l.quantity * l.unit_price), 0)) - round(COALESCE(OLD.subtotal, 0)) ELSE 0 END
+      INTO v_goc
+    FROM sales_order_lines l WHERE l.order_id = NEW.id AND l.quantity > 0;
+  END IF;
+  IF v_giam <= GREATEST(COALESCE(v_goc, 0), 0) THEN RETURN NULL; END IF;
+
+  IF NOT q.duoc_giam THEN
+    RAISE EXCEPTION 'DISCOUNT_NOT_ALLOWED: Bạn không có quyền giảm giá đơn.' USING ERRCODE = 'P0001';
+  END IF;
+  IF q.tran IS NOT NULL THEN
+    -- Nền trần = TIỀN GỘP (trước giảm dòng), cùng nền với `cartTotals` / POS.
+    SELECT COALESCE(sum(l.quantity * l.unit_price + COALESCE(l.line_discount, 0)), 0), count(*)
+      INTO v_tien, v_n
+    FROM sales_order_lines l WHERE l.order_id = NEW.id AND l.quantity > 0;
+    v_tran := CASE WHEN q.loai_tran = 'vnd' THEN q.tran
+                   ELSE floor(v_tien * LEAST(100, q.tran) / 100) END;
+    IF v_giam > v_tran + v_n + 1 THEN
+      RAISE EXCEPTION 'DISCOUNT_OVER_LIMIT: Giảm giá đơn vượt mức cho phép (%).', public._nhan_tran_giam(q.loai_tran, q.tran)
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NULL;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public._chot_giam_don() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_quyen_giam_don ON public.sales_orders;
+-- ⚠ WHEN: chỉ xếp hàng sự kiện khi có phiên người dùng và đơn còn sửa được. Ghi của máy chủ /
+--   migration / kịch bản dựng dữ liệu (không phiên) không để lại sự kiện treo — sự kiện treo làm
+--   `ALTER TABLE sales_orders` cùng giao dịch nổ "pending trigger events".
+CREATE CONSTRAINT TRIGGER trg_quyen_giam_don
+  AFTER INSERT OR UPDATE OF subtotal ON public.sales_orders
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN (NEW.status IN ('draft', 'submitted') AND auth.uid() IS NOT NULL)
+  EXECUTE FUNCTION public._chot_giam_don();
+
+-- ── 5. CHECK trên bảng — chỉ khi sổ sạch (có dòng vi phạm thì để chủ nhà xem trước) ──────────────
+DO $chk$
+DECLARE v_xau bigint;
+BEGIN
+  SELECT count(*) INTO v_xau FROM public.sales_order_lines
+  WHERE quantity <= 0 OR unit_price < 0 OR line_discount < 0;
+  IF v_xau > 0 THEN
+    RAISE NOTICE '226: % dòng đơn cũ vi phạm (SL <= 0 / giá âm / giảm âm) — CHƯA thêm CHECK, trigger vẫn chặn dòng mới.', v_xau;
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_order_lines_quantity_duong_check') THEN
+    ALTER TABLE public.sales_order_lines
+      ADD CONSTRAINT sales_order_lines_quantity_duong_check CHECK (quantity > 0);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_order_lines_unit_price_khong_am_check') THEN
+    ALTER TABLE public.sales_order_lines
+      ADD CONSTRAINT sales_order_lines_unit_price_khong_am_check CHECK (unit_price >= 0);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_order_lines_line_discount_khong_am_check') THEN
+    ALTER TABLE public.sales_order_lines
+      ADD CONSTRAINT sales_order_lines_line_discount_khong_am_check CHECK (line_discount IS NULL OR line_discount >= 0);
+  END IF;
+END;
+$chk$;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------
+-- Bảng tóm tắt.
+-- ---------------------------------------------------------------------
+SELECT 'mig 226: ngày đơn theo giờ VN' AS hang_muc,
+       CASE WHEN (SELECT pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d
+                  JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                  WHERE d.adrelid = 'public.sales_orders'::regclass AND a.attname = 'order_date') ILIKE '%vn_today%'
+            THEN 'OK' ELSE 'THIẾU' END AS ket_qua,
+       (SELECT count(*) FROM sales_orders
+        WHERE order_date <> (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)::text
+         || ' đơn có ngày đặt khác ngày tạo theo giờ VN (không tự sửa — chờ chủ nhà)' AS ghi_chu
+UNION ALL
+SELECT 'mig 226: đơn gửi thẳng có mốc + lịch sử',
+       CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_don_moi_moc_gui')
+             AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_don_moi_lich_su')
+            THEN 'OK' ELSE 'THIẾU' END,
+       (SELECT count(*) FROM sales_orders WHERE status <> 'draft' AND submitted_at IS NULL)::text
+         || ' đơn cũ không có submitted_at (không đoán — luật mig 119)'
+UNION ALL
+SELECT 'mig 226: quyền giảm giá dòng + đơn ở máy chủ',
+       CASE WHEN EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_quyen_gia_dong_don')
+             AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_quyen_giam_don')
+            THEN 'OK' ELSE 'THIẾU' END,
+       (SELECT count(*) FROM users WHERE role NOT IN ('owner', 'accountant') AND allow_discount)::text
+         || ' nhân viên đang bật quyền giảm giá'
+UNION ALL
+SELECT 'mig 226: dòng đơn SL > 0, giá / giảm không âm',
+       CASE WHEN (SELECT count(*) FROM pg_constraint WHERE conname IN (
+                    'sales_order_lines_quantity_duong_check', 'sales_order_lines_unit_price_khong_am_check',
+                    'sales_order_lines_line_discount_khong_am_check')) = 3
+            THEN 'OK' ELSE 'CHƯA CHECK' END,
+       (SELECT count(*) FROM sales_order_lines WHERE quantity <= 0 OR unit_price < 0 OR line_discount < 0)::text
+         || ' dòng cũ vi phạm';
+
+
+-- ####################################################################
+-- # 227_sua_loi_hoa_don_tra_hang_cong_no.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 227 — SỬA LỖI ĐỘI TEST: HÓA ĐƠN, TRẢ HÀNG, CÔNG NỢ / PHIẾU THU, CÔNG NỢ NCC,
+--       SỬA HĐ GIỮ VIỆC GIAO NỢ CỦA NPP, HUỶ RIÊNG PHIẾU KHO CỦA CHỨNG TỪ ĐÃ ĐẢO
+--
+-- VÌ SAO — đội test 04/10/2026 xác nhận các lỗi dưới đây trái luật chủ nhà đã chốt:
+--   · Chủ nhà 24/09/2026: "làm tiếp phần doanh thu tính theo hoá đơn" — doanh thu / hạn nợ theo
+--     `invoice_date`, mà `invoice_date` là ngày THEO GIỜ VN (CLAUDE.md §1). Mig 140 đã ghi: "Máy chủ
+--     Supabase chạy giờ UTC … Từ 00:00 tới 07:00 giờ Việt Nam mỗi ngày, `CURRENT_DATE` vẫn còn là NGÀY
+--     HÔM QUA" — nhưng `post_invoice`, `_wf2b_recompute_receivable`, `create_cash_receipt`,
+--     `void_cash_receipt` vẫn dùng `current_date`: HĐ / phiếu thu lập 0h–7h sáng mang ngày hôm trước
+--     (phiếu thu còn lệch với YYMMDD trong chính mã phiếu).
+--   · Chủ nhà 28/09/2026: "…rồi khoá ghi thẳng" (mig 214) — "Tiền, tồn kho, trạng thái chứng từ chỉ
+--     đổi qua RPC". Còn lọt:
+--       – `returns.credited_at` của phiếu đã hoàn thành ghi thẳng được → ngày trừ doanh số
+--         (`revenue_date`) nhảy sang kỳ khác.
+--       – Công nợ NCC (`payables`, `payable_payments`) chưa khoá: sửa `paid`, chèn / xoá phiếu chi,
+--         xoá khoản đã trả từ trình duyệt → `paid` lệch Σ phiếu chi (mig 167).
+--   · Chủ nhà 25/09/2026 (mig 191): phiếu trả tự lập "hoàn thành = nhập kho và trừ nợ" — nhưng phiếu
+--     trả nhận đơn giá / thuế ÂM → credit âm → "trả hàng" lại TĂNG nợ khách.
+--   · Chủ nhà 24/09/2026 (SP001945, quy đổi đơn vị): huỷ phiếu trả 1,5 thùng thì dòng đảo kho ghi
+--     2 thùng (cột `quantity` số nguyên) — thẻ kho hiện "nhập 1,5 / xuất 2".
+--   · Chủ nhà 02/10/2026 (mig 223): "khi nghỉ bàn giao khách hàng và công nợ về npp. Npp sẽ phân phối
+--     lại sau" — nhưng Sửa HĐ (dù không đổi gì) làm nợ NPP đã giao cho NV mới quay về "NPP / chưa gán".
+--   · Luật tồn kho = thẻ kho: `cancel_stock_entry` vẫn huỷ riêng được phiếu kho của chứng từ ĐÃ ĐẢO
+--     (phiếu xuất của HĐ đã huỷ / đã sửa, phiếu nhập hàng trả "(đã đảo)", phiếu "Hoàn kho do huỷ hóa
+--     đơn") → kho bị hoàn / rút lần hai.
+--
+-- CÁCH LÀM — vá thân hàm đang chạy bằng `regexp_replace` (khuôn mig 212 / 214), mỗi chỗ phải khớp đúng
+--   MỘT lần, có dấu "(mig 227)" để chạy lại không vá chồng. Hàm trigger khoá ghi thẳng chạy theo vai
+--   người gọi (không SECURITY DEFINER) — RPC SECURITY DEFINER chạy vai chủ nên không bị chặn.
+-- ====================================================================
+
+-- 1. NGÀY CHỨNG TỪ THEO GIỜ VN ------------------------------------------------
+DO $p$
+DECLARE
+  v_vas text[][] := ARRAY[
+    -- hàm, mẫu, thay
+    ARRAY['public.post_invoice(jsonb)',
+          '(v_date\s*:=\s*COALESCE\(\(p->>''invoice_date''\)::date,\s*)current_date(\);)',
+          '\1public.vn_today() /* (mig 227) ngày VN, không theo múi giờ phiên */\2'],
+    ARRAY['public._wf2b_recompute_receivable(uuid)',
+          '(COALESCE\(v\.invoice_date,\s*)current_date(\))',
+          '\1public.vn_today() /* (mig 227) */\2'],
+    ARRAY['public.create_cash_receipt(jsonb)',
+          '(COALESCE\(\(p->>''receipt_date''\)::date,\s*)current_date(\))',
+          '\1public.vn_today() /* (mig 227) ngày VN như mã PT-YYMMDD */\2'],
+    ARRAY['public.void_cash_receipt(uuid, text)',
+          '(v_due\s*<\s*)current_date(\s)',
+          '\1public.vn_today() /* (mig 227) */\2']
+  ];
+  v_src text;
+  v_n   int;
+  i     int;
+BEGIN
+  FOR i IN 1 .. array_length(v_vas, 1) LOOP
+    v_src := pg_get_functiondef(v_vas[i][1]::regprocedure);
+    IF position('(mig 227)' IN v_src) > 0 THEN
+      RAISE NOTICE '--- 227: % đã theo ngày VN, bỏ qua ---', v_vas[i][1];
+      CONTINUE;
+    END IF;
+    SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_vas[i][2], 'g');
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION '227: thấy % chỗ current_date cần thay trong %, cần đúng 1', v_n, v_vas[i][1]
+        USING ERRCODE = 'P0001';
+    END IF;
+    EXECUTE regexp_replace(v_src, v_vas[i][2], v_vas[i][3]);
+  END LOOP;
+END;
+$p$;
+
+-- Lối chèn thẳng khác (không qua RPC) cũng không được lệch ngày.
+ALTER TABLE public.cash_receipts ALTER COLUMN receipt_date SET DEFAULT public.vn_today();
+ALTER TABLE public.sales_invoices ALTER COLUMN invoice_date SET DEFAULT public.vn_today();
+
+-- 2. returns.credited_at chỉ đổi qua RPC --------------------------------------
+--   Bản mig 214 chừa `credited_at` trong danh sách sửa được → bỏ ra, và chặn rõ (cả phiếu nháp).
+--   Đổi `return_date` hợp lệ vẫn chạy: trigger khoá (trg_khoa_…) chạy TRƯỚC trg_returns_credited_at
+--   (thứ tự tên), lúc đó NEW.credited_at vẫn bằng OLD; `revenue_date` do trg_zz_… tính lại.
+CREATE OR REPLACE FUNCTION public._khoa_ghi_thang_phieu_tra()
+RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $fn$
+DECLARE
+  v_cho text[] := ARRAY['notes', 'reason', 'return_date', 'sales_user_id', 'revenue_date'];
+BEGIN
+  IF NOT public._la_trinh_duyet() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS DISTINCT FROM 'draft' THEN
+      RAISE EXCEPTION 'PHIEU_TRA_KHOA: phiếu trả lập ra ở Nháp — hoàn thành đi qua nút Hoàn thành'
+        USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status <> 'draft' THEN
+      RAISE EXCEPTION 'PHIEU_TRA_KHOA: chỉ xoá được phiếu trả Nháp — phiếu đã xử lý thì huỷ'
+        USING ERRCODE = 'P0001';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'PHIEU_TRA_KHOA: trạng thái phiếu trả chỉ đổi qua Hoàn thành / Huỷ (% → %)', OLD.status, NEW.status
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF OLD.status <> 'draft'
+     AND (to_jsonb(NEW) - v_cho) IS DISTINCT FROM (to_jsonb(OLD) - v_cho) THEN
+    RAISE EXCEPTION 'PHIEU_TRA_KHOA: phiếu trả đã qua Nháp chỉ sửa được ghi chú / lý do / ngày / người đứng tên — sửa hàng, tiền đi qua màn sửa phiếu'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- (mig 227) credited_at quyết ngày trừ doanh số (revenue_date) — chỉ RPC / trigger ngày chứng từ đổi.
+  IF NEW.applied_receipt_id IS DISTINCT FROM OLD.applied_receipt_id
+     OR NEW.completed_at IS DISTINCT FROM OLD.completed_at
+     OR NEW.credited_at IS DISTINCT FROM OLD.credited_at
+     OR NEW.credit_with_invoice IS DISTINCT FROM OLD.credit_with_invoice THEN
+    RAISE EXCEPTION 'PHIEU_TRA_KHOA: cột này chỉ đổi qua RPC' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+
+-- 3. Phiếu trả: đơn giá không âm, thuế trong [0, 1] ----------------------------
+DO $p$
+DECLARE
+  v_src text;
+  v_n   int;
+  v_kiem text := '-- (mig 227) Đơn giá / thuế âm làm credit âm → "trả hàng" lại TĂNG nợ khách.' || chr(10)
+    || '  IF EXISTS (' || chr(10)
+    || '    SELECT 1 FROM jsonb_array_elements(%s) AS l227' || chr(10)
+    || '    WHERE COALESCE((l227->>''quantity'')::numeric, 0) > 0' || chr(10)
+    || '      AND (COALESCE((l227->>''unit_price'')::numeric, 0) < 0' || chr(10)
+    || '           OR COALESCE((l227->>''vat_rate'')::numeric, 0) NOT BETWEEN 0 AND 1)' || chr(10)
+    || '  ) THEN' || chr(10)
+    || '    RAISE EXCEPTION ''BAD_PAYLOAD: đơn giá hàng trả không được âm, thuế phải trong khoảng 0 – 1 (0 – 100 phần trăm)'' USING ERRCODE = ''P0001'';' || chr(10)
+    || '  END IF;' || chr(10);
+  v_re text;
+BEGIN
+  -- 3a. save_pos_return: kiểm trước khi lập / sửa phiếu.
+  v_src := pg_get_functiondef('public.save_pos_return(jsonb)'::regprocedure);
+  IF position('(mig 227)' IN v_src) = 0 THEN
+    v_re := '(\n)(\s*IF v_id IS NULL THEN\s*\n\s*INSERT INTO returns)';
+    SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION '227: thấy % chỗ lập phiếu trong save_pos_return, cần đúng 1', v_n USING ERRCODE = 'P0001';
+    END IF;
+    EXECUTE regexp_replace(v_src, v_re, '\1  ' || replace(format(v_kiem, 'v_lines'), '\', '\\') || '\2');
+  END IF;
+
+  -- 3b. _apply_return_adds (post_invoice / reissue_invoice thêm hàng trả).
+  v_src := pg_get_functiondef('public._apply_return_adds(uuid, uuid, jsonb)'::regprocedure);
+  IF position('(mig 227)' IN v_src) = 0 THEN
+    v_re := '(\n)(\s*v_ret\s*:=\s*public\._pending_return_for\()';
+    SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION '227: thấy % chỗ _pending_return_for trong _apply_return_adds, cần đúng 1', v_n USING ERRCODE = 'P0001';
+    END IF;
+    EXECUTE regexp_replace(v_src, v_re, '\1  ' || replace(format(v_kiem, 'p_adds'), '\', '\\') || '\2');
+  END IF;
+END;
+$p$;
+
+-- Chặn ở tầng bảng cho mọi lối còn lại (create_return_with_lines, phiếu Nháp ghi thẳng).
+-- NOT VALID: dòng cũ (nếu có) không làm hỏng migration; sổ sạch thì VALIDATE luôn.
+DO $c$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'return_lines_unit_price_khong_am'
+                   AND conrelid = 'public.return_lines'::regclass) THEN
+    ALTER TABLE public.return_lines ADD CONSTRAINT return_lines_unit_price_khong_am
+      CHECK (unit_price IS NULL OR unit_price >= 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'return_lines_vat_rate_0_1'
+                   AND conrelid = 'public.return_lines'::regclass) THEN
+    ALTER TABLE public.return_lines ADD CONSTRAINT return_lines_vat_rate_0_1
+      CHECK (vat_rate IS NULL OR vat_rate BETWEEN 0 AND 1) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.return_lines WHERE unit_price < 0) THEN
+    ALTER TABLE public.return_lines VALIDATE CONSTRAINT return_lines_unit_price_khong_am;
+  ELSE
+    RAISE NOTICE '--- 227: còn dòng trả đơn giá âm — ràng buộc để NOT VALID, xem kham-so-that ---';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.return_lines WHERE vat_rate < 0 OR vat_rate > 1) THEN
+    ALTER TABLE public.return_lines VALIDATE CONSTRAINT return_lines_vat_rate_0_1;
+  ELSE
+    RAISE NOTICE '--- 227: còn dòng trả thuế ngoài [0,1] — ràng buộc để NOT VALID, xem kham-so-that ---';
+  END IF;
+END;
+$c$;
+
+-- 4. cancel_return: dòng đảo ghi đúng SL giao dịch của dòng nhập (1,5 thùng, không phải 2) ------
+DO $p$
+DECLARE
+  v_src text := pg_get_functiondef('public.cancel_return(uuid, text)'::regprocedure);
+  v_re1 text := '(sel\.qty_in_base_uom,\s*sel\.conversion_factor_snapshot)(\s+FROM stock_entry_lines sel)';
+  v_re2 text := 'l\.quantity,\s*l\.quantity,\s*l\.qty_in_base_uom,\s*l\.unit_name,';
+  v_n1 int;
+  v_n2 int;
+BEGIN
+  IF position('(mig 227)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 227: cancel_return đã ghi SL giao dịch gốc, bỏ qua ---';
+    RETURN;
+  END IF;
+  SELECT count(*) INTO v_n1 FROM regexp_matches(v_src, v_re1, 'g');
+  SELECT count(*) INTO v_n2 FROM regexp_matches(v_src, v_re2, 'g');
+  IF v_n1 <> 1 OR v_n2 <> 1 THEN
+    RAISE EXCEPTION '227: cancel_return thấy % / % chỗ cần vá, cần đúng 1 / 1', v_n1, v_n2 USING ERRCODE = 'P0001';
+  END IF;
+  v_src := regexp_replace(v_src, v_re1,
+    '\1, sel.qty_in_transaction_uom AS sl_gd227, sel.transaction_uom AS dvt_gd227\2');
+  v_src := regexp_replace(v_src, v_re2,
+    'l.quantity, COALESCE(l.sl_gd227, l.quantity) /* (mig 227) SL giao dịch gốc, cột quantity là số nguyên */,'
+    || ' l.qty_in_base_uom, COALESCE(l.dvt_gd227, l.unit_name),');
+  EXECUTE v_src;
+END;
+$p$;
+
+-- 5. reissue_invoice: tờ mới giữ NGƯỜI GIỮ NỢ của tờ cũ ---------------------------
+--   cancel_invoice XOÁ phiếu nợ cũ, post_invoice sinh phiếu mới theo người của ĐƠN (NV đã nghỉ) →
+--   trigger _cong_no_giu_ve_npp đẩy về NPP. Ghi nhớ người giữ nợ + cờ về NPP của phiếu cũ trước khi
+--   huỷ, chép lại sau khối mig 182 (bật cờ npp.giao_cong_no để trigger cho qua, tắt ngay sau đó).
+--   Chỉ chép người GIỮ NỢ — `sales_invoices.sales_user_id` (doanh số) vẫn của người cũ.
+DO $p$
+DECLARE
+  v_src text := pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure);
+  v_re1 text := '(FROM receivables rc184 WHERE rc184\.invoice_id = p_invoice_id LIMIT 1;)';
+  v_re2 text := '(WHERE rt182\.invoice_id = v_new\.invoice_id AND rt182\.status <> ''cancelled'';)';
+  v_n1 int;
+  v_n2 int;
+BEGIN
+  IF position('(mig 227)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 227: reissue_invoice đã giữ người giữ nợ, bỏ qua ---';
+    RETURN;
+  END IF;
+  SELECT count(*) INTO v_n1 FROM regexp_matches(v_src, v_re1, 'g');
+  SELECT count(*) INTO v_n2 FROM regexp_matches(v_src, v_re2, 'g');
+  IF v_n1 <> 1 OR v_n2 <> 1 THEN
+    RAISE EXCEPTION '227: reissue_invoice thấy % / % chỗ cần vá, cần đúng 1 / 1', v_n1, v_n2 USING ERRCODE = 'P0001';
+  END IF;
+  v_src := regexp_replace(v_src, v_re1,
+    '\1' || chr(10)
+    || '    -- (mig 227) Ghi nhớ NGƯỜI GIỮ NỢ của tờ cũ (NPP có thể đã giao lại nợ của NV nghỉ việc).' || chr(10)
+    || '    PERFORM set_config(''npp.reissue_nguoi_no'', COALESCE((' || chr(10)
+    || '      SELECT jsonb_build_object(''u'', rc227.sales_user_id, ''t'', rc227.ve_npp_luc)::text' || chr(10)
+    || '      FROM receivables rc227 WHERE rc227.invoice_id = p_invoice_id LIMIT 1), ''''), true);');
+  v_src := regexp_replace(v_src, v_re2,
+    '\1' || chr(10)
+    || '  -- (mig 227) Tờ mới giữ NGƯỜI GIỮ NỢ của tờ cũ — không để nợ NPP đã giao lại quay về "NPP / chưa gán".' || chr(10)
+    || '  DECLARE' || chr(10)
+    || '    v227 jsonb := NULLIF(current_setting(''npp.reissue_nguoi_no'', true), '''')::jsonb;' || chr(10)
+    || '  BEGIN' || chr(10)
+    || '    PERFORM set_config(''npp.reissue_nguoi_no'', '''', true);' || chr(10)
+    || '    IF v227 IS NOT NULL THEN' || chr(10)
+    || '      PERFORM set_config(''npp.giao_cong_no'', ''on'', true);' || chr(10)
+    || '      UPDATE receivables rc227' || chr(10)
+    || '         SET sales_user_id = NULLIF(v227->>''u'', '''')::uuid,' || chr(10)
+    || '             ve_npp_luc    = NULLIF(v227->>''t'', '''')::timestamptz' || chr(10)
+    || '       WHERE rc227.invoice_id = v_new.invoice_id;' || chr(10)
+    || '      PERFORM set_config(''npp.giao_cong_no'', '''', true);' || chr(10)
+    || '    END IF;' || chr(10)
+    || '  END;');
+  EXECUTE v_src;
+END;
+$p$;
+
+-- 6. cancel_stock_entry: không huỷ riêng phiếu kho của chứng từ ĐÃ ĐẢO ------------------
+--   Hở cũ: chỉ chặn HĐ 'posted' và phiếu trả 'completed' khớp nguyên văn ghi chú; phiếu
+--   "Hoàn kho do huỷ hóa đơn" / "Đảo phiếu trả" không có chặn nào.
+DO $p$
+DECLARE
+  v_src text := pg_get_functiondef('public.cancel_stock_entry(uuid, text)'::regprocedure);
+  v_re  text := '(\n)(\s*IF v_type NOT IN \(''import'', ''export''\) THEN)';
+  v_n   int;
+BEGIN
+  IF position('(mig 227)' IN v_src) > 0 THEN
+    RAISE NOTICE '--- 227: cancel_stock_entry đã chặn chứng từ đã đảo, bỏ qua ---';
+    RETURN;
+  END IF;
+  SELECT count(*) INTO v_n FROM regexp_matches(v_src, v_re, 'g');
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION '227: thấy % chỗ kiểm loại phiếu trong cancel_stock_entry, cần đúng 1', v_n USING ERRCODE = 'P0001';
+  END IF;
+  EXECUTE regexp_replace(v_src, v_re,
+    '\1'
+    || '  -- (mig 227) Phiếu kho của chứng từ ĐÃ ĐẢO: hàng đã hoàn / rút bằng chính hàm huỷ của chứng từ' || chr(10)
+    || '  --   gốc — huỷ riêng phiếu kho là hoàn / rút LẦN HAI, thẻ kho lệch tồn.' || chr(10)
+    || '  DECLARE' || chr(10)
+    || '    v227_hd  text;' || chr(10)
+    || '    v227_ghi text;' || chr(10)
+    || '  BEGIN' || chr(10)
+    || '    SELECT se227.notes INTO v227_ghi FROM stock_entries se227 WHERE se227.id = p_entry_id;' || chr(10)
+    || '    SELECT si227.invoice_code INTO v227_hd FROM sales_invoices si227' || chr(10)
+    || '     WHERE si227.stock_entry_id = p_entry_id AND si227.status <> ''posted'' LIMIT 1;' || chr(10)
+    || '    IF v227_hd IS NOT NULL THEN' || chr(10)
+    || '      RAISE EXCEPTION ''ENTRY_HAS_INVOICE: phiếu % thuộc hóa đơn % đã huỷ / đã sửa — hàng đã hoàn kho lúc huỷ / sửa hóa đơn, không huỷ riêng phiếu kho được.'',' || chr(10)
+    || '        v_code, v227_hd USING ERRCODE = ''P0001'';' || chr(10)
+    || '    END IF;' || chr(10)
+    || '    IF v227_ghi LIKE ''Nhập lại từ phiếu trả %'' OR v227_ghi LIKE ''Đảo phiếu trả %'' THEN' || chr(10)
+    || '      RAISE EXCEPTION ''ENTRY_HAS_SOURCE: phiếu % là hàng khách trả. Huỷ / sửa phiếu trả hàng đó thay vì huỷ riêng phiếu kho.'',' || chr(10)
+    || '        v_code USING ERRCODE = ''P0001'';' || chr(10)
+    || '    END IF;' || chr(10)
+    || '    IF v227_ghi LIKE ''Hoàn kho do huỷ hóa đơn %'' THEN' || chr(10)
+    || '      RAISE EXCEPTION ''ENTRY_HAS_SOURCE: phiếu % là hàng hoàn kho khi huỷ hóa đơn — hóa đơn vẫn Đã huỷ, không huỷ riêng phiếu kho được.'',' || chr(10)
+    || '        v_code USING ERRCODE = ''P0001'';' || chr(10)
+    || '    END IF;' || chr(10)
+    || '  END;' || chr(10)
+    || '\2');
+END;
+$p$;
+
+-- 7. CÔNG NỢ NCC: khoá ghi thẳng tiền từ trình duyệt (khuôn mig 214) -------------------
+--   Chừa đúng những việc màn hình hợp lệ đang làm:
+--     · Thêm công nợ NCC (payables/new) / Nợ đầu kỳ NCC: chèn khoản CHƯA TRẢ (paid = 0).
+--     · Sửa số hóa đơn / hạn / ghi chú; đổi trạng thái tay (quá hạn / mở lại) đúng với số đã trả.
+--     · Nợ đầu kỳ: sửa số tiền (trạng thái đi kèm), xoá khoản chưa trả.
+--     · Xoá khoản chưa trả đồng nào, không có phiếu chi (kể cả khoản gắn phiếu nhập — cancel_stock_entry
+--       bảo "Xoá công nợ NCC đó trước").
+--     · Xác nhận phiếu chi (`verified_by`, `verified_at`).
+--   Trả tiền NCC đi qua `record_payable_payment`; phiếu nhập / trả NCC qua RPC của chúng.
+CREATE OR REPLACE FUNCTION public._khoa_ghi_thang_no_ncc()
+RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $fn$
+DECLARE
+  v_paid numeric;
+  v_amt  numeric;
+BEGIN
+  IF NOT public._la_trinh_duyet() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF COALESCE(NEW.paid, 0) <> 0 OR COALESCE(NEW.status, 'open') NOT IN ('open', 'overdue') THEN
+      RAISE EXCEPTION 'NO_NCC_KHOA: màn hình chỉ thêm được khoản nợ NCC chưa trả — trả tiền đi qua nút Ghi trả NCC'
+        USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    IF COALESCE(OLD.paid, 0) <> 0
+       OR EXISTS (SELECT 1 FROM payable_payments pp WHERE pp.payable_id = OLD.id) THEN
+      RAISE EXCEPTION 'NO_NCC_KHOA: chỉ xoá được khoản nợ NCC chưa trả đồng nào (không có phiếu chi)'
+        USING ERRCODE = 'P0001';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW.paid IS DISTINCT FROM OLD.paid
+     OR NEW.supplier_id IS DISTINCT FROM OLD.supplier_id OR NEW.org_id IS DISTINCT FROM OLD.org_id
+     OR NEW.stock_entry_id IS DISTINCT FROM OLD.stock_entry_id
+     OR NEW.opening_balance IS DISTINCT FROM OLD.opening_balance
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (NEW.amount IS DISTINCT FROM OLD.amount
+         AND (NOT COALESCE(OLD.opening_balance, false) OR OLD.stock_entry_id IS NOT NULL)) THEN
+    RAISE EXCEPTION 'NO_NCC_KHOA: số nợ / số đã trả NCC chỉ đổi qua phiếu nhập, phiếu trả NCC, Ghi trả NCC (RPC)'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- Trạng thái tay phải khớp số đã trả.
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    v_paid := COALESCE(NEW.paid, 0);
+    v_amt  := COALESCE(NEW.amount, 0);
+    IF NOT ((NEW.status = 'paid'    AND v_paid >= v_amt - 0.01)
+         OR (NEW.status = 'partial' AND v_paid > 0 AND v_paid < v_amt)
+         OR (NEW.status = 'open'    AND v_paid = 0 AND v_amt > 0)
+         OR (NEW.status = 'overdue' AND v_paid < v_amt)) THEN
+      RAISE EXCEPTION 'NO_NCC_KHOA: trạng thái % không khớp số đã trả % / %', NEW.status, v_paid, v_amt
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS trg_khoa_ghi_thang_no_ncc ON public.payables;
+CREATE TRIGGER trg_khoa_ghi_thang_no_ncc
+  BEFORE INSERT OR UPDATE OR DELETE ON public.payables
+  FOR EACH ROW EXECUTE FUNCTION public._khoa_ghi_thang_no_ncc();
+
+CREATE OR REPLACE FUNCTION public._khoa_ghi_thang_chi_ncc()
+RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $fn$
+BEGIN
+  IF NOT public._la_trinh_duyet() THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  -- Chỉ được xác nhận (đối chiếu) một phiếu chi.
+  IF TG_OP = 'UPDATE'
+     AND (to_jsonb(NEW) - ARRAY['verified_by', 'verified_at']) = (to_jsonb(OLD) - ARRAY['verified_by', 'verified_at']) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'CHI_NCC_KHOA: tiền trả NCC chỉ ghi qua nút Ghi trả NCC (RPC record_payable_payment)'
+    USING ERRCODE = 'P0001';
+END;
+$fn$;
+DROP TRIGGER IF EXISTS trg_khoa_ghi_thang_chi_ncc ON public.payable_payments;
+CREATE TRIGGER trg_khoa_ghi_thang_chi_ncc
+  BEFORE INSERT OR UPDATE OR DELETE ON public.payable_payments
+  FOR EACH ROW EXECUTE FUNCTION public._khoa_ghi_thang_chi_ncc();
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'mig 227: hóa đơn / trả hàng / công nợ / NCC / phiếu kho đã đảo' AS buoc,
+       CASE WHEN position('(mig 227)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public._wf2b_recompute_receivable(uuid)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.create_cash_receipt(jsonb)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.void_cash_receipt(uuid, text)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public._khoa_ghi_thang_phieu_tra()'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.save_pos_return(jsonb)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public._apply_return_adds(uuid, uuid, jsonb)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.cancel_return(uuid, text)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) > 0
+             AND position('(mig 227)' IN pg_get_functiondef('public.cancel_stock_entry(uuid, text)'::regprocedure)) > 0
+             AND (SELECT count(*) FROM pg_trigger WHERE tgname IN ('trg_khoa_ghi_thang_no_ncc', 'trg_khoa_ghi_thang_chi_ncc')) = 2
+             AND (SELECT count(*) FROM pg_constraint WHERE conname IN ('return_lines_unit_price_khong_am', 'return_lines_vat_rate_0_1')) = 2
+            THEN 'OK' ELSE 'THIẾU' END AS ket_qua,
+       (SELECT count(*) FROM pg_constraint WHERE conname IN ('return_lines_unit_price_khong_am', 'return_lines_vat_rate_0_1')
+          AND NOT convalidated) AS rang_buoc_chua_validate;
+
+
+-- ####################################################################
+-- # 228_sua_loi_kho_bao_cao.sql
+-- ####################################################################
+
+-- ====================================================================
+-- 228 — SỬA LỖI KHO & BÁO CÁO (đợt đội test 04/10/2026)
+--
+-- VÌ SAO — các đội test "Kho & mua hàng", "Báo cáo", "Danh mục, Quyền", "Liên mô-đun" báo lỗi đã xác minh
+--   (scripts/sql/doi-test/{kho,bao-cao,danh-muc,lien-module}-loi.sql). Mỗi lỗi trái một luật chủ nhà đã chốt:
+--   · Chủ nhà 25/09/2026 (mig 192): "Rà soát lại toàn bộ doanh số tính bằng số đi - số trả" →
+--     CLAUDE.md: "Lãi gộp = doanh thu thuần − (giá vốn − giá vốn hàng trả đã nhập kho)".
+--   · Chủ nhà 24/09/2026: "làm tiếp phần doanh thu tính theo hoá đơn" → CLAUDE.md: "`invoice_date` là DATE:
+--     so bằng ngày theo giờ VN (`vnDateKey`), không so với mốc ISO/UTC".
+--   · Chủ nhà 30/09/2026 (mig 217): "Khi hủy hóa đơn -> coi như đóng đơn hàng -> Chuyển luôn đơn hàng về trạng
+--     thái Đã hủy" — HĐ huỷ không còn doanh thu, hàng đã hoàn kho thì cũng không còn giá vốn.
+--   · CLAUDE.md "Quyền": "Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua RPC" + luật mig 166: hàm SECURITY
+--     DEFINER bỏ qua RLS nên phải tự kiểm đúng vai mà RLS của bảng đang kiểm.
+--
+-- CÁC PHẦN
+--   1. Trả cổng vai "(mig 166)" cho post_stock_issue / complete_supplier_return / cancel_supplier_return — mig 222
+--      chép lại ba hàm từ bản TRƯỚC 166 nên rơi mất cổng (NVBH ghi sổ được phiếu xuất kho, gửi / huỷ phiếu trả
+--      NCC). Thân hàm = đúng bản 222, chỉ thêm khối KIỂM VAI ngay sau chỗ kiểm NPP. Cuối tệp có khối tự kiểm
+--      cả 8 hàm của mig 166: migration sau quên chép cổng là lộ ngay.
+--   2. v_stock_movements (thẻ kho theo kho — ngăn kéo "Lịch sử"): dòng không có lô (phiếu xuất kho lẻ) lấy kho
+--      của đầu phiếu thay vì mặc định 'sale'; phiếu CHUYỂN KHO tách hai dòng: −SL ở kho nguồn, +SL ở kho đích.
+--   3. stock_entry_lines.quantity integer → numeric: phiếu kiểm kê hàng tồn lẻ (2,5) lưu được chênh lệch −0,5.
+--   4. Mã đơn duy nhất THEO NPP (org_id, order_code) — số chạy đã đếm theo NPP từ mig 130, ràng buộc toàn bảng
+--      của mig 001 làm NPP thứ hai không tạo được DH-0001.
+--   5. finance_pnl: không cộng giá vốn phiếu xuất của HĐ ĐÃ HUỶ (kể cả tờ cũ của HĐ đã sửa) và phiếu
+--      "Đảo phiếu trả …"; mốc ngày theo giờ VN (+07:00) thay cho nửa đêm UTC.
+--   6. bao_cao_so_ban: giá vốn bình quân (gv) bỏ phiếu xuất của HĐ đã huỷ và phiếu "Đảo phiếu trả …" (giá 0 kéo
+--      bình quân xuống → lãi gộp Báo cáo tổng hợp cao giả).
+--   7. finance_cash_flow / finance_balance_sheet: mốc ngày theo giờ VN (tiền thu 00:00–06:59 giờ VN không còn
+--      rơi sang hôm trước).
+-- ⚠ Chưa đổi cancel_return (dòng xuất đảo vẫn ghi unit_cost 0): báo cáo nay bỏ hẳn phiếu đảo khỏi giá vốn nên
+--   giá 0 không còn kéo số; đổi giá trên phiếu đảo là việc của luồng phiếu trả.
+-- ====================================================================
+
+-- ====================================================================
+-- 1. Cổng vai cho ba RPC kho / trả NCC (thân hàm = đúng bản mig 222 + khối KIỂM VAI của mig 166)
+-- ⚠ Hàm người dùng gọi (SECURITY DEFINER, tự kiểm org + vai) — giữ GRANT cho authenticated như bản cũ.
+-- ⚠ Ai CREATE OR REPLACE một trong 8 RPC của mig 166 thì PHẢI chép cả khối "(mig 166)" — khối tự kiểm cuối tệp.
+-- ====================================================================
+
+-- 1a. Trả hàng NCC (vai như RLS supplier_returns: owner, manager, accountant, warehouse)
+CREATE OR REPLACE FUNCTION public.complete_supplier_return(p_return_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_org uuid;
+  v_status text;
+  v_supplier uuid;
+  v_zone text;
+  v_other_zone text;
+  v_return_code text;
+  v_uid uuid := auth.uid();
+  v_entry_id uuid;
+  v_payable_id uuid;
+  v_seq int := 0;
+  v_base_qty numeric;
+  v_need numeric;
+  v_take numeric;
+  v_batch record;
+  v_pname text;
+  v_punit text;
+  v_avail_zone numeric;
+  v_avail_other numeric;
+  v_discount numeric;
+  v_vat_ovr numeric;
+  v_sub numeric := 0;
+  v_vat numeric := 0;
+  v_total numeric;
+  -- (mig 222) Đơn vị cho bán vượt tồn → phiếu trả NCC cũng xuất được khi kho không đủ.
+  v_cho_am boolean;
+  v_gia_von numeric;
+  r record;
+BEGIN
+  SELECT org_id, status, supplier_id, warehouse_zone, return_code,
+         COALESCE(discount, 0), vat_override
+    INTO v_org, v_status, v_supplier, v_zone, v_return_code, v_discount, v_vat_ovr
+  FROM supplier_returns WHERE id = p_return_id FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu trả NCC này.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF v_org <> public.user_org_id() THEN
+    RAISE EXCEPTION 'SAI_DON_VI: Phiếu trả này không thuộc đơn vị của bạn.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- ⚠ KIỂM VAI (mig 166). Hàm SECURITY DEFINER bỏ qua RLS, nên phải
+  --   tự kiểm đúng vai mà RLS của bảng đang kiểm. Bỏ qua khi được
+  --   gọi từ trong một RPC khác đã tự kiểm quyền (npp.via_rpc).
+  --   (mig 228) mig 222 chép lại hàm từ bản trước 166 nên rơi mất khối này — trả lại.
+  IF current_setting('npp.via_rpc', true) IS DISTINCT FROM 'on'
+     AND COALESCE(public.user_role(), '') NOT IN ('owner', 'manager', 'accountant', 'warehouse') THEN
+    RAISE EXCEPTION 'FORBIDDEN: vai trò của bạn không được làm thao tác kho / mua hàng này.'
+      USING ERRCODE = '42501';
+  END IF;
+  -- ⚠ IDEMPOTENT: bấm hai lần không được xuất kho hai lần.
+  IF v_status = 'completed' THEN
+    RETURN p_return_id;
+  END IF;
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_CON_NHAP: Phiếu đang ở trạng thái "%" — chỉ phiếu nháp mới gửi được.', v_status
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM supplier_return_lines WHERE return_id = p_return_id) THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_CO_HANG: Phiếu chưa có dòng hàng nào.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  v_other_zone := CASE WHEN v_zone = 'sale' THEN 'date' ELSE 'sale' END;
+  SELECT COALESCE(allow_oversell, false) INTO v_cho_am FROM organizations WHERE id = v_org;
+
+  IF v_return_code IS NULL OR v_return_code = '' THEN
+    v_return_code := 'TH-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS');
+    UPDATE supplier_returns SET return_code = v_return_code WHERE id = p_return_id;
+  END IF;
+
+  INSERT INTO stock_entries (org_id, entry_code, type, status, posted_at, created_by, supplier_id, notes, warehouse_zone)
+  VALUES (
+    v_org,
+    'XK-' || to_char(now() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYMMDD-HH24MISS'),
+    'export', 'posted', now(), v_uid, v_supplier,
+    'Xuất kho trả NCC — phiếu ' || v_return_code || ' (kho: ' || v_zone || ')',
+    v_zone
+  )
+  RETURNING id INTO v_entry_id;
+
+  FOR r IN
+    SELECT l.id, l.product_id, l.unit_name, l.quantity, l.unit_price,
+           COALESCE(l.line_discount, 0) AS line_discount,
+           COALESCE(l.vat_rate, 0)      AS vat_rate,
+           COALESCE(l.conversion_factor, 1) AS cf
+    FROM supplier_return_lines l
+    WHERE l.return_id = p_return_id
+    ORDER BY l.sort_order, l.id
+  LOOP
+    /**
+     * ⚠ TIỀN VÀ HÀNG TÍNH RIÊNG. `line_discount` chỉ trừ TIỀN; số lượng
+     *   hàng trả vẫn là `quantity × conversion_factor`. Lẫn hai thứ là
+     *   giảm giá 10% biến thành trả thiếu 10% số hàng.
+     */
+    v_sub := v_sub + (COALESCE(r.quantity, 0) * COALESCE(r.unit_price, 0) - r.line_discount);
+    v_vat := v_vat + (COALESCE(r.quantity, 0) * COALESCE(r.unit_price, 0) - r.line_discount) * r.vat_rate;
+
+    v_base_qty := COALESCE(r.quantity, 0) * r.cf;
+    v_need := v_base_qty;
+    IF v_need <= 0 THEN
+      CONTINUE;
+    END IF;
+
+    FOR v_batch IN
+      SELECT id, qty_on_hand, unit_cost
+      FROM batches
+      WHERE org_id = v_org
+        AND product_id = r.product_id
+        AND warehouse_zone = v_zone
+        AND COALESCE(status, 'available') = 'available'
+        AND qty_on_hand > 0
+      -- FIFO: hạn cũ đi trước; `id` ở cuối cho thứ tự ổn định.
+      ORDER BY expires_at NULLS LAST, created_at, id
+      FOR UPDATE
+    LOOP
+      EXIT WHEN v_need <= 0;
+      v_take := LEAST(v_need, v_batch.qty_on_hand);
+
+      UPDATE batches SET qty_on_hand = qty_on_hand - v_take WHERE id = v_batch.id;
+
+      -- ⚠ CHÉP Y NGUYÊN 071. Migration này CHỈ đụng tới TIỀN; đổi thêm
+      --   `conversion_factor_snapshot` hay kiểu của `quantity` ở đây là
+      --   lén sửa tờ phiếu xuất kho trong một migration nói về giảm giá.
+      v_seq := v_seq + 1;
+      INSERT INTO stock_entry_lines (
+        entry_id, product_id, batch_id, unit_name, quantity,
+        qty_in_base_uom, qty_in_transaction_uom, transaction_uom,
+        conversion_factor_snapshot, unit_cost
+      ) VALUES (
+        v_entry_id, r.product_id, v_batch.id, r.unit_name, v_take,
+        v_take, v_take, r.unit_name,
+        1, COALESCE(v_batch.unit_cost, 0)
+      );
+
+      v_need := v_need - v_take;
+    END LOOP;
+
+    IF v_need > 0 AND v_cho_am THEN
+      /* (mig 222) CHO XUẤT ÂM — như `post_stock_export`: phần thiếu vẫn ghi lên phiếu (không gắn lô, không trừ lô
+         nào), tồn kho xuống dưới số trên phiếu cho tới khi nhập bù / kiểm kê. Giá vốn = giá lô gần nhất của mã.
+         Huỷ phiếu (`cancel_supplier_return`) chỉ hoàn dòng có lô — phần thiếu không bị cộng khống lại. */
+      SELECT unit_cost INTO v_gia_von FROM batches
+       WHERE org_id = v_org AND product_id = r.product_id
+       ORDER BY received_at DESC NULLS LAST, created_at DESC, id DESC LIMIT 1;
+      v_seq := v_seq + 1;
+      INSERT INTO stock_entry_lines (
+        entry_id, product_id, batch_id, unit_name, quantity,
+        qty_in_base_uom, qty_in_transaction_uom, transaction_uom,
+        conversion_factor_snapshot, unit_cost, notes
+      ) VALUES (
+        v_entry_id, r.product_id, NULL, r.unit_name, v_need,
+        v_need, v_need, r.unit_name,
+        1, COALESCE(v_gia_von, 0), 'Xuất vượt tồn (đơn vị cho bán vượt tồn kho)'
+      );
+      v_need := 0;
+    END IF;
+
+    IF v_need > 0 THEN
+      SELECT name, base_unit INTO v_pname, v_punit FROM products WHERE id = r.product_id;
+      SELECT COALESCE(SUM(qty_on_hand), 0) INTO v_avail_zone
+      FROM batches
+      WHERE org_id = v_org AND product_id = r.product_id
+        AND warehouse_zone = v_zone
+        AND COALESCE(status, 'available') = 'available';
+      SELECT COALESCE(SUM(qty_on_hand), 0) INTO v_avail_other
+      FROM batches
+      WHERE org_id = v_org AND product_id = r.product_id
+        AND warehouse_zone = v_other_zone
+        AND COALESCE(status, 'available') = 'available';
+
+      -- ⚠ GIỮ NGUYÊN VĂN CÂU LỖI CỦA 071, kể cả dấu `|`. Màn hình dịch
+      --   câu này bằng `friendlyReturnError`, và nó nhận dạng bằng đúng
+      --   chuỗi `INSUFFICIENT_STOCK` rồi cắt theo dấu `|`. Đổi chữ ở đây
+      --   là người dùng nhận nguyên câu lỗi thô của Postgres.
+      RAISE EXCEPTION
+        'INSUFFICIENT_STOCK | % (%): cần %, kho % còn %, kho % còn %',
+        COALESCE(v_pname, r.product_id::text),
+        COALESCE(v_punit, 'đv cơ sở'),
+        v_base_qty,
+        CASE WHEN v_zone = 'date' THEN 'hàng date' ELSE 'hàng bán' END,
+        v_avail_zone,
+        CASE WHEN v_other_zone = 'date' THEN 'hàng date' ELSE 'hàng bán' END,
+        v_avail_other
+        USING ERRCODE = 'P0001';
+    END IF;
+  END LOOP;
+
+  -- ⚠ TIỀN THUẾ: SỐ GÕ TAY THẮNG SỐ TỰ CỘNG, cùng luật với phiếu nhập.
+  IF v_vat_ovr IS NOT NULL THEN
+    v_vat := GREATEST(0, v_vat_ovr);
+  END IF;
+
+  v_total := GREATEST(0, v_sub + v_vat - v_discount);
+
+  /**
+   * ⚠ DÒNG NỢ MANG SỐ ÂM — đây là khoản NCC trả lại mình. Ghi số dương
+   *   là cộng thêm nợ thay vì giảm nợ, và công nợ NCC sai gấp đôi giá
+   *   trị phiếu.
+   */
+  INSERT INTO payables (org_id, supplier_id, stock_entry_id, invoice_number, amount, paid, status, notes)
+  VALUES (
+    v_org, v_supplier, v_entry_id, v_return_code,
+    -v_total, 0, 'open',
+    'Hoàn trả NCC — phiếu ' || v_return_code
+  )
+  RETURNING id INTO v_payable_id;
+
+  UPDATE supplier_returns
+  SET status = 'completed',
+      subtotal = v_sub,
+      vat = v_vat,
+      total = v_total,
+      completed_at = now(),
+      completed_by = v_uid,
+      stock_entry_id = v_entry_id,
+      payable_credit_id = v_payable_id
+  WHERE id = p_return_id;
+
+  RETURN p_return_id;
+END;
+$fn$;
+
+-- 1b. Phiếu xuất kho lẻ (vai như RLS stock_entries: owner, warehouse)
+CREATE OR REPLACE FUNCTION public.post_stock_issue(p_entry_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_org      uuid;
+  v_status   text;
+  v_type     text;
+  v_zone     text;
+  v_code     text;
+  v_uid      uuid := auth.uid();
+  v_need     numeric;
+  v_take     numeric;
+  v_avail    numeric;
+  v_pname    text;
+  v_batch    record;
+  -- (mig 222) Đơn vị cho bán vượt tồn → phiếu xuất kho cũng ghi sổ được khi kho không đủ.
+  v_cho_am   boolean;
+  r          record;
+BEGIN
+  SELECT org_id, status, type, warehouse_zone, entry_code
+    INTO v_org, v_status, v_type, v_zone, v_code
+  FROM stock_entries WHERE id = p_entry_id FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu xuất kho này.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF v_org <> public.user_org_id() THEN
+    RAISE EXCEPTION 'SAI_DON_VI: Phiếu này không thuộc đơn vị của bạn.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- ⚠ KIỂM VAI (mig 166). Hàm SECURITY DEFINER bỏ qua RLS, nên phải
+  --   tự kiểm đúng vai mà RLS của bảng đang kiểm. Bỏ qua khi được
+  --   gọi từ trong một RPC khác đã tự kiểm quyền (npp.via_rpc).
+  --   (mig 228) mig 222 chép lại hàm từ bản trước 166 nên rơi mất khối này — trả lại.
+  IF current_setting('npp.via_rpc', true) IS DISTINCT FROM 'on'
+     AND COALESCE(public.user_role(), '') NOT IN ('owner', 'warehouse') THEN
+    RAISE EXCEPTION 'FORBIDDEN: vai trò của bạn không được làm thao tác kho / mua hàng này.'
+      USING ERRCODE = '42501';
+  END IF;
+  IF v_type <> 'export' THEN
+    RAISE EXCEPTION 'SAI_LOAI_PHIEU: Phiếu này không phải phiếu xuất kho.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- ⚠ IDEMPOTENT. Bấm hai lần, hoặc bấm rồi mạng rớt rồi bấm lại,
+  --   KHÔNG được trừ kho hai lần.
+  IF v_status = 'posted' THEN
+    RETURN p_entry_id;
+  END IF;
+  IF v_status <> 'draft' THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_CON_TAM: Phiếu đang ở trạng thái "%" — chỉ phiếu tạm mới ghi sổ được.', v_status
+      USING ERRCODE = 'P0001';
+  END IF;
+  SELECT COALESCE(allow_oversell, false) INTO v_cho_am FROM organizations WHERE id = v_org;
+  IF NOT EXISTS (SELECT 1 FROM stock_entry_lines WHERE entry_id = p_entry_id) THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_CO_HANG: Phiếu chưa có dòng hàng nào.'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  /**
+   * LƯỢT MỘT — KIỂM ĐỦ HÀNG, GOM THEO MẶT HÀNG.
+   *
+   * ⚠ GOM TRƯỚC KHI KIỂM. Người dùng có thể lỡ thêm cùng một mã thành
+   *   hai dòng; kiểm từng dòng riêng thì mỗi dòng tự thấy "đủ hàng"
+   *   trong khi tổng hai dòng thì không, và kho xuống âm.
+   *
+   * ⚠ KIỂM TRỌN VẸN TRƯỚC KHI TRỪ MỘT ĐƠN VỊ NÀO. Trừ dần rồi mới phát
+   *   hiện thiếu ở mặt hàng thứ năm là đã đụng vào bốn mặt hàng đầu —
+   *   đúng là giao dịch sẽ quay lui, nhưng thông báo lỗi lúc đó chỉ nói
+   *   được về một mặt hàng. Kiểm trước thì nói được ngay cái nào thiếu.
+   */
+  FOR r IN
+    SELECT sel.product_id,
+           MIN(sel.unit_name) AS unit_name,
+           SUM(sel.qty_in_base_uom) AS need
+    FROM stock_entry_lines sel
+    WHERE sel.entry_id = p_entry_id
+    GROUP BY sel.product_id
+    HAVING SUM(sel.qty_in_base_uom) > 0
+  LOOP
+    SELECT COALESCE(SUM(qty_on_hand), 0) INTO v_avail
+    FROM batches
+    WHERE org_id = v_org AND product_id = r.product_id
+      AND warehouse_zone = v_zone AND COALESCE(status, 'available') = 'available';
+
+    IF v_avail < r.need AND NOT v_cho_am THEN
+      SELECT name INTO v_pname FROM products WHERE id = r.product_id;
+      RAISE EXCEPTION
+        'KHONG_DU_TON: % — cần % %, kho % chỉ còn %. Giảm số lượng, đổi kho, hoặc nhập bù rồi ghi sổ lại.',
+        COALESCE(v_pname, r.product_id::text),
+        r.need, COALESCE(r.unit_name, 'đv cơ sở'),
+        CASE WHEN v_zone = 'date' THEN 'hàng date' ELSE 'hàng bán' END,
+        v_avail
+        USING ERRCODE = 'P0001';
+    END IF;
+  END LOOP;
+
+  /**
+   * LƯỢT HAI — TRỪ THẬT, THEO TỪNG DÒNG.
+   *
+   * ⚠ PHẢI ĐI THEO DÒNG, KHÔNG THEO MẶT HÀNG ĐÃ GOM.
+   *   `stock_line_consumptions` khoá theo `line_id` chứ không theo
+   *   `entry_id`, nên mỗi vết lấy lô phải gắn được vào đúng dòng phiếu
+   *   đã sinh ra nó. Gom rồi ghi vết là không có `line_id` để ghi.
+   */
+  FOR r IN
+    SELECT sel.id AS line_id, sel.product_id, sel.qty_in_base_uom AS need
+    FROM stock_entry_lines sel
+    WHERE sel.entry_id = p_entry_id AND sel.qty_in_base_uom > 0
+    ORDER BY sel.id
+  LOOP
+    v_need := r.need;
+
+    FOR v_batch IN
+      SELECT id, qty_on_hand, unit_cost
+      FROM batches
+      WHERE org_id = v_org
+        AND product_id = r.product_id
+        AND warehouse_zone = v_zone
+        AND COALESCE(status, 'available') = 'available'
+        AND qty_on_hand > 0
+      -- ⚠ FIFO: hạn cũ đi trước. `id` ở cuối để thứ tự ỔN ĐỊNH khi hai
+      --   lô cùng hạn cùng ngày tạo — không có nó thì hai lần chạy cho
+      --   hai kết quả khác nhau.
+      ORDER BY expires_at NULLS LAST, created_at, id
+      FOR UPDATE
+    LOOP
+      EXIT WHEN v_need <= 0;
+      v_take := LEAST(v_need, v_batch.qty_on_hand);
+
+      UPDATE batches SET qty_on_hand = qty_on_hand - v_take WHERE id = v_batch.id;
+
+      -- ⚠ VẾT LẤY LÔ — thứ làm cho phiếu này huỷ được sau này
+      --   (`cancel_stock_entry`, migration 139). Phiếu xuất không có
+      --   vết thì migration đó TỪ CHỐI huỷ.
+      INSERT INTO stock_line_consumptions (line_id, batch_id, qty_in_base_uom, unit_cost)
+      VALUES (r.line_id, v_batch.id, v_take, v_batch.unit_cost);
+
+      v_need := v_need - v_take;
+    END LOOP;
+
+    -- ⚠ CHỐT CHẶN DỰ PHÒNG. Lượt một đã kiểm đủ, nhưng một giao dịch
+    --   khác có thể vừa lấy mất hàng giữa hai lượt. Thà nổ ở đây còn
+    --   hơn ghi sổ một phiếu xuất thiếu trong im lặng.
+    -- (mig 222) Cho xuất âm: phần thiếu nằm trên phiếu, không trừ lô nào (như `post_stock_export`); huỷ phiếu
+    --   (`cancel_stock_entry`) chỉ hoàn theo vết lấy lô nên không cộng khống phần ấy.
+    IF v_need > 0 AND NOT v_cho_am THEN
+      SELECT name INTO v_pname FROM products WHERE id = r.product_id;
+      RAISE EXCEPTION
+        'KHONG_DU_TON: % — hàng vừa bị lấy mất trong lúc ghi sổ, còn thiếu %. Thử lại.',
+        COALESCE(v_pname, r.product_id::text), v_need
+        USING ERRCODE = 'P0001';
+    END IF;
+  END LOOP;
+
+  UPDATE stock_entries
+  SET status = 'posted', posted_at = now()
+  WHERE id = p_entry_id;
+
+  RETURN p_entry_id;
+END;
+$fn$;
+
+-- 1c. Huỷ phiếu trả NCC (vai như RLS supplier_returns)
+CREATE OR REPLACE FUNCTION public.cancel_supplier_return(
+  p_return_id uuid,
+  p_reason    text DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_org     uuid;
+  v_status  text;
+  v_entry   uuid;
+  v_payable uuid;
+  v_uid     uuid := auth.uid();
+  v_paid    numeric;
+  v_dead    text;
+  v_n       int := 0;
+BEGIN
+  SELECT org_id, status, stock_entry_id, payable_credit_id
+    INTO v_org, v_status, v_entry, v_payable
+  FROM supplier_returns WHERE id = p_return_id FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu trả NCC này.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF v_org <> public.user_org_id() THEN
+    RAISE EXCEPTION 'SAI_DON_VI: Phiếu trả này không thuộc đơn vị của bạn.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  -- ⚠ KIỂM VAI (mig 166). Hàm SECURITY DEFINER bỏ qua RLS, nên phải
+  --   tự kiểm đúng vai mà RLS của bảng đang kiểm. Bỏ qua khi được
+  --   gọi từ trong một RPC khác đã tự kiểm quyền (npp.via_rpc).
+  --   (mig 228) mig 222 chép lại hàm từ bản trước 166 nên rơi mất khối này — trả lại.
+  IF current_setting('npp.via_rpc', true) IS DISTINCT FROM 'on'
+     AND COALESCE(public.user_role(), '') NOT IN ('owner', 'manager', 'accountant', 'warehouse') THEN
+    RAISE EXCEPTION 'FORBIDDEN: vai trò của bạn không được làm thao tác kho / mua hàng này.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  -- ⚠ IDEMPOTENT. Bấm hai lần, hoặc bấm rồi mạng rớt rồi bấm lại, KHÔNG
+  --   được cộng hàng về kho hai lần.
+  IF v_status = 'cancelled' THEN
+    RETURN p_return_id;
+  END IF;
+
+  -- Phiếu còn tạm thì huỷ là đổi một chữ; chưa đụng gì tới kho hay nợ.
+  IF v_status = 'draft' THEN
+    UPDATE supplier_returns
+    SET status = 'cancelled', cancel_reason = p_reason
+    WHERE id = p_return_id;
+    RETURN p_return_id;
+  END IF;
+
+  -- 1) NCC đã cấn trừ tiền thì không huỷ được.
+  IF v_payable IS NOT NULL THEN
+    SELECT COALESCE(paid, 0) INTO v_paid FROM payables WHERE id = v_payable;
+    IF COALESCE(v_paid, 0) <> 0 THEN
+      RAISE EXCEPTION 'DA_CAN_TRU: Khoản giảm công nợ của phiếu này đã được cấn trừ (%). Gỡ phần cấn trừ trước rồi mới huỷ phiếu.', v_paid
+        USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+
+  IF v_entry IS NOT NULL THEN
+    -- 2) Lô đã chết thì không cộng về được.
+    SELECT string_agg(DISTINCT p.name, ' · ' ORDER BY p.name)
+      INTO v_dead
+    FROM stock_entry_lines sel
+    JOIN products p ON p.id = sel.product_id
+    LEFT JOIN batches b ON b.id = sel.batch_id
+    WHERE sel.entry_id = v_entry
+      -- (mig 222) Dòng KHÔNG LÔ là phần xuất vượt tồn — không trừ lô nào nên không có gì để hoàn, không chặn huỷ.
+      AND sel.batch_id IS NOT NULL
+      AND (b.id IS NULL OR COALESCE(b.status, 'available') <> 'available');
+
+    IF v_dead IS NOT NULL THEN
+      RAISE EXCEPTION 'LO_DA_DONG: Không huỷ được vì lô hàng đã lấy không còn mở — %. Lập phiếu nhập kho điều chỉnh thay vì huỷ phiếu này.', v_dead
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    /**
+     * 3) Cộng trả về ĐÚNG lô đã lấy.
+     *
+     * ⚠ `sel.quantity` LÀ SỐ THEO ĐƠN VỊ CƠ SỞ. `complete_supplier_return`
+     *   ghi `v_take` (đã quy đổi) vào cả `quantity` lẫn
+     *   `qty_in_base_uom`, nên cộng lại bằng chính cột đó là đối xứng.
+     *   Dùng `qty_in_base_uom` cho chắc: nó là `numeric(18,6)` còn
+     *   `quantity` là `integer` đã bị làm tròn.
+     *
+     * ⚠ GOM `SUM` THEO LÔ TRƯỚC (migration 147). Không gom thì Postgres
+     *   chỉ lấy MỘT dòng `stock_entry_lines` cho mỗi lô và bỏ im lặng
+     *   phần còn lại — một phiếu lấy 10 rồi lấy thêm 5 từ cùng một lô
+     *   sẽ chỉ được cộng trả 10. Xem chú thích đầu tệp.
+     */
+    WITH gom AS (
+      SELECT sel.batch_id, SUM(sel.qty_in_base_uom) AS qty
+      FROM stock_entry_lines sel
+      WHERE sel.entry_id = v_entry AND sel.batch_id IS NOT NULL
+      GROUP BY sel.batch_id
+    )
+    UPDATE batches b
+    SET qty_on_hand = b.qty_on_hand + gom.qty
+    FROM gom
+    WHERE b.id = gom.batch_id;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+
+    UPDATE stock_entries SET status = 'cancelled' WHERE id = v_entry;
+  END IF;
+
+  /**
+   * 4) Gỡ con trỏ TRƯỚC, xoá dòng nợ SAU.
+   *
+   * ⚠ THỨ TỰ BẮT BUỘC. `supplier_returns.payable_credit_id` có khoá
+   *   ngoại trỏ tới `payables`; xoá dòng nợ khi phiếu còn trỏ vào nó là
+   *   Postgres từ chối. Đã gặp đúng lỗi này ở migration 142.
+   *
+   * ⚠ XOÁ HẲN, KHÔNG ĐÁNH DẤU. `payables.status` không có giá trị
+   *   'cancelled'; để dòng âm nằm lại ở 'open' là một khoản giảm nợ ma
+   *   trừ mãi vào công nợ NCC. Vết tích nằm ở chính phiếu.
+   */
+  UPDATE supplier_returns
+  SET status = 'cancelled', cancel_reason = p_reason, payable_credit_id = NULL
+  WHERE id = p_return_id;
+
+  IF v_payable IS NOT NULL THEN
+    DELETE FROM payables WHERE id = v_payable;
+  END IF;
+
+  RAISE NOTICE 'Huỷ phiếu trả NCC %: cộng trả % lô về kho.', p_return_id, v_n;
+  RETURN p_return_id;
+END;
+$fn$;
+
+REVOKE EXECUTE ON FUNCTION public.complete_supplier_return(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.complete_supplier_return(uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.post_stock_issue(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.post_stock_issue(uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.cancel_supplier_return(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.cancel_supplier_return(uuid, text) TO authenticated;
+
+-- ====================================================================
+-- 2. Thẻ kho theo kho (v_stock_movements)
+--
+-- ⚠ Bản 048 lấy kho từ lô của DÒNG (`sel.batch_id`) và coi mọi phiếu ≠ export là số dương:
+--   - phiếu xuất kho lẻ (mig 144) và phiếu chuyển kho (mig 148) ghi lô vào `stock_line_consumptions`, KHÔNG
+--     lên dòng → dòng rơi về kho 'sale' dù hàng đi từ kho date;
+--   - phiếu chuyển kho mang dấu + ở kho 'sale' → kho bán dư, kho date thiếu.
+--   Nay: dòng không có lô ăn theo kho của ĐẦU PHIẾU; phiếu chuyển kho = hai dòng (nguồn −, đích +). Dòng thứ hai
+--   có `id` riêng (md5 của id dòng + ':dich') vì ngăn kéo phân trang theo `id`.
+-- ⚠ Không lấy kho từ `stock_line_consumptions`: huỷ HĐ / hoàn kho TRỪ vết lô về 0 (`_wf2_restock`), nên vết lô
+--   không còn nói phiếu xuất cũ đã lấy bao nhiêu từ kho nào.
+-- ====================================================================
+CREATE OR REPLACE VIEW public.v_stock_movements
+WITH (security_invoker = true) AS
+SELECT
+  sel.id,
+  se.org_id,
+  sel.product_id,
+  -- (mig 228) Chuyển kho: dòng này là phía NGUỒN. Phiếu khác: lô của dòng, không có lô thì kho đầu phiếu.
+  CASE WHEN se.type = 'transfer' THEN COALESCE(se.warehouse_zone, 'sale')
+       ELSE COALESCE(b.warehouse_zone, se.warehouse_zone, 'sale') END AS warehouse_zone,
+  se.posted_at,
+  se.created_at,
+  se.type AS entry_type,
+  se.status AS entry_status,
+  se.entry_code,
+  se.id AS entry_id,
+  sel.unit_name AS transaction_uom,
+  sel.qty_in_transaction_uom,
+  sel.qty_in_base_uom,
+  sel.conversion_factor_snapshot AS conversion_factor,
+  sel.unit_cost,
+  -- Nhập +, xuất −, chuyển kho − ở kho nguồn, kiểm kê giữ dấu của chênh lệch.
+  CASE se.type
+    WHEN 'import'   THEN sel.qty_in_base_uom
+    WHEN 'export'   THEN -sel.qty_in_base_uom
+    WHEN 'transfer' THEN -abs(sel.qty_in_base_uom)
+    ELSE sel.qty_in_base_uom
+  END AS signed_qty_in_base_uom,
+  se.ref_order_ids
+FROM stock_entry_lines sel
+JOIN stock_entries     se ON se.id = sel.entry_id
+LEFT JOIN batches      b  ON b.id  = sel.batch_id
+WHERE se.status <> 'cancelled'
+UNION ALL
+-- (mig 228) Phía ĐÍCH của phiếu chuyển kho: +SL ở kho nhận.
+SELECT
+  md5(sel.id::text || ':dich')::uuid AS id,
+  se.org_id,
+  sel.product_id,
+  se.dest_warehouse_zone AS warehouse_zone,
+  se.posted_at,
+  se.created_at,
+  se.type AS entry_type,
+  se.status AS entry_status,
+  se.entry_code,
+  se.id AS entry_id,
+  sel.unit_name AS transaction_uom,
+  sel.qty_in_transaction_uom,
+  sel.qty_in_base_uom,
+  sel.conversion_factor_snapshot AS conversion_factor,
+  sel.unit_cost,
+  abs(sel.qty_in_base_uom) AS signed_qty_in_base_uom,
+  se.ref_order_ids
+FROM stock_entry_lines sel
+JOIN stock_entries     se ON se.id = sel.entry_id
+WHERE se.status <> 'cancelled'
+  AND se.type = 'transfer'
+  AND se.dest_warehouse_zone IS NOT NULL;
+
+COMMENT ON VIEW public.v_stock_movements IS
+  'Thẻ kho theo kho (mig 228): mỗi dòng phiếu kho kèm đầu phiếu và SL cơ sở có dấu (nhập +, xuất −, kiểm kê theo dấu chênh lệch); chuyển kho = hai dòng (nguồn −, đích +). Dòng không có lô ăn theo kho của đầu phiếu.';
+GRANT SELECT ON public.v_stock_movements TO authenticated;
+
+-- ====================================================================
+-- 3. Kiểm kê số lẻ — stock_entry_lines.quantity integer → numeric
+--
+-- ⚠ Nhập kho cho phép SL lẻ (2,5) nhưng `quantity` là integer từ mig 001: màn /inventory/stocktake-adjust gửi
+--   chênh lệch −0,5 → "invalid input syntax for type integer", phiếu kiểm kê không lưu được — mà mọi điều
+--   chỉnh tồn phải đi qua phiếu kiểm kê. `post_stock_adjustment` cộng / trừ theo `quantity` nên đổi kiểu cột
+--   là đủ (không cần sửa hàm). Kiểu `numeric` trơn (không scale) để số nguyên cũ vẫn hiện "5", không "5.000000".
+-- ⚠ View duy nhất bám cột này là v_uom_audit (pg_depend) — bỏ ra rồi dựng lại y như cũ.
+-- ====================================================================
+DO $alter$
+BEGIN
+  IF (SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+       WHERE attrelid = 'public.stock_entry_lines'::regclass AND attname = 'quantity') = 'integer' THEN
+    DROP VIEW IF EXISTS public.v_uom_audit;
+    ALTER TABLE public.stock_entry_lines ALTER COLUMN quantity TYPE numeric USING quantity::numeric;
+  END IF;
+END;
+$alter$;
+
+CREATE OR REPLACE VIEW public.v_uom_audit
+WITH (security_invoker = true) AS
+SELECT
+  sel.id,
+  se.org_id,
+  sel.entry_id,
+  sel.product_id,
+  sel.quantity,
+  sel.qty_in_base_uom,
+  sel.qty_in_transaction_uom,
+  sel.transaction_uom,
+  sel.conversion_factor_snapshot
+FROM stock_entry_lines sel
+JOIN stock_entries se ON se.id = sel.entry_id
+WHERE sel.quantity <> sel.qty_in_base_uom
+  AND sel.transaction_uom IS NULL;
+GRANT SELECT ON public.v_uom_audit TO authenticated;
+
+-- ====================================================================
+-- 4. Mã đơn duy nhất theo NPP
+--
+-- ⚠ mig 130 cấp số chạy THEO NPP (`_next_order_seq(org_id)`, chỉ mục (org_id, order_seq)) nhưng ràng buộc
+--   `UNIQUE (order_code)` của mig 001 vẫn là toàn bảng → NPP A có DH-0001 thì đơn đầu của NPP B nổ
+--   "duplicate key … sales_orders_order_code_key". Hoá đơn / phiếu trả / phiếu thu đều đã duy nhất theo org.
+-- ⚠ Không nhánh nào bắt lỗi theo TÊN ràng buộc này (create_order_with_lines bắt unique_violation rồi tra
+--   theo client_request_id; màn tạo đơn dò mã 23505) — đổi tên không làm vỡ chỗ nào.
+-- ====================================================================
+DO $chk$
+DECLARE v_n int;
+BEGIN
+  SELECT count(*) INTO v_n FROM (
+    SELECT org_id, order_code FROM sales_orders GROUP BY org_id, order_code HAVING count(*) > 1
+  ) t;
+  IF v_n > 0 THEN
+    RAISE EXCEPTION '228: có % mã đơn trùng trong cùng NPP — xử lý trước khi tạo chỉ mục (org_id, order_code).', v_n
+      USING ERRCODE = 'P0001';
+  END IF;
+END;
+$chk$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_orders_code ON public.sales_orders (org_id, order_code);
+ALTER TABLE public.sales_orders DROP CONSTRAINT IF EXISTS sales_orders_order_code_key;
+
+-- ====================================================================
+-- 5. finance_pnl — giá vốn đúng luật lãi gộp, mốc ngày giờ VN
+--
+-- ⚠ Giá vốn XUẤT chỉ tính phiếu xuất của hàng THẬT SỰ BÁN:
+--   - bỏ phiếu xuất của HĐ ĐÃ HUỶ (`sales_invoices.stock_entry_id`, status 'cancelled') — cả tờ cũ của HĐ đã
+--     Sửa (reissue_invoice đi qua đường huỷ). Doanh thu đã bỏ HĐ huỷ theo trạng thái; giá vốn bỏ theo đúng
+--     trạng thái ấy thì hai vế cùng kỳ, cùng luật (phiếu "Hoàn kho do huỷ hóa đơn" là nhập, vốn không vào
+--     đây).
+--   - bỏ phiếu "Đảo phiếu trả …" (cancel_return): đó là đảo phiếu NHẬP hàng trả, không phải hàng bán; phiếu
+--     nhập bị đảo đã mang đuôi "(đã đảo)" nên cũng không còn trong giá vốn hàng trả.
+-- ⚠ Mốc ngày: `p_from::timestamptz` là nửa đêm theo múi giờ PHIÊN (Supabase = UTC) = 07:00 sáng giờ VN —
+--   phiếu 00:00–06:59 giờ VN rơi sang hôm trước, lệch bao_cao_so_ban (mốc +07:00).
+-- ====================================================================
+CREATE OR REPLACE FUNCTION public.finance_pnl(p_from date, p_to date)
+RETURNS TABLE (
+  revenue        numeric,
+  order_count    bigint,
+  cogs           numeric,
+  exp_cogs       numeric,
+  exp_operating  numeric,
+  exp_hr         numeric,
+  exp_financial  numeric,
+  exp_tax        numeric,
+  exp_other      numeric,
+  total_expenses numeric,
+  revenue_gross  numeric,
+  returns_value  numeric,
+  returns_cogs   numeric
+)
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $fn$
+  WITH moc AS (
+    -- (mig 228) Đầu ngày p_from và đầu ngày sau p_to theo giờ VN.
+    SELECT (p_from::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')       AS tu,
+           ((p_to + 1)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')   AS den
+  ),
+  rev AS (
+    SELECT COALESCE(SUM(COALESCE(total, 0)), 0) AS revenue,
+           COUNT(DISTINCT order_id) AS order_count
+    FROM sales_invoices
+    WHERE org_id = public.user_org_id()
+      AND public.is_revenue_invoice_status(status)
+      AND invoice_date >= p_from
+      AND invoice_date <= p_to
+  ),
+  tra AS (
+    -- (mig 192) Hàng trả theo ngày trừ doanh số — cùng luật với công nợ.
+    SELECT COALESCE(SUM(COALESCE(credit_note_amount, 0)), 0) AS value
+    FROM returns
+    WHERE org_id = public.user_org_id()
+      AND revenue_date >= p_from
+      AND revenue_date <= p_to
+  ),
+  cogs AS (
+    -- ⚠ SL THEO ĐƠN VỊ CƠ SỞ (mig 187): `unit_cost` là giá mỗi đơn vị cơ sở,
+    --   còn `quantity` của phiếu xuất là SL theo đơn vị giao dịch (thùng).
+    SELECT COALESCE(SUM(
+             ABS(COALESCE(l.qty_in_base_uom, COALESCE(l.quantity, 0) * COALESCE(l.conversion_factor_snapshot, 1)))
+             * COALESCE(l.unit_cost, 0)
+           ), 0) AS cogs
+    FROM stock_entry_lines l
+    JOIN stock_entries e ON e.id = l.entry_id
+    CROSS JOIN moc
+    WHERE e.org_id = public.user_org_id()
+      AND e.type = 'export'
+      AND e.status = 'posted'
+      AND e.posted_at >= moc.tu
+      AND e.posted_at <  moc.den
+      -- (mig 228) Không phải hàng bán: phiếu đảo của phiếu trả đã huỷ.
+      AND COALESCE(e.notes, '') NOT LIKE 'Đảo phiếu trả %'
+      -- (mig 228) HĐ đã huỷ (kể cả tờ cũ của HĐ đã sửa): không doanh thu thì không giá vốn.
+      AND NOT EXISTS (SELECT 1 FROM sales_invoices si
+                       WHERE si.stock_entry_id = e.id AND si.status = 'cancelled')
+  ),
+  tra_von AS (
+    -- (mig 192) Giá vốn hàng khách trả đã NHẬP LẠI KHO (phiếu nhập của phiếu trả
+    --   đang hoàn thành; phiếu đã đảo mang đuôi "(đã đảo)" nên không khớp).
+    SELECT COALESCE(SUM(
+             ABS(COALESCE(l.qty_in_base_uom, COALESCE(l.quantity, 0) * COALESCE(l.conversion_factor_snapshot, 1)))
+             * COALESCE(l.unit_cost, 0)
+           ), 0) AS cogs
+    FROM stock_entry_lines l
+    JOIN stock_entries e ON e.id = l.entry_id
+    JOIN returns r ON e.notes = 'Nhập lại từ phiếu trả ' || r.id::text AND r.status = 'completed'
+    CROSS JOIN moc
+    WHERE e.org_id = public.user_org_id()
+      AND e.type = 'import'
+      AND e.status = 'posted'
+      AND e.posted_at >= moc.tu
+      AND e.posted_at <  moc.den
+  ),
+  exp AS (
+    -- Danh mục không có bucket thì rơi vào 'other', giống mã cũ.
+    SELECT
+      COALESCE(ec.bucket, 'other') AS bucket,
+      SUM(COALESCE(x.amount, 0))   AS amt
+    FROM expenses x
+    LEFT JOIN expense_categories ec ON ec.id = x.category_id
+    WHERE x.org_id = public.user_org_id()
+      AND x.expense_date >= p_from
+      AND x.expense_date <= p_to
+    GROUP BY COALESCE(ec.bucket, 'other')
+  )
+  SELECT
+    rev.revenue - tra.value,
+    rev.order_count,
+    cogs.cogs - tra_von.cogs,
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'cogs'), 0),
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'operating'), 0),
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'hr'), 0),
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'financial'), 0),
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'tax'), 0),
+    COALESCE((SELECT amt FROM exp WHERE bucket = 'other'), 0),
+    COALESCE((SELECT SUM(amt) FROM exp), 0),
+    rev.revenue,
+    tra.value,
+    tra_von.cogs
+  FROM rev, tra, cogs, tra_von;
+$fn$;
+GRANT EXECUTE ON FUNCTION public.finance_pnl(date, date) TO authenticated;
+
+-- ====================================================================
+-- 6. bao_cao_so_ban — giá vốn bình quân chỉ từ phiếu xuất BÁN (thân = bản mig 218, đổi CTE `xuat`)
+-- ⚠ SECURITY INVOKER như mig 204 / 218 — không phải hàm nội bộ.
+-- ====================================================================
+CREATE OR REPLACE FUNCTION public.bao_cao_so_ban(p_tu date, p_den date)
+RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $fn$
+  WITH
+  hd AS (
+    SELECT i.id, i.invoice_code, i.invoice_date, i.order_id, i.status, i.total, i.subtotal, i.vat,
+           i.customer_id, i.sales_user_id, i.posted_by, i.payment_terms
+      FROM sales_invoices i
+     WHERE i.org_id = public.user_org_id()
+       AND i.status = 'posted'
+       AND i.invoice_date BETWEEN p_tu AND p_den
+  ),
+  tra AS (
+    -- Như fetchReturnsRowsDu (mig 192): theo ngày trừ doanh số, không lọc trạng thái.
+    SELECT r.id, r.status, r.customer_id, r.invoice_id, r.credit_note_amount, r.created_at,
+           r.revenue_date, r.sales_user_id, r.reason, r.credit_with_invoice,
+           -- Số phiếu TH- (mig 193): sổ chưa chạy 193 thì chỉ mất số, không vỡ hàm.
+           to_jsonb(r) ->> 'return_code' AS ma
+      FROM returns r
+     WHERE r.org_id = public.user_org_id()
+       AND r.revenue_date BETWEEN p_tu AND p_den
+  ),
+  xuat AS (
+    SELECT e.id
+      FROM stock_entries e
+     WHERE e.org_id = public.user_org_id()
+       AND e.status = 'posted'
+       AND e.type = 'export'
+       AND e.posted_at >= (p_tu::text || 'T00:00:00+07:00')::timestamptz
+       AND e.posted_at <= (p_den::text || 'T23:59:59.999+07:00')::timestamptz
+       -- (mig 228) Chỉ phiếu xuất của hàng THẬT SỰ BÁN: bỏ phiếu đảo của phiếu trả đã huỷ (giá 0 kéo bình
+       --   quân xuống) và phiếu xuất của HĐ đã huỷ / tờ cũ của HĐ đã sửa — như finance_pnl.
+       AND COALESCE(e.notes, '') NOT LIKE 'Đảo phiếu trả %'
+       AND NOT EXISTS (SELECT 1 FROM sales_invoices si
+                        WHERE si.stock_entry_id = e.id AND si.status = 'cancelled')
+  ),
+  gv AS (
+    -- Như soLuongCoSoDongKho / giaTriDongKho: SL cơ sở ưu tiên qty_in_base_uom.
+    SELECT l.product_id,
+           sum(CASE WHEN l.qty_in_base_uom IS NOT NULL THEN abs(l.qty_in_base_uom)
+                    ELSE abs(COALESCE(l.quantity, 0)) * CASE WHEN l.conversion_factor_snapshot > 0 THEN l.conversion_factor_snapshot ELSE 1 END
+               END) AS sl,
+           sum((CASE WHEN l.qty_in_base_uom IS NOT NULL THEN abs(l.qty_in_base_uom)
+                     ELSE abs(COALESCE(l.quantity, 0)) * CASE WHEN l.conversion_factor_snapshot > 0 THEN l.conversion_factor_snapshot ELSE 1 END
+                END) * COALESCE(l.unit_cost, 0)) AS tien
+      FROM stock_entry_lines l
+      JOIN xuat x ON x.id = l.entry_id
+     GROUP BY l.product_id
+  ),
+  gv_tra AS (
+    -- Như fetchReturnCosts: phiếu nhập "Nhập lại từ phiếu trả <id>" đã ghi sổ.
+    SELECT t.id AS return_id, l.product_id,
+           sum(abs(COALESCE(l.qty_in_base_uom, COALESCE(l.quantity, 0) * COALESCE(NULLIF(l.conversion_factor_snapshot, 0), 1)))
+               * COALESCE(l.unit_cost, 0)) AS tien
+      FROM tra t
+      JOIN stock_entries e ON e.type = 'import' AND e.status = 'posted'
+                          AND e.notes = 'Nhập lại từ phiếu trả ' || t.id::text
+      JOIN stock_entry_lines l ON l.entry_id = e.id
+     GROUP BY t.id, l.product_id
+  )
+  SELECT jsonb_build_object(
+    'hd', COALESCE((SELECT jsonb_agg(to_jsonb(h)) FROM hd h), '[]'::jsonb),
+    'dong_hd', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', l.id, 'invoice_id', l.invoice_id, 'product_id', l.product_id, 'unit_name', l.unit_name,
+               'conversion_factor', l.conversion_factor, 'quantity', l.quantity, 'unit_price', l.unit_price,
+               'line_total', l.line_total, 'is_exchange', l.is_exchange,
+               -- (mig 218) giá niêm yết lúc bán: chiết khấu chụp trên dòng + dòng đơn gốc
+               'line_discount', l.line_discount, 'order_line_id', l.order_line_id) ORDER BY l.id)
+        FROM sales_invoice_lines l JOIN hd h ON h.id = l.invoice_id), '[]'::jsonb),
+    -- (mig 218) Dòng của HOÁ ĐƠN GỐC mà phiếu trả trong kỳ gắn vào (có thể nằm ngoài kỳ) —
+    --   để tính "chênh trả" theo giá niêm yết lúc bán.
+    'dong_hd_goc', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', l.id, 'invoice_id', l.invoice_id, 'product_id', l.product_id, 'unit_name', l.unit_name,
+               'conversion_factor', l.conversion_factor, 'quantity', l.quantity, 'unit_price', l.unit_price,
+               'line_total', l.line_total, 'is_exchange', l.is_exchange,
+               'line_discount', l.line_discount, 'order_line_id', l.order_line_id) ORDER BY l.id)
+        FROM sales_invoice_lines l
+       WHERE l.invoice_id IN (SELECT t.invoice_id FROM tra t WHERE t.invoice_id IS NOT NULL)
+         AND NOT COALESCE(l.is_exchange, false)), '[]'::jsonb),
+    -- (mig 218) Dòng ĐƠN gốc của các dòng hoá đơn trên — chiết khấu trên dòng hoá đơn là của CẢ
+    --   dòng đơn (không chia theo SL xuất), nên giá niêm yết lấy từ dòng đơn.
+    'dong_don', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', s.id, 'unit_name', s.unit_name, 'conversion_factor', s.conversion_factor,
+               'quantity', s.quantity, 'unit_price', s.unit_price, 'line_discount', s.line_discount))
+        FROM sales_order_lines s
+       WHERE s.id IN (
+         SELECT l.order_line_id FROM sales_invoice_lines l JOIN hd h ON h.id = l.invoice_id WHERE l.order_line_id IS NOT NULL
+         UNION
+         SELECT l.order_line_id FROM sales_invoice_lines l
+          WHERE l.order_line_id IS NOT NULL
+            AND l.invoice_id IN (SELECT t.invoice_id FROM tra t WHERE t.invoice_id IS NOT NULL))), '[]'::jsonb),
+    'tra', COALESCE((SELECT jsonb_agg(to_jsonb(t)) FROM tra t), '[]'::jsonb),
+    'dong_tra', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'return_id', l.return_id, 'product_id', l.product_id, 'unit_name', l.unit_name,
+               'quantity', l.quantity, 'line_total', l.line_total,
+               'unit_price', l.unit_price) ORDER BY l.id)
+        FROM return_lines l JOIN tra t ON t.id = l.return_id
+       WHERE l.is_exchange = false), '[]'::jsonb),
+    'gv', COALESCE((SELECT jsonb_agg(jsonb_build_object('product_id', g.product_id, 'sl', g.sl, 'tien', g.tien)) FROM gv g), '[]'::jsonb),
+    'gv_tra', COALESCE((SELECT jsonb_agg(jsonb_build_object('return_id', g.return_id, 'product_id', g.product_id, 'tien', g.tien)) FROM gv_tra g), '[]'::jsonb)
+  )
+$fn$;
+REVOKE ALL ON FUNCTION public.bao_cao_so_ban(date, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bao_cao_so_ban(date, date) TO authenticated;
+
+-- ====================================================================
+-- 7. finance_cash_flow / finance_balance_sheet — mốc ngày giờ VN
+--
+-- ⚠ Cùng lỗi mốc với finance_pnl: `p_from::timestamptz` = 07:00 sáng giờ VN trên Supabase (phiên UTC) → tiền
+--   thu lúc 00:30 sáng ngày T bị đếm vào ngày T−1, lệch bao_cao_cong_no (mốc +07:00). Giữ nguyên mọi phần
+--   khác của bản mig 121.
+-- ====================================================================
+CREATE OR REPLACE FUNCTION public.finance_cash_flow(p_from date, p_to date)
+RETURNS TABLE(cash_from_customers numeric, cash_to_suppliers numeric, cash_to_expenses numeric)
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $fn$
+  WITH moc AS (
+    -- (mig 228) Đầu ngày p_from và đầu ngày sau p_to theo giờ VN.
+    SELECT (p_from::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')       AS tu,
+           ((p_to + 1)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')   AS den
+  )
+  SELECT
+    COALESCE((
+      SELECT SUM(COALESCE(p.amount, 0))
+      FROM payments p
+      JOIN receivables r ON r.id = p.receivable_id
+      CROSS JOIN moc
+      WHERE r.org_id = public.user_org_id()
+        AND p.collected_at >= moc.tu
+        AND p.collected_at <  moc.den
+        -- ⚠ Q13 — CẤN TRỪ KHÔNG PHẢI TIỀN VÀO KÉT (mig 121).
+        AND COALESCE(p.method, '') NOT IN ('return_credit', 'credit_applied')
+    ), 0),
+    COALESCE((
+      SELECT SUM(COALESCE(pp.amount, 0))
+      FROM payable_payments pp
+      JOIN payables pa ON pa.id = pp.payable_id
+      CROSS JOIN moc
+      WHERE pa.org_id = public.user_org_id()
+        AND pp.paid_at >= moc.tu
+        AND pp.paid_at <  moc.den
+    ), 0),
+    COALESCE((
+      SELECT SUM(COALESCE(x.amount, 0))
+      FROM expenses x
+      CROSS JOIN moc
+      WHERE x.org_id = public.user_org_id()
+        AND x.is_paid = true
+        AND x.paid_at >= moc.tu
+        AND x.paid_at <  moc.den
+    ), 0);
+$fn$;
+GRANT EXECUTE ON FUNCTION public.finance_cash_flow(date, date) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.finance_balance_sheet(p_as_of date)
+RETURNS TABLE(cash numeric, accounts_receivable numeric, inventory numeric, accounts_payable numeric, unpaid_expenses numeric)
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $fn$
+  WITH
+  moc AS (
+    -- (mig 228) Hết ngày p_as_of theo giờ VN.
+    SELECT ((p_as_of + 1)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') AS den
+  ),
+  cash_in AS (
+    SELECT COALESCE(SUM(COALESCE(p.amount, 0)), 0) AS v
+    FROM payments p
+    JOIN receivables r ON r.id = p.receivable_id
+    CROSS JOIN moc
+    WHERE r.org_id = public.user_org_id()
+      AND p.collected_at < moc.den
+      -- ⚠ Q13 — CẤN TRỪ KHÔNG PHẢI TIỀN VÀO KÉT (mig 121).
+      AND COALESCE(p.method, '') NOT IN ('return_credit', 'credit_applied')
+  ),
+  paid_payables AS (
+    SELECT COALESCE(SUM(COALESCE(pp.amount, 0)), 0) AS v
+    FROM payable_payments pp
+    JOIN payables pa ON pa.id = pp.payable_id
+    CROSS JOIN moc
+    WHERE pa.org_id = public.user_org_id()
+      AND pp.paid_at < moc.den
+  ),
+  exp AS (
+    SELECT
+      COALESCE(SUM(COALESCE(amount, 0)) FILTER (WHERE is_paid), 0)     AS paid,
+      COALESCE(SUM(COALESCE(amount, 0)) FILTER (WHERE NOT is_paid), 0) AS unpaid
+    FROM expenses
+    WHERE org_id = public.user_org_id()
+      AND expense_date <= p_as_of
+  ),
+  ar AS (
+    /* ⚠ KHÔNG kẹp từng dòng về 0 (CLAUDE.md, mig 186): dòng âm là dư có của khách, trừ vào tổng phải thu. */
+    SELECT COALESCE(SUM(COALESCE(amount, 0) - COALESCE(paid, 0)), 0) AS v
+    FROM receivables
+    WHERE org_id = public.user_org_id() AND status <> 'paid'
+  ),
+  inv AS (
+    SELECT COALESCE(SUM(COALESCE(qty_on_hand, 0) * COALESCE(unit_cost, 0)), 0) AS v
+    FROM batches
+    WHERE org_id = public.user_org_id() AND COALESCE(qty_on_hand, 0) > 0
+  ),
+  ap AS (
+    SELECT COALESCE(SUM(GREATEST(0, COALESCE(amount, 0) - COALESCE(paid, 0))), 0) AS v
+    FROM payables
+    WHERE org_id = public.user_org_id() AND status <> 'paid'
+  )
+  SELECT
+    cash_in.v - paid_payables.v - exp.paid,
+    ar.v,
+    inv.v,
+    ap.v,
+    exp.unpaid
+  FROM cash_in, paid_payables, exp, ar, inv, ap;
+$fn$;
+GRANT EXECUTE ON FUNCTION public.finance_balance_sheet(date) TO authenticated;
+
+-- ====================================================================
+-- Tự kiểm
+-- ====================================================================
+DO $kiem$
+DECLARE v_thieu text := ''; r record;
+BEGIN
+  -- (1) Cả 8 RPC kho / mua hàng của mig 166 phải còn cổng vai. Migration nào sau này CREATE OR REPLACE một
+  --     trong 8 hàm mà quên chép khối "(mig 166)" thì chạy lại tệp này sẽ nổ ở đây.
+  FOR r IN SELECT unnest(ARRAY[
+      'cancel_stock_entry(uuid,text)', 'post_stock_export(uuid)', 'post_stock_issue(uuid)',
+      'post_stock_transfer(uuid)', 'complete_purchase_invoice(uuid)', 'cancel_purchase_invoice(uuid,text)',
+      'complete_supplier_return(uuid)', 'cancel_supplier_return(uuid,text)']) AS fn
+  LOOP
+    IF position('(mig 166)' in pg_get_functiondef(to_regprocedure('public.' || r.fn))) = 0
+       OR position('FORBIDDEN' in pg_get_functiondef(to_regprocedure('public.' || r.fn))) = 0 THEN
+      v_thieu := v_thieu || E'\n  · ' || r.fn || ' thiếu cổng vai (mig 166)';
+    END IF;
+  END LOOP;
+  IF (SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+       WHERE attrelid = 'public.stock_entry_lines'::regclass AND attname = 'quantity') <> 'numeric' THEN
+    v_thieu := v_thieu || E'\n  · stock_entry_lines.quantity chưa là numeric';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'sales_orders'
+              AND indexdef ~ 'UNIQUE' AND indexdef ~ '\(order_code\)') THEN
+    v_thieu := v_thieu || E'\n  · sales_orders còn UNIQUE (order_code) toàn bảng';
+  END IF;
+  IF v_thieu <> '' THEN
+    RAISE EXCEPTION '228: chưa sửa đủ:%', v_thieu USING ERRCODE = 'P0001';
+  END IF;
+END;
+$kiem$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Mã phiếu đặt mua NCC (po_code) — cùng lỗi với mã đơn: UNIQUE toàn bảng trong khi số chạy theo NPP.
+-- ---------------------------------------------------------------------------------------------
+DO $po$
+BEGIN
+  IF EXISTS (SELECT 1 FROM purchase_orders GROUP BY org_id, po_code HAVING count(*) > 1) THEN
+    RAISE NOTICE 'mig 228: purchase_orders có po_code trùng trong cùng NPP — giữ ràng buộc cũ, cần dọn tay';
+  ELSE
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_org_po_code ON public.purchase_orders (org_id, po_code);
+    ALTER TABLE public.purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_po_code_key;
+  END IF;
+END $po$;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'mig 228: sửa lỗi kho & báo cáo' AS buoc,
+       (SELECT count(*) FROM pg_proc p
+         WHERE p.pronamespace = 'public'::regnamespace
+           AND p.proname IN ('cancel_stock_entry','post_stock_export','post_stock_issue','post_stock_transfer',
+                             'complete_purchase_invoice','cancel_purchase_invoice','complete_supplier_return','cancel_supplier_return')
+           AND p.prosrc LIKE '%(mig 166)%') AS rpc_kho_co_cong_vai_can_8,
+       (SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+         WHERE attrelid = 'public.stock_entry_lines'::regclass AND attname = 'quantity') AS kieu_sl_dong_kho,
+       to_regclass('public.idx_sales_orders_code') IS NOT NULL AS ma_don_theo_npp,
+       CASE WHEN position('Asia/Ho_Chi_Minh' IN pg_get_functiondef('public.finance_pnl(date, date)'::regprocedure)) > 0
+             AND position('Asia/Ho_Chi_Minh' IN pg_get_functiondef('public.finance_cash_flow(date, date)'::regprocedure)) > 0
+             AND position('Đảo phiếu trả' IN pg_get_functiondef('public.bao_cao_so_ban(date, date)'::regprocedure)) > 0
+            THEN 'OK' ELSE 'THIẾU' END AS bao_cao_gio_vn_va_gia_von;
+

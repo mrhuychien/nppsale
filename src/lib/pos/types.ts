@@ -52,6 +52,11 @@ export interface PosLine {
   /** Thuế suất theo TỈ LỆ (0,1 = 10%) của riêng dòng này. */
   vatRate?: number
   discount: DiscountInput
+  /**
+   * Khoản giảm dòng (đồng) đã có trên dòng đơn đang sửa lúc nạp — nhân viên
+   * không có quyền giảm vẫn lưu được nếu không tăng nó (xem `CartLine.giamGoc`).
+   */
+  giamGoc?: number
   note?: string
 
   lotId?: string | null

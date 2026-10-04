@@ -64,6 +64,13 @@ const CONSTRAINT_VI: Array<[RegExp, string]> = [
   [/products?.*sku|sku.*products?/i, "Mã SKU này đã có sản phẩm khác dùng."],
   [/users?.*email|email.*users?/i, "Email này đã có người dùng khác dùng."],
   [/order_code/i, "Mã đơn này đã tồn tại."],
+  /* ⚠ QUYỀN GIẢM GIÁ CHỐT Ở MÁY CHỦ (mig 226, luật mig 185) — màn hình đã chặn trước; tới được
+     đây là giỏ cũ / máy chưa tải lại quyền / bảng giá vừa đổi. Nói ra phải làm gì. */
+  [
+    /DISCOUNT_NOT_ALLOWED/,
+    "Máy chủ từ chối: bạn chưa được bật quyền giảm giá (bán dưới giá bảng cũng là giảm giá). Bỏ giảm giá, hoặc nhờ chủ NPP bật quyền ở cài đặt nhân viên.",
+  ],
+  [/DISCOUNT_OVER_LIMIT/, "Máy chủ từ chối: khoản giảm giá vượt mức tối đa chủ NPP đặt cho bạn."],
 ]
 
 /** Câu RLS của Postgres không có mã riêng — nhận bằng nội dung. */

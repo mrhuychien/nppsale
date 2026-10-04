@@ -336,6 +336,42 @@ export interface PostedStockEntryRow {
   posted_at: string | null
   entry_code: string
   supplier_id: string | null
+  notes?: string | null
+}
+
+/**
+ * Ghi chú phiếu XUẤT mà `cancel_return` sinh ra khi huỷ phiếu trả đã nhập kho ("Đảo phiếu trả <id>").
+ * Đó là đảo phiếu NHẬP hàng trả, không phải hàng bán — và nó mang `unit_cost` 0.
+ */
+export const GHI_CHU_PHIEU_DAO_TRA = "Đảo phiếu trả "
+
+/**
+ * (mig 228) Chỉ giữ phiếu xuất của hàng THẬT SỰ BÁN — cùng luật `finance_pnl` / `bao_cao_so_ban`:
+ *   - bỏ phiếu "Đảo phiếu trả …": giá 0 kéo giá vốn bình quân xuống → lãi gộp cao giả;
+ *   - bỏ phiếu xuất của HĐ ĐÃ HUỶ (kể cả tờ cũ của HĐ đã sửa): HĐ huỷ không còn doanh thu, hàng đã hoàn
+ *     kho thì cũng không còn giá vốn (CLAUDE.md "Lãi gộp = doanh thu thuần − (giá vốn − giá vốn hàng trả
+ *     đã nhập kho)").
+ */
+async function chiPhieuXuatBan(
+  supabase: SupabaseClient,
+  rows: PostedStockEntryRow[]
+): Promise<PostedStockEntryRow[]> {
+  const ban = rows.filter((e) => !(e.notes ?? "").startsWith(GHI_CHU_PHIEU_DAO_TRA))
+  if (ban.length === 0) return ban
+  const huy = await docTheoLoId<{ stock_entry_id: string | null; status: string }>(
+    ban.map((e) => e.id),
+    (lo, from, to) =>
+      supabase
+        .from("sales_invoices")
+        .select("id, stock_entry_id, status", { count: "exact" })
+        .eq("status", "cancelled")
+        .in("stock_entry_id", lo)
+        .order("id")
+        .range(from, to),
+    "đọc hóa đơn đã huỷ của phiếu xuất"
+  )
+  const boQua = new Set(huy.filter((h) => h.status === "cancelled" && h.stock_entry_id).map((h) => h.stock_entry_id as string))
+  return boQua.size === 0 ? ban : ban.filter((e) => !boQua.has(e.id))
 }
 
 /**
@@ -344,6 +380,8 @@ export interface PostedStockEntryRow {
  * ⚠ MỘT HÀM CHO NĂM MÀN. Trước đây mỗi màn báo cáo tự viết câu này — có
  *   màn đọc trần (1.000 dòng), có màn mốc "Z" (lệch 7 tiếng), có màn chỉ
  *   `console.error` khi hỏng → giá vốn 0 → lãi 100%, hoa hồng phồng.
+ * ⚠ `type = "export"` là để TÍNH GIÁ VỐN (giá vốn kỳ, giá vốn bình quân) — chỉ trả phiếu xuất BÁN
+ *   (`chiPhieuXuatBan`, mig 228). Cần mọi chuyển động kho thì gọi `type = null`.
  */
 export async function fetchPostedStockEntries(
   supabase: SupabaseClient,
@@ -352,10 +390,10 @@ export async function fetchPostedStockEntries(
   type: PostedStockEntryRow["type"] | null
 ): Promise<DocDu<PostedStockEntryRow>> {
   const { fromIso, toIso } = vnDayRange(range)
-  return docDuHoacNem<PostedStockEntryRow>((from, to) => {
+  const res = await docDuHoacNem<PostedStockEntryRow>((from, to) => {
     let q = supabase
       .from("stock_entries")
-      .select("id, type, status, posted_at, entry_code, supplier_id", { count: "exact" })
+      .select("id, type, status, posted_at, entry_code, supplier_id, notes", { count: "exact" })
       .eq("org_id", orgId)
       .eq("status", "posted")
       .gte("posted_at", fromIso)
@@ -363,6 +401,8 @@ export async function fetchPostedStockEntries(
     if (type) q = q.eq("type", type)
     return q.order("id").range(from, to)
   }, "đọc phiếu kho đã ghi sổ")
+  if (type !== "export") return res
+  return { rows: await chiPhieuXuatBan(supabase, res.rows), truncated: res.truncated }
 }
 
 /**
@@ -654,7 +694,7 @@ export async function fetchReturnsValueDu(
   supabase: SupabaseClient,
   orgId: string,
   range: DateRange
-): Promise<{ total: number; truncated: boolean }> {
+): Promise<{ total: number; truncated: boolean; ids: string[] }> {
   const { fromIso, toIso } = vnDayRange(range)
   const load = (col: string) =>
     fetchAllForAggregate((from, to) =>
@@ -683,10 +723,14 @@ export async function fetchReturnsValueDu(
   if (isMissingColumn(dataRes.error)) dataRes = await load("created_at")
   nemNeuLoi(dataRes.error, "đọc phiếu trả")
   let total = 0
-  for (const r of dataRes.rows as Array<{ credit_note_amount?: number | null }>) {
+  const ids: string[] = []
+  for (const r of dataRes.rows as Array<{ id: string; credit_note_amount?: number | null }>) {
     total += Math.abs(Number(r.credit_note_amount || 0))
+    ids.push(r.id)
   }
-  return { total, truncated: dataRes.truncated }
+  /* `ids` để nơi gọi tra giá vốn hàng trả đã nhập kho (`fetchReturnCosts`) — trừ doanh thu hàng trả mà
+     không trừ giá vốn của chính hàng ấy là lãi gộp thấp oan. */
+  return { total, truncated: dataRes.truncated, ids }
 }
 
 export interface ReturnSummaryRow {

@@ -40,6 +40,13 @@ export interface CartLine {
    *   `price` trần.
    */
   discount?: DiscountInput
+  /**
+   * Khoản giảm dòng (đồng) ĐÃ CÓ trên dòng đơn đang sửa, lúc nạp lên
+   * (`line_discount` của sổ). Nhân viên không có quyền / có trần vẫn lưu được
+   * đơn do NPP đã giảm, miễn KHÔNG tăng khoản ấy — cùng luật `giamDonGoc` của
+   * giảm đơn, và cùng luật trigger máy chủ (mig 226 so với dòng cũ).
+   */
+  giamGoc?: number
 }
 
 /** Khoản giảm của dòng, quy ra đồng, kẹp trong [0, tiền hàng]. */
@@ -58,6 +65,42 @@ export function netPriceOf(l: Pick<CartLine, "qty" | "price" | "discount">): num
   const giam = lineDiscountAmountOf(l)
   if (giam <= 0 || !(l.qty > 0)) return l.price
   return Math.round((lineGross(l.qty, l.price) - giam) / l.qty)
+}
+
+/**
+ * DỰNG LẠI GIÁ TRƯỚC GIẢM + KHOẢN GIẢM từ một dòng đơn đã lưu.
+ *
+ * ⚠ ĐỘI TEST 04/10/2026 (L-TS1): sổ chỉ giữ đơn giá SAU giảm (`netPriceOf`) và
+ *   `line_discount` (so giá bảng). Nạp lại `price = unit_price` mà không có
+ *   `discount` thì dòng trông như bị SỬA GIÁ xuống dưới giá bảng →
+ *   `priceViolation` = "below_list" → mở "Sửa đơn" một đơn có giảm giá dòng,
+ *   không đổi gì, nút lưu đã bị khoá — trái mig 185 (NPP toàn quyền giảm giá).
+ *
+ * Cách dựng: `price = unit_price + line_discount / SL`, `discount = line_discount`
+ * theo đồng — `netPriceOf` ra lại đúng `unit_price`, và lưu lại thì `toOrderLine`
+ * sinh lại đúng `line_discount`. Không lẫn với sửa giá: mọi phần thấp hơn giá bảng
+ * vốn đã là giảm giá (sửa giá xuống dưới giá bảng bị chặn từ đầu).
+ *
+ * ⚠ Lệch < 1đ so với giá bảng (SL lẻ làm `line_discount` làm tròn) thì lấy đúng giá
+ *   bảng — không thì dòng lệch 0,3đ dưới sàn lại bị coi là giá xấu.
+ */
+export function giaTruocGiamTuSo(r: {
+  unitPrice: number
+  lineDiscount: number | null | undefined
+  qty: number
+  listPrice: number
+}): { price: number; discount?: DiscountInput; giamGoc?: number } {
+  const gia = Number(r.unitPrice) || 0
+  const giam = Math.max(0, Math.round(Number(r.lineDiscount) || 0))
+  const sl = Number(r.qty) || 0
+  if (giam <= 0 || !(sl > 0)) return { price: gia }
+  const truoc = gia + giam / sl
+  const bang = Number(r.listPrice) || 0
+  return {
+    price: bang > 0 && Math.abs(truoc - bang) < 1 ? bang : truoc,
+    discount: { value: giam, unit: "vnd" },
+    giamGoc: giam,
+  }
 }
 
 /**
@@ -208,12 +251,15 @@ export function cartTotals(cart: CartLine[], returnCredit = 0, docDiscount?: Dis
   const tienHang = round(cart.reduce((s, l) => s + l.qty * netPriceOf(l), 0))
   const vat = cart.reduce((s, l) => s + l.qty * netPriceOf(l) * (l.vatRate || 0), 0)
   /**
-   * ⚠ GIẢM GIÁ ĐƠN NHƯ POS (`order-screen`, mig 183): tính trên tiền hàng sau
-   *   giảm dòng, kẹp [0, tiền hàng]; `subtotal` ghi SAU giảm đơn — hóa đơn suy
+   * ⚠ GIẢM GIÁ ĐƠN NHƯ POS (`posTotals`, spec 21/09/2026 §6): `%` tính trên
+   *   TIỀN GỘP — Σ SL × đơn giá dòng TRƯỚC giảm dòng (không phải giá bảng) —
+   *   rồi kẹp [0, tiền hàng sau giảm dòng]. Bản trước tính trên tiền SAU giảm
+   *   dòng nên cùng một giỏ, /sell và POS ra hai số khách phải trả khác nhau
+   *   (đội test 04/10/2026, L-TS2). `subtotal` ghi SAU giảm đơn — hóa đơn suy
    *   lại khoản giảm bằng `Σ(SL × giá) − subtotal` (`giamCuaChungTu`).
    * ⚠ THUẾ VẪN TRÊN GIÁ DÒNG, trước giảm đơn — đúng như máy chủ và POS.
    */
-  const giamDon = docDiscount ? discountAmount(docDiscount, tienHang) : 0
+  const giamDon = docDiscount ? Math.min(tienHang, discountAmount(docDiscount, tienGopOf(cart))) : 0
   const subtotal = tienHang - giamDon
   const discount = Math.max(0, round(gross) - tienHang) + giamDon
   const credit = Math.max(0, returnCredit)
@@ -226,6 +272,16 @@ export function cartTotals(cart: CartLine[], returnCredit = 0, docDiscount?: Dis
     returnCredit: round(credit),
     grandTotal: Math.max(0, round(subtotal + vat - credit)),
   }
+}
+
+/**
+ * TIỀN GỘP của giỏ: Σ SL × đơn giá dòng (giá đang áp, có thể đã sửa tay),
+ * TRƯỚC giảm giá dòng và giảm giá đơn — "Tổng tiền hàng" của POS
+ * (`posTotals.gross`). Là NỀN của giảm giá đơn theo `%` và của trần quyền
+ * giảm đơn (mig 185) ở cả hai màn. Khác `CartTotals.gross` (theo giá BẢNG).
+ */
+export function tienGopOf(cart: ReadonlyArray<Pick<CartLine, "qty" | "price">>): number {
+  return cart.reduce((s, l) => s + lineGross(l.qty, l.price), 0)
 }
 
 /** Làm tròn về đồng — tiền Việt không có hào. */
@@ -280,8 +336,14 @@ export function kiemQuyenGiamGia(
   giamDonGoc = 0
 ): string | null {
   return kiemGiamGia(
-    cart.map((l) => ({ giam: lineDiscountAmountOf(l), tienHang: lineGross(l.qty, l.price) })),
-    { giam: totals.docDiscount, tienHang: totals.subtotal + totals.docDiscount },
+    cart.map((l) => {
+      const giam = lineDiscountAmountOf(l)
+      /* Khoản giảm ĐÃ CÓ trên đơn đang sửa (NPP đặt), không tăng thì không chặn. */
+      return { giam: giam <= (l.giamGoc ?? 0) ? 0 : giam, tienHang: lineGross(l.qty, l.price) }
+    }),
+    /* ⚠ Nền trần giảm đơn = TIỀN GỘP, cùng nền với POS (`totals.gross` ở
+       order-screen) và với chính khoản giảm đơn (`cartTotals`). */
+    { giam: totals.docDiscount, tienHang: tienGopOf(cart) },
     rules,
     giamDonGoc
   )

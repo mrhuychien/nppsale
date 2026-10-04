@@ -17,11 +17,13 @@ test.beforeAll(async () => {
     credit_with_invoice: true, invoice_id: HD1, order_id: "o-e2e-1", return_code: "TH-0005", return_date: "2026-09-03",
     invoice: { invoice_code: "HD-E2E-1", invoice_date: "2026-09-20" }, order: { order_code: "DH-E2E-1" },
   })
-  await api("returns?id=eq.r-e2e-6", "PATCH", { status: "draft", return_code: "TH-0006" })
+  /* Có ngày chứng từ thì lên trang đầu (danh sách xếp return_date ↓ rồi created_at ↓ — máy chủ giả nay xếp đủ khoá
+     như Postgres; không ngày thì TH-0006 tạo 07/09 rơi sang trang 2). */
+  await api("returns?id=eq.r-e2e-6", "PATCH", { status: "draft", return_code: "TH-0006", return_date: "2026-09-04" })
 })
 test.afterAll(async () => {
   await api("returns?id=eq.r-e2e-5", "PATCH", { credit_with_invoice: false, invoice_id: null, order_id: null, invoice: null, order: null, return_code: null, return_date: null })
-  await api("returns?id=eq.r-e2e-6", "PATCH", { status: "submitted", return_code: null })
+  await api("returns?id=eq.r-e2e-6", "PATCH", { status: "submitted", return_code: null, return_date: null })
 })
 
 test("web: phiếu tự sinh chỉ Hoàn thành (nhập kho) — không Huỷ, không Sửa, chỉ đường sửa hóa đơn", async ({ page }) => {

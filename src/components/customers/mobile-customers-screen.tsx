@@ -5,12 +5,14 @@
  * Khách hàng trên mobile theo mẫu").
  *
  * Đầu trang xanh (tiêu đề, dòng phụ, chuông, ảnh đại diện, ô tìm) → thẻ trắng (ba ô Cần ghé /
- * Nợ quá hạn / Tất cả là bộ lọc nhanh, hai ô chọn trạng thái + tuyến) → Tuyến hôm nay + Thêm KH
+ * Nợ quá hạn / Tất cả là bộ lọc nhanh, ô chọn trạng thái · tuyến · phường · phụ trách) → Tuyến hôm nay + Thêm KH
  * → "Tất cả · N" + sắp xếp → thẻ khách (chữ đầu, tên, nợ, chủ quán · tuyến, lần đặt gần nhất,
  * địa chỉ, SĐT, nhãn) → "Tải thêm 20".
  */
 
 import { CHUA_CO_TUYEN } from "@/lib/customers/tao-khach"
+import { CHUA_CO_PHUONG } from "@/lib/customers/loc-phuong"
+import { CHUA_PHAN_CONG } from "@/lib/customers/loc-nhan-vien"
 import { UserMenu } from "@/components/layout/user-menu"
 import { NutMenuDauTrang } from "@/components/layout/mo-menu-context"
 import Link from "@/components/ui/link"
@@ -81,6 +83,12 @@ export function MobileCustomersScreen({
   onStatus,
   channelFilter,
   onChannel,
+  wardFilter,
+  onWard,
+  wards,
+  salesFilter,
+  onSales,
+  salesUsers,
   routes,
   route,
   canCreate,
@@ -108,6 +116,14 @@ export function MobileCustomersScreen({
   onStatus: (v: string) => void
   channelFilter: string
   onChannel: (v: string) => void
+  /** Phường/xã (chủ nhà 04/10/2026 — bộ lọc tuyến · phường · phụ trách luôn có). */
+  wardFilter: string
+  onWard: (v: string) => void
+  wards: readonly string[]
+  /** `undefined` = ẩn ô Phụ trách (NVBH chỉ thấy khách của mình). */
+  salesFilter?: string
+  onSales: (v: string) => void
+  salesUsers: Array<{ id: string; full_name: string }>
   routes: Array<{ code: string; name: string }>
   /** Tuyến hôm nay: đã ghé / tổng điểm. */
   route: { visited: number; total: number }
@@ -208,6 +224,28 @@ export function MobileCustomersScreen({
                 ))}
               </SelectContent>
             </Select>
+            <Select value={wardFilter} onValueChange={onWard}>
+              <SelectTrigger className="h-10 rounded-xl" aria-label="Phường/xã"><SelectValue placeholder="Phường/xã" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Mọi phường/xã</SelectItem>
+                <SelectItem value={CHUA_CO_PHUONG}>Chưa ghi phường</SelectItem>
+                {wards.map((w) => (
+                  <SelectItem key={w} value={w}>{w}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {salesFilter !== undefined && (
+              <Select value={salesFilter} onValueChange={onSales}>
+                <SelectTrigger className="h-10 rounded-xl" aria-label="Phụ trách"><SelectValue placeholder="Phụ trách" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Mọi người phụ trách</SelectItem>
+                  <SelectItem value={CHUA_PHAN_CONG}>Chưa phân công</SelectItem>
+                  {salesUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </section>
 

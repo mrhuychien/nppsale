@@ -626,4 +626,11 @@ SELECT 68, 'Mig 229 (Giá trần ở máy chủ)',
        THEN 'CHƯA — NVBH gọi thẳng RPC / ghi thẳng dòng đơn thì nâng giá bao nhiêu cũng được'
        ELSE 'OK — đã vá' END,
   'NVBH được sửa giá: ' || (SELECT count(*) FROM users WHERE role = 'sales' AND allow_price_edit)
+UNION ALL
+-- 69. Mig 230 — giá trần phiếu trả chốt ở máy chủ (chủ nhà 04/10/2026: "chặn giá trần cho phiếu trả hàng luôn")
+SELECT 69, 'Mig 230 (Giá trần phiếu trả ở máy chủ)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_gia_tran_dong_tra')
+       THEN 'CHƯA — gọi thẳng RPC lập phiếu trả thì đặt giá trả cao bao nhiêu cũng được'
+       ELSE 'OK — đã vá' END,
+  ''
 ) t ORDER BY stt;

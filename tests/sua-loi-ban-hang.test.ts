@@ -206,3 +206,17 @@ describe("6. giá trần chốt ở máy chủ (mig 229, chủ nhà 04/10/2026)"
     expect(sql).toMatch(/RAISE EXCEPTION 'PRICE_OVER_CEILING/)
   })
 })
+
+describe("7. giá trần phiếu trả chốt ở máy chủ (mig 230)", () => {
+  it("RETURN_PRICE_OVER_CEILING ra câu của phiếu trả, không lẫn câu giá bán", () => {
+    const a = errorMessage({ code: "P0001", message: "RETURN_PRICE_OVER_CEILING: Giá trả 24.000 vượt mức tối đa 19.000 (giá tham chiếu 19.000, được nâng 0%)." })
+    expect(a).toMatch(/^Máy chủ từ chối: giá trả cao hơn mức cho phép/)
+    expect(a).toContain("19.000")
+  })
+  it("migration 230: trigger trên return_lines, bỏ qua hàng đổi, tham chiếu giá đã bán trên HĐ", () => {
+    const sql = readFileSync(resolve(__dirname, "../supabase/migrations/230_chan_gia_tran_phieu_tra.sql"), "utf-8")
+    expect(sql).toMatch(/BEFORE INSERT OR UPDATE ON public\.return_lines/)
+    expect(sql).toMatch(/IF COALESCE\(NEW\.is_exchange, false\) OR v_uid IS NULL THEN RETURN NEW/)
+    expect(sql).toMatch(/FROM sales_invoice_lines l/)
+  })
+})

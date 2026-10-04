@@ -12,6 +12,7 @@ import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout } from "@/components/ui/doc-list-layout"
 import { buildManagers, managersSummary, type Manager } from "@/lib/customers/managers"
 import { CHUA_CO_TUYEN, dinhDangSdt, sdtTuTimKiem } from "@/lib/customers/tao-khach"
+import { CHUA_CO_PHUONG, DS_PHUONG_LOC } from "@/lib/customers/loc-phuong"
 import Link from "@/components/ui/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -109,6 +110,9 @@ export default function CustomersPage() {
     if (new URLSearchParams(window.location.search).get("tuyen") === "chua") setChannelFilter(CHUA_CO_TUYEN)
   }, [])
   const [salesUserFilter, setSalesUserFilter] = useState("all")
+  /** Phường/xã — lọc trên máy chủ (`ward`). `CHUA_CO_PHUONG` = chưa ghi phường. */
+  const [wardFilter, setWardFilter] = useState("all")
+  const dsPhuong = DS_PHUONG_LOC
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [totalCustomers, setTotalCustomers] = useState(0)
@@ -248,12 +252,12 @@ export default function CustomersPage() {
   }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bộ lọc nhân viên đang áp (`null` = không lọc). NVBH chỉ thấy khách của mình nên không có bộ lọc này. */
-  const nvLoc = !isSales && activeFilters.includes("sales") && salesUserFilter !== "all" ? salesUserFilter : null
+  const nvLoc = !isSales && salesUserFilter !== "all" ? salesUserFilter : null
 
   // Reset page khi filter/search đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, locNC.key, statusFilter, channelFilter, salesUserFilter, quick, sapXep, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, locNC.key, statusFilter, channelFilter, wardFilter, salesUserFilter, quick, sapXep, activeFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Danh sách mã khách mà thẻ lọc nhanh giới hạn vào. `null` = không giới hạn. */
   /**
@@ -275,7 +279,7 @@ export default function CustomersPage() {
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
-      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, nvLoc, quickIds, refreshTick, pg.from])
+      const khoa = JSON.stringify([debouncedSearch, locNC.key, statusFilter, channelFilter, wardFilter, nvLoc, quickIds, refreshTick, pg.from])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /**
        * ⚠ THẺ LỌC RỖNG THÌ DỪNG, ĐỪNG GỬI `in.()`. Một `.in("id", [])`
@@ -318,9 +322,11 @@ export default function CustomersPage() {
         if (statusFilter !== "all") q = q.eq("status", statusFilter)
         if (channelFilter === CHUA_CO_TUYEN) q = q.or("channel.is.null,channel.eq.")
         else if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+        if (wardFilter === CHUA_CO_PHUONG) q = q.or("ward.is.null,ward.eq.")
+        else if (wardFilter !== "all") q = q.eq("ward", wardFilter)
         return q
       }
-      const coLocKhac = !!(nvLoc || debouncedSearch || locNC.menhDe.length || statusFilter !== "all" || channelFilter !== "all")
+      const coLocKhac = !!(nvLoc || debouncedSearch || locNC.menhDe.length || statusFilter !== "all" || channelFilter !== "all" || wardFilter !== "all")
 
       /**
        * ⚠ THẺ LỌC NHANH + BỘ LỌC KHÁC: lọc TOÀN BỘ danh sách mã trước, rồi mới cắt trang (rà soát 03/10/2026 —
@@ -329,7 +335,7 @@ export default function CustomersPage() {
        */
       let quickLoc: string[] | null = null
       if (quickIds) {
-        const khoaLoc = JSON.stringify([quickIds, nvLoc, debouncedSearch, locNC.key, statusFilter, channelFilter, refreshTick])
+        const khoaLoc = JSON.stringify([quickIds, nvLoc, debouncedSearch, locNC.key, statusFilter, channelFilter, wardFilter, refreshTick])
         if (quickLocRef.current?.khoa === khoaLoc) quickLoc = quickLocRef.current.ids
         else {
           try {
@@ -465,7 +471,7 @@ export default function CustomersPage() {
     }
     fetchData()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, locNC.key, statusFilter, channelFilter, nvLoc, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, locNC.key, statusFilter, channelFilter, wardFilter, nvLoc, quickIds, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load active sales users for the rep filter
   useEffect(() => {
@@ -590,10 +596,11 @@ export default function CustomersPage() {
   const clearFilters = () => {
     setStatusFilter("all")
     setChannelFilter("all")
+    setWardFilter("all")
     setSalesUserFilter("all")
   }
   const hasDeskFilter =
-    statusFilter !== "all" || channelFilter !== "all" || salesUserFilter !== "all"
+    statusFilter !== "all" || channelFilter !== "all" || wardFilter !== "all" || salesUserFilter !== "all"
 
   /** Tên tuyến theo mã kênh của khách ("Tuyến T7"). */
   const tenTuyen = (code: string | null | undefined): string | null => {
@@ -824,19 +831,27 @@ export default function CustomersPage() {
                 </SelectContent>
               </Select>
             )}
-            {filterActive("channel") && (
-              <Select value={channelFilter} onValueChange={setChannelFilter}>
-                <SelectTrigger aria-label="Tuyến" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Tuyến" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả tuyến</SelectItem>
-                  <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
-                  {routes.map((r) => (
-                    <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {filterActive("sales") && !isSales && (
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger aria-label="Tuyến" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Tuyến" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tuyến</SelectItem>
+                <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
+                {routes.map((r) => (
+                  <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={wardFilter} onValueChange={setWardFilter}>
+              <SelectTrigger aria-label="Phường/xã" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Phường/xã" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Mọi phường/xã</SelectItem>
+                <SelectItem value={CHUA_CO_PHUONG}>Chưa ghi phường</SelectItem>
+                {dsPhuong.map((w) => (
+                  <SelectItem key={w} value={w}>{w}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!isSales && (
               <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
                 <SelectTrigger aria-label="Nhân viên" className="h-10 w-48 rounded-xl font-semibold"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
                 <SelectContent>
@@ -930,6 +945,12 @@ export default function CustomersPage() {
         onStatus={setStatusFilter}
         channelFilter={channelFilter}
         onChannel={setChannelFilter}
+        wardFilter={wardFilter}
+        onWard={setWardFilter}
+        wards={dsPhuong}
+        salesFilter={isSales ? undefined : salesUserFilter}
+        onSales={setSalesUserFilter}
+        salesUsers={salesUsers}
         routes={routes}
         route={{ visited: visitedOnRoute, total: routeTotal }}
         canCreate={!!user && hasPermission(user.role, "customers", "create")}

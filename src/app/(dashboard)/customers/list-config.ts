@@ -26,12 +26,15 @@ export const DEFAULT_CUSTOMER_COLUMNS: CustomerColumnKey[] = [
   "status",
 ]
 
+/**
+ * ⚠ TUYẾN · PHƯỜNG · PHỤ TRÁCH LUÔN HIỆN, không bật / tắt (chủ nhà 04/10/2026: "Sao danh sách khách hàng mất 1 số
+ *   bộ lọc tuyến, phường, Phụ trách rồi"). Bản cũ để chúng là bộ lọc TUỲ CHỌN, mặc định chỉ có ô tìm — lựa chọn đã
+ *   lưu trên máy mất là ba ô biến mất. Nay vẽ thẳng trên màn (page.tsx), danh sách bật / tắt chỉ còn Trạng thái.
+ *   ("Tuyến giao" cũ không có ô nào vẽ — đã bỏ.)
+ */
 export const CUSTOMER_FILTERS = [
   { key: "search", label: "Tìm kiếm", required: true },
   { key: "status", label: "Trạng thái" },
-  { key: "channel", label: "Tuyến/Kênh" },
-  { key: "sales", label: "Nhân viên phụ trách" },
-  { key: "route", label: "Tuyến giao" },
 ] as const satisfies readonly ListViewOption<string>[]
 
 export type CustomerFilterKey = (typeof CUSTOMER_FILTERS)[number]["key"]

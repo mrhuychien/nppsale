@@ -192,3 +192,17 @@ describe("5. câu lỗi máy chủ quyền giảm giá", () => {
       .toMatch(/^Máy chủ từ chối: khoản giảm giá vượt mức/)
   })
 })
+
+describe("6. giá trần chốt ở máy chủ (mig 229, chủ nhà 04/10/2026)", () => {
+  it("PRICE_OVER_CEILING có câu tiếng Việt, giữ nguyên văn máy chủ", () => {
+    const a = errorMessage({ code: "P0001", message: "PRICE_OVER_CEILING: Đơn giá 11.400 vượt mức tối đa 10.450 (giá bảng 9.500, được nâng 10%)." })
+    expect(a).toMatch(/^Máy chủ từ chối: đơn giá vượt mức được nâng/)
+    expect(a).toContain("10.450")
+  })
+  it("migration 229 kiểm giá TRƯỚC giảm dòng, NVBH không quyền sửa giá thì % = 0", () => {
+    const sql = readFileSync(resolve(__dirname, "../supabase/migrations/229_chan_gia_tran_may_chu.sql"), "utf-8")
+    expect(sql).toMatch(/v_truoc := NEW\.unit_price \+ COALESCE\(NEW\.line_discount, 0\) \/ NEW\.quantity/)
+    expect(sql).toMatch(/WHEN u\.allow_price_edit OR u\.role <> 'sales'/)
+    expect(sql).toMatch(/RAISE EXCEPTION 'PRICE_OVER_CEILING/)
+  })
+})

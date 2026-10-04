@@ -34,7 +34,7 @@ DO $d$ DECLARE s uuid; BEGIN
   RETURNING id INTO s;
   INSERT INTO ctx VALUES ('NCC', s);
   INSERT INTO auth.users (id, email) VALUES ('e2270000-0000-0000-0000-00000000000a', 'nv227@x.vn');
-  INSERT INTO users (id, org_id, full_name, role) VALUES ('e2270000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-000000000001', 'NV 227', 'sales');
+  INSERT INTO users (id, org_id, full_name, role, allow_price_edit, price_edit_max_increase_pct) VALUES ('e2270000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-000000000001', 'NV 227', 'sales', true, 100); -- giá thử 10.000 > giá bảng 9.500 (mig 229)
   INSERT INTO batches (org_id, product_id, batch_code, expires_at, qty_initial, qty_on_hand, unit_cost, warehouse_zone, received_at)
   VALUES ('a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002', 'LO-227', current_date + 300, 100, 100, 3000, 'sale', now());
   FOR i IN 1 .. 2 LOOP

@@ -71,6 +71,11 @@ const CONSTRAINT_VI: Array<[RegExp, string]> = [
     "Máy chủ từ chối: bạn chưa được bật quyền giảm giá (bán dưới giá bảng cũng là giảm giá). Bỏ giảm giá, hoặc nhờ chủ NPP bật quyền ở cài đặt nhân viên.",
   ],
   [/DISCOUNT_OVER_LIMIT/, "Máy chủ từ chối: khoản giảm giá vượt mức tối đa chủ NPP đặt cho bạn."],
+  /* Giá trần cũng chốt ở máy chủ (mig 229, chủ nhà 04/10/2026). */
+  [
+    /PRICE_OVER_CEILING/,
+    "Máy chủ từ chối: đơn giá vượt mức được nâng so với bảng giá. Đưa giá về trong mức cho phép, hoặc nhờ chủ NPP nâng quyền sửa giá ở cài đặt nhân viên.",
+  ],
 ]
 
 /** Câu RLS của Postgres không có mã riêng — nhận bằng nội dung. */

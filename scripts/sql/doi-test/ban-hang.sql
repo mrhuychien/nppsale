@@ -22,6 +22,9 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT SELECT ON ALL TABLES IN SCHEMA auth TO authenticated;
 
 BEGIN;
+-- Mig 229 chặn giá trần ở máy chủ: dữ liệu thử đặt giá tuỳ ý (vd 10.000 khi giá bảng 9.500) — cho NVBH thử được nâng giá
+-- để kịch bản vẫn kiểm đúng thứ nó định kiểm. Luật giá trần có kịch bản riêng: scripts/sql/thu-229-gia-tran.sql.
+UPDATE users SET allow_price_edit = true, price_edit_max_increase_pct = 100 WHERE role = 'sales';
 CREATE TEMP TABLE kq (buoc text, ten text, ok boolean, ghi text) ON COMMIT DROP;
 GRANT ALL ON kq TO authenticated;
 CREATE TEMP TABLE ctx (k text PRIMARY KEY, v uuid) ON COMMIT DROP;

@@ -619,4 +619,11 @@ SELECT 67, 'Mig 228 (Sửa lỗi kho & báo cáo)',
                                   WHERE m.org_id = t.org_id AND m.product_id = t.product_id
                                     AND m.warehouse_zone = t.warehouse_zone AND m.entry_status = 'posted'), 0)) > 0.0001)
     || ' mặt hàng-kho (dữ liệu cũ / lô đổi kho tự động có thể lệch)'
+UNION ALL
+-- 68. Mig 229 — giá trần chốt ở máy chủ (chủ nhà 04/10/2026: "có")
+SELECT 68, 'Mig 229 (Giá trần ở máy chủ)',
+  CASE WHEN position('PRICE_OVER_CEILING' IN pg_get_functiondef('public._chot_gia_dong_don()'::regprocedure)) = 0
+       THEN 'CHƯA — NVBH gọi thẳng RPC / ghi thẳng dòng đơn thì nâng giá bao nhiêu cũng được'
+       ELSE 'OK — đã vá' END,
+  'NVBH được sửa giá: ' || (SELECT count(*) FROM users WHERE role = 'sales' AND allow_price_edit)
 ) t ORDER BY stt;

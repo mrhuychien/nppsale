@@ -195,12 +195,15 @@ describe("nguồn: màn chi tiết / vùng nguy hiểm / danh sách / migration"
   it("vùng nguy hiểm: hỏi so_chung_tu_ncc TRƯỚC, chỉ xoá khi tong = 0, còn lại mời Ngừng hợp tác / Gộp", () => {
     const hoi = cat(DZ, "const hoiXoa = async", "const xoa = async")
     expect(hoi).toContain('supabase.rpc("so_chung_tu_ncc"')
-    expect(hoi).toContain('duocXoaNcc(so) ? { b: "xac-nhan" } : { b: "co-chung-tu", so }')
+    expect(hoi).toContain("const buoc = buocXoaNcc(so)")
+    expect(hoi).toContain(': { b: "co-chung-tu", so }')
     const khoi = cat(DZ, 'tt.b === "co-chung-tu" ?', ") : (")
     expect(khoi).toContain("Ngừng hợp tác")
     expect(khoi).toContain("Gộp vào NCC khác…")
-    expect(khoi).not.toContain("onClick={xoa}")
-    expect(cat(DZ, "const xoa = async", "const ngung = async")).toContain('ghiPhaiTrungDong(supabase.from("suppliers").delete().eq("id", supplier.id))')
+    expect(khoi).not.toContain("xoa(")
+    // Mig 233: xoá qua RPC, không xoá thẳng bảng.
+    expect(cat(DZ, "const xoa = async", "const ngung = async")).toContain('supabase.rpc("xoa_nha_cung_cap", { p_id: supplier.id, p_xoa_hang: xoaHang })')
+    expect(DZ).not.toMatch(/from\("suppliers"\)\s*\.delete\(/)
   })
   it("danh sách: nút Gộp khi chọn ≥ 2, chọn NCC giữ lại trong các NCC đã chọn", () => {
     const L = code(doc("src/app/(dashboard)/suppliers/page.tsx"))

@@ -52,7 +52,7 @@ DECLARE ds text; n int;
     'post_stock_export','post_stock_import','post_stock_issue','post_stock_transfer','record_payable_payment',
     'refresh_warehouse_zones','reissue_invoice','reject_stock_adjustment','release_entity_lock','release_stale_entity_locks',
     'save_pos_return','search_customer_dupes','so_chung_tu_ncc','so_chung_tu_nhan_vien','tao_luot_soan','user_assigned_customer_ids',
-    'user_has_permission','user_is_assigned_to_customer','user_org_id','user_role','user_sells_to_customer','void_cash_receipt'];
+    'user_has_permission','user_is_assigned_to_customer','user_org_id','user_role','user_sells_to_customer','void_cash_receipt','xoa_nha_cung_cap'];
 BEGIN
   SELECT string_agg(p.oid::regprocedure::text, ', ') INTO ds
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace

@@ -3,11 +3,14 @@
 /**
  * VÙNG NGUY HIỂM — xoá / ngừng hợp tác / gộp NCC (chủ nhà 05/10/2026: "Xem lại phần xóa NCC?", mig 232).
  *
- *  · Bấm "Xóa nhà cung cấp" → hỏi máy chủ `so_chung_tu_ncc` TRƯỚC:
+ *  · Bấm "Xóa nhà cung cấp" (CHỈ Chủ NPP — chủ nhà 05/10/2026 "Chỉ NPP được xoá") → hỏi máy chủ `so_chung_tu_ncc` TRƯỚC:
  *      – chưa có gì → hỏi xác nhận tại chỗ rồi xoá;
+ *      – chưa có chứng từ, chỉ còn N mặt hàng gắn NCC chính → hỏi "Xoá luôn N mặt hàng…?" (chủ nhà 05/10/2026):
+ *        Xoá NCC và mặt hàng (mặt hàng đã có trong phiếu chuyển Ngừng bán) / Chỉ xoá NCC, giữ mặt hàng / Hủy;
  *      – đã có phiếu nhập / phiếu trả / công nợ / mặt hàng… → KHÔNG xoá, kể ra số chứng từ, mời "Ngừng hợp tác"
  *        (ẩn khỏi ô chọn NCC, chứng từ cũ giữ nguyên) hoặc "Gộp vào NCC khác".
- *  · Máy chủ vẫn chặn ở trigger `trg_ncc_chan_xoa` — màn hình chỉ nói trước cho rõ.
+ *  · Xoá đi RPC `xoa_nha_cung_cap(p_id, p_xoa_hang)` (mig 233) — một giao dịch; trình duyệt không xoá thẳng `suppliers`.
+ *    Máy chủ vẫn chặn ở trigger `trg_ncc_chan_xoa` — màn hình chỉ nói trước cho rõ.
  */
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -16,12 +19,15 @@ import { useToast } from "@/hooks/use-toast"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { errorMessage } from "@/lib/errors"
 import { formatCurrency } from "@/lib/utils"
-import { duocXoaNcc, loiNcc, moTaChungTu, type SoChungTuNcc } from "@/lib/suppliers/chi-tiet"
+import {
+  buocXoaNcc, loiNcc, moTaChungTu, moTaKetQuaXoaNcc, soMatHangNcc, type KetQuaXoaNcc, type SoChungTuNcc,
+} from "@/lib/suppliers/chi-tiet"
 
 type TrangThai =
   | { b: "nghi" }
   | { b: "dang-hoi" }
   | { b: "xac-nhan" }
+  | { b: "hoi-mat-hang"; soHang: number }
   | { b: "co-chung-tu"; so: SoChungTuNcc }
 
 const thongDiep = (err: unknown) => loiNcc((err as { message?: string } | null)?.message || errorMessage(err))
@@ -45,6 +51,8 @@ export function SupplierDangerZone({
 }) {
   const [tt, setTt] = useState<TrangThai>({ b: "nghi" })
   const [dangGhi, setDangGhi] = useState(false)
+  /** Nút xoá nào đang chạy — để chữ "Đang xóa..." hiện đúng nút. */
+  const [dangXoa, setDangXoa] = useState<"hang" | "ncc" | null>(null)
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -57,20 +65,29 @@ export function SupplierDangerZone({
       return
     }
     const so = data as SoChungTuNcc
-    setTt(duocXoaNcc(so) ? { b: "xac-nhan" } : { b: "co-chung-tu", so })
+    const buoc = buocXoaNcc(so)
+    setTt(
+      buoc === "xoa" ? { b: "xac-nhan" }
+        : buoc === "hoi-mat-hang" ? { b: "hoi-mat-hang", soHang: soMatHangNcc(so) }
+        : { b: "co-chung-tu", so }
+    )
   }
 
-  const xoa = async () => {
+  /** `xoaHang` — xoá luôn mặt hàng gắn NCC (mặt hàng đã có trong phiếu: máy chủ chuyển Ngừng bán). */
+  const xoa = async (xoaHang: boolean) => {
     setDangGhi(true)
+    setDangXoa(xoaHang ? "hang" : "ncc")
     try {
-      await ghiPhaiTrungDong(supabase.from("suppliers").delete().eq("id", supplier.id))
-      toast({ title: "Đã xóa nhà cung cấp" })
+      const { data, error } = await supabase.rpc("xoa_nha_cung_cap", { p_id: supplier.id, p_xoa_hang: xoaHang })
+      if (error) throw error
+      toast({ title: "Đã xóa nhà cung cấp", description: moTaKetQuaXoaNcc(data as KetQuaXoaNcc) || undefined })
       onDeleted()
     } catch (err) {
       toast({ title: "Không xóa được", description: thongDiep(err), variant: "destructive" })
       setTt({ b: "nghi" })
     } finally {
       setDangGhi(false)
+      setDangXoa(null)
     }
   }
 
@@ -100,8 +117,23 @@ export function SupplierDangerZone({
           <span className="text-sm font-semibold text-foreground">Xóa &quot;{supplier.name}&quot;?</span>
           <div className="flex gap-2">
             <Button variant="outline" className="h-10 flex-1" onClick={() => setTt({ b: "nghi" })} disabled={dangGhi}>Hủy</Button>
-            <Button variant="destructive" className="h-10 flex-1" onClick={xoa} disabled={dangGhi}>{dangGhi ? "Đang xóa..." : "Xóa"}</Button>
+            <Button variant="destructive" className="h-10 flex-1" onClick={() => xoa(false)} disabled={dangGhi}>{dangGhi ? "Đang xóa..." : "Xóa"}</Button>
           </div>
+        </div>
+      ) : tt.b === "hoi-mat-hang" ? (
+        <div className="flex flex-col gap-2 rounded-xl bg-destructive/10 p-3" data-testid="ncc-hoi-xoa-mat-hang">
+          <span className="text-sm font-semibold text-foreground">Xoá luôn {tt.soHang} mặt hàng của nhà cung cấp này?</span>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            &quot;{supplier.name}&quot; chưa có chứng từ nhưng đang là NCC chính của {tt.soHang} mặt hàng.
+          </p>
+          <Button variant="destructive" className="h-11 w-full" onClick={() => xoa(true)} disabled={dangGhi}>
+            {dangXoa === "hang" ? "Đang xóa..." : "Xoá NCC và mặt hàng"}
+          </Button>
+          <p className="text-xs text-muted-foreground">Mặt hàng đã có trong phiếu sẽ chuyển Ngừng bán, không bị xoá.</p>
+          <Button variant="outline" className="h-11 w-full" onClick={() => xoa(false)} disabled={dangGhi}>
+            {dangXoa === "ncc" ? "Đang xóa..." : "Chỉ xoá NCC, giữ mặt hàng"}
+          </Button>
+          <Button variant="ghost" className="h-11 w-full" onClick={() => setTt({ b: "nghi" })} disabled={dangGhi}>Hủy</Button>
         </div>
       ) : tt.b === "co-chung-tu" ? (
         <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-500/10 p-3 text-sm" data-testid="ncc-khong-xoa-duoc">

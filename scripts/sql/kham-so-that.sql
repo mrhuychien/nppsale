@@ -653,4 +653,19 @@ SELECT 71, 'Mig 232 (NCC: chặn xoá có chứng từ · gộp NCC · hồ sơ 
        ELSE 'OK — đã vá' END,
   'NCC trùng tên (cùng NPP): ' || (SELECT count(*) FROM (SELECT org_id, lower(btrim(name)) FROM suppliers
                                                          GROUP BY 1, 2 HAVING count(*) > 1) d)
+UNION ALL
+-- 72. Mig 233 — xoá NCC qua RPC, chỉ Chủ NPP, hỏi xoá kèm mặt hàng (chủ nhà 05/10/2026: "Hỏi lại có muốn xoá mặt
+--     hàng kèm ncc không? … Nếu mặt hàng có trong các phiếu -> đổi về ngừng bán" · "Chỉ NPP được xoá")
+SELECT 72, 'Mig 233 (Xoá NCC: chỉ Chủ NPP · kèm mặt hàng / ngừng bán)',
+  CASE WHEN to_regprocedure('public.xoa_nha_cung_cap(uuid,boolean)') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_ncc_xoa_qua_rpc')
+       THEN 'CHƯA — NCC chỉ còn mặt hàng không xoá được; quản lý / thủ kho xoá thẳng NCC từ trình duyệt được'
+       ELSE 'OK — đã vá' END,
+  'NCC chưa có chứng từ, chỉ còn mặt hàng: ' || (SELECT count(DISTINCT p.primary_supplier_id) FROM products p
+    WHERE p.primary_supplier_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM purchase_invoices x WHERE x.supplier_id = p.primary_supplier_id)
+      AND NOT EXISTS (SELECT 1 FROM supplier_returns x WHERE x.supplier_id = p.primary_supplier_id)
+      AND NOT EXISTS (SELECT 1 FROM payables x WHERE x.supplier_id = p.primary_supplier_id)
+      AND NOT EXISTS (SELECT 1 FROM purchase_orders x WHERE x.supplier_id = p.primary_supplier_id)
+      AND NOT EXISTS (SELECT 1 FROM stock_entries x WHERE x.supplier_id = p.primary_supplier_id))
 ) t ORDER BY stt;

@@ -72,8 +72,12 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_loi := SQLERRM; END;
   INSERT INTO kq VALUES (4, 'Xoá NCC chỉ gắn mặt hàng → chặn (không SET NULL lặng lẽ)', v_loi LIKE 'NCC_CO_CHUNG_TU:%1 mặt hàng%', v_loi);
 
-  -- 5. NCC C không có gì → xoá được.
-  DELETE FROM suppliers WHERE id = '5f000000-0000-0000-0000-0000000232c1';
+  -- 5. NCC C không có gì → xoá được (từ mig 233 trình duyệt không xoá thẳng — đi RPC `xoa_nha_cung_cap`).
+  IF to_regprocedure('public.xoa_nha_cung_cap(uuid,boolean)') IS NOT NULL THEN
+    PERFORM public.xoa_nha_cung_cap('5f000000-0000-0000-0000-0000000232c1', false);
+  ELSE
+    DELETE FROM suppliers WHERE id = '5f000000-0000-0000-0000-0000000232c1';
+  END IF;
   SELECT count(*) INTO v_n FROM suppliers WHERE id = '5f000000-0000-0000-0000-0000000232c1';
   INSERT INTO kq VALUES (5, 'NCC chưa có chứng từ → xoá được', v_n = 0, 'còn ' || v_n);
 

@@ -13,7 +13,8 @@
 import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewPurchaseHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { nccTuLink, THAM_SO_NCC } from "@/lib/purchasing/ncc-tu-link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -36,7 +37,9 @@ import { errorMessage } from "@/lib/errors"
 
 export default function NewPurchaseReceiptPage() {
   /* Máy tính → màn POS (chủ nhà 24/09/2026: "tạo phiếu nhập hàng / trả hàng ncc trên desktop trên pos hết"). */
-  usePosDesktopRedirect(posNewPurchaseHref())
+  /* `?ncc=<id>` — mở từ chi tiết NCC: chọn sẵn NCC (chủ nhà 05/10/2026), máy tính mang tiếp sang POS. */
+  const nccLink = useSearchParams().get(THAM_SO_NCC)
+  usePosDesktopRedirect(posNewPurchaseHref(nccLink))
   const { loading: authLoading } = useRoleGuard("inventory")
   const { user } = useAuth()
   const router = useRouter()
@@ -80,7 +83,11 @@ export default function NewPurchaseReceiptPage() {
       /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
        không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
     const prods = prodRes.rows
-      setSuppliers((supRes.data as Supplier[]) || [])
+      const dsNcc = (supRes.data as Supplier[]) || []
+      setSuppliers(dsNcc)
+      /* Chỉ chọn sẵn NCC có trong danh sách (đang hợp tác); người dùng đã chọn rồi thì không đè. */
+      const chonSan = nccTuLink(nccLink, dsNcc)
+      if (chonSan) setForm((f) => (f.supplierId ? f : { ...f, supplierId: chonSan }))
       setProducts(prods)
     setCatTruncated(prodRes.truncated)
       setLoaded(true)

@@ -21,9 +21,9 @@ describe("cửa POS cho nhập hàng / trả NCC", () => {
   })
 
   it.each([
-    ["purchasing/receipts/new", "usePosDesktopRedirect(posNewPurchaseHref())"],
+    ["purchasing/receipts/new", "usePosDesktopRedirect(posNewPurchaseHref(nccLink))"],
     ["purchasing/receipts/[id]/edit", "usePosDesktopRedirect(posEditPurchaseHref(id))"],
-    ["purchase-returns/new", "usePosDesktopRedirect(posNewSupplierReturnHref())"],
+    ["purchase-returns/new", "usePosDesktopRedirect(posNewSupplierReturnHref(nccLink))"],
     ["purchase-returns/[id]/edit", "usePosDesktopRedirect(posEditSupplierReturnHref(id))"],
   ])("/%s chuyển sang POS trước mọi return sớm", (duong, goi) => {
     const S = read(`src/app/(dashboard)/${duong}/page.tsx`)
@@ -35,11 +35,14 @@ describe("cửa POS cho nhập hàng / trả NCC", () => {
   })
 
   it("các nút 'Tạo phiếu nhập' ở phần Mua hàng không còn dẫn màn nhập kho cũ", () => {
-    for (const f of ["purchasing/page.tsx", "purchasing/invoices/page.tsx", "suppliers/[id]/page.tsx"]) {
+    for (const f of ["purchasing/page.tsx", "purchasing/invoices/page.tsx"]) {
       const S = read(`src/app/(dashboard)/${f}`)
       expect(S, f).not.toContain("/inventory/stock-in")
       expect(S, f).toContain("/purchasing/receipts/new")
     }
-    expect(read("src/app/(dashboard)/suppliers/[id]/page.tsx")).toContain('diHoacMoPos(router.push, "/purchasing/receipts/new")')
+    // Chi tiết NCC: mang NCC theo (`hrefPhieuNhapMoi` = /purchasing/receipts/new?ncc=…, chủ nhà 05/10/2026).
+    const ct = read("src/app/(dashboard)/suppliers/[id]/page.tsx")
+    expect(ct).not.toContain("/inventory/stock-in")
+    expect(ct).toContain("diHoacMoPos(router.push, hrefPhieuNhapMoi(supplier.id))")
   })
 })

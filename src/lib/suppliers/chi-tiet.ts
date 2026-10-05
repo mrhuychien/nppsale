@@ -372,6 +372,50 @@ export function moTaChungTu(ds: readonly ChungTuNcc[] | null | undefined): strin
 /** Được xoá hẳn khi KHÔNG có chứng từ / mặt hàng nào gắn với NCC. */
 export const duocXoaNcc = (so: Pick<SoChungTuNcc, "tong"> | null | undefined): boolean => !!so && Number(so.tong) === 0
 
+/**
+ * Bước tiếp theo khi bấm "Xóa nhà cung cấp" (chủ nhà 05/10/2026, mig 233):
+ *  · `xoa`          — chưa có gì gắn với NCC → hỏi xác nhận đơn giản;
+ *  · `hoi-mat-hang` — chưa có chứng từ, chỉ còn mặt hàng gắn NCC chính → hỏi "Xoá luôn N mặt hàng?";
+ *  · `co-chung-tu`  — đã có phiếu nhập / phiếu trả / công nợ / đơn đặt / phiếu kho → không xoá, mời Ngừng hợp tác / Gộp.
+ */
+export type BuocXoaNcc = "xoa" | "hoi-mat-hang" | "co-chung-tu"
+
+/** Số mặt hàng lấy NCC làm NCC chính (dòng `products` của `so_chung_tu_ncc`). */
+export const soMatHangNcc = (so: Pick<SoChungTuNcc, "chi_tiet"> | null | undefined): number =>
+  (so?.chi_tiet ?? []).filter((c) => c.bang === "products").reduce((t, c) => t + (Number(c.so) || 0), 0)
+
+export function buocXoaNcc(so: SoChungTuNcc | null | undefined): BuocXoaNcc {
+  if (duocXoaNcc(so)) return "xoa"
+  const chungTu = (so?.chi_tiet ?? []).filter((c) => c.bang !== "products" && Number(c.so) > 0)
+  return chungTu.length === 0 && soMatHangNcc(so) > 0 ? "hoi-mat-hang" : "co-chung-tu"
+}
+
+/** Kết quả RPC `xoa_nha_cung_cap` (mig 233). */
+export interface KetQuaXoaNcc {
+  ten?: string | null
+  ma?: string | null
+  mat_hang_da_xoa?: number
+  mat_hang_ngung_ban?: number
+  mat_hang_go?: number
+}
+
+/** "Đã xoá 2 mặt hàng · 1 mặt hàng đã có trong phiếu chuyển Ngừng bán" — rỗng khi NCC không có mặt hàng. */
+export function moTaKetQuaXoaNcc(kq: KetQuaXoaNcc | null | undefined): string {
+  const xoa = Number(kq?.mat_hang_da_xoa) || 0
+  const ngung = Number(kq?.mat_hang_ngung_ban) || 0
+  const go = Number(kq?.mat_hang_go) || 0
+  return [
+    xoa > 0 ? `Đã xoá ${xoa} mặt hàng` : "",
+    ngung > 0 ? `${ngung} mặt hàng đã có trong phiếu chuyển Ngừng bán` : "",
+    go > 0 ? `${go} mặt hàng giữ lại, bỏ trống NCC chính` : "",
+  ].filter(Boolean).join(" · ")
+}
+
+/** Chỉ Chủ NPP xoá được nhà cung cấp (chủ nhà 05/10/2026: "Chỉ NPP được xoá") — cùng chốt RPC `xoa_nha_cung_cap`. */
+export const VAI_TRO_XOA_NCC = ["owner"] as const
+export const duocQuyenXoaNcc = (role: string | null | undefined): boolean =>
+  (VAI_TRO_XOA_NCC as readonly string[]).includes(role ?? "")
+
 /** Vai trò được gộp NCC — cùng danh sách RPC `gop_nha_cung_cap` kiểm. */
 export const VAI_TRO_GOP_NCC = ["owner", "manager", "accountant"] as const
 export const duocGopNcc = (role: string | null | undefined): boolean =>
@@ -381,6 +425,7 @@ export const duocGopNcc = (role: string | null | undefined): boolean =>
 export function loiNcc(msg: string | null | undefined): string {
   const s = sach(msg)
   if (!s) return "Lỗi không xác định"
+  if (s.startsWith("KHONG_DU_QUYEN_XOA_NCC")) return "Chỉ Chủ NPP được xoá nhà cung cấp."
   if (s.startsWith("KHONG_DU_QUYEN")) return "Bạn không có quyền làm việc này (chỉ Chủ NPP / Quản lý / Kế toán được gộp NCC)."
   if (s.startsWith("KHONG_TIM_THAY_NCC")) return "Không tìm thấy nhà cung cấp (đã bị xoá hoặc thuộc NPP khác)."
   if (s.startsWith("GOP_NCC_TRUNG")) return "Chọn một nhà cung cấp KHÁC để gộp vào."

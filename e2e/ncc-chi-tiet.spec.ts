@@ -133,17 +133,130 @@ test("xoá NCC đã có chứng từ: không xoá, kể số chứng từ, mời
   expect(log.filter((r) => r.method === "PATCH" && r.path === "/rest/v1/suppliers").at(-1)?.body).toEqual({ is_active: false })
 })
 
-test("xoá NCC chưa có chứng từ: hỏi lại tại chỗ rồi xoá, về danh sách", async ({ page }) => {
+test("xoá NCC chưa có chứng từ, không có mặt hàng: hỏi lại tại chỗ rồi xoá qua RPC, về danh sách", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await dangNhap(page)
   await page.goto(`/suppliers/${TRONG}`)
+  const truoc = (await nhatKy()).length
   await page.getByTestId("ncc-vung-nguy-hiem").getByRole("button", { name: "Xóa nhà cung cấp" }).click()
   const hoi = page.getByTestId("ncc-xac-nhan-xoa")
   await expect(hoi).toContainText('Xóa "NCC Trống"?')
+  await expect(page.getByTestId("ncc-hoi-xoa-mat-hang")).toHaveCount(0)
   await hoi.getByRole("button", { name: "Xóa", exact: true }).click()
   await expect(page).toHaveURL(/\/suppliers$/)
-  const xoa = (await nhatKy()).filter((r) => r.method === "DELETE" && r.path === "/rest/v1/suppliers")
-  expect((xoa.at(-1) as { query?: string } | undefined)?.query).toContain(`id=eq.${TRONG}`)
+  const log = (await nhatKy()).slice(truoc)
+  expect(log.filter((r) => r.path === "/rest/v1/rpc/xoa_nha_cung_cap").at(-1)?.body).toEqual({ p_id: TRONG, p_xoa_hang: false })
+  // Không xoá thẳng bảng từ trình duyệt (mig 233).
+  expect(log.some((r) => r.method === "DELETE" && r.path === "/rest/v1/suppliers")).toBe(false)
+})
+
+/* Chủ nhà 05/10/2026: "Hỏi lại có muốn xoá mặt hàng kèm ncc không? Nếu có xoá luôn cả mặt hàng. Nếu mặt hàng có trong
+   các phiếu -> đổi về ngừng bán." */
+test.describe("xoá NCC chỉ còn mặt hàng: hỏi xoá kèm mặt hàng", () => {
+  const CO_HANG = "00000000-0000-4000-8000-0000000002e6"
+  const HANG_MOI = "00000000-0000-4000-8000-0000000002d6"
+  const HANG_CU = "00000000-0000-4000-8000-0000000002d7"
+  test.beforeEach(async () => {
+    await api("suppliers", "POST", [{ id: CO_HANG, org_id: ORG, code: "NCC-CH", name: "NCC Có Hàng", is_active: true }])
+    await api("products", "POST", [
+      { id: HANG_MOI, org_id: ORG, sku: "CH1", name: "Hàng chưa bán", base_unit: "gói", status: "active", primary_supplier_id: CO_HANG },
+      { id: HANG_CU, org_id: ORG, sku: "CH2", name: "Hàng đã bán", base_unit: "gói", status: "active", primary_supplier_id: CO_HANG },
+    ])
+    await api("sales_order_lines", "POST", [{ id: "sol-ch-1", order_id: "o-ch", product_id: HANG_CU, unit_name: "gói", quantity: 1, unit_price: 1000 }])
+  })
+  test.afterEach(async () => {
+    await api(`suppliers?id=eq.${CO_HANG}`, "DELETE")
+    await api(`products?id=in.(${HANG_MOI},${HANG_CU})`, "DELETE")
+    await api("sales_order_lines?id=eq.sol-ch-1", "DELETE")
+  })
+  /* Máy giả không lọc cột theo `select` — tự rút ba cột cần so. */
+  const hang = async () =>
+    ((await (await api(`products?id=in.(${HANG_MOI},${HANG_CU})`, "GET")).json()) as Array<{ id: string; status: string; primary_supplier_id: string | null }>)
+      .map(({ id, status, primary_supplier_id }) => ({ id, status, primary_supplier_id }))
+      .sort((x, y) => x.id.localeCompare(y.id))
+  const moHoi = async (page: Page) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await dangNhap(page)
+    await page.goto(`/suppliers/${CO_HANG}`)
+    await page.getByTestId("ncc-vung-nguy-hiem").getByRole("button", { name: "Xóa nhà cung cấp" }).click()
+    const hoi = page.getByTestId("ncc-hoi-xoa-mat-hang")
+    await expect(hoi).toContainText("Xoá luôn 2 mặt hàng của nhà cung cấp này?")
+    await expect(hoi).toContainText("Mặt hàng đã có trong phiếu sẽ chuyển Ngừng bán")
+    await expect(page.getByTestId("ncc-khong-xoa-duoc")).toHaveCount(0)
+    return hoi
+  }
+
+  test("Xoá NCC và mặt hàng → RPC p_xoa_hang = true; hàng chưa bán xoá, hàng đã bán Ngừng bán", async ({ page }) => {
+    const hoi = await moHoi(page)
+    await hoi.getByRole("button", { name: "Xoá NCC và mặt hàng" }).click()
+    await expect(page).toHaveURL(/\/suppliers$/)
+    await expect(page.getByText("Đã xoá 1 mặt hàng · 1 mặt hàng đã có trong phiếu chuyển Ngừng bán")).toBeVisible()
+    const rpc = (await nhatKy()).filter((r) => r.path === "/rest/v1/rpc/xoa_nha_cung_cap")
+    expect(rpc.at(-1)?.body).toEqual({ p_id: CO_HANG, p_xoa_hang: true })
+    expect(await hang()).toEqual([{ id: HANG_CU, status: "inactive", primary_supplier_id: null }])
+  })
+
+  test("Chỉ xoá NCC, giữ mặt hàng → RPC p_xoa_hang = false; Hủy không gọi gì", async ({ page }) => {
+    let hoi = await moHoi(page)
+    const truoc = (await nhatKy()).length
+    await hoi.getByRole("button", { name: "Hủy" }).click()
+    await expect(hoi).toHaveCount(0)
+    expect((await nhatKy()).slice(truoc).some((r) => r.path === "/rest/v1/rpc/xoa_nha_cung_cap")).toBe(false)
+    await page.getByTestId("ncc-vung-nguy-hiem").getByRole("button", { name: "Xóa nhà cung cấp" }).click()
+    hoi = page.getByTestId("ncc-hoi-xoa-mat-hang")
+    await hoi.getByRole("button", { name: "Chỉ xoá NCC, giữ mặt hàng" }).click()
+    await expect(page).toHaveURL(/\/suppliers$/)
+    const rpc = (await nhatKy()).filter((r) => r.path === "/rest/v1/rpc/xoa_nha_cung_cap")
+    expect(rpc.at(-1)?.body).toEqual({ p_id: CO_HANG, p_xoa_hang: false })
+    expect(await hang()).toEqual([
+      { id: HANG_MOI, status: "active", primary_supplier_id: null },
+      { id: HANG_CU, status: "active", primary_supplier_id: null },
+    ])
+  })
+})
+
+/* Chủ nhà 05/10/2026 ("Có"): "Tạo phiếu nhập" / "Trả hàng NCC" ở chi tiết NCC mở màn lập phiếu chọn sẵn NCC này. */
+test.describe("chi tiết NCC → lập phiếu chọn sẵn NCC (điện thoại)", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  /* Chốt "xoá NCC đã có chứng từ" ở trên vừa cho Vinamilk ngừng hợp tác — ô chọn NCC chỉ có NCC đang hợp tác. */
+  test.beforeEach(async () => { await api(`suppliers?id=eq.${NCC}`, "PATCH", { is_active: true }) })
+  for (const [nut, duong] of [["Tạo phiếu nhập", "/purchasing/receipts/new"], ["Trả hàng NCC", "/purchase-returns/new"]] as const) {
+    test(`${nut} → ${duong}?ncc=… với NCC đã chọn`, async ({ page }) => {
+      await dangNhap(page)
+      await page.goto(`/suppliers/${NCC}`)
+      await page.getByTestId("ncc-dau").getByRole("button", { name: nut }).click()
+      await expect(page).toHaveURL(new RegExp(`${duong}\\?ncc=${NCC}$`))
+      await expect(page.getByTestId("chon-ncc")).toContainText("Vinamilk")
+    })
+  }
+  test("NCC lạ / ngừng hợp tác trong đường dẫn → không chọn sẵn", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/purchasing/receipts/new?ncc=khong-co")
+    await expect(page.getByTestId("chon-ncc")).toBeVisible()
+    await expect(page.getByTestId("chon-ncc")).not.toContainText("Vinamilk")
+  })
+})
+
+test.describe("chi tiết NCC → POS chọn sẵn NCC (máy tính)", () => {
+  /* Chốt "xoá NCC đã có chứng từ" ở trên vừa cho Vinamilk ngừng hợp tác — ô chọn NCC chỉ có NCC đang hợp tác. */
+  test.beforeEach(async () => { await api(`suppliers?id=eq.${NCC}`, "PATCH", { is_active: true }) })
+  for (const [nut, dich] of [["Tạo phiếu nhập", "/pos/nhap-hang/moi"], ["Trả hàng NCC", "/pos/tra-ncc/moi"]] as const) {
+    test(`${nut} mở ${dich}?ncc=… ở tab mới, thẻ NCC có tên + công nợ`, async ({ page, context }) => {
+      await page.setViewportSize({ width: 1440, height: 1000 })
+      await dangNhap(page)
+      await page.goto(`/suppliers/${NCC}`)
+      const [tab] = await Promise.all([
+        context.waitForEvent("page"),
+        page.getByTestId("ncc-dau").getByRole("button", { name: nut }).click(),
+      ])
+      await tab.waitForLoadState()
+      await expect(tab).toHaveURL(new RegExp(`${dich}\\?ncc=${NCC}$`))
+      await expect(tab.getByText("Vinamilk", { exact: true }).first()).toBeVisible()
+      // Nợ NCC nạp như khi chọn tay: 300.000 − 100.000.
+      await expect(tab.getByText("200.000đ").first()).toBeVisible()
+      await expect(page).toHaveURL(new RegExp(`/suppliers/${NCC}$`))
+    })
+  }
 })
 
 test("gộp NCC: chọn NCC giữ lại, thấy những gì chuyển sang, gộp xong về NCC giữ lại với nợ cộng dồn", async ({ page }) => {

@@ -80,9 +80,14 @@ export function posNewReturnHref(o: { invoiceId?: string | null; customerId?: st
  * nhập hàng/trả hàng ncc từ danh sách ko ra pos ? … tạo phiếu nhập hàng / trả
  * hàng ncc trên desktop trên pos hết". Cùng RPC với màn cũ; chỉ đổi giao diện.
  */
-export const posNewPurchaseHref = () => "/pos/nhap-hang/moi"
+/* `?ncc=<id>` — NCC chọn sẵn khi mở từ chi tiết NCC (chủ nhà 05/10/2026). */
+const kemNcc = (duong: string, nccId?: string | null) => {
+  const id = (nccId ?? "").trim()
+  return id ? `${duong}?ncc=${encodeURIComponent(id)}` : duong
+}
+export const posNewPurchaseHref = (nccId?: string | null) => kemNcc("/pos/nhap-hang/moi", nccId)
 export const posEditPurchaseHref = (receiptId: string) => `/pos/nhap-hang/${encodeURIComponent(receiptId)}/sua`
-export const posNewSupplierReturnHref = () => "/pos/tra-ncc/moi"
+export const posNewSupplierReturnHref = (nccId?: string | null) => kemNcc("/pos/tra-ncc/moi", nccId)
 export const posEditSupplierReturnHref = (returnId: string) => `/pos/tra-ncc/${encodeURIComponent(returnId)}/sua`
 
 /**
@@ -114,10 +119,10 @@ export function posTargetFor(href: string): string | null {
   m = /^\/sales-invoices\/([^/]+)\/edit$/.exec(p)
   if (m) return posEditInvoiceHref(decodeURIComponent(m[1]))
   if (p === "/returns/new") return posNewReturnHref({ invoiceId: q.get("invoiceId"), customerId: q.get("customerId") })
-  if (p === "/purchasing/receipts/new") return posNewPurchaseHref()
+  if (p === "/purchasing/receipts/new") return posNewPurchaseHref(q.get("ncc"))
   m = /^\/purchasing\/receipts\/([^/]+)\/edit$/.exec(p)
   if (m) return posEditPurchaseHref(decodeURIComponent(m[1]))
-  if (p === "/purchase-returns/new") return posNewSupplierReturnHref()
+  if (p === "/purchase-returns/new") return posNewSupplierReturnHref(q.get("ncc"))
   m = /^\/purchase-returns\/([^/]+)\/edit$/.exec(p)
   if (m) return posEditSupplierReturnHref(decodeURIComponent(m[1]))
   return null

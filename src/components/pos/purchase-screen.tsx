@@ -30,7 +30,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MoneyInput } from "@/components/ui/money-input"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { nccTuLink, THAM_SO_NCC } from "@/lib/purchasing/ncc-tu-link"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
 import { useAuth } from "@/hooks/use-auth"
@@ -148,6 +149,23 @@ export function PurchaseScreen({
     if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
   }, [daNap, chuKy, mocChuaLuu])
   usePosDirty(chuKy, mocChuaLuu)
+
+  /**
+   * NCC ĐI KÈM ĐƯỜNG DẪN — `?ncc=<id>` từ nút ở chi tiết NCC (chủ nhà 05/10/2026). Chỉ phiếu MỚI, chỉ một lần, chờ
+   * danh mục NCC về rồi mới đặt (như khách theo link ở màn đơn). NCC không có trong danh sách (ngừng hợp tác) → bỏ.
+   * Đặt lại mốc "chưa lưu": NCC chọn sẵn không phải sửa đổi của người dùng.
+   */
+  const thamSo = useSearchParams()
+  const daChonNccTheoLink = useRef(false)
+  useEffect(() => {
+    if (daChonNccTheoLink.current || receiptId || suppliers.length === 0) return
+    const id = nccTuLink(thamSo.get(THAM_SO_NCC), suppliers)
+    const s = id ? suppliers.find((x) => x.id === id) : undefined
+    if (!s) return
+    daChonNccTheoLink.current = true
+    setNcc({ id: s.id, name: s.name, meta: [s.code, s.phone, s.address].filter(Boolean).join(" · ") })
+    setMocChuaLuu(null)
+  }, [receiptId, suppliers, thamSo])
 
   const khoa = mode === "sua" ? purchaseCancelLock({ paidToSupplier, stockIssued }) : null
 

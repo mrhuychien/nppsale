@@ -382,6 +382,29 @@ export const rpc = {
     db.suppliers = db.suppliers.filter((s) => s.id !== p_tu)
     return { vao: p_vao, tu_ten: tu.name, tu_ma: tu.code, da_chuyen, nhan_vien: 0, da_xoa: true }
   },
+  /* Xoá NCC (mig 233): chỉ khi chưa có chứng từ; p_xoa_hang → mặt hàng chưa nằm trong phiếu thì xoá, đã nằm thì Ngừng
+     bán + gỡ NCC; không xoá hàng → chỉ gỡ NCC khỏi mặt hàng. */
+  xoa_nha_cung_cap: ({ p_id, p_xoa_hang }, { db, user }) => {
+    const u = (db.users || []).find((x) => x.id === user?.id)
+    if (u?.role !== "owner") throw Object.assign(new Error("KHONG_DU_QUYEN_XOA_NCC: chỉ Chủ NPP được xoá nhà cung cấp"), { code: "P0001" })
+    const s = (db.suppliers || []).find((x) => x.id === p_id)
+    if (!s) throw Object.assign(new Error("KHONG_TIM_THAY_NCC"), { code: "P0001" })
+    const coChungTu = [["payables", "supplier_id"], ["purchase_invoices", "supplier_id"], ["purchase_orders", "supplier_id"],
+      ["stock_entries", "supplier_id"], ["supplier_returns", "supplier_id"]].some(([bang, cot]) => (db[bang] || []).some((r) => r[cot] === p_id))
+    if (coChungTu) throw Object.assign(new Error(`NCC_CO_CHUNG_TU: không xoá được nhà cung cấp "${s.name}"`), { code: "P0001" })
+    const trongPhieu = (pid) => ["sales_order_lines", "sales_invoice_lines", "purchase_invoice_lines", "supplier_return_lines",
+      "return_lines", "stock_entry_lines", "purchase_order_lines"].some((b) => (db[b] || []).some((r) => r.product_id === pid))
+    let xoa = 0, ngung = 0, go = 0
+    const boDi = new Set()
+    for (const p of (db.products || []).filter((x) => x.primary_supplier_id === p_id)) {
+      if (!p_xoa_hang) { p.primary_supplier_id = null; go++ }
+      else if (trongPhieu(p.id)) { p.status = "inactive"; p.primary_supplier_id = null; ngung++ }
+      else { boDi.add(p.id); xoa++ }
+    }
+    db.products = (db.products || []).filter((p) => !boDi.has(p.id))
+    db.suppliers = db.suppliers.filter((x) => x.id !== p_id)
+    return { ten: s.name, ma: s.code ?? null, mat_hang_da_xoa: xoa, mat_hang_ngung_ban: ngung, mat_hang_go: go }
+  },
   /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số) hoặc tên — màn thêm khách chặn tạo trùng số. */
   search_customer_dupes: ({ p_q }, { db }) => {
     const so = String(p_q ?? "").replace(/\D/g, "")

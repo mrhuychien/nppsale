@@ -10,7 +10,8 @@
  *
  * ⚠ Công nợ đọc từ `payables` (`docSoNoNcc`, KHÔNG kẹp dòng âm — mig 231). `?tab=debt` mở thẳng tab Công nợ (màn
  *   Công nợ theo NCC bấm sang).
- * ⚠ Xoá: hỏi `so_chung_tu_ncc` trước, máy chủ chặn ở trigger (mig 232) — xem `SupplierDangerZone`.
+ * ⚠ Xoá: chỉ Chủ NPP; hỏi `so_chung_tu_ncc` trước, xoá qua RPC `xoa_nha_cung_cap` (mig 232/233) — xem `SupplierDangerZone`.
+ * ⚠ "Tạo phiếu nhập" / "Trả hàng NCC" mang `?ncc=<id>` — màn lập phiếu (điện thoại) và POS (máy tính) chọn sẵn NCC.
  */
 import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { useEffect, useState, useCallback, useMemo } from "react"
@@ -38,11 +39,12 @@ import { selectResilient } from "@/lib/supabase/resilient"
 import { fetchAllForAggregate, docTheoLoId } from "@/lib/supabase/aggregate"
 import { docSoNoNcc, tongNoNcc, NHAN_LOAI_NO_NCC, type DongSoNoNcc } from "@/lib/payables/so-no-ncc"
 import {
-  bangGiaNhap, dongPhuNccChiTiet, duocGopNcc, giaTriNhapThang, hoSoNcc, lichSuGiaoDich, phapLyNcc, viecCanHoanThien,
+  bangGiaNhap, dongPhuNccChiTiet, duocGopNcc, duocQuyenXoaNcc, giaTriNhapThang, hoSoNcc, lichSuGiaoDich, phapLyNcc, viecCanHoanThien,
   type DongBangGia, type DongPhieuNhapGia, type NccHoSo, type PhieuChiTom, type PhieuNhapTom, type PhieuTraTom,
   type SanPhamTom, type TruongHoSo, type TruongSua,
 } from "@/lib/suppliers/chi-tiet"
 import { chuCaiDau } from "@/lib/suppliers/mobile-list"
+import { hrefPhieuNhapMoi, hrefTraNccMoi } from "@/lib/purchasing/ncc-tu-link"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 
@@ -205,7 +207,8 @@ export default function SupplierDetailPage() {
   }
 
   const canEdit = !!user && hasPermission(user.role, "inventory", "update")
-  const canDelete = !!user && hasPermission(user.role, "inventory", "delete")
+  /* Chủ nhà 05/10/2026: "Chỉ NPP được xoá" — cùng chốt RPC `xoa_nha_cung_cap` (mig 233). */
+  const canDelete = duocQuyenXoaNcc(user?.role)
   const canMerge = duocGopNcc(user?.role)
   const noMo = soNo.filter((r) => r.status !== "paid")
   const tongNo = tongNoNcc(soNo)
@@ -273,12 +276,12 @@ export default function SupplierDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto"
-            /* Máy tính mở POS nhập hàng ở tab mới; điện thoại đi màn thường. */
-            onClick={() => diHoacMoPos(router.push, "/purchasing/receipts/new")}
+            /* Máy tính mở POS nhập hàng ở tab mới; điện thoại đi màn thường — cả hai chọn sẵn NCC này (?ncc=). */
+            onClick={() => diHoacMoPos(router.push, hrefPhieuNhapMoi(supplier.id))}
           >
             <FileText className="h-4 w-4" /> Tạo phiếu nhập
           </Button>
-          <Button variant="outline" className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto" onClick={() => router.push("/purchase-returns/new")}>
+          <Button variant="outline" className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto" onClick={() => diHoacMoPos(router.push, hrefTraNccMoi(supplier.id))}>
             <Undo2 className="h-4 w-4" /> Trả hàng NCC
           </Button>
           {canEdit && (

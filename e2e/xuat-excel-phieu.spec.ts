@@ -24,7 +24,8 @@ async function xuat(page: Page) {
   const buf = Buffer.concat((await (await tai.createReadStream()).toArray()) as Buffer[])
   const wb = XLSX.read(buf)
   const bang = (ten: string) => XLSX.utils.sheet_to_json<Record<string, string | number>>(wb.Sheets[ten])
-  return { ten: tai.suggestedFilename(), sheets: wb.SheetNames, bang }
+  const luoi = (ten: string) => XLSX.utils.sheet_to_json<Array<string | number>>(wb.Sheets[ten], { header: 1, defval: "" })
+  return { ten: tai.suggestedFilename(), sheets: wb.SheetNames, bang, luoi }
 }
 
 /* 25 phiếu trả NCC — danh sách 20 phiếu/trang; tệp phải có ĐỦ 25 (lỗi dễ mắc: xuất `trang`). */
@@ -94,19 +95,24 @@ test.describe("Xuất Excel danh sách chứng từ", () => {
     }
   })
 
-  /* Chủ nhà 05/10/2026: "xuất excel cho chi tiết 8 loại phiếu" — trang chi tiết xuất ĐÚNG phiếu đang xem. */
-  test("Chi tiết phiếu trả NCC: xuất đúng một phiếu + dòng của nó, tên tệp có mã phiếu", async ({ page }) => {
+  /* Chủ nhà 05/10/2026: "xuất excel cho chi tiết 8 loại phiếu" → "xuất excel như kiểu mẫu in hoá đơn ấy": trang chi
+     tiết xuất MỘT tờ như tờ in của đúng phiếu đang xem. */
+  test("Chi tiết phiếu trả NCC: một tờ như mẫu in, đúng phiếu này, tên tệp có mã phiếu", async ({ page }) => {
     await dangNhap(page)
     await page.goto("/purchase-returns/srx-3")
     await expect(page.getByRole("main").getByRole("heading", { name: /TRN-003/ })).toBeVisible()
     const tep = await xuat(page)
     expect(tep.ten).toBe("tra-hang-ncc_TRN-003_2026-09-30.xlsx")
-    expect(tep.sheets).toEqual(["Phiếu", "Chi tiết dòng"])
-    expect(tep.bang("Phiếu")).toEqual([expect.objectContaining({ "Mã phiếu": "TRN-003", "Tổng tiền": 110000, "Người lập": "Chủ NPP" })])
-    expect(tep.bang("Chi tiết dòng").map((r) => [r.ĐVT, r.SL, r["SL quy đổi"]])).toEqual([["thùng", 2, 48], ["hộp", 5, 5]])
+    expect(tep.sheets).toEqual(["TRN-003"])
+    const g = tep.luoi("TRN-003")
+    expect(g.some((r) => r[0] === "PHIẾU TRẢ HÀNG NHÀ CUNG CẤP")).toBe(true)
+    expect(g.find((r) => r[0] === "STT")).toEqual(["STT", "Tên hàng và quy cách", "ĐVT", "SL", "Đ.giá", "CK", "Thành tiền"])
+    expect(g.filter((r) => typeof r[0] === "number").map((r) => [r[2], r[3], r[6]])).toEqual([["thùng", 2, 990000], ["hộp", 5, 100000]])
+    expect(g.find((r) => r[0] === "Tổng tiền (giảm công nợ NCC)")?.at(-1)).toBe(110000)
+    expect(g.some((r) => r[0] === "Người lập: Chủ NPP")).toBe(true)
   })
 
-  test("Chi tiết hóa đơn bán: tiền còn lại sau hàng trả, như danh sách", async ({ page }) => {
+  test("Chi tiết hóa đơn bán: như tờ in — trừ hàng trả, còn phải thu, bỏ dòng hàng đổi xuất đi", async ({ page }) => {
     const TRA = { id: "rx-hd-2", org_id: ORG, customer_id: "00000000-0000-4000-8000-0000000000c1", invoice_id: HOA_DON, status: "submitted", credit_with_invoice: true, credit_note_amount: 200000, reason: "damaged", created_at: "2026-09-23T09:00:00Z" }
     await them("returns", [TRA])
     try {
@@ -114,8 +120,13 @@ test.describe("Xuất Excel danh sách chứng từ", () => {
       await page.goto(`/sales-invoices/${HOA_DON}`)
       const tep = await xuat(page)
       expect(tep.ten).toBe("hoa-don-ban_HD-E2E-1_2026-09-30.xlsx")
-      expect(tep.bang("Phiếu")).toEqual([expect.objectContaining({ "Mã hóa đơn": "HD-E2E-1", "Tổng hóa đơn": 900000, "Hàng trả": 200000, "Tổng tiền (còn lại)": 700000 })])
-      expect(tep.bang("Chi tiết dòng")).toHaveLength(2)
+      const g = tep.luoi("HD-E2E-1")
+      expect(g.some((r) => r[0] === "HÓA ĐƠN BÁN HÀNG")).toBe(true)
+      expect(g.some((r) => r[0] === "Số HĐ: HD-E2E-1")).toBe(true)
+      expect(g.filter((r) => typeof r[0] === "number").map((r) => r[2])).toEqual(["thùng"])
+      expect(g.find((r) => r[0] === "Tổng cộng")?.at(-1)).toBe(900000)
+      expect(g.find((r) => r[0] === "Còn phải thu")?.at(-1)).toBe(700000)
+      expect(g.some((r) => r[0] === "Bằng chữ: Bảy trăm nghìn đồng")).toBe(true)
     } finally {
       await xoa("returns", "id", TRA.id)
     }

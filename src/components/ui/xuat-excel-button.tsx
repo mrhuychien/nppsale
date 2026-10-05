@@ -22,10 +22,14 @@ import { errorMessage } from "@/lib/errors"
 import { truncationWarning } from "@/lib/supabase/aggregate"
 import { tenTepMotPhieu, tenTepXuat, type SheetXuat } from "@/lib/xuat-excel/phieu"
 import { downloadXlsxSheets } from "@/components/analytics/report-frame"
+import { taiXlsxDinhDang, type SheetDinhDang } from "@/lib/xuat-excel/xlsx-dinh-dang"
 import { cn } from "@/lib/utils"
 
 export interface KetQuaXuat {
-  sheets: SheetXuat[]
+  /** Tệp dữ liệu (danh sách): mỗi sheet một bảng. */
+  sheets?: SheetXuat[]
+  /** Tệp "như mẫu in" (trang chi tiết) — có định dạng, ghi qua `taiXlsxDinhDang`. */
+  dinhDang?: SheetDinhDang[]
   /** Số phiếu đã xuất — để báo lại. */
   soPhieu: number
   /** Chạm trần đọc (`truncated`) — tệp THIẾU, phải báo. */
@@ -61,7 +65,9 @@ export function XuatExcelButton({
     try {
       const kq = await chuanBi()
       const motPhieu = kq.ma !== undefined
-      await downloadXlsxSheets(motPhieu ? tenTepMotPhieu(tenTep, kq.ma) : tenTepXuat(tenTep), kq.sheets)
+      const ten = motPhieu ? tenTepMotPhieu(tenTep, kq.ma) : tenTepXuat(tenTep)
+      if (kq.dinhDang) await taiXlsxDinhDang(ten, kq.dinhDang)
+      else await downloadXlsxSheets(ten, kq.sheets ?? [])
       toast({
         title: kq.thieu
           ? `Đã xuất ${kq.soPhieu} phiếu — CHƯA ĐỦ`

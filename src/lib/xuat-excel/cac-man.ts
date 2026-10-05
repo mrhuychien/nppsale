@@ -40,7 +40,7 @@ export interface NguonDong {
 }
 
 const KHO: Record<string, string> = { sale: "Kho hàng bán", date: "Kho hàng date" }
-const kho = (z: string | null | undefined) => (z ? KHO[z] ?? z : "")
+export const kho = (z: string | null | undefined) => (z ? KHO[z] ?? z : "")
 const nguoi = (m: TenNguoi, id: string | null | undefined) => (id ? m.get(id) ?? "" : "")
 
 /** Hai sheet: Phiếu + Chi tiết dòng. */
@@ -210,7 +210,7 @@ export const CHON_DONG_TRA_KHACH =
   `id, return_id, unit_name, quantity, unit_price, vat_rate, line_total, is_exchange, note, reason, ${HANG_NHUNG}`
 
 export const DONG_TRA_KHACH: NguonDong = { bang: "return_lines", cot: "return_id", chon: CHON_DONG_TRA_KHACH, ten: "Dòng phiếu trả" }
-const lyDoTra = (v: string | null | undefined) => (v ? RETURN_REASONS.find((r) => r.value === v)?.label ?? v : "")
+export const lyDoTra = (v: string | null | undefined) => (v ? RETURN_REASONS.find((r) => r.value === v)?.label ?? v : "")
 
 export function xuatTraHangKhach(phieu: readonly PhieuTraKhach[], dong: readonly DongTraKhach[], maPhieu: ReadonlyMap<string, string>): SheetXuat[] {
   const ma = (p: PhieuTraKhach) => tenPhieuTra(maPhieu.get(p.id))
@@ -282,13 +282,13 @@ export const CHON_DONG_THU =
 
 export const DONG_THU: NguonDong = { bang: "cash_receipt_lines", cot: "receipt_id", chon: CHON_DONG_THU, ten: "Dòng phiếu thu" }
 /** Khoản một dòng phiếu thu trả cho: hóa đơn (nhãn chính — CLAUDE.md), nợ đầu kỳ, hay đơn cũ. */
-function khoanThu(l: DongThu): string {
+export function khoanThu(l: DongThu): string {
   if (l.invoice?.invoice_code) return "Hóa đơn"
   if (l.receivable?.opening_balance) return "Nợ đầu kỳ"
   if (l.order?.order_code) return "Đơn hàng (cũ)"
   return "Khác"
 }
-const khachDong = (l: DongThu) =>
+export const khachDong = (l: DongThu) =>
   l.receivable?.customer?.store_name || l.invoice?.customer?.store_name || l.order?.customer?.store_name || ""
 
 export function xuatPhieuThu(phieu: readonly PhieuThuXuat[], dong: readonly DongThu[]): SheetXuat[] {
@@ -342,8 +342,8 @@ export interface PhieuChiXuat {
   created_by?: string | null
   category?: { name?: string | null; bucket?: string | null } | null
 }
-const NHOM_CHI: Record<string, string> = { cogs: "Giá vốn", operating: "Vận hành", hr: "Nhân sự", financial: "Tài chính", tax: "Thuế", other: "Khác" }
-const HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", ewallet: "Ví điện tử" }
+export const NHOM_CHI: Record<string, string> = { cogs: "Giá vốn", operating: "Vận hành", hr: "Nhân sự", financial: "Tài chính", tax: "Thuế", other: "Khác" }
+export const HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", ewallet: "Ví điện tử" }
 
 /** Một sheet — khoản chi không có dòng hàng. */
 export function xuatChiPhi(phieu: readonly PhieuChiXuat[], ten: TenNguoi): SheetXuat[] {
@@ -390,12 +390,12 @@ export interface DongKho extends DongHangTho {
 }
 export const CHON_DONG_KHO =
   `id, entry_id, unit_name, quantity, qty_in_base_uom, conversion_factor_snapshot, unit_cost, notes, batch:batches(batch_code, expires_at), ${HANG_NHUNG}`
-const TT_KHO: Record<string, string> = { draft: "Nháp", posted: "Đã duyệt", cancelled: "Đã hủy" }
-const loaiKho = (t: string) => STOCK_ENTRY_TYPES.find((x) => x.value === t)?.label ?? t
+export const TT_KHO: Record<string, string> = { draft: "Nháp", posted: "Đã duyệt", cancelled: "Đã hủy" }
+export const loaiKho = (t: string) => STOCK_ENTRY_TYPES.find((x) => x.value === t)?.label ?? t
 
 export const DONG_KHO: NguonDong = { bang: "stock_entry_lines", cot: "entry_id", chon: CHON_DONG_KHO, ten: "Dòng phiếu kho" }
 /** SL theo đơn vị cơ sở: số kho ghi sổ (`qty_in_base_uom`), phiếu cũ chưa có thì quy đổi từ hệ số chụp. */
-function slCoSoKho(l: DongKho): number {
+export function slCoSoKho(l: DongKho): number {
   if (l.qty_in_base_uom != null && l.qty_in_base_uom !== "") return soLg(l.qty_in_base_uom)
   const h = Number(l.conversion_factor_snapshot ?? l.conversion_factor)
   return soLg((Number(l.quantity) || 0) * (Number.isFinite(h) && h > 0 ? h : 1))

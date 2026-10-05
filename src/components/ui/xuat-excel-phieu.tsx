@@ -2,7 +2,8 @@
 
 /**
  * NÚT "XUẤT EXCEL" Ở TRANG CHI TIẾT MỘT PHIẾU — chủ nhà 05/10/2026: "xuất excel cho chi tiết 8 loại phiếu".
- * Cùng tệp / cột với nút ở danh sách (`xuatMotPhieu`), cùng ô "Xuất file" của ma trận quyền theo mô-đun.
+ * Tệp là MỘT tờ như mẫu in (chủ nhà 05/10/2026: "xuất excel như kiểu mẫu in hoá đơn ấy") — `xuatMotPhieu`.
+ * Cùng ô "Xuất file" của ma trận quyền theo mô-đun như nút ở danh sách.
  */
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/lib/supabase/client"
@@ -41,10 +42,10 @@ export function XuatExcelPhieu({
       tenTep={n.tenTep}
       disabled={disabled || !id}
       className={className}
-      title="Xuất phiếu này ra Excel — kèm chi tiết từng dòng"
+      title="Xuất phiếu này ra Excel — trình bày như tờ in"
       chuanBi={async () => {
         const kq = await xuatMotPhieu(createClient(), loai, id as string, { giaVon: xemDuocGiaVon(user?.role) })
-        return { sheets: kq.sheets, soPhieu: 1, ma: kq.ma }
+        return { dinhDang: kq.sheets, soPhieu: 1, ma: kq.ma }
       }}
     />
   )

@@ -46,8 +46,18 @@ export const OWN_ACTION_BAR_ROUTES = [
  */
 export const TASK_FLOW_ROUTES = ["/sell", "/sell/customer"] as const
 
+/**
+ * Màn SỬA phiếu nhập / phiếu trả NCC — cùng khung `PhieuNccMobile` với màn tạo (chủ nhà 05/10/2026: "sửa phiếu nhập
+ * hàng ncc chưa quay về giống phần tạo phiếu") nên cũng có thanh đáy + đầu màn riêng. Đường dẫn có mã phiếu ở giữa
+ * nên không ghi được vào danh sách tiền tố bên trên.
+ */
+export function laSuaPhieuNcc(pathname: string): boolean {
+  return /^\/(purchasing\/receipts|purchase-returns)\/[^/]+\/edit$/.test(pathname)
+}
+
 export function showsBottomNav(pathname: string): boolean {
   if ((TASK_FLOW_ROUTES as readonly string[]).includes(pathname)) return false
+  if (laSuaPhieuNcc(pathname)) return false
   return !OWN_ACTION_BAR_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
 }
 
@@ -110,6 +120,7 @@ export function hidesMobileAppBar(pathname: string): boolean {
     /* Phiếu nhập hàng / trả hàng NCC di động có đầu màn riêng như /sell (chủ nhà 30/09/2026). */
     pathname === "/purchasing/receipts/new" ||
     pathname === "/purchase-returns/new" ||
+    laSuaPhieuNcc(pathname) ||
     pathname === "/bao-cao" ||
     pathname.startsWith("/bao-cao/")
   )

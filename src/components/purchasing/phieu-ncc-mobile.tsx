@@ -81,6 +81,13 @@ export interface PhieuNccMobileProps {
   onDraft: () => void
   onDone: () => void
   backHref: string
+  /**
+   * Chữ riêng cho màn SỬA (chủ nhà 05/10/2026: màn sửa dùng chung khung với màn tạo) — tiêu đề, nút, dòng nhắc.
+   * Thiếu khoá nào thì giữ chữ mặc định của loại phiếu.
+   */
+  chuRieng?: Partial<Record<"them" | "phieu" | "nhap" | "xong" | "goiY", string>>
+  /** Bước mở đầu — màn sửa mở thẳng bước Phiếu (đã có dòng hàng). */
+  buocDau?: "hang" | "phieu"
 }
 
 const CHU = {
@@ -111,11 +118,11 @@ const so = (s: string | number | null | undefined): number => {
 
 export function PhieuNccMobile({
   kind, suppliers, products, loading = false, catalogueTruncated = false, extras,
-  value, onChange, fields, submitting, onDraft, onDone, backHref,
+  value, onChange, fields, submitting, onDraft, onDone, backHref, chuRieng, buocDau = "hang",
 }: PhieuNccMobileProps) {
   const router = useRouter()
-  const chu = CHU[kind]
-  const [buoc, setBuoc] = useState<"hang" | "phieu">("hang")
+  const chu = { ...CHU[kind], ...chuRieng }
+  const [buoc, setBuoc] = useState<"hang" | "phieu">(buocDau)
   const [q, setQ] = useState("")
   const dq = useDeferredValue(q)
   const [unitSel, setUnitSel] = useState<Record<string, string>>({})

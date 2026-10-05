@@ -26,18 +26,16 @@ import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posEditPurchaseHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import {
-  PurchaseReceiptForm, type PurchaseReceiptFormValue,
-} from "@/components/purchasing/purchase-receipt-form"
+import type { PurchaseReceiptFormValue } from "@/components/purchasing/purchase-receipt-form"
+import { PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { TruongPhieuNhap } from "@/components/purchasing/truong-phieu-ncc"
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
   receiptTotals, validReceiptLines, friendlyReceiptError,
@@ -245,37 +243,32 @@ export default function EditPurchaseReceiptPage() {
     )
   }
 
+  /* ⚠ Cùng khung với màn TẠO (chủ nhà 05/10/2026: "sửa phiếu nhập hàng ncc chưa quay về giống phần tạo phiếu mà
+     dùng form riêng (trên di động)"). Máy tính đã chuyển sang POS ở đầu màn. */
+  const daXong = status === "completed"
   return (
-    <div className="space-y-4 pb-28">
-      <PageHeader
-        title="Sửa phiếu nhập hàng"
-        description={
-          status === "completed"
-            ? "Phiếu đã hoàn thành: lưu lại sẽ hoàn kho và công nợ của bản cũ rồi lập lại theo số mới."
-            : "Phiếu tạm — sửa thoải mái, chưa đụng tới kho hay công nợ."
-        }
-        backHref={`/purchasing/receipts/${id}`}
-      />
-      <PurchaseReceiptForm
-        suppliers={suppliers}
-        products={products}
-        catalogueTruncated={catTruncated}
-        value={form}
-        onChange={patch}
-        submitting={submitting}
-        extras={extras}
-        actions={
-          <>
-            <Button variant="outline" onClick={() => submit(false)} disabled={submitting}>
-              Lưu tạm
-            </Button>
-            <Button onClick={() => submit(true)} disabled={submitting || form.lines.length === 0}>
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              {status === "completed" ? "Lập lại" : "Hoàn thành"}
-            </Button>
-          </>
-        }
-      />
-    </div>
+    <PhieuNccMobile
+      kind="nhap"
+      suppliers={suppliers}
+      products={products}
+      catalogueTruncated={catTruncated}
+      extras={extras}
+      value={form}
+      onChange={patch}
+      submitting={submitting}
+      onDraft={() => submit(false)}
+      onDone={() => submit(true)}
+      backHref={`/purchasing/receipts/${id}`}
+      buocDau="phieu"
+      chuRieng={{
+        them: "Sửa phiếu nhập",
+        phieu: "Sửa phiếu nhập hàng",
+        xong: daXong ? "Lập lại" : "Hoàn thành",
+        goiY: daXong
+          ? "Phiếu đã hoàn thành: Lập lại = hoàn kho + công nợ bản cũ rồi ghi theo số mới."
+          : "Phiếu tạm — Hoàn thành = nhập kho + ghi công nợ NCC.",
+      }}
+      fields={<TruongPhieuNhap form={form} patch={patch} />}
+    />
   )
 }

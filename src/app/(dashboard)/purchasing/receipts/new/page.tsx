@@ -19,12 +19,13 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { duocGhiMuaHang } from "@/lib/purchasing/roles"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NhomNut, OTruong, PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { TruongPhieuNhap } from "@/components/purchasing/truong-phieu-ncc"
 import { useToast } from "@/hooks/use-toast"
 import type { PurchaseReceiptFormValue } from "@/components/purchasing/purchase-receipt-form"
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import {
-  receiptTotals, validReceiptLines, friendlyReceiptError, RECEIPT_ZONES,
+  receiptTotals, validReceiptLines, friendlyReceiptError,
   type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { percentToRatio } from "@/lib/purchasing/return-form"
@@ -178,33 +179,7 @@ export default function NewPurchaseReceiptPage() {
       onDraft={() => submit(false)}
       onDone={() => submit(true)}
       backHref="/purchasing/receipts"
-      fields={
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <OTruong label="Số HĐ NCC">
-              <input
-                id="pn-so-hd"
-                value={form.invoiceNumber}
-                onChange={(e) => patch({ invoiceNumber: e.target.value })}
-                placeholder="Không bắt buộc"
-                className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
-              />
-            </OTruong>
-            <OTruong label="Ngày HĐ">
-              <input
-                id="pn-ngay"
-                type="date"
-                value={form.invoiceDate}
-                onChange={(e) => patch({ invoiceDate: e.target.value })}
-                className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
-              />
-            </OTruong>
-          </div>
-          <OTruong label="Nhập vào kho">
-            <NhomNut label="Nhập vào kho" value={form.zone} options={RECEIPT_ZONES} onChange={(v) => patch({ zone: v })} />
-          </OTruong>
-        </>
-      }
+      fields={<TruongPhieuNhap form={form} patch={patch} />}
     />
   )
 }

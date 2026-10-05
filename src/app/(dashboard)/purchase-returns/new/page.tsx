@@ -21,16 +21,17 @@ import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { duocGhiMuaHang } from "@/lib/purchasing/roles"
 import { Skeleton } from "@/components/ui/skeleton"
-import { NhomNut, OTruong, PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { TruongPhieuTraNcc } from "@/components/purchasing/truong-phieu-ncc"
 import { useToast } from "@/hooks/use-toast"
 import type { PurchaseReturnFormValue } from "@/components/purchasing/purchase-return-form"
-import { friendlyReturnError, percentToRatio, RETURN_REASONS } from "@/lib/purchasing/return-form"
+import { friendlyReturnError, percentToRatio } from "@/lib/purchasing/return-form"
 import {
   receiptTotals, validReceiptLines, type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { loadPickerExtras, type PickerExtra } from "@/lib/purchasing/picker-extras"
 import { saveReturnLines } from "@/lib/purchasing/save-receipt"
-import type { Supplier, WarehouseZone } from "@/types"
+import type { Supplier } from "@/types"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
 
@@ -187,30 +188,7 @@ export default function NewPurchaseReturnPage() {
       onDraft={() => handleSubmit(true)}
       onDone={() => handleSubmit(false)}
       backHref="/purchase-returns"
-      fields={
-        <>
-          <OTruong label="Ngày trả">
-            <input
-              id="pr-date"
-              type="date"
-              value={form.returnDate}
-              onChange={(e) => patch({ returnDate: e.target.value })}
-              className="h-11 w-full rounded-[10px] border border-border bg-surface-container-lowest px-3 text-[14px] outline-none focus:border-primary"
-            />
-          </OTruong>
-          <OTruong label="Xuất từ kho (FIFO, hạn cũ trước)">
-            <NhomNut<WarehouseZone>
-              label="Xuất từ kho"
-              value={form.zone}
-              options={[{ value: "date", label: "Kho hàng date" }, { value: "sale", label: "Kho hàng bán" }]}
-              onChange={(v) => patch({ zone: v })}
-            />
-          </OTruong>
-          <OTruong label="Lý do">
-            <NhomNut label="Lý do trả" value={form.reason} options={RETURN_REASONS} onChange={(v) => patch({ reason: v })} />
-          </OTruong>
-        </>
-      }
+      fields={<TruongPhieuTraNcc form={form} patch={patch} />}
     />
   )
 }

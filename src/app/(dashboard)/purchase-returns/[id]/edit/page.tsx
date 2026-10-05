@@ -3,7 +3,7 @@
 /**
  * SỬA PHIẾU TRẢ HÀNG NCC.
  *
- * ⚠ BIỂU MẪU NẰM Ở `PurchaseReturnForm`, dùng chung với màn tạo. Trang
+ * ⚠ KHUNG LÀ `PhieuNccMobile` + `TruongPhieuTraNcc`, dùng chung với màn tạo (chủ nhà 05/10/2026). Trang
  * này chỉ còn ba việc: nạp phiếu cũ, dựng lại dòng hàng, và ghi đè.
  */
 
@@ -11,18 +11,16 @@ import { usePosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posEditSupplierReturnHref } from "@/lib/nav/pos-preview"
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import {
-  PurchaseReturnForm, type PurchaseReturnFormValue,
-} from "@/components/purchasing/purchase-return-form"
+import type { PurchaseReturnFormValue } from "@/components/purchasing/purchase-return-form"
+import { PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
+import { TruongPhieuTraNcc } from "@/components/purchasing/truong-phieu-ncc"
 import {
   friendlyReturnError, percentToRatio, ratioToPercent,
 } from "@/lib/purchasing/return-form"
@@ -284,38 +282,32 @@ export default function EditPurchaseReturnPage() {
     )
   }
 
+  /* ⚠ Cùng khung với màn TẠO (chủ nhà 05/10/2026: màn sửa phiếu NCC trên điện thoại dùng form riêng). Máy tính đã
+     chuyển sang POS ở đầu màn. */
+  const daGui = status === "completed"
   return (
-    <div className="space-y-4 pb-28">
-      <PageHeader
-        title="Sửa phiếu trả NCC"
-        description={
-          status === "completed"
-            ? "Phiếu đã gửi: lưu lại sẽ hoàn kho và công nợ của bản cũ rồi lập lại theo số mới."
-            : "Phiếu nháp — sửa thoải mái, chưa đụng tới kho hay công nợ."
-        }
-        backHref={`/purchase-returns/${id}`}
-      />
-
-      <PurchaseReturnForm
-        suppliers={suppliers}
-        products={products}
-        catalogueTruncated={catTruncated}
-        value={form}
-        onChange={patch}
-        submitting={submitting}
-        extras={extras}
-        actions={
-          <>
-            <Button variant="outline" onClick={() => handleSubmit(false)} disabled={submitting}>
-              Lưu nháp
-            </Button>
-            <Button onClick={() => handleSubmit(true)} disabled={submitting || form.lines.length === 0}>
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              {status === "completed" ? "Lập lại" : "Lưu & gửi"}
-            </Button>
-          </>
-        }
-      />
-    </div>
+    <PhieuNccMobile
+      kind="tra"
+      suppliers={suppliers}
+      products={products}
+      catalogueTruncated={catTruncated}
+      extras={extras}
+      value={form}
+      onChange={patch}
+      submitting={submitting}
+      onDraft={() => handleSubmit(false)}
+      onDone={() => handleSubmit(true)}
+      backHref={`/purchase-returns/${id}`}
+      buocDau="phieu"
+      chuRieng={{
+        them: "Sửa phiếu trả NCC",
+        phieu: "Sửa phiếu trả NCC",
+        xong: daGui ? "Lập lại" : "Gửi phiếu",
+        goiY: daGui
+          ? "Phiếu đã gửi: Lập lại = hoàn kho + công nợ bản cũ rồi ghi theo số mới."
+          : "Phiếu nháp — Gửi phiếu = xuất kho + giảm công nợ NCC.",
+      }}
+      fields={<TruongPhieuTraNcc form={form} patch={patch} />}
+    />
   )
 }

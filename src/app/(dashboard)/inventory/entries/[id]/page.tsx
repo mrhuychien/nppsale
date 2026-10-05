@@ -30,6 +30,7 @@ import { useWorkflowSession } from "@/hooks/use-workflow-session"
 import type { StockEntry, StockEntryLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 export default function StockEntryDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -515,6 +516,7 @@ export default function StockEntryDetailPage() {
         backHref="/inventory/entries"
       >
         <Badge variant={typeVariant}>{typeLabel}</Badge>
+        <XuatExcelPhieu loai="kho" id={entry.id} />
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">

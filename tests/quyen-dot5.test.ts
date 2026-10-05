@@ -112,7 +112,8 @@ describe("nút mảng tiền khớp RLS", () => {
     // Khuôn danh sách chung (27/09/2026): nút xoá ở lưới VÀ ở ngăn xem nhanh cùng qua một điều kiện.
     expect(s).toContain("const xoaDuoc = (e: Expense) => !!canDelete && e.source_type === null")
     expect(s).toContain("xoaDuoc(e) ? (")
-    expect(s).toContain("actions={xem && xoaDuoc(xem) ? (")
+    // Ngăn xem nhanh còn có nút Xuất Excel (05/10/2026) — nút Xoá vẫn chỉ hiện khi `xoaDuoc`.
+    expect(s).toMatch(/\{xoaDuoc\(xem\) && \(\s*<Button[^>]*onClick=\{\(\) => handleDelete\(xem\.id\)\}/)
   })
 
   it("xoá bậc lương / thưởng: có bắt lỗi", () => {

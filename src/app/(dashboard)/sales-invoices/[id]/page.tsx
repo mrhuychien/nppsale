@@ -42,6 +42,7 @@ import { ensureEInvoiceRow, publishEInvoice } from "@/lib/einvoice/publish"
 import { formatCurrency, formatDate, formatInt } from "@/lib/utils"
 import { INVOICE_STATUS_MAP } from "@/lib/constants"
 import { type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 interface InvoiceRow {
   id: string
@@ -289,6 +290,7 @@ export default function SalesInvoiceDetailPage() {
             <Printer className="mr-1.5 h-4 w-4" /> In hóa đơn
           </Link>
         </Button>
+        <XuatExcelPhieu loai="hoa-don" id={inv.id} className="h-10 px-4" />
         {/*
           TRẢ HÀNG CỦA CHÍNH HÓA ĐƠN NÀY — lối vào thứ hai của phiếu trả
           độc lập (chủ nhà chốt), dành cho ca "giao rồi khách không nhận

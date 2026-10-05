@@ -76,6 +76,7 @@ import { DongTaoMoi } from "@/components/ui/dong-tao-moi"
 import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
 import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 type NextStatus = {
   value: OrderStatus
@@ -1264,6 +1265,7 @@ export default function OrderDetailPage() {
           <Printer className="mr-1.5 h-4 w-4" /> In đơn
         </Link>
       </Button>
+      <XuatExcelPhieu loai="don" id={order.id} className="h-10 px-4" />
       {reorderAction && (
         <Button variant="outline" onClick={reorderAction.onClick}>
           <RefreshCw className="mr-1.5 h-4 w-4" /> {reorderAction.label}

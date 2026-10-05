@@ -27,6 +27,7 @@ import { ratioToPercent } from "@/lib/purchasing/return-form"
 import { friendlyReceiptError, RECEIPT_ZONES } from "@/lib/purchasing/receipt-form"
 import { receiptStatusLabel } from "@/lib/purchasing/receipt-status"
 import { errorMessage } from "@/lib/errors"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 interface Head {
   id: string
@@ -143,6 +144,7 @@ export default function PurchaseReceiptDetailPage() {
         backHref="/purchasing/receipts"
       >
         <Badge variant="secondary">{receiptStatusLabel(head.status)}</Badge>
+        <XuatExcelPhieu loai="nhap" id={head.id} />
       </PageHeader>
 
       {head.status === "cancelled" && (

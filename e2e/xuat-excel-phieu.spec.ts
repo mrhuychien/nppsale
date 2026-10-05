@@ -93,4 +93,31 @@ test.describe("Xuất Excel danh sách chứng từ", () => {
       await xoa("returns", "id", TRA.id)
     }
   })
+
+  /* Chủ nhà 05/10/2026: "xuất excel cho chi tiết 8 loại phiếu" — trang chi tiết xuất ĐÚNG phiếu đang xem. */
+  test("Chi tiết phiếu trả NCC: xuất đúng một phiếu + dòng của nó, tên tệp có mã phiếu", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/purchase-returns/srx-3")
+    await expect(page.getByRole("main").getByRole("heading", { name: /TRN-003/ })).toBeVisible()
+    const tep = await xuat(page)
+    expect(tep.ten).toBe("tra-hang-ncc_TRN-003_2026-09-30.xlsx")
+    expect(tep.sheets).toEqual(["Phiếu", "Chi tiết dòng"])
+    expect(tep.bang("Phiếu")).toEqual([expect.objectContaining({ "Mã phiếu": "TRN-003", "Tổng tiền": 110000, "Người lập": "Chủ NPP" })])
+    expect(tep.bang("Chi tiết dòng").map((r) => [r.ĐVT, r.SL, r["SL quy đổi"]])).toEqual([["thùng", 2, 48], ["hộp", 5, 5]])
+  })
+
+  test("Chi tiết hóa đơn bán: tiền còn lại sau hàng trả, như danh sách", async ({ page }) => {
+    const TRA = { id: "rx-hd-2", org_id: ORG, customer_id: "00000000-0000-4000-8000-0000000000c1", invoice_id: HOA_DON, status: "submitted", credit_with_invoice: true, credit_note_amount: 200000, reason: "damaged", created_at: "2026-09-23T09:00:00Z" }
+    await them("returns", [TRA])
+    try {
+      await dangNhap(page)
+      await page.goto(`/sales-invoices/${HOA_DON}`)
+      const tep = await xuat(page)
+      expect(tep.ten).toBe("hoa-don-ban_HD-E2E-1_2026-09-30.xlsx")
+      expect(tep.bang("Phiếu")).toEqual([expect.objectContaining({ "Mã hóa đơn": "HD-E2E-1", "Tổng hóa đơn": 900000, "Hàng trả": 200000, "Tổng tiền (còn lại)": 700000 })])
+      expect(tep.bang("Chi tiết dòng")).toHaveLength(2)
+    } finally {
+      await xoa("returns", "id", TRA.id)
+    }
+  })
 })

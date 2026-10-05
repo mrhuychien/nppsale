@@ -64,6 +64,16 @@ export function tenTepXuat(tienTo: string, now: Date = new Date()): string {
 }
 
 /**
+ * Tên tệp xuất MỘT phiếu (trang chi tiết): `tra-hang-ncc_TN-0001_2026-10-05.xlsx`. Mã có ký tự không hợp lệ trong
+ * tên tệp (`/`, khoảng trắng…) thì thay bằng `-`; phiếu chưa có mã thì như tên tệp danh sách.
+ */
+export function tenTepMotPhieu(tienTo: string, ma: string | null | undefined, now: Date = new Date()): string {
+  const sach = (ma ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D")
+    .replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")
+  return sach ? `${tienTo}_${sach}_${vnDateKey(now)}.xlsx` : tenTepXuat(tienTo, now)
+}
+
+/**
  * Ghép dòng vào phiếu: giữ ĐÚNG THỨ TỰ PHIẾU của danh sách (người ta lọc / xếp rồi mới xuất), trong mỗi phiếu xếp
  * theo `sort_order` (thứ tự trên chứng từ) rồi `id`. Dòng không thuộc phiếu nào đang xuất thì bỏ.
  */

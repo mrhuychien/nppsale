@@ -18,6 +18,7 @@ import { ratioToPercent } from "@/lib/purchasing/return-form"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 const STATUS_LABEL: Record<string, { label: string; variant: "secondary" | "success" | "warning" }> = {
   draft: { label: "Nháp", variant: "warning" },
@@ -170,6 +171,7 @@ export default function PurchaseReturnDetailPage() {
         backHref="/purchase-returns"
       >
         <Badge variant={st.variant}>{st.label}</Badge>
+        <XuatExcelPhieu loai="tra-ncc" id={data.id} />
         {ghiDuoc && isDraft && (
           <>
             <Button variant="outline" size="sm" asChild>

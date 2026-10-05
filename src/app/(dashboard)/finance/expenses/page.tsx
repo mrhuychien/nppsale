@@ -65,6 +65,8 @@ import { useLuuKy } from "@/hooks/use-luu-ky"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napTenNguoi } from "@/lib/xuat-excel/nap"
 import { xuatChiPhi } from "@/lib/xuat-excel/cac-man"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
+import { duocXuatFile } from "@/lib/permissions"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -543,10 +545,17 @@ export default function ExpensesPage() {
           { label: "Mô tả", value: xem.description, wide: true },
         ] : []}
         total={xem ? { label: "Số tiền", value: formatCurrency(xem.amount) } : undefined}
-        actions={xem && xoaDuoc(xem) ? (
-          <Button variant="outline" className="h-11 flex-1 text-destructive" onClick={() => handleDelete(xem.id)} disabled={deleting === xem.id}>
-            <Trash2 className="mr-2 h-4 w-4" /> Xoá
-          </Button>
+        /* Chi phí không có trang chi tiết riêng — xem nhanh là "chi tiết" của khoản chi (chủ nhà 05/10/2026:
+           "xuất excel cho chi tiết 8 loại phiếu"). */
+        actions={xem && (xoaDuoc(xem) || duocXuatFile(user?.role, "reports")) ? (
+          <>
+            <XuatExcelPhieu loai="chi" id={xem.id} className="h-11 flex-1" />
+            {xoaDuoc(xem) && (
+              <Button variant="outline" className="h-11 flex-1 text-destructive" onClick={() => handleDelete(xem.id)} disabled={deleting === xem.id}>
+                <Trash2 className="mr-2 h-4 w-4" /> Xoá
+              </Button>
+            )}
+          </>
         ) : null}
       />
 

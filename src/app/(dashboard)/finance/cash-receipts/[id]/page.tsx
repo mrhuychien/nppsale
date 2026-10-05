@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { voidCashReceipt } from "@/lib/finance/cash-receipt"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 const STATUS_VARIANT: Record<string, "warning" | "success" | "secondary"> = {
   pending: "warning",
@@ -263,6 +264,7 @@ export default function CashReceiptDetailPage() {
           >
             <Printer className="h-4 w-4 mr-2" /> In phiếu thu (TT200)
           </Button>
+          <XuatExcelPhieu loai="thu" id={receipt.id} />
         </div>
       </PageHeader>
 

@@ -37,6 +37,7 @@ import {
 } from "@/lib/returns/complete-return"
 import type { Return, ReturnLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 export default function ReturnDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -386,6 +387,7 @@ export default function ReturnDetailPage() {
             <Printer className="mr-1.5 h-4 w-4" /> In
           </Link>
         </Button>
+        <XuatExcelPhieu loai="tra-khach" id={ret.id} />
         {(() => {
           const sua = duongSuaPhieuTra(ret)
           return sua ? (

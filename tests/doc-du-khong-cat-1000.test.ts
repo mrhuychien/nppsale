@@ -403,12 +403,13 @@ describe("M6 / M7 / payables — các trang dùng đường đọc đủ", () =>
     expect(c).not.toMatch(/\.select\("match_status"\)/)
   })
 
-  it("phải trả NCC: bốn ô tổng đọc đủ, kẹp 0 từng dòng, lỗi thì hiện", () => {
+  /* Chủ nhà 05/10/2026 (mig 231): KHÔNG kẹp 0 từng dòng nữa — dòng âm của phiếu trả NCC trừ vào tổng. */
+  it("phải trả NCC: bốn ô tổng đọc đủ, không kẹp 0 từng dòng, lỗi thì hiện", () => {
     const src = read("src/app/(dashboard)/payables/page.tsx")
     const c = code(src)
     expect(c).toMatch(/fetchAllForAggregate<[\s\S]*?\.from\("payables"\)\s*\.select\("amount, paid, due_date, supplier_id, status", \{ count: "exact" \}\)/)
-    expect(c).toContain("Math.max(0, Number(p.amount) - Number(p.paid))")
-    expect(c).not.toMatch(/sum \+ \(Number\(p\.amount\) - Number\(p\.paid\)\)/)
+    expect(c).toContain("const conNo = (p: { amount: number; paid: number }) => (Number(p.amount) || 0) - (Number(p.paid) || 0)")
+    expect(c).not.toContain("Math.max(0, Number(p.amount) - Number(p.paid))")
     expect(c).toContain("setStatsError(res.error)")
   })
 })

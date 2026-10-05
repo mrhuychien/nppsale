@@ -161,7 +161,8 @@ export function SupplierReturnScreen({
   )
 
   const khoa = mode === "sua" ? supplierReturnCancelLock({ creditOffset, lotClosed }) : null
-  const noConLai = ncc?.debt == null ? null : Math.max(0, ncc.debt - t.dueFromSupplier)
+  /* Không kẹp 0 (mig 231): trả NCC nhiều hơn nợ thì NCC còn nợ lại mình — hiện số âm. */
+  const noConLai = ncc?.debt == null ? null : ncc.debt - t.dueFromSupplier
 
   usePosDocLabel("PRET", returnId, slipCode)
   const chuKy = useMemo(

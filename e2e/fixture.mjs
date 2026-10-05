@@ -287,6 +287,25 @@ export const rpc = {
     if (l) l.trang_thai = "huy"
     return null
   },
+  /* Công nợ theo NCC (mig 093 `payables_by_supplier`): gộp các khoản CHƯA TRẢ XONG theo NCC, còn lại = Σ(amount − paid)
+     — dòng âm (phiếu trả NCC) trừ vào, không kẹp. */
+  payables_by_supplier: (_p, { db }) => {
+    const nhom = new Map()
+    for (const r of db.payables || []) {
+      if (r.status === "paid") continue
+      const g = nhom.get(r.supplier_id) ?? { supplier_id: r.supplier_id, invoice_count: 0, total_debt: 0, total_paid: 0, remaining: 0, overdue_count: 0 }
+      g.invoice_count++
+      g.total_debt += Number(r.amount) || 0
+      g.total_paid += Number(r.paid) || 0
+      g.remaining += (Number(r.amount) || 0) - (Number(r.paid) || 0)
+      if (r.status === "overdue") g.overdue_count++
+      nhom.set(r.supplier_id, g)
+    }
+    return [...nhom.values()].map((g) => {
+      const s = (db.suppliers || []).find((x) => x.id === g.supplier_id)
+      return { ...g, supplier_name: s?.name ?? "-", supplier_code: s?.code ?? "-" }
+    }).sort((a, b) => b.remaining - a.remaining)
+  },
   /* Đánh dấu đã soạn hàng (mig 224): chỉ HĐ đã ghi sổ; đánh dấu lại không ghi đè giờ / người. */
   danh_dau_soan_hang: ({ p_ids, p_da }, { db, user }) => {
     let n = 0

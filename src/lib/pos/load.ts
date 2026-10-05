@@ -14,6 +14,7 @@
  * như "khách này sạch nợ"; số 0 ở ô tồn đọc như "hết hàng".
  */
 
+import { tongNoNcc } from "@/lib/payables/so-no-ncc"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { docTheoLoId, fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import type { PosLine, PosLotOption } from "@/lib/pos/types"
@@ -114,10 +115,9 @@ export async function loadSupplierDebt(
       .range(from, to)
   )
   if (res.error || res.truncated) return null
-  return res.rows.reduce(
-    (s, r) => s + Math.max(0, (Number(r.amount) || 0) - (Number(r.paid) || 0)),
-    0
-  )
+  /* ⚠ KHÔNG kẹp từng dòng về 0 (chủ nhà 05/10/2026, như công nợ âm phía khách): phiếu trả NCC ghi dòng ÂM — khoản NCC
+     hoàn lại mình — phải trừ vào tổng. Một luật với màn chi tiết NCC (`tongNoNcc`). */
+  return tongNoNcc(res.rows.map((r) => ({ ...r, status: "open" })))
 }
 
 /* ==================================================================

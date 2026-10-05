@@ -633,4 +633,11 @@ SELECT 69, 'Mig 230 (Giá trần phiếu trả ở máy chủ)',
        THEN 'CHƯA — gọi thẳng RPC lập phiếu trả thì đặt giá trả cao bao nhiêu cũng được'
        ELSE 'OK — đã vá' END,
   ''
+UNION ALL
+-- 70. Mig 231 — công nợ NCC không kẹp dòng âm (phiếu trả NCC trừ vào tổng còn phải trả)
+SELECT 70, 'Mig 231 (Công nợ NCC trừ phiếu trả NCC)',
+  CASE WHEN position('GREATEST' IN pg_get_functiondef('public.payables_summary(timestamptz)'::regprocedure)) > 0
+       THEN 'CHƯA — tổng còn phải trả NCC không trừ phiếu trả NCC'
+       ELSE 'OK — đã vá' END,
+  'Dòng NCC âm đang mở: ' || (SELECT count(*) FROM payables WHERE amount < 0 AND status <> 'paid')
 ) t ORDER BY stt;

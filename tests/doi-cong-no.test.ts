@@ -174,9 +174,10 @@ describe("loadCustomerDebt — Σ(amount − paid), status <> 'paid', không k�
     const r = await loadCustomerDebt(sbGia({ receivables: [rc("1", "K", 100.1, 0, "open"), rc("2", "K", 200.2, 0, "open")] }) as never, "K")
     expect(r).toBeCloseTo(300.3, 6)
   })
-  it("loadSupplierDebt: nợ NCC kẹp từng dòng ≥ 0, bỏ 'paid'", async () => {
+  /* Chủ nhà 05/10/2026 (mig 231): nợ NCC KHÔNG kẹp 0 từng dòng — dòng âm (phiếu trả NCC / trả dư) trừ vào tổng. */
+  it("loadSupplierDebt: nợ NCC = Σ(amount − paid) không kẹp, bỏ 'paid'", async () => {
     const nc: Row[] = [rc("p1", "S", 1_000_000, 400_000, "partial"), rc("p2", "S", 100, 300, "open"), rc("p3", "S", 50, 50, "paid")]
-    expect(await loadSupplierDebt(sbGia({ payables: nc }) as never, "S")).toBe(600_000)
+    expect(await loadSupplierDebt(sbGia({ payables: nc }) as never, "S")).toBe(599_800)
   })
 })
 

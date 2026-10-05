@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { Factory, Search } from "lucide-react"
+import { CheDoCongNoNcc } from "@/components/payables/che-do-cong-no-ncc"
 
 /** Một dòng trả về của hàm SQL `payables_by_supplier()` (migration 093). */
 interface SupplierDebtRowRaw {
@@ -84,6 +85,7 @@ export default function PayablesBySupplierPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Công nợ theo nhà cung cấp" backHref="/payables" />
+      <CheDoCongNoNcc dangXem="ncc" />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -142,7 +144,7 @@ export default function PayablesBySupplierPage() {
                     <TableRow>
                       <TableHead>Mã NCC</TableHead>
                       <TableHead>Nhà cung cấp</TableHead>
-                      <TableHead className="text-right">Số HĐ</TableHead>
+                      <TableHead className="text-right">Số khoản</TableHead>
                       <TableHead className="text-right">Tổng nợ</TableHead>
                       <TableHead className="text-right">Đã trả</TableHead>
                       <TableHead className="text-right">Còn lại</TableHead>
@@ -154,7 +156,7 @@ export default function PayablesBySupplierPage() {
                       <TableRow
                         key={row.supplierId}
                         className="cursor-pointer"
-                        onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
+                        onClick={() => router.push(`/suppliers/${row.supplierId}?tab=debt`)}
                       >
                         <TableCell className="font-mono text-xs text-primary font-bold">{row.supplierCode}</TableCell>
                         <TableCell className="font-medium">{row.supplierName}</TableCell>
@@ -183,7 +185,7 @@ export default function PayablesBySupplierPage() {
               <div
                 key={row.supplierId}
                 className="rounded-xl border border-outline-variant/60 bg-surface-container-lowest shadow-card overflow-hidden cursor-pointer active:scale-[0.99] transition-transform"
-                onClick={() => router.push(`/payables?supplier=${row.supplierId}`)}
+                onClick={() => router.push(`/suppliers/${row.supplierId}?tab=debt`)}
               >
                 <div className="p-4">
                   <div className="flex justify-between items-start gap-3 mb-2">
@@ -193,7 +195,7 @@ export default function PayablesBySupplierPage() {
                         {row.supplierName}
                       </h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {row.invoiceCount} hóa đơn
+                        {row.invoiceCount} khoản nợ
                       </p>
                     </div>
                     <div className="shrink-0">

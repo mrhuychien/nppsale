@@ -2,7 +2,7 @@
 
 import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { useEffect, useState, useCallback } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -34,15 +34,23 @@ import {
 import type { Supplier, StockEntry } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { docSoNoNcc, tongNoNcc, NHAN_LOAI_NO_NCC, type DongSoNoNcc } from "@/lib/payables/so-no-ncc"
+import { formatCurrency, formatDate } from "@/lib/utils"
 
 export default function SupplierDetailPage() {
   const { id } = useParams<{ id: string }>()
+  /* `?tab=debt` — từ màn Công nợ theo NCC bấm sang thẳng tab Công nợ. */
+  const tabDau = useSearchParams().get("tab") === "debt" ? "debt" : "price_list"
   const { user } = useAuth()
   const { loading: authLoading } = useRoleGuard("inventory")
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockEntryCount, setStockEntryCount] = useState(0)
-  const [unpaidCount, setUnpaidCount] = useState(0)
+  /** Sổ công nợ NCC — từ `payables` (mỗi phiếu nhập hoàn thành một dòng), không từ phiếu kho. */
+  const [soNo, setSoNo] = useState<DongSoNoNcc[]>([])
+  const [soNoLoi, setSoNoLoi] = useState<string | null>(null)
+  const [soPhieuNhap, setSoPhieuNhap] = useState(0)
+  const [soSanPham, setSoSanPham] = useState(0)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -55,7 +63,7 @@ export default function SupplierDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [supplierRes, entriesRes, countRes] = await Promise.all([
+    const [supplierRes, entriesRes, countRes, noRes, nhapRes, spRes] = await Promise.all([
       supabase.from("suppliers").select("id, org_id, name, code, category, contact_name, phone, email, address, tax_code, bank_account, bank_name, payment_terms, rating, notes, is_verified, is_active, created_at").eq("id", id).single(),
       supabase
         .from("stock_entries")
@@ -66,6 +74,16 @@ export default function SupplierDetailPage() {
         .from("stock_entries")
         .select("id", { count: "exact", head: true })
         .eq("supplier_id", id),
+      docSoNoNcc(supabase, id),
+      supabase
+        .from("purchase_invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("supplier_id", id)
+        .eq("status", "completed"),
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("primary_supplier_id", id),
     ])
     const qErr = ([supplierRes, entriesRes, countRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
@@ -96,8 +114,10 @@ export default function SupplierDetailPage() {
     const entries = (entriesRes.data as StockEntry[]) || []
     setStockEntries(entries)
     setStockEntryCount(countRes.count || 0)
-    // Placeholder: count "unpaid" as all entries (no payment status on stock_entries yet)
-    setUnpaidCount(0)
+    setSoNo(noRes.rows)
+    setSoNoLoi(noRes.error ? noRes.error : noRes.truncated ? "Sổ nợ đọc chưa hết — số tổng có thể thiếu." : null)
+    setSoPhieuNhap(nhapRes.count || 0)
+    setSoSanPham(spRes.count || 0)
     setLoading(false)
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -162,6 +182,7 @@ export default function SupplierDetailPage() {
   const canEdit = user && (hasPermission(user.role, "inventory", "update"))
   const canDelete = user && hasPermission(user.role, "inventory", "delete")
   const initial = supplier.name.charAt(0).toUpperCase()
+  const noMo = soNo.filter((r) => r.status !== "paid")
 
   return (
     <div className="space-y-6">
@@ -246,8 +267,8 @@ export default function SupplierDetailPage() {
                 <CreditCard className="h-5 w-5 text-error" />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Công nợ NCC</p>
-                <p className="text-2xl font-black tracking-tight">{unpaidCount}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Còn phải trả NCC</p>
+                <p className="text-2xl font-black tracking-tight tabular-nums" data-testid="ncc-con-no">{soNoLoi && soNo.length === 0 ? "—" : formatCurrency(tongNoNcc(soNo))}</p>
               </div>
             </div>
           </CardContent>
@@ -260,7 +281,7 @@ export default function SupplierDetailPage() {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Số phiếu nhập</p>
-                <p className="text-2xl font-black tracking-tight">{stockEntryCount}</p>
+                <p className="text-2xl font-black tracking-tight">{soPhieuNhap}</p>
               </div>
             </div>
           </CardContent>
@@ -273,7 +294,7 @@ export default function SupplierDetailPage() {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sản phẩm</p>
-                <p className="text-2xl font-black tracking-tight">0</p>
+                <p className="text-2xl font-black tracking-tight">{soSanPham}</p>
               </div>
             </div>
           </CardContent>
@@ -281,7 +302,7 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="price_list">
+      <Tabs defaultValue={tabDau}>
         <TabsList>
           <TabsTrigger value="price_list">Bảng giá</TabsTrigger>
           <TabsTrigger value="debt">Công nợ</TabsTrigger>
@@ -311,48 +332,77 @@ export default function SupplierDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Tab: Công nợ */}
+        {/* Tab: Công nợ — sổ `payables` của NCC (phiếu nhập · trả NCC · nợ đầu kỳ), chủ nhà 05/10/2026. */}
         <TabsContent value="debt">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Công nợ nhà cung cấp</CardTitle>
+              <span className="text-sm text-muted-foreground">
+                Còn phải trả <b className="tabular-nums text-foreground">{formatCurrency(tongNoNcc(soNo))}</b> · {noMo.length} khoản chưa xong
+              </span>
             </CardHeader>
-            <CardContent>
-              {stockEntries.length === 0 ? (
+            <CardContent className="space-y-3">
+              {soNoLoi && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{soNoLoi}</p>}
+              {soNo.length === 0 ? (
                 <EmptyState
                   icon={<CreditCard className="h-8 w-8 text-muted-foreground" />}
                   title="Không có công nợ"
-                  description="Chưa có phiếu nhập nào từ nhà cung cấp này"
+                  description="Chưa có phiếu nhập nào hoàn thành từ nhà cung cấp này"
                 />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã phiếu</TableHead>
-                      <TableHead>Loại</TableHead>
-                      <TableHead>Ngày tạo</TableHead>
-                      <TableHead>Ghi chú</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stockEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-mono text-xs font-bold text-primary">
-                          {entry.entry_code}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{entry.type}</Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(entry.created_at).toLocaleDateString("vi-VN")}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {entry.notes || "-"}
-                        </TableCell>
-                      </TableRow>
+                <>
+                  <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead className="text-xs uppercase">Chứng từ</TableHead>
+                          <TableHead className="text-xs uppercase">Loại</TableHead>
+                          <TableHead className="text-xs uppercase">Ngày</TableHead>
+                          <TableHead className="text-right text-xs uppercase">Phải trả</TableHead>
+                          <TableHead className="text-right text-xs uppercase">Đã trả</TableHead>
+                          <TableHead className="text-right text-xs uppercase">Còn lại</TableHead>
+                          <TableHead className="text-xs uppercase">Trạng thái</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {soNo.map((r) => (
+                          <TableRow key={r.id} className="cursor-pointer hover:bg-muted/40" onClick={() => router.push(r.href)} data-testid="dong-no-ncc">
+                            <TableCell className="font-mono text-xs font-bold text-primary">{r.ma}</TableCell>
+                            <TableCell><Badge variant="outline">{NHAN_LOAI_NO_NCC[r.loai]}</Badge></TableCell>
+                            <TableCell className="text-muted-foreground">{formatDate(r.created_at)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatCurrency(r.amount)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatCurrency(r.paid)}</TableCell>
+                            <TableCell className={`text-right font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</TableCell>
+                            <TableCell>
+                              <Badge variant={r.status === "paid" ? "success" : r.status === "overdue" ? "danger" : "warning"}>
+                                {r.status === "paid" ? "Đã trả" : r.status === "overdue" ? "Quá hạn" : r.status === "partial" ? "Trả một phần" : "Chưa trả"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="space-y-2 md:hidden">
+                    {soNo.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => router.push(r.href)}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border bg-card p-3 text-left"
+                        data-testid="dong-no-ncc-mobile"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-xs font-bold text-primary">{r.ma}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {NHAN_LOAI_NO_NCC[r.loai]} · {formatDate(r.created_at)} · {r.status === "paid" ? "Đã trả" : "Còn nợ"}
+                          </span>
+                        </span>
+                        <span className={`shrink-0 text-right text-sm font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</span>
+                      </button>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

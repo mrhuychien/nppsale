@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { StatusChips } from "@/components/ui/status-chips"
+import { CheDoCongNoNcc } from "@/components/payables/che-do-cong-no-ncc"
 import { DocListLayout, DocListSearch, KetQuaThieu, XoaLocButton } from "@/components/ui/doc-list-layout"
 import { DocTable, DocCodeLink, DocCellDate, type DocColumn } from "@/components/ui/doc-table"
 import { apSapXep, xepDuoc, SAP_XEP_CONG_NO_NCC, type DocSort } from "@/lib/list/sap-xep-may-chu"
@@ -266,12 +267,11 @@ export default function PayablesPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   /**
-   * ⚠ KẸP VỀ 0 TỪNG DÒNG. Một khoản trả dư (`paid > amount`) mà chưa kịp
-   *   sang `paid` thì hiệu âm TRỪ THẲNG vào nợ của khoản khác — tổng nhỏ
-   *   hơn thật, không lỗi nào bắn ra. Cùng quy tắc với `payables_summary`
-   *   (`GREATEST(0, amount - paid)`).
+   * ⚠ KHÔNG KẸP VỀ 0 TỪNG DÒNG (chủ nhà 05/10/2026, mig 231): phiếu trả NCC ghi dòng ÂM — khoản NCC hoàn lại mình
+   *   — phải trừ vào tổng, như công nợ âm phía khách (CLAUDE.md, mig 186). Cùng số với `payables_summary`,
+   *   `payables_by_supplier` và màn chi tiết NCC (`tongNoNcc`).
    */
-  const conNo = (p: { amount: number; paid: number }) => Math.max(0, Number(p.amount) - Number(p.paid))
+  const conNo = (p: { amount: number; paid: number }) => (Number(p.amount) || 0) - (Number(p.paid) || 0)
   const totalOutstanding = allOpen.reduce((sum, p) => sum + conNo(p), 0)
   const totalInTerm = allOpen
     .filter((p) => !p.due_date || getAgingStatus(p.due_date) === "current")
@@ -296,9 +296,6 @@ export default function PayablesPage() {
   // Nút của màn — máy tính ở PageHeader, điện thoại ở đầu xanh.
   const nutTao = (
     <>
-      <Button variant="outline" asChild>
-        <Link href="/payables/by-supplier">Theo NCC</Link>
-      </Button>
       <Button asChild className="bg-primary text-on-primary shadow-card">
         <Link href="/payables/new"><Plus className="mr-2 h-4 w-4" />Tạo công nợ NCC</Link>
       </Button>
@@ -311,6 +308,8 @@ export default function PayablesPage() {
         <div className="flex gap-2">{nutTao}</div>
       </PageHeader>
 
+      {/* Từng khoản / theo NCC (chủ nhà 05/10/2026). */}
+      <CheDoCongNoNcc dangXem="khoan" className="max-lg:hidden" />
       <StatusChips className="max-lg:hidden" active={statusFilter} onPick={chonTab} chips={chips} />
 
       <KetQuaThieu show={listSearch.truncated && !loading} term={debouncedSearch} />
@@ -375,7 +374,15 @@ export default function PayablesPage() {
             onOpenChange: setFilterSheet,
             sheet: <AdvancedFilter truong={LOC_CONG_NO_PHAI_TRA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
           },
-          actions: nutTao,
+          /* Điện thoại: đầu xanh không có chỗ cho thanh chuyển — nút "Theo NCC" đứng đầu hàng nút. */
+          actions: (
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/payables/by-supplier">Theo NCC</Link>
+              </Button>
+              {nutTao}
+            </>
+          ),
         }}
         totalsNote={statsError ? null : tongNote}
         loading={loading}

@@ -69,6 +69,9 @@ import {
   type CashReceiptColumnKey, type CashReceiptFilterKey,
 } from "./list-config"
 import { useLuuKy } from "@/hooks/use-luu-ky"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong } from "@/lib/xuat-excel/nap"
+import { DONG_THU, xuatPhieuThu, type DongThu } from "@/lib/xuat-excel/cac-man"
 
 interface ReceiptRow {
   id: string
@@ -336,6 +339,30 @@ export default function CashReceiptsListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyFilters, searchReady])
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp bộ lọc (cùng `applyFilters` + trạng thái + thứ tự xếp của
+   * danh sách), đọc đủ mọi trang; sheet dòng nói rõ mỗi dòng thu cho hóa đơn / khoản nợ nào.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const res = await fetchAllForAggregate<ReceiptRow>((from, to) => {
+      // audit-ok: lỗi đi vào `res.error` ngay dưới (ném → nút báo đỏ).
+      let q = apSapXep(
+        supabase.from("cash_receipts").select(COT, { count: "exact" }),
+        sort,
+        SAP_XEP_PHIEU_THU,
+        (x) => x.order("receipt_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+      )
+      q = locTrangThai(q, status)
+      return (applyFilters(q as never) as typeof q).range(from, to)
+    })
+    if (res.error) throw new Error(`Không đọc được danh sách phiếu thu: ${res.error}`)
+    const dong = await napDong<DongThu>(supabase, DONG_THU, res.rows.map((r) => r.id))
+    return { sheets: xuatPhieuThu(res.rows, dong), soPhieu: res.rows.length, thieu: res.truncated }
+  }
+  const nutXuat = (cls?: string) => (
+    <XuatExcelButton module="receivables" tenTep="phieu-thu" chuanBi={xuatExcel} disabled={loading || !searchReady || pg.total === 0} className={cls} />
+  )
+
   /* Quay về tab này thì đọc lại — nút ở ngăn xem nhanh mở TAB MỚI. */
   useEffect(() => { if (!authLoading) fetchData() }, [authLoading, fetchData, focusTick])
   useEffect(() => { if (!authLoading) fetchTotal() }, [authLoading, fetchTotal, focusTick])
@@ -547,6 +574,7 @@ export default function CashReceiptsListPage() {
         }
         toolbarEnd={
           <>
+            {nutXuat()}
             <AdvancedFilter truong={LOC_PHIEU_THU} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker available={CASH_RECEIPT_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
             <ColumnPicker available={CASH_RECEIPT_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
@@ -574,7 +602,7 @@ export default function CashReceiptsListPage() {
               </div>
             ),
           },
-          actions: nutTao || undefined,
+          actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
         loading={loading}
         isEmpty={rows.length === 0}

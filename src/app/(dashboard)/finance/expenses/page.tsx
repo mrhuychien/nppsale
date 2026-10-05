@@ -62,6 +62,9 @@ import {
   type ExpenseColumnKey, type ExpenseFilterKey,
 } from "./list-config"
 import { useLuuKy } from "@/hooks/use-luu-ky"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napTenNguoi } from "@/lib/xuat-excel/nap"
+import { xuatChiPhi } from "@/lib/xuat-excel/cac-man"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -147,7 +150,7 @@ export default function ExpensesPage() {
         let q = supabase
           .from("expenses")
           .select(
-            "id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, category:expense_categories(*)",
+            "id, category_id, expense_date, amount, description, reference_code, source_type, is_paid, payment_method, created_by, category:expense_categories(*)",
             { count: "exact" }
           )
           .eq("org_id", user.org_id)
@@ -358,6 +361,20 @@ export default function ExpensesPage() {
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
   }, [visibleColumns, deleting, canDelete]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI khoản chi khớp kỳ / bộ lọc / ô tìm / tab, theo thứ tự đang xếp (`daXep`).
+   * Khoản chi không có dòng hàng → một sheet.
+   * ⚠ Quyền: ô "Xuất file" của mô-đun BÁO CÁO — màn này gác bằng `settings` (không có ô xuất file nào); người xem
+   *   được chi phí (chủ / quản lý / kế toán) đều có ô ấy mặc định.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const ten = await napTenNguoi(supabase, daXep.map((e) => e.created_by))
+    return { sheets: xuatChiPhi(daXep, ten), soPhieu: daXep.length, thieu: truncated }
+  }
+  const nutXuat = (cls?: string) => (
+    <XuatExcelButton module="reports" tenTep="chi-phi" chuanBi={xuatExcel} disabled={loading || filtered.length === 0} className={cls} />
+  )
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const ky = kyCuaKhoang(dateFrom, dateTo)
@@ -447,6 +464,7 @@ export default function ExpensesPage() {
         }
         toolbarEnd={
           <>
+            {nutXuat()}
             <AdvancedFilter truong={LOC_CHI_PHI} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker available={EXPENSE_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
             <ColumnPicker available={EXPENSE_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
@@ -476,7 +494,7 @@ export default function ExpensesPage() {
               </div>
             ),
           },
-          actions: nutTao || undefined,
+          actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
         totalsNote={filtered.length > 0 ? bucketNote : null}
         loading={loading}

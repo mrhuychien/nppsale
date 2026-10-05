@@ -53,6 +53,9 @@ import { LOC_HOA_DON_MUA } from "@/lib/search/list-filter-fields"
 import {
   RECEIPT_STATUS, receiptStatusLabel, receiptStatusTone,
 } from "@/lib/purchasing/receipt-status"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong, napTenNguoi } from "@/lib/xuat-excel/nap"
+import { DONG_NHAP, xuatPhieuNhap, type DongNhap } from "@/lib/xuat-excel/cac-man"
 
 interface Row {
   id: string
@@ -67,6 +70,9 @@ interface Row {
   vat: number | null
   vat_override: number | null
   notes: string | null
+  /* Cho tệp Excel (chủ nhà 05/10/2026). */
+  discount?: number | null
+  created_by?: string | null
   created_at: string
   completed_at: string | null
   supplier?: { name?: string | null; code?: string | null } | null
@@ -121,7 +127,7 @@ export default function PurchaseReceiptsPage() {
       // audit-ok: lỗi đi vào `res.error` ngay dưới.
       supabase
         .from("purchase_invoices")
-        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, subtotal, vat, vat_override, notes, created_at, completed_at, supplier:suppliers(name, code)", { count: "exact" })
+        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, subtotal, vat, vat_override, discount, notes, created_by, created_at, completed_at, supplier:suppliers(name, code)", { count: "exact" })
         .eq("org_id", user.org_id)
         .order("created_at", { ascending: false })
         .order("id")
@@ -202,6 +208,22 @@ export default function PurchaseReceiptsPage() {
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
   }, [visibleColumns])
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp bộ lọc / ô tìm / tab, theo đúng thứ tự đang xếp (`daXep`,
+   * không phải trang đang xem), kèm từng dòng hàng.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const phieu = daXep
+    const [dong, ten] = await Promise.all([
+      napDong<DongNhap>(supabase, DONG_NHAP, phieu.map((r) => r.id)),
+      napTenNguoi(supabase, phieu.map((r) => r.created_by)),
+    ])
+    return { sheets: xuatPhieuNhap(phieu, dong, ten), soPhieu: phieu.length, thieu: !!canhBao }
+  }
+  const nutXuat = (cls?: string) => (
+    <XuatExcelButton module="inventory" tenTep="phieu-nhap-hang" chuanBi={xuatExcel} disabled={loading || shown.length === 0} className={cls} />
+  )
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
@@ -240,6 +262,7 @@ export default function PurchaseReceiptsPage() {
         }
         toolbarEnd={
           <>
+            {nutXuat()}
             <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker available={PURCHASE_RECEIPT_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
             <ColumnPicker available={PURCHASE_RECEIPT_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
@@ -258,7 +281,7 @@ export default function PurchaseReceiptsPage() {
             onOpenChange: setFilterSheet,
             sheet: <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
           },
-          actions: nutTao,
+          actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
         totals={{
           label: "Tổng tiền phiếu nhập",

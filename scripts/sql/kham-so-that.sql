@@ -640,4 +640,17 @@ SELECT 70, 'Mig 231 (Công nợ NCC trừ phiếu trả NCC)',
        THEN 'CHƯA — tổng còn phải trả NCC không trừ phiếu trả NCC'
        ELSE 'OK — đã vá' END,
   'Dòng NCC âm đang mở: ' || (SELECT count(*) FROM payables WHERE amount < 0 AND status <> 'paid')
+UNION ALL
+-- 71. Mig 232 — NCC: chặn xoá khi đã có chứng từ, gộp NCC, hồ sơ pháp lý (chủ nhà 05/10/2026: "Xem lại phần xóa
+--     NCC?" · "Thêm chức năng gộp NCC")
+SELECT 71, 'Mig 232 (NCC: chặn xoá có chứng từ · gộp NCC · hồ sơ pháp lý)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_ncc_chan_xoa')
+         OR to_regprocedure('public.gop_nha_cung_cap(uuid,uuid)') IS NULL
+         OR to_regprocedure('public.so_chung_tu_ncc(uuid)') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'suppliers' AND column_name = 'registered_address')
+       THEN 'CHƯA — xoá NCC đã có phiếu nhập ra lỗi khoá ngoại thô / lặng lẽ gỡ NCC khỏi phiếu kho + mặt hàng; chưa gộp được NCC'
+       ELSE 'OK — đã vá' END,
+  'NCC trùng tên (cùng NPP): ' || (SELECT count(*) FROM (SELECT org_id, lower(btrim(name)) FROM suppliers
+                                                         GROUP BY 1, 2 HAVING count(*) > 1) d)
 ) t ORDER BY stt;

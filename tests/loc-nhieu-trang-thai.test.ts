@@ -75,8 +75,8 @@ describe("các danh sách dùng chọn nhiều", () => {
   it("Hóa đơn: chip chọn nhiều, cả danh sách lẫn tổng tiền", () => {
     const S = read("src/app/(dashboard)/sales-invoices/page.tsx")
     expect(S).toMatch(/<StatusChips\s+multi/)
-    // Danh sách · tổng tiền · số theo tuyến · đầu nhóm ngày điện thoại (rà soát 03/10/2026).
-    expect(S.match(/locTrangThai\(q, status\)/g)?.length).toBe(4)
+    // Danh sách · tổng tiền · số theo tuyến · đầu nhóm ngày điện thoại (rà soát 03/10/2026) · Xuất Excel (05/10/2026).
+    expect(S.match(/locTrangThai\(q, status\)/g)?.length).toBe(5)
     expect(S).not.toContain('if (status !== "all") q = q.eq("status", status)')
   })
   it("Trả hàng khách: bấm là bật / tắt, lọc .in", () => {

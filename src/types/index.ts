@@ -719,6 +719,15 @@ export interface Supplier {
   is_verified: boolean
   is_active: boolean
   created_at: string
+  /* Hồ sơ pháp lý + hạn mức + người tạo (mig 232) — DB cũ chưa chạy mig thì không có. */
+  legal_name?: string | null
+  business_type?: string | null
+  representative?: string | null
+  business_license_no?: string | null
+  business_license_date?: string | null
+  registered_address?: string | null
+  credit_limit?: number | null
+  created_by?: string | null
 }
 
 export interface Return {

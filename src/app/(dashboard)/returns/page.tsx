@@ -65,6 +65,11 @@ import { useKhoMay } from "@/hooks/use-is-desktop"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
 import { docDemNhom, tongDem, type DemNhom } from "@/lib/list/dem-nhom"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong } from "@/lib/xuat-excel/nap"
+import {
+  CHON_PHIEU_TRA_KHACH, DONG_TRA_KHACH, xuatTraHangKhach, type DongTraKhach, type PhieuTraKhach,
+} from "@/lib/xuat-excel/cac-man"
 
 /** Nhân viên được tính khoản trừ của phiếu (`sales_user_id`). */
 const tenNV = (r: Return) => (r as Return & { seller?: { full_name?: string | null } | null }).seller?.full_name ?? null
@@ -461,6 +466,32 @@ export default function ReturnsPage() {
   // Đã filter server-side (reason) + client-side trên page (search).
   const filtered = returns
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp bộ lọc (tab, ô tìm, lý do, NV, lọc nâng cao: cùng `apDungLoc`
+   * với danh sách), đọc đủ mọi trang, kèm từng dòng hàng (hàng đổi tách riêng, không tính tiền).
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const res = await fetchAllForAggregate<PhieuTraKhach>((from, to) =>
+      // audit-ok: lỗi đi vào `res.error` ngay dưới (ném → nút báo đỏ).
+      apDungLoc(
+        supabase
+          .from("returns")
+          .select(CHON_PHIEU_TRA_KHACH, { count: "exact" })
+          .order("return_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(from, to)
+      ) as unknown as PromiseLike<{ data: unknown; error: { message: string } | null; count: number | null }>
+    )
+    if (res.error) throw new Error(`Không đọc được danh sách phiếu trả: ${res.error}`)
+    const ids = res.rows.map((r) => r.id)
+    const [dong, ma] = await Promise.all([
+      napDong<DongTraKhach>(supabase, DONG_TRA_KHACH, ids),
+      docMaPhieuTra(supabase, ids),
+    ])
+    return { sheets: xuatTraHangKhach(res.rows, dong, ma), soPhieu: res.rows.length, thieu: res.truncated }
+  }
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const getReasonLabel = (reason: string | null) =>
@@ -664,6 +695,7 @@ export default function ReturnsPage() {
               </Button>
             )}
             <div className="sm:ml-auto flex items-center gap-2">
+              <XuatExcelButton module="returns" tenTep="tra-hang" chuanBi={xuatExcel} disabled={loading || !searchReady || pg.total === 0} />
               <AdvancedFilter truong={LOC_TRA_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
               <FilterPicker
                 available={RETURN_FILTERS}

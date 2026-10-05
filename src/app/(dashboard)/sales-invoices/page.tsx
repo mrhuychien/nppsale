@@ -77,6 +77,9 @@ import { useFieldSearch } from "@/hooks/use-field-search"
 import { TRUONG_HOA_DON } from "@/lib/search/doc-fields"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong } from "@/lib/xuat-excel/nap"
+import { DONG_HOA_DON, xuatHoaDon, type DongHoaDon, type HoaDonXuat } from "@/lib/xuat-excel/cac-man"
 import { cacNgayDangHien, docThongKeNgay, type ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 import {
   periodFrom, nextPeriod,
@@ -487,6 +490,35 @@ export default function SalesInvoicesPage() {
   }, [status, applyFilters, routeFilter, searchReady])
 
   /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI hóa đơn khớp bộ lọc (cùng `applyFilters` + trạng thái + thứ tự xếp của
+   * danh sách), đọc đủ mọi trang, kèm từng dòng hàng.
+   * ⚠ Tiền là SỐ CÒN LẠI sau hàng trả (mig 192) — cùng `traTheoHoaDon` với cột tiền của danh sách.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
+    const res = await fetchAllForAggregate<HoaDonXuat>((from, to) => {
+      // audit-ok: lỗi đi vào `res.error` ngay dưới (ném → nút báo đỏ).
+      let q = apSapXep(
+        supabase
+          .from("sales_invoices")
+          .select(`${BASE_COLS}, subtotal, vat, notes, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, { count: "exact" }),
+        sort,
+        INVOICE_SORT_COLUMNS,
+        (x) => x.order("invoice_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+      )
+      q = locTrangThai(q, status)
+      return (applyFilters(q as never) as typeof q).range(from, to)
+    })
+    if (res.error) throw new Error(`Không đọc được danh sách hóa đơn: ${res.error}`)
+    const ids = res.rows.map((r) => r.id)
+    const [dong, tra] = await Promise.all([
+      napDong<DongHoaDon>(supabase, DONG_HOA_DON, ids),
+      traTheoHoaDon(supabase, ids),
+    ])
+    return { sheets: xuatHoaDon(res.rows, dong, tra), soPhieu: res.rows.length, thieu: res.truncated }
+  }
+
+  /**
    * ⚠ ĐẾM Ở MÁY CHỦ, KHÔNG ĐẾM TỪ `rows`. `rows` chỉ là một trang 50
    * dòng — đếm từ đó thì thẻ "Đã xuất" hiện 50 dù sổ có 4.000, và con số
    * trên thẻ mâu thuẫn với con số dưới chân trang.
@@ -841,6 +873,7 @@ export default function SalesInvoicesPage() {
             </Button>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <XuatExcelButton module="orders" tenTep="hoa-don-ban" chuanBi={xuatExcel} disabled={loading || !searchReady || pg.total === 0} />
             <AdvancedFilter truong={LOC_HOA_DON} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker
               available={INVOICE_FILTERS}

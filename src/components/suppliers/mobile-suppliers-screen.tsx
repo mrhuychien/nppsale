@@ -7,7 +7,8 @@
  * trong) + nút "+" (có quyền tạo) → băng "N nhà cung cấp bị trùng tên · <tên>" + "Gộp" → danh sách nhóm
  * theo chữ cái (ô chữ cái · tên · mã · SĐT · "Trùng tên" · ›) → "Xem thêm · đang hiện 20/N".
  *
- * ⚠ "Gộp": app CHƯA có luồng gộp NCC — nút chỉ lọc danh sách về các NCC trùng tên để người dùng xử lý.
+ * ⚠ "Gộp": nút lọc danh sách về các NCC trùng tên; gộp thật làm ở chi tiết NCC ("Gộp vào NCC khác…") hoặc chọn
+ *   2+ NCC ở bảng máy tính (RPC `gop_nha_cung_cap`, mig 232).
  */
 
 import type { ReactNode } from "react"

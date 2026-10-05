@@ -60,6 +60,9 @@ import {
   invoiceWarnings,
 } from "@/lib/orders/post-invoice"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong } from "@/lib/xuat-excel/nap"
+import { DONG_DON, xuatDonHang, type DongDon, type DonXuat } from "@/lib/xuat-excel/cac-man"
 import { cacNgayDangHien, docThongKeNgay, type ThongKeNgay } from "@/lib/list/thong-ke-ngay"
 import { useOrderSync } from "@/hooks/use-order-sync"
 import {
@@ -790,6 +793,32 @@ export default function OrdersPage() {
     })()
     return () => { cancelled = true }
   }, [laMay, ngayDangHien, searchReady, khoaLocNgay]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI đơn khớp bộ lọc (cùng `applyCommonFilters` + `applyStatusFilter` + thứ tự
+   * xếp của danh sách), đọc đủ mọi trang, kèm từng dòng hàng. Đơn hàng là số hoạt động, không phải doanh thu.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
+    const chon = `id, order_code, order_date, status, payment_terms, subtotal, discount, vat, total, notes, ${cust}, sales_user:users!sales_orders_sales_user_id_fkey(full_name), creator:users!sales_orders_created_by_fkey(full_name)`
+    const res = await fetchAllForAggregate<DonXuat>((from, to) =>
+      // audit-ok: lỗi đi vào `res.error` ngay dưới (ném → nút báo đỏ).
+      applyStatusFilter(
+        applyCommonFilters(
+          apSapXep(
+            supabase.from("sales_orders").select(chon, { count: "exact" }),
+            sort,
+            ORDER_SORT_COLUMNS,
+            (x) => x.order("order_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+          ).range(from, to)
+        ),
+        effectiveStatus
+      )
+    )
+    if (res.error) throw new Error(`Không đọc được danh sách đơn hàng: ${res.error}`)
+    const dong = await napDong<DongDon>(supabase, DONG_DON, res.rows.map((o) => o.id))
+    return { sheets: xuatDonHang(res.rows, dong), soPhieu: res.rows.length, thieu: res.truncated }
+  }
 
   /* Công nợ + hoá đơn MISA của các đơn đang hiện — CHỈ bảng máy tính dùng (cột công nợ, nút xuất
      HĐ điện tử). Điện thoại không đọc. */
@@ -1621,6 +1650,7 @@ export default function OrdersPage() {
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <XuatExcelButton module="orders" tenTep="don-hang" chuanBi={xuatExcel} disabled={loading || !searchReady || pg.total === 0} />
           <AdvancedFilter truong={LOC_DON_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
           <FilterPicker
             available={ORDER_FILTERS}

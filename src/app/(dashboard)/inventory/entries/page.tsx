@@ -11,7 +11,10 @@ import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { khopLoc } from "@/lib/search/advanced-filter"
 import { LOC_PHIEU_KHO } from "@/lib/search/list-filter-fields"
-import { hasPermission } from "@/lib/permissions"
+import { hasPermission, xemDuocGiaVon } from "@/lib/permissions"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong } from "@/lib/xuat-excel/nap"
+import { DONG_KHO, xuatPhieuKho, type DongKho, type PhieuKhoXuat } from "@/lib/xuat-excel/cac-man"
 import { PageHeader } from "@/components/ui/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -489,6 +492,16 @@ export default function StockEntriesPage() {
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
   }, [visibleColumns, canUpdate, canDelete, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp loại / trạng thái / ô tìm / lọc nâng cao, theo thứ tự đang xếp
+   * (`daXep`), kèm từng dòng (SL theo đơn vị cơ sở `qty_in_base_uom`, lô). Giá vốn chỉ khi xem được giá vốn.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const phieu = daXep as unknown as PhieuKhoXuat[]
+    const dong = await napDong<DongKho>(supabase, DONG_KHO, phieu.map((e) => e.id))
+    return { sheets: xuatPhieuKho(phieu, dong, xemDuocGiaVon(user?.role)), soPhieu: phieu.length, thieu: truncated }
+  }
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const xem = xemId ? entries.find((e) => e.id === xemId) ?? null : null
@@ -639,6 +652,7 @@ export default function StockEntriesPage() {
         }
         toolbarEnd={
           <>
+            <XuatExcelButton module="inventory" tenTep="phieu-kho" chuanBi={xuatExcel} disabled={loading || filtered.length === 0} />
             <AdvancedFilter truong={LOC_PHIEU_KHO} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker available={STOCK_ENTRY_FILTERS} value={activeFilters} onChange={setFilters} onReset={resetFilters} />
             <ColumnPicker available={STOCK_ENTRY_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />

@@ -42,6 +42,9 @@ import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from 
 import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
 import { DocQuickView } from "@/components/ui/doc-quick-view"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napDong, napTenNguoi } from "@/lib/xuat-excel/nap"
+import { DONG_TRA_NCC, xuatTraHangNcc, type DongTraNcc } from "@/lib/xuat-excel/cac-man"
 import {
   PURCHASE_RETURN_COLUMNS,
   DEFAULT_PURCHASE_RETURN_COLUMNS,
@@ -119,7 +122,8 @@ export default function PurchaseReturnsPage() {
         // audit-ok: lỗi đi vào `res.error` ngay dưới.
         let q = supabase
           .from("supplier_returns")
-          .select("id, return_code, return_date, warehouse_zone, total, status, reason, notes, supplier:suppliers(id, name, code)", { count: "exact" })
+          /* subtotal · vat · discount · created_by: cho tệp Excel (chủ nhà 05/10/2026). */
+          .select("id, return_code, return_date, warehouse_zone, subtotal, vat, discount, total, status, reason, notes, created_by, supplier:suppliers(id, name, code)", { count: "exact" })
           .eq("org_id", user.org_id)
           .order("created_at", { ascending: false })
           .order("id")
@@ -191,6 +195,22 @@ export default function PurchaseReturnsPage() {
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
   }, [visibleColumns])
 
+  /**
+   * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp bộ lọc / ô tìm / trạng thái, theo đúng thứ tự đang xếp (`daXep`,
+   * không phải trang 20 dòng), kèm từng dòng hàng.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    const phieu = daXep
+    const [dong, ten] = await Promise.all([
+      napDong<DongTraNcc>(supabase, DONG_TRA_NCC, phieu.map((r) => r.id)),
+      napTenNguoi(supabase, phieu.map((r) => r.created_by)),
+    ])
+    return { sheets: xuatTraHangNcc(phieu, dong, ten), soPhieu: phieu.length, thieu: !!canhBao }
+  }
+  const nutXuat = (cls?: string) => (
+    <XuatExcelButton module="inventory" tenTep="tra-hang-ncc" chuanBi={xuatExcel} disabled={loading || shown.length === 0} className={cls} />
+  )
+
   if (authLoading) return <Skeleton className="h-96" />
 
   const xem = xemId ? rows.find((r) => r.id === xemId) ?? null : null
@@ -231,6 +251,7 @@ export default function PurchaseReturnsPage() {
         }
         toolbarEnd={
           <>
+            {nutXuat()}
             <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} />
             <ColumnPicker available={PURCHASE_RETURN_COLUMNS} value={visibleColumns} onChange={setColumns} onReset={resetColumns} />
           </>
@@ -253,7 +274,7 @@ export default function PurchaseReturnsPage() {
             onOpenChange: setFilterSheet,
             sheet: <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
           },
-          actions: nutTao,
+          actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
         loading={loading}
         isEmpty={shown.length === 0}

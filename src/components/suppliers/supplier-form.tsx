@@ -10,14 +10,9 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { PAYMENT_TERMS } from "@/lib/constants"
+import { SupplierFields } from "@/components/suppliers/supplier-fields"
+import { nccFormRong, nccPayload, type NccForm } from "@/lib/suppliers/form"
 import { errorMessage } from "@/lib/errors"
 
 /** NCC vừa tạo — đủ cho ô chọn NCC hiện ra và tự chọn. */
@@ -43,28 +38,18 @@ export function SupplierForm({
   const [loading, setLoading] = useState(false)
   /** Chống bấm Lưu hai lần — `loading` chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt. */
   const khoa = useRef(false)
-  const [form, setForm] = useState({
-    name: tenBanDau?.trim() ?? "",
-    code: "",
-    category: "",
-    contact_name: "",
-    phone: "",
-    email: "",
-    address: "",
-    tax_code: "",
-    bank_account: "",
-    bank_name: "",
-    payment_terms: "NET30",
-    notes: "",
-    is_verified: false,
-    is_active: true,
-  })
+  const [form, setForm] = useState<NccForm>(() => nccFormRong(tenBanDau ?? ""))
   const supabase = createClient()
   const router = useRouter()
   const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const { payload: duLieu, loi } = nccPayload(form)
+    if (loi) {
+      toast({ title: loi, variant: "destructive" })
+      return
+    }
     if (khoa.current) return
     khoa.current = true
     setLoading(true)
@@ -81,24 +66,7 @@ export function SupplierForm({
         code = `NCC-${String(nextNum).padStart(4, "0")}`
       }
 
-      const payload = {
-        org_id: user?.org_id,
-        name: form.name.trim(),
-        code,
-        category: form.category.trim() || null,
-        contact_name: form.contact_name.trim() || null,
-        phone: form.phone.trim() || null,
-        email: form.email.trim() || null,
-        address: form.address.trim() || null,
-        tax_code: form.tax_code.trim() || null,
-        bank_account: form.bank_account.trim() || null,
-        bank_name: form.bank_name.trim() || null,
-        payment_terms: form.payment_terms,
-        notes: form.notes.trim() || null,
-        is_verified: form.is_verified,
-        is_active: form.is_active,
-      }
-
+      const payload = { ...duLieu, name: form.name.trim(), org_id: user?.org_id, code }
       const { data, error } = await supabase.from("suppliers").insert(payload).select("id, code, name").single()
       if (error) throw error
 
@@ -126,155 +94,7 @@ export function SupplierForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6" data-testid="supplier-form">
-      {/* Basic info */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Tên nhà cung cấp *</Label>
-          <Input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-            placeholder="VD: Công ty TNHH ABC"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Mã NCC</Label>
-          <Input
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-            placeholder="Tự động: NCC-0001"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Danh mục</Label>
-          <Input
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            placeholder="VD: Thực phẩm, Hóa phẩm..."
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Điều khoản thanh toán</Label>
-          <Select value={form.payment_terms} onValueChange={(v) => setForm({ ...form, payment_terms: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PAYMENT_TERMS.map((pt) => (
-                <SelectItem key={pt.value} value={pt.value}>{pt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Contact info */}
-      <div>
-        <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-3">Thông tin liên hệ</h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Người liên hệ</Label>
-            <Input
-              value={form.contact_name}
-              onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
-              placeholder="Tên người liên hệ"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Số điện thoại</Label>
-            <Input
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              placeholder="0901000001"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="supplier@email.com"
-            />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label>Địa chỉ</Label>
-            <Textarea
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              placeholder="Số nhà, tên đường, quận/huyện..."
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Legal / bank info */}
-      <div>
-        <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-3">Thông tin pháp lý & ngân hàng</h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Mã số thuế</Label>
-            <Input
-              value={form.tax_code}
-              onChange={(e) => setForm({ ...form, tax_code: e.target.value })}
-              placeholder="VD: 0123456789"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Số tài khoản ngân hàng</Label>
-            <Input
-              value={form.bank_account}
-              onChange={(e) => setForm({ ...form, bank_account: e.target.value })}
-              placeholder="Số tài khoản"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Tên ngân hàng</Label>
-            <Input
-              value={form.bank_name}
-              onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
-              placeholder="VD: Vietcombank"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div className="space-y-2">
-        <Label>Ghi chú</Label>
-        <Textarea
-          value={form.notes}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          placeholder="Ghi chú thêm về nhà cung cấp..."
-          rows={3}
-        />
-      </div>
-
-      {/* Switches */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
-        <div className="flex items-center gap-3">
-          <Checkbox
-            id="is_verified"
-            checked={form.is_verified}
-            onCheckedChange={(checked) =>
-              setForm({ ...form, is_verified: checked === true })
-            }
-          />
-          <Label htmlFor="is_verified" className="cursor-pointer">
-            Đã xác minh
-          </Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            id="is_active"
-            checked={form.is_active}
-            onCheckedChange={(checked) =>
-              setForm({ ...form, is_active: checked })
-            }
-          />
-          <Label htmlFor="is_active" className="cursor-pointer">
-            Hoạt động
-          </Label>
-        </div>
-      </div>
+      <SupplierFields form={form} onChange={(p) => setForm((f) => ({ ...f, ...p }))} />
 
       {/* Actions */}
       <div className="flex gap-2 justify-end">

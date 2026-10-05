@@ -563,8 +563,8 @@ describe("Danh sách hóa đơn bán", () => {
      */
     expect(
       (L.match(/routeFilter !== "all" \? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED/g) ?? []).length,
-      "danh sách, phép đếm, phép cộng tiền và đầu nhóm ngày điện thoại phải cùng một phép chọn embed"
-    ).toBe(4)
+      "danh sách, phép đếm, phép cộng tiền, đầu nhóm ngày điện thoại và Xuất Excel (05/10/2026) phải cùng một phép chọn embed"
+    ).toBe(5)
     // Không chỗ nào dùng `!inner` vô điều kiện.
     expect(L).not.toMatch(/const cust = CUSTOMER_EMBED_INNER/)
   })
@@ -590,8 +590,8 @@ describe("Danh sách hóa đơn bán", () => {
   it("phép đếm dùng chung bộ lọc với danh sách", () => {
     const L = strip(LIST)
     expect(L).toContain("const applyFilters = useCallback(")
-    // Danh sách · phép đếm · phép cộng tiền · đầu nhóm ngày (rà soát 03/10/2026) — xem chốt embed ở trên.
-    expect((L.match(/applyFilters\(q as never\)/g) ?? []).length).toBe(4)
+    // Danh sách · phép đếm · phép cộng tiền · đầu nhóm ngày (rà soát 03/10/2026) · Xuất Excel (05/10/2026) — xem chốt embed ở trên.
+    expect((L.match(/applyFilters\(q as never\)/g) ?? []).length).toBe(5)
     // Số theo tuyến: cùng bộ lọc, chỉ bỏ chính bộ lọc tuyến.
     expect((L.match(/applyFilters\(q as never, true\)/g) ?? []).length).toBe(1)
   })

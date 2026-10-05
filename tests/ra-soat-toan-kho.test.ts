@@ -78,7 +78,6 @@ const CON_NO_GHI_KHONG_KIEM = [
   "src/app/(dashboard)/settings/org/page.tsx",
   "src/app/(dashboard)/settings/users/page.tsx",
   "src/app/(dashboard)/setup/page.tsx",
-  "src/app/(dashboard)/suppliers/[id]/page.tsx",
   "src/app/(dashboard)/suppliers/page.tsx",
   "src/components/customers/customer-form.tsx",
   // Dời từ customers/routes/page.tsx (03/10/2026): đổi mã tuyến kéo theo khách — 0 dòng là hợp lệ (tuyến chưa có khách).

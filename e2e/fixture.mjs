@@ -346,6 +346,42 @@ export const rpc = {
     for (const r of no) { r.sales_user_id = null; r.ve_npp_luc = u.left_at }
     return { khach, lich_tuyen: 0, so_khoan_no: no.length, tien_no: no.reduce((t, r) => t + (r.amount || 0) - (r.paid || 0), 0) }
   },
+  /* NCC (mig 232): đếm chứng từ chặn xoá; gộp = chuyển mọi chứng từ / mặt hàng / phân công NV sang NCC giữ lại,
+     chép ô hồ sơ còn trống, xoá NCC bị gộp. */
+  so_chung_tu_ncc: ({ p_supplier_id }, { db }) => {
+    const BANG = [["payables", "supplier_id", "dòng công nợ NCC"], ["products", "primary_supplier_id", "mặt hàng"],
+      ["purchase_invoices", "supplier_id", "phiếu nhập"], ["purchase_orders", "supplier_id", "đơn đặt hàng NCC"],
+      ["stock_entries", "supplier_id", "phiếu kho"], ["supplier_returns", "supplier_id", "phiếu trả NCC"]]
+    if (!(db.suppliers || []).some((s) => s.id === p_supplier_id)) throw Object.assign(new Error("KHONG_TIM_THAY_NCC"), { code: "P0001" })
+    const chi_tiet = BANG.map(([bang, cot, nhan]) => ({ bang, cot, nhan, so: (db[bang] || []).filter((r) => r[cot] === p_supplier_id).length }))
+      .filter((d) => d.so > 0)
+    const no = (db.payables || []).filter((r) => r.supplier_id === p_supplier_id && r.status !== "paid")
+    return {
+      tong: chi_tiet.reduce((t, d) => t + d.so, 0), chi_tiet,
+      nhan_vien: (db.user_suppliers || []).filter((r) => r.supplier_id === p_supplier_id).length,
+      so_khoan_no: no.length, con_no: no.reduce((t, r) => t + (Number(r.amount) || 0) - (Number(r.paid) || 0), 0),
+    }
+  },
+  gop_nha_cung_cap: ({ p_tu, p_vao }, { db }) => {
+    const tu = (db.suppliers || []).find((s) => s.id === p_tu)
+    const vao = (db.suppliers || []).find((s) => s.id === p_vao)
+    if (!p_tu || p_tu === p_vao) throw Object.assign(new Error("GOP_NCC_TRUNG: chọn hai nhà cung cấp khác nhau"), { code: "P0001" })
+    if (!tu || !vao) throw Object.assign(new Error("KHONG_TIM_THAY_NCC"), { code: "P0001" })
+    const da_chuyen = []
+    for (const [bang, cot] of [["payables", "supplier_id"], ["products", "primary_supplier_id"], ["purchase_invoices", "supplier_id"],
+      ["purchase_orders", "supplier_id"], ["stock_entries", "supplier_id"], ["supplier_returns", "supplier_id"]]) {
+      const ds = (db[bang] || []).filter((r) => r[cot] === p_tu)
+      for (const r of ds) r[cot] = p_vao
+      if (ds.length) da_chuyen.push({ bang, cot, so: ds.length })
+    }
+    const nv = new Set((db.user_suppliers || []).filter((r) => r.supplier_id === p_vao).map((r) => r.user_id))
+    db.user_suppliers = (db.user_suppliers || []).flatMap((r) => r.supplier_id !== p_tu ? [r] : nv.has(r.user_id) ? [] : [{ ...r, supplier_id: p_vao }])
+    for (const k of ["contact_name", "phone", "email", "address", "tax_code", "bank_account", "bank_name", "legal_name"]) {
+      if (!vao[k] && tu[k]) vao[k] = tu[k]
+    }
+    db.suppliers = db.suppliers.filter((s) => s.id !== p_tu)
+    return { vao: p_vao, tu_ten: tu.name, tu_ma: tu.code, da_chuyen, nhan_vien: 0, da_xoa: true }
+  },
   /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số) hoặc tên — màn thêm khách chặn tạo trùng số. */
   search_customer_dupes: ({ p_q }, { db }) => {
     const so = String(p_q ?? "").replace(/\D/g, "")

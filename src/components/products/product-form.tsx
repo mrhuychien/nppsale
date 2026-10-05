@@ -185,7 +185,7 @@ export function ProductForm({
    *   không hiện ô, và KHÔNG gửi `category` lúc lưu — sửa hàng cũ giữ nguyên nhóm đang có trong sổ (cột vẫn còn).
    */
   /** Danh sách NCC để gắn vào SP (bắt buộc 1). */
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; is_active?: boolean | null }[]>([])
 
   const orgId = user?.org_id
   useEffect(() => {
@@ -193,13 +193,13 @@ export function ProductForm({
     let cancelled = false
     supabase
       .from("suppliers")
-      .select("id, name")
+      .select("id, name, is_active")
       .eq("org_id", orgId)
       .order("name")
       .then((supRes) => {
         if (supRes.error) console.error("[products/product-form] truy vấn lỗi:", supRes.error.message)
         if (cancelled) return
-        setSuppliers((supRes.data as { id: string; name: string }[]) || [])
+        setSuppliers((supRes.data as { id: string; name: string; is_active?: boolean | null }[]) || [])
       })
     return () => {
       cancelled = true
@@ -513,7 +513,7 @@ interface SecondaryUnit {
 interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
-  suppliers: { id: string; name: string }[]
+  suppliers: { id: string; name: string; is_active?: boolean | null }[]
   /** NCC vừa tạo tại chỗ — ghép vào danh sách để ô chọn hiện được tên. */
   onNccVuaTao: (ncc: { id: string; name: string }) => void
   openSection: Record<string, boolean>
@@ -598,7 +598,10 @@ function InfoTab({
               {/* Ô tìm (chủ nhà 03/10/2026, Update 3.10) — cuối danh sách là "+ Tạo nhà cung cấp mới", tạo tại chỗ. */}
               <SearchSelect
                 id="primary_supplier"
-                options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+                /* NCC "Ngừng hợp tác" ẩn khỏi ô chọn — trừ NCC hàng đang gắn (mig 232). */
+                options={suppliers
+                  .filter((s) => s.is_active !== false || s.id === form.primary_supplier_id)
+                  .map((s) => ({ id: s.id, label: s.name }))}
                 valueId={String(form.primary_supplier_id || "")}
                 onPick={(o) => setForm((f) => ({ ...f, primary_supplier_id: o?.id ?? "" }))}
                 placeholder="Gõ tên NCC…"

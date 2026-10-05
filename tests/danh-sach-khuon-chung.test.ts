@@ -156,7 +156,8 @@ describe("/finance/cash-receipts — theo khuôn đơn / hóa đơn", () => {
   })
   it("một bộ lọc cho danh sách, đếm và tổng", () => {
     const n = PHIEU_THU.match(/applyFilters\(q as never\)/g)?.length ?? 0
-    expect(n).toBe(3)
+    // Bốn: thêm nút Xuất Excel (chủ nhà 05/10/2026) — xuất đúng bộ lọc của danh sách, qua CÙNG hàm lọc.
+    expect(n).toBe(4)
   })
   it("tổng cộng expected_amount của CẢ bộ lọc, bỏ phiếu huỷ; chạm trần → null", () => {
     const tong = cat(PHIEU_THU, "const fetchTotal = useCallback", "}, [status, applyFilters, searchReady])")

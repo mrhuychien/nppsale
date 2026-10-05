@@ -35,12 +35,14 @@ import { ColumnPicker, FilterPicker } from "@/components/ui/list-view-toolbar"
 import { BulkActionsBar, type BulkAction } from "@/components/ui/bulk-actions-bar"
 import { SupplierImportDialog } from "@/components/suppliers/supplier-import-dialog"
 import { MobileSuppliersScreen } from "@/components/suppliers/mobile-suppliers-screen"
+import { MergeSupplierDialog } from "@/components/suppliers/merge-supplier-dialog"
+import { duocGopNcc } from "@/lib/suppliers/chi-tiet"
 import { MobileFilterBar } from "@/components/ui/mobile-filter-bar"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { timTrungTen, nhanTrungTen, nhanSoNcc, type NccTen } from "@/lib/suppliers/mobile-list"
 import { nhanXemThem } from "@/lib/products/mobile-list"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Factory, CheckCircle2, Power, PowerOff, Upload } from "lucide-react"
+import { Plus, Factory, CheckCircle2, Power, PowerOff, Upload, Merge } from "lucide-react"
 import type { Supplier } from "@/types"
 import {
   SUPPLIER_COLUMNS,
@@ -66,6 +68,7 @@ export default function SuppliersPage() {
   const [allCategories, setAllCategories] = useState<string[]>([])
   const [importOpen, setImportOpen] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [gopOpen, setGopOpen] = useState(false)
   const pg = usePagination()
   /** Thứ tự người dùng bấm trên tiêu đề — gửi xuống máy chủ (`SAP_XEP_NCC`). */
   const [sort, setSort] = useState<DocSort | null>(null)
@@ -73,7 +76,7 @@ export default function SuppliersPage() {
   const locNC = useAdvancedFilter("suppliers", LOC_NHA_CUNG_CAP)
   /** Toàn bộ tên NCC — để phát hiện trùng tên (thiết kế "ds-ncc", 30/09/2026). */
   const [tatCaTen, setTatCaTen] = useState<NccTen[]>([])
-  /** Bấm "Gộp" ở băng trùng tên → lọc về các NCC trùng tên (app chưa có luồng gộp NCC). */
+  /** Bấm "Gộp" ở băng trùng tên → lọc về các NCC trùng tên; gộp thật ở nút "Gộp" khi chọn 2+ NCC (mig 232). */
   const [locTrung, setLocTrung] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -225,7 +228,22 @@ export default function SuppliersPage() {
   }
 
   const canEdit = !!user && hasPermission(user.role, "inventory", "update")
-  const bulkActions: BulkAction[] = canEdit
+  /* Gộp NCC (chủ nhà 05/10/2026, RPC `gop_nha_cung_cap`): Chủ NPP / Quản lý / Kế toán. */
+  const canMerge = duocGopNcc(user?.role)
+  const daChon = suppliers.filter((s) => selectedIds.has(s.id))
+  const bulkActions: BulkAction[] = [
+    ...(canMerge
+      ? [{
+          key: "merge",
+          label: "Gộp",
+          icon: Merge,
+          onClick: () => setGopOpen(true),
+          variant: "outline" as const,
+          disabled: daChon.length < 2,
+          disabledReason: "Chọn ít nhất hai nhà cung cấp để gộp",
+        }]
+      : []),
+    ...(canEdit
     ? [
         {
           key: "activate",
@@ -233,7 +251,7 @@ export default function SuppliersPage() {
           icon: Power,
           onClick: () => setActiveBulk(true),
           loading: bulkSaving,
-          variant: "default",
+          variant: "default" as const,
         },
         {
           key: "deactivate",
@@ -241,10 +259,11 @@ export default function SuppliersPage() {
           icon: PowerOff,
           onClick: () => setActiveBulk(false),
           loading: bulkSaving,
-          variant: "outline",
+          variant: "outline" as const,
         },
       ]
-    : []
+    : []),
+  ]
 
   /* Số trên dải trạng thái — đếm ở máy chủ, cùng ô tìm + danh mục + lọc nâng cao. */
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -273,7 +292,7 @@ export default function SuppliersPage() {
 
   const columns = useMemo(() => {
     const cols: Array<DocColumn<Supplier> & { k?: SupplierColumnKey }> = [
-      ...(canEdit
+      ...(canEdit || canMerge
         ? [{
             key: "select",
             label: (
@@ -324,7 +343,7 @@ export default function SuppliersPage() {
       },
     ]
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
-  }, [visibleColumns, canEdit, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleColumns, canEdit, canMerge, selectedIds, allSelected, someSelected, filtered]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -489,6 +508,16 @@ export default function SuppliersPage() {
         actions={bulkActions}
         entityLabel="nhà cung cấp"
       />
+
+      {canMerge && (
+        <MergeSupplierDialog
+          open={gopOpen}
+          onOpenChange={setGopOpen}
+          nguon={daChon.map((s) => ({ id: s.id, name: s.name, code: s.code, is_active: s.is_active }))}
+          chonTrongNguon
+          onDone={(vao) => router.push(`/suppliers/${vao}`)}
+        />
+      )}
 
       <SupplierImportDialog
         open={importOpen}

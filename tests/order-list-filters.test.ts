@@ -269,7 +269,8 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
     const uses = ORDERS.match(/applyCommonFilters\(/g) ?? []
     // Bốn: thêm lượt đếm gom nhóm một lượt (mig 206, 27/09/2026) — vẫn đi qua CÙNG hàm lọc.
     // Năm: đầu nhóm ngày điện thoại đếm trên máy chủ (rà soát 03/10/2026) — cũng CÙNG hàm lọc.
-    expect(uses.length, "phải gọi ở danh sách, phép đếm (gom nhóm + kiểu cũ), phép cộng tiền và đầu nhóm ngày").toBe(5)
+    // Sáu: nút Xuất Excel (chủ nhà 05/10/2026) xuất đúng bộ lọc đang xem — cũng CÙNG hàm lọc.
+    expect(uses.length, "phải gọi ở danh sách, phép đếm (gom nhóm + kiểu cũ), phép cộng tiền, đầu nhóm ngày và Xuất Excel").toBe(6)
   })
 
   /**

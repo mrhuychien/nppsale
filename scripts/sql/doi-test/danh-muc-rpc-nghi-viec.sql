@@ -47,11 +47,11 @@ DECLARE ds text; n int;
     'cancel_stock_entry','cancel_supplier_return','cap_nhat_luot_soan','cho_nhan_vien_nghi','claim_customer_for_me',
     'close_order','committed_stock_by_product','complete_purchase_invoice','complete_return','complete_supplier_return',
     'compute_payroll_run','confirm_driver_handover','create_cash_receipt','customer_org_id','danh_dau_soan_hang',
-    'get_invoiceable_lines','giao_cong_no_npp','heartbeat_entity_lock','hoan_tat_luot_soan','huy_luot_soan',
+    'get_invoiceable_lines','giao_cong_no_npp','gop_nha_cung_cap','heartbeat_entity_lock','hoan_tat_luot_soan','huy_luot_soan',
     'lock_payroll_run','lookup_email_by_identifier','my_payslips','my_sales_target','post_invoice','post_stock_adjustment',
     'post_stock_export','post_stock_import','post_stock_issue','post_stock_transfer','record_payable_payment',
     'refresh_warehouse_zones','reissue_invoice','reject_stock_adjustment','release_entity_lock','release_stale_entity_locks',
-    'save_pos_return','search_customer_dupes','so_chung_tu_nhan_vien','tao_luot_soan','user_assigned_customer_ids',
+    'save_pos_return','search_customer_dupes','so_chung_tu_ncc','so_chung_tu_nhan_vien','tao_luot_soan','user_assigned_customer_ids',
     'user_has_permission','user_is_assigned_to_customer','user_org_id','user_role','user_sells_to_customer','void_cash_receipt'];
 BEGIN
   SELECT string_agg(p.oid::regprocedure::text, ', ') INTO ds

@@ -12,7 +12,27 @@ if ! pg_restore --dbname 'postgresql://postgres@localhost:5433/verify' \
   # Classify locally using fixed patterns only; never reflect any SQL, names,
   # row contents or raw lines into Actions output/artifacts.
   if grep -Eq 'role .* does not exist|extension .* is not available|could not open extension control file|schema .* does not exist|function .* does not exist|type .* does not exist' "$diagnostic"; then
-    printf '::error::BACKUP_RESTORE_TARGET_INCOMPATIBLE (missing dependency; upload blocked)\n'
+    dependency=unknown
+    if grep -Eq 'role .* does not exist' "$diagnostic"; then
+      dependency=role
+    elif grep -Eq 'extension .* is not available|could not open extension control file' "$diagnostic"; then
+      dependency=extension
+    elif grep -Eq 'schema .* does not exist' "$diagnostic"; then
+      dependency=schema
+    elif grep -Eq 'function .* does not exist' "$diagnostic"; then
+      dependency=function
+    elif grep -Eq 'type .* does not exist' "$diagnostic"; then
+      dependency=type
+    fi
+    printf '::error::BACKUP_RESTORE_TARGET_INCOMPATIBLE (missing dependency: %s; upload blocked)\n' "$dependency"
+    # Only report fixed, public Supabase role names; never print raw errors.
+    if [[ "$dependency" == role ]]; then
+      for role in anon authenticated service_role authenticator supabase_auth_admin supabase_storage_admin supabase_admin; do
+        if grep -Fq "role \"$role\" does not exist" "$diagnostic"; then
+          printf '::notice::Missing standard Supabase role: %s\n' "$role"
+        fi
+      done
+    fi
   else
     printf '::error::BACKUP_RESTORE_FAILED (upload blocked)\n'
   fi

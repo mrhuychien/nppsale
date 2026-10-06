@@ -22,7 +22,12 @@ const phieuNhap = async (vat: number) => {
     created_at: "2026-09-20T08:00:00Z", supplier: { name: "Vinamilk", code: "NCC1" }, lines: [DONG],
   }])
 }
-const goiRpc = async (fn: string) => (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith(`/rpc/${fn}`))
+/* ⚠ Lọc theo phiếu của spec này — nhật ký là CHUNG, spec khác chạy song song cũng gọi cùng RPC. */
+const goiRpc = async (fn: string) =>
+  (await nhatKy()).filter(
+    (r) => r.method === "POST" && r.path.endsWith(`/rpc/${fn}`) &&
+      (fn !== "sua_phieu_nhap" || (r.body as { p_invoice_id?: string } | null)?.p_invoice_id === "pi-vat")
+  )
 
 test.afterAll(async () => {
   await api("purchase_invoices?id=eq.pi-vat", "DELETE")
@@ -31,12 +36,13 @@ test.afterAll(async () => {
 
 test("POS nhập hàng: phiếu VAT 10% (30.000) nạp lại đúng 10%, lưu giữ thuế", async ({ page }) => {
   await phieuNhap(30000)
+  const daGoi = (await goiRpc("sua_phieu_nhap")).length
   await dangNhap(page)
   await page.goto("/pos/nhap-hang/pi-vat/sua")
   await expect(page.getByLabel("Giá nhập dòng 1")).toHaveValue("150.000")
   await expect(page.locator("#p-vat")).toHaveValue("10")
   await page.getByRole("button", { name: "Lưu sửa" }).click()
-  await expect.poll(async () => (await goiRpc("sua_phieu_nhap")).length).toBeGreaterThan(0)
+  await expect.poll(async () => (await goiRpc("sua_phieu_nhap")).length).toBeGreaterThan(daGoi)
   const body = (await goiRpc("sua_phieu_nhap")).at(-1)?.body as { p_head: Record<string, unknown> }
   expect(body.p_head.vat_override).toBe(30000)
 })
@@ -64,12 +70,13 @@ test("POS trả NCC: phiếu có thuế nạp lại mức, lưu gửi vat_overri
     supplier: { name: "Vinamilk", code: "NCC1" },
     lines: [{ product_id: SUA, unit_name: "hộp", quantity: 5, unit_price: 20000, line_discount: 0, conversion_factor: 1, notes: null, product: { name: "Sữa hộp", sku: "SUA1" } }],
   }])
+  const daTra = (await goiRpc("complete_supplier_return")).length
   await dangNhap(page)
   await page.goto("/pos/tra-ncc/sr-vat-1/sua")
   await expect(page.locator("#sr-vat")).toHaveValue("10")
   await expect(page.getByText("110.000").first()).toBeVisible()
   await page.getByRole("button", { name: "Ghi nhận & xuất kho" }).click()
-  await expect.poll(async () => (await goiRpc("complete_supplier_return")).length).toBeGreaterThan(0)
+  await expect.poll(async () => (await goiRpc("complete_supplier_return")).length).toBeGreaterThan(daTra)
   const ghi = (await nhatKy()).filter((r) => r.method === "PATCH" && r.path.includes("supplier_returns")).at(-1)
   expect((ghi?.body as Record<string, unknown>).vat_override).toBe(10000)
 })

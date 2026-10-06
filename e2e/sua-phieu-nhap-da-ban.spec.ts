@@ -28,7 +28,12 @@ test.afterAll(async () => {
   await api("purchase_invoices?id=eq.pi1", "PATCH", { supplier_id: null, total: 300000, lines: null })
 })
 
-const goiRpc = async (fn: string) => (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith(`/rpc/${fn}`))
+/* ⚠ Lọc theo phiếu của spec này — nhật ký là CHUNG, spec khác chạy song song cũng gọi cùng RPC. */
+const goiRpc = async (fn: string) =>
+  (await nhatKy()).filter(
+    (r) => r.method === "POST" && r.path.endsWith(`/rpc/${fn}`) &&
+      (fn !== "sua_phieu_nhap" || (r.body as { p_invoice_id?: string } | null)?.p_invoice_id === "pi1")
+  )
 
 test.describe("điện thoại", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
@@ -65,6 +70,7 @@ test.describe("điện thoại", () => {
 
 test("POS máy tính: phiếu đã hoàn thành có nút Lưu sửa, lưu gọi sua_phieu_nhap", async ({ page }) => {
   const truoc = (await goiRpc("cancel_purchase_invoice")).length
+  const daGoi = (await goiRpc("sua_phieu_nhap")).length
   await dangNhap(page)
   await page.goto("/pos/nhap-hang/pi1/sua")
   const gia = page.getByLabel("Giá nhập dòng 1")
@@ -73,7 +79,8 @@ test("POS máy tính: phiếu đã hoàn thành có nút Lưu sửa, lưu gọi 
   await gia.fill("")
   await gia.pressSequentially("155000", { delay: 30 })
   await page.getByRole("button", { name: "Lưu sửa" }).click()
-  await expect.poll(async () => (await goiRpc("sua_phieu_nhap")).length).toBeGreaterThan(0)
+  // Chờ lần gọi MỚI — nhật ký chung còn lần gọi của test trước.
+  await expect.poll(async () => (await goiRpc("sua_phieu_nhap")).length).toBeGreaterThan(daGoi)
   const body = (await goiRpc("sua_phieu_nhap")).at(-1)?.body as { p_lines: Array<Record<string, unknown>> }
   expect(body.p_lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 155000, quantity: 2 })
   expect((await goiRpc("cancel_purchase_invoice")).length).toBe(truoc)

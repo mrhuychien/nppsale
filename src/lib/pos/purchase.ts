@@ -205,6 +205,35 @@ export interface PurchaseTotals {
  * Hai ô cạnh nhau mà tính trên hai nền khác nhau là không ai kiểm lại
  * được bằng tay.
  */
+/* ==================================================================
+ * THUẾ GTGT CẢ PHIẾU KHI NẠP LẠI (chủ nhà 06/10/2026: "vá luôn vat đi")
+ * ================================================================== */
+
+/** Các mức thuế chọn được ở POS (phần trăm). */
+export const MUC_VAT_POS = [0, 5, 8, 10] as const
+
+/**
+ * Phiếu đã lưu mang TIỀN thuế (`vat_override ?? vat`), màn POS chọn MỨC %. Nạp lại: tiền thuế khớp một mức (lệch ≤ 1đ
+ * do làm tròn) → chọn mức đó; không khớp (số gõ tay theo hoá đơn giấy NCC, hoặc thuế từng dòng của phiếu cũ) → GIỮ
+ * NGUYÊN SỐ TIỀN (`coDinh`).
+ * ⚠ Trước đây POS không nạp thuế: sửa phiếu có VAT là lưu lại với thuế 0 — công nợ NCC hụt đúng tiền thuế.
+ */
+export function vatNapLai(vat: number | string | null | undefined, nenTinhThue: number): { rate: number; coDinh: number | null } {
+  const v = Math.round(Number(vat) || 0)
+  if (v <= 0) return { rate: 0, coDinh: null }
+  const nen = Math.max(0, Number(nenTinhThue) || 0)
+  for (const r of MUC_VAT_POS) {
+    if (r > 0 && Math.abs(Math.round((nen * r) / 100) - v) <= 1) return { rate: r, coDinh: null }
+  }
+  return { rate: 0, coDinh: v }
+}
+
+/** Tiền thuế: số giữ theo phiếu thắng mức %. */
+export function tienVatPos(nenTinhThue: number, rate: number | undefined, coDinh?: number | null): number {
+  if (coDinh != null) return Math.max(0, Math.round(Number(coDinh) || 0))
+  return Math.round((Math.max(0, Number(nenTinhThue) || 0) * Math.max(0, Number(rate) || 0)) / 100)
+}
+
 export function purchaseTotals(i: {
   lines: readonly PosTotalLine[]
   docDiscount?: DiscountInput
@@ -212,11 +241,13 @@ export function purchaseTotals(i: {
   otherCost?: DiscountInput
   /** Thuế suất đầu vào, đơn vị phần trăm. */
   vatRate?: number
+  /** Tiền thuế giữ theo phiếu đã lưu (không khớp mức % nào) — thắng `vatRate`. */
+  vatCoDinh?: number | null
 }): PurchaseTotals {
   const t = posTotals({ lines: i.lines, docDiscount: i.docDiscount })
   const otherCost = i.otherCost ? discountAmount(i.otherCost, t.gross) : 0
   const sauGiam = Math.max(0, t.gross - t.lineDiscount - t.docDiscount)
-  const vat = Math.round((sauGiam * Math.max(0, Number(i.vatRate) || 0)) / 100)
+  const vat = tienVatPos(sauGiam, i.vatRate, i.vatCoDinh)
   return {
     goods: t.gross,
     lineDiscount: t.lineDiscount,
@@ -236,6 +267,8 @@ export interface SupplierReturnTotals {
   lineDiscount: number
   /** Chi phí trả hàng — TRỪ đi. */
   fee: number
+  /** Thuế GTGT cả phiếu. */
+  vat: number
   /** NCC cần hoàn. Kẹp về 0. */
   dueFromSupplier: number
 }
@@ -257,17 +290,22 @@ export interface SupplierReturnTotals {
 export function supplierReturnTotals(i: {
   lines: readonly PosTotalLine[]
   fee?: DiscountInput
+  /** Thuế GTGT cả phiếu (%), tính trên tiền hàng trả đã trừ giảm giá dòng — như `complete_supplier_return`. */
+  vatRate?: number
+  vatCoDinh?: number | null
 }): SupplierReturnTotals {
   const t = posTotals({ lines: i.lines })
   const sauGiam = Math.max(0, t.gross - t.lineDiscount)
   const fee = i.fee ? discountAmount(i.fee, t.gross) : 0
+  const vat = tienVatPos(sauGiam, i.vatRate, i.vatCoDinh)
   return {
     goods: t.gross,
     lineDiscount: t.lineDiscount,
     fee,
+    vat,
     // ⚠ Kẹp về 0 — chi phí lớn hơn tiền hàng thì NCC không hoàn đồng
-    //   nào, chứ không phải mình nợ thêm NCC qua ô chi phí.
-    dueFromSupplier: Math.max(0, sauGiam - fee),
+    //   nào, chứ không phải mình nợ thêm NCC qua ô chi phí. Máy chủ cũng tính `GREATEST(0, sub + vat − discount)`.
+    dueFromSupplier: Math.max(0, sauGiam + vat - fee),
   }
 }
 

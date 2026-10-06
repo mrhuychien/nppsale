@@ -50,7 +50,7 @@ import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
-  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock,
+  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock, vatNapLai, MUC_VAT_POS,
 } from "@/lib/pos/purchase"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -140,6 +140,10 @@ export function SupplierReturnScreen({
   const [lines, setLines] = useState<PosLine[]>([])
   const [ncc, setNcc] = useState<PosPartner | null>(null)
   const [phi, setPhi] = useState<DiscountInput>({ value: 0, unit: "vnd" })
+  /* Thuế GTGT cả phiếu (chủ nhà 06/10/2026: "vá luôn vat đi") — trước đây màn này luôn gửi thuế 0: sửa một phiếu trả
+     có VAT (lập trên điện thoại) là rơi mất thuế, khoản giảm công nợ NCC hụt đúng tiền thuế. */
+  const [vatRate, setVatRate] = useState(0)
+  const [vatCoDinh, setVatCoDinh] = useState<number | null>(null)
   const [hoan, setHoan] = useState<HoanTien>("cong-no")
   const [lyDo, setLyDo] = useState("damaged")
   const [ghiChu, setGhiChu] = useState("")
@@ -159,8 +163,10 @@ export function SupplierReturnScreen({
       supplierReturnTotals({
         lines: lines.map((l) => ({ qty: l.qty, price: l.price, discount: l.discount })),
         fee: phi,
+        vatRate,
+        vatCoDinh,
       }),
-    [lines, phi]
+    [lines, phi, vatRate, vatCoDinh]
   )
 
   const khoa = mode === "sua" ? supplierReturnCancelLock({ creditOffset, lotClosed }) : null
@@ -169,8 +175,8 @@ export function SupplierReturnScreen({
 
   usePosDocLabel("PRET", returnId, slipCode)
   const chuKy = useMemo(
-    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, phi, lyDo, ghiChu, kho, thoiDiem]),
-    [lines, ncc?.id, phi, lyDo, ghiChu, kho, thoiDiem]
+    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, phi, vatRate, vatCoDinh, lyDo, ghiChu, kho, thoiDiem]),
+    [lines, ncc?.id, phi, vatRate, vatCoDinh, lyDo, ghiChu, kho, thoiDiem]
   )
   useEffect(() => {
     if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
@@ -300,7 +306,7 @@ export function SupplierReturnScreen({
         const { data, error } = await sb
           .from("supplier_returns")
           .select(
-            "id, return_code, supplier_id, return_date, warehouse_zone, reason, discount, notes, status, " +
+            "id, return_code, supplier_id, return_date, warehouse_zone, reason, discount, vat, vat_override, notes, status, " +
               "supplier:suppliers(name, code), " +
               "lines:supplier_return_lines(product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, notes, product:products(name, sku))"
           )
@@ -311,6 +317,7 @@ export function SupplierReturnScreen({
         const r = (data as unknown) as {
           return_code: string | null; supplier_id: string; return_date: string
           warehouse_zone: string | null; reason: string | null; discount: number | null; notes: string | null
+          vat?: number | null; vat_override?: number | null
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
@@ -323,6 +330,15 @@ export function SupplierReturnScreen({
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
         setThoiDiem(r.return_date || homNay())
         setPhi({ value: Number(r.discount) || 0, unit: "vnd" })
+        /* Nạp lại thuế: nền = Σ(SL × giá − giảm dòng), như `complete_supplier_return` (chi phí trả hàng trừ SAU thuế). */
+        {
+          const nen = (r.lines ?? []).reduce(
+            (s, x) => s + (Number(x.quantity) || 0) * (Number(x.unit_price) || 0) - (Number(x.line_discount) || 0), 0
+          )
+          const thue = vatNapLai(r.vat_override ?? r.vat, nen)
+          setVatRate(thue.rate)
+          setVatCoDinh(thue.coDinh)
+        }
         setKho(r.warehouse_zone || "date")
         if (r.reason) setLyDo(r.reason)
         setGhiChu(r.notes || "")
@@ -442,7 +458,7 @@ export function SupplierReturnScreen({
           lines,
           complete,
           subtotal: t.goods - t.lineDiscount,
-          vat: 0,
+          vat: t.vat,
           total: t.dueFromSupplier,
         })
         setMocChuaLuu(chuKy)
@@ -742,6 +758,25 @@ export function SupplierReturnScreen({
               <span className="n">− {formatCurrency(t.fee)} trừ đi</span>
             </div>
             <MoneyRow label="Giảm giá dòng" value={t.lineDiscount} tone="muted" />
+            <div className="flex items-center gap-2 py-[5px]">
+              <label htmlFor="sr-vat" className="flex-grow text-[13px] text-[var(--pos-muted)]">
+                Thuế GTGT
+              </label>
+              <select
+                id="sr-vat"
+                value={vatCoDinh != null ? "giu" : String(vatRate)}
+                onChange={(e) => {
+                  if (e.target.value === "giu") return
+                  setVatCoDinh(null)
+                  setVatRate(Number(e.target.value))
+                }}
+                className="h-[30px] w-[96px] rounded-md border border-[var(--pos-edge)] bg-white px-1.5 text-[12.5px]"
+              >
+                {vatCoDinh != null && <option value="giu">Theo phiếu</option>}
+                {MUC_VAT_POS.map((v) => <option key={v} value={v}>{v}%</option>)}
+              </select>
+              <span className="n w-[84px] text-right text-[13.5px]">{formatCurrency(t.vat)}</span>
+            </div>
 
             <TotalsHero
               label="NCC cần hoàn"

@@ -44,7 +44,7 @@ import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
-  purchaseTotals, generatedLotCode, purchaseCancelLock,
+  purchaseTotals, generatedLotCode, purchaseCancelLock, vatNapLai, MUC_VAT_POS,
 } from "@/lib/pos/purchase"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -117,6 +117,8 @@ export function PurchaseScreen({
   const [maDatHang, setMaDatHang] = useState("")
   const [docDiscount, setDocDiscount] = useState<DiscountInput>({ value: 0, unit: "vnd" })
   const [vatRate, setVatRate] = useState(0)
+  /** Tiền thuế giữ theo phiếu đã lưu khi nó không khớp mức % nào (`vatNapLai`) — null = tính theo mức. */
+  const [vatCoDinh, setVatCoDinh] = useState<number | null>(null)
   const [ghiChu, setGhiChu] = useState("")
   /* ⚠ Kho nhập mặc định KHO BÁN — hàng mới về là hàng bán được. */
   const [kho, setKho] = useState("sale")
@@ -138,14 +140,15 @@ export function PurchaseScreen({
         lines: lines.map((l) => ({ qty: l.qty, price: l.price, discount: l.discount })),
         docDiscount,
         vatRate,
+        vatCoDinh,
       }),
-    [lines, docDiscount, vatRate]
+    [lines, docDiscount, vatRate, vatCoDinh]
   )
 
   usePosDocLabel("PUR", receiptId, slipCode)
   const chuKy = useMemo(
-    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, soHdDauVao, docDiscount, vatRate, ghiChu, kho, thoiDiem]),
-    [lines, ncc?.id, soHdDauVao, docDiscount, vatRate, ghiChu, kho, thoiDiem]
+    () => JSON.stringify([lines.map((l) => [l.productId, l.unit, l.qty, l.price, l.discount]), ncc?.id ?? null, soHdDauVao, docDiscount, vatRate, vatCoDinh, ghiChu, kho, thoiDiem]),
+    [lines, ncc?.id, soHdDauVao, docDiscount, vatRate, vatCoDinh, ghiChu, kho, thoiDiem]
   )
   useEffect(() => {
     if (daNap && mocChuaLuu === null) setMocChuaLuu(chuKy)
@@ -297,7 +300,7 @@ export function PurchaseScreen({
         const sb = createClient()
         const { data, error } = await sb
           .from("purchase_invoices")
-          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, notes, product:products(name, sku))")
+          .select("id, receipt_code, supplier_id, invoice_number, invoice_date, warehouse_zone, discount, vat, vat_override, notes, status, supplier:suppliers(name, code), lines:purchase_invoice_lines(id, product_id, unit_name, quantity, unit_price, line_discount, conversion_factor, notes, product:products(name, sku))")
           .eq("id", receiptId)
           .maybeSingle()
         if (huy) return
@@ -305,6 +308,7 @@ export function PurchaseScreen({
         const r = (data as unknown) as {
           receipt_code: string | null; supplier_id: string; invoice_number: string | null
           invoice_date: string; warehouse_zone: string | null; discount: number | null; notes: string | null
+          vat?: number | null; vat_override?: number | null
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
@@ -321,6 +325,16 @@ export function PurchaseScreen({
         setKho(r.warehouse_zone || "sale")
         setGhiChu(r.notes || "")
         setDocDiscount({ value: Number(r.discount) || 0, unit: "vnd" })
+        /* ⚠ NẠP LẠI THUẾ (chủ nhà 06/10/2026: "vá luôn vat đi") — trước đây bỏ qua, sửa phiếu có VAT là lưu lại thuế 0
+           và công nợ NCC hụt đúng tiền thuế. Nền tính thuế = Σ(SL × giá − giảm dòng) − giảm phiếu. */
+        {
+          const nen =
+            (r.lines ?? []).reduce((s, x) => s + (Number(x.quantity) || 0) * (Number(x.unit_price) || 0) - (Number(x.line_discount) || 0), 0) -
+            (Number(r.discount) || 0)
+          const thue = vatNapLai(r.vat_override ?? r.vat, nen)
+          setVatRate(thue.rate)
+          setVatCoDinh(thue.coDinh)
+        }
         setLines(
           (r.lines ?? []).map((x) => ({
             key: newKey(),
@@ -671,11 +685,17 @@ export function PurchaseScreen({
                 </label>
                 <select
                   id="p-vat"
-                  value={vatRate}
-                  onChange={(e) => setVatRate(Number(e.target.value))}
-                  className="h-[30px] w-[74px] rounded-md border border-[var(--pos-edge)] bg-white px-1.5 text-[12.5px]"
+                  value={vatCoDinh != null ? "giu" : String(vatRate)}
+                  onChange={(e) => {
+                    if (e.target.value === "giu") return
+                    setVatCoDinh(null)
+                    setVatRate(Number(e.target.value))
+                  }}
+                  className="h-[30px] w-[96px] rounded-md border border-[var(--pos-edge)] bg-white px-1.5 text-[12.5px]"
                 >
-                  {[0, 5, 8, 10].map((v) => <option key={v} value={v}>{v}%</option>)}
+                  {/* Tiền thuế gõ tay theo hoá đơn NCC (không khớp mức nào) — giữ nguyên số tiền. */}
+                  {vatCoDinh != null && <option value="giu">Theo phiếu</option>}
+                  {MUC_VAT_POS.map((v) => <option key={v} value={v}>{v}%</option>)}
                 </select>
                 <span className="n w-[84px] text-right text-[13.5px]">{formatCurrency(t.vat)}</span>
               </div>

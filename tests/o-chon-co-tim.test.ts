@@ -21,6 +21,7 @@ const BO_NGAN = new Set([
   "units",        // đơn vị của một mặt hàng: 1–3
   "l.units",
   "options",      // SubHeaderSelect: kho (2) — nơi gọi truyền
+  "MUC_VAT_POS",  // 4 mức thuế GTGT cố định (0 / 5 / 8 / 10%) của POS nhập hàng / trả NCC
 ])
 
 /** Bỏ chú thích — chữ "`<select>`" trong một lời giải thích không phải ô chọn. */

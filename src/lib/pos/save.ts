@@ -562,6 +562,9 @@ export async function savePosSupplierReturn(
     subtotal: o.subtotal,
     vat: o.vat,
     total: o.total,
+    /* ⚠ Thuế cả phiếu đi qua `vat_override` (như phiếu nhập): dòng POS mang `vat_rate = 0`, để null là
+       `complete_supplier_return` tự cộng ra 0 — rơi mất thuế. */
+    vat_override: o.vat > 0 ? o.vat : null,
   }
 
   let id = o.returnId

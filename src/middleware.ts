@@ -6,6 +6,11 @@ import {
 } from "@/lib/maintenance"
 
 export async function middleware(request: NextRequest) {
+  // Trang thông tin tĩnh công khai; không đọc phiên hoặc dữ liệu Supabase.
+  if (["/backup", "/backup/privacy", "/backup/terms"].includes(request.nextUrl.pathname)) {
+    return NextResponse.next({ request })
+  }
+
   /**
    * ⚠ CHẶN TRƯỚC KHI GỌI SUPABASE. `updateSession` làm mới phiên đăng
    *   nhập — tức một lượt đi mạng. Trong lúc chạy migration thì đó vừa là

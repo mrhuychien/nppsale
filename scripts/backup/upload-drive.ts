@@ -166,8 +166,7 @@ export function keepSet(names: string[]): Set<string> {
   return keep
 }
 
-async function main() {
-  const dir = process.argv[2]
+export async function main(dir: string | undefined, prune = false) {
   if (!dir) {
     console.error("Thiếu tham số: thư mục chứa file .age")
     process.exit(1)
@@ -185,6 +184,13 @@ async function main() {
     console.log(`Đã tải lên ${f} (${(statSync(join(dir, f)).size / 1024 / 1024).toFixed(2)} MB) → ${id}`)
   }
 
+  // Mặc định chỉ upload. Xoá vĩnh viễn cần chủ nhà duyệt riêng trước
+  // khi người vận hành truyền --prune; không tự bật bằng lịch hằng ngày.
+  if (!prune) {
+    console.log("Upload hoàn tất; giữ nguyên mọi bản cũ trên Drive (không xoá).")
+    return
+  }
+
   // Xoay vòng SAU khi upload xong. Xoá trước rồi upload hỏng là có lúc
   // không còn bản nào trên Drive.
   const remote = await listBackups(token)
@@ -200,7 +206,10 @@ async function main() {
 
 // Chỉ chạy khi gọi trực tiếp — để test import được keepSet mà không upload.
 if (process.argv[1]?.endsWith("upload-drive.ts")) {
-  main().catch((e) => {
+  const args = process.argv.slice(2)
+  const unknown = args.slice(1).filter((arg) => arg !== "--prune")
+  if (unknown.length > 0) throw new Error("Tham số không hợp lệ; dùng <thư-mục> [--prune]")
+  main(args[0], args.includes("--prune")).catch((e) => {
     console.error(e instanceof Error ? e.message : e)
     process.exit(1)
   })

@@ -1,8 +1,9 @@
 # Sao lưu tự động sang Google Drive
 
-Chạy hằng ngày lúc **10:00 sáng giờ Việt Nam** (03:00 UTC) bằng GitHub
+Chạy hằng ngày lúc **02:00 sáng giờ Việt Nam** (19:00 UTC ngày trước) bằng GitHub
 Actions. Mỗi lượt: kết xuất database → **khôi phục thử** → mã hoá → đưa lên
-Drive → xoá bản cũ.
+Drive. GitHub có thể chạy trễ so với lịch. Mặc định **không xoá bản cũ**;
+chỉ xoay vòng khi chủ nhà duyệt riêng việc xoá vĩnh viễn.
 
 > **Drive chỉ là ổ đĩa câm.** File được mã hoá TRƯỚC khi rời khỏi máy chạy,
 > bằng khoá công khai. Khoá riêng không bao giờ có mặt trong CI — nên kể cả
@@ -118,6 +119,7 @@ Chép đoạn đó lại.
 3. Đợi vài giây, rồi **chọn đúng project vừa tạo** (hay quên bước này)
 4. Menu trái → **APIs & Services → Library** → tìm `Google Drive API` →
    **ENABLE**
+5. Bật thêm **Google Picker API** để chọn rõ thư mục được cấp cho ứng dụng.
 
 #### 2.3 Màn hình đồng ý (OAuth consent screen)
 
@@ -156,11 +158,16 @@ Hộp thoại hiện **Client ID** và **Client secret** — chép cả hai.
 trình duyệt:
 
 ```
-https://accounts.google.com/o/oauth2/v2/auth?client_id=CLIENT_ID_CUA_BAN&redirect_uri=http://localhost&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent
+https://accounts.google.com/o/oauth2/v2/auth?client_id=CLIENT_ID_CUA_BAN&redirect_uri=http://localhost&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent&trigger_onepick=true&allow_folder_selection=true
 ```
 
 Chọn tài khoản Google → **Continue** (qua cảnh báo chưa xác minh) →
 **Continue** lần nữa để cấp quyền.
+
+Trong Google Picker, chọn đúng thư mục `nppsale-backup` đã tạo. Chỉ dán
+FOLDER_ID không tự cấp quyền `drive.file` cho thư mục có sẵn. Nếu gặp 403/404,
+kiểm tra thư mục đã chọn và đúng OAuth client; không tự đổi sang scope `drive`
+toàn quyền. [Tài liệu Google Picker](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker).
 
 Trình duyệt sẽ báo **"không kết nối được"** — **đúng như vậy, không phải
 lỗi**. Thứ cần lấy nằm trên thanh địa chỉ:
@@ -172,9 +179,10 @@ http://localhost/?code=4%2F0AVMBsJi...&scope=https://www.googleapis.com/auth/dri
 
 Chép phần giữa `code=` và `&scope`.
 
-> ⚠ Đoạn mã đó bị **mã hoá URL**: `%2F` chính là dấu `/`. Dán nguyên vào
-> lệnh dưới thì Google báo `invalid_grant`. Lệnh dưới đã dùng
-> `--data-urlencode` nên tự xử lý — cứ dán **y nguyên** đoạn vừa chép.
+> ⚠ Phần `code` trên URL đã percent-encode (`%2F` là `/`). Giải mã URL
+> **một lần** trước khi đưa vào lệnh đổi token bên dưới. `--data-urlencode`
+> sẽ encode lại khi gửi, không phải decode; dán nguyên có thể double-encode.
+> Không gửi code/token vào chat hoặc log.
 
 **Bước b — đổi mã lấy refresh token.** Mã này chỉ dùng được **một lần** và
 hết hạn sau vài phút, nên làm ngay:
@@ -260,7 +268,7 @@ Khoảng 2–4 phút. Xong thì:
 - Trong log, bước *"Đối chiếu số bảng và số dòng"* in ra hai con số **bằng
   nhau**
 
-Từ đó nó tự chạy **10:00 sáng mỗi ngày**.
+Từ đó nó tự chạy **02:00 sáng mỗi ngày** (có thể trễ).
 
 #### Kiểm thật: thử khôi phục một lần
 
@@ -276,6 +284,11 @@ khôi phục đầy đủ ở mục [Khôi phục](#khôi-phục) bên dưới.
 ---
 
 ## Giữ bao nhiêu bản
+
+Workflow hiện không dọn bản cũ. Theo dõi dung lượng Drive cho đến khi chủ nhà
+duyệt chính sách giữ bản. Sau khi có xác nhận riêng, người vận hành có thể
+chạy `npx tsx scripts/backup/upload-drive.ts out --prune` để áp dụng chính sách
+bên dưới. Cờ này xoá vĩnh viễn, không đưa vào Thùng rác; không dùng để chạy thử.
 
 7 bản gần nhất + 4 bản Chủ nhật + 6 bản mùng 1. Drive miễn phí 15 GB dùng
 **chung** với Gmail và Photos — không xoay vòng thì một ngày nào đó Gmail

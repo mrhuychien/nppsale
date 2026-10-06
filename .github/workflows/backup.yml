@@ -1,13 +1,12 @@
 name: Sao lưu database
 
-# 03:00 UTC = 10:00 sáng giờ Việt Nam — sau giờ mở hàng, trước giờ cao điểm
-# nhập liệu buổi chiều, nên bản sao bắt được trọn ngày làm việc trước đó.
+# 19:00 UTC = 02:00 sáng hôm sau tại Việt Nam. GitHub có thể chạy trễ.
 #
 # ⚠ KHÔNG phải cron của Vercel. Đây là GitHub Actions, không dính giới hạn
 # "một lần mỗi ngày" của gói Hobby bên Vercel.
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 19 * * *"
   workflow_dispatch: # chạy tay khi cần một bản ngay
 
 concurrency:
@@ -145,7 +144,8 @@ jobs:
             || { echo "::error::File mã hoá quá nhỏ — nhiều khả năng rỗng"; exit 1; }
 
       # --- Đưa lên Google Drive ----------------------------------------
-      - name: Tải lên Google Drive + xoay vòng bản cũ
+      # Không truyền --prune: giữ nguyên bản cũ cho đến khi chủ nhà duyệt retention.
+      - name: Tải lên Google Drive (không xoá bản cũ)
         env:
           GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}

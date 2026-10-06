@@ -7,6 +7,7 @@ const ROOT = resolve(__dirname, "..")
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const WF = read(".github/workflows/backup.yml")
 const UP = read("scripts/backup/upload-drive.ts")
+const COUNTS = read("scripts/backup/verify-counts.sh")
 
 const name = (d: string) => `nppsale-${d}.pgc.age`
 
@@ -124,7 +125,7 @@ describe("Quy trình sao lưu", () => {
     expect(restore).toBeGreaterThan(0)
     expect(encrypt).toBeGreaterThan(0)
     expect(restore).toBeLessThan(encrypt)
-    expect(WF).toContain("image: postgres:16")
+    expect(WF).toContain("image: postgres:17")
   })
 
   /**
@@ -132,9 +133,9 @@ describe("Quy trình sao lưu", () => {
    * số DÒNG mới biết dữ liệu có thật trong đó.
    */
   it("đối chiếu cả số bảng LẪN số dòng", () => {
-    expect(WF).toContain("Số bảng lệch")
-    expect(WF).toContain("FROM auth.users;")
-    expect(WF).toContain("Số người dùng lệch")
+    expect(COUNTS).toContain("BACKUP_TABLE_COUNT_MISMATCH_OR_INVALID")
+    expect(COUNTS).toContain("FROM auth.users;")
+    expect(COUNTS).toContain("BACKUP_USER_COUNT_MISMATCH_OR_INVALID")
   })
 
   /** Mã hoá bằng khoá CÔNG KHAI — khoá riêng không bao giờ vào CI. */
@@ -189,7 +190,7 @@ describe("Quy trình sao lưu", () => {
 
   /** Thiếu secret thì phải dừng và NÓI RA, không chạy tiếp rồi tạo file rỗng. */
   it("dừng ngay nếu thiếu secret", () => {
-    expect(WF).toContain("Thiếu secret SUPABASE_DB_URL")
-    expect(WF).toContain("Thiếu secret AGE_PUBLIC_KEY")
+    expect(WF).toContain("bash scripts/backup/preflight.sh")
+    expect(read("scripts/backup/preflight.sh")).toContain("SUPABASE_DB_URL AGE_PUBLIC_KEY GDRIVE_CLIENT_ID GDRIVE_CLIENT_SECRET GDRIVE_REFRESH_TOKEN GDRIVE_FOLDER_ID")
   })
 })

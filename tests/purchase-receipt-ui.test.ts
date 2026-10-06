@@ -255,47 +255,21 @@ describe("sửa phiếu đã hoàn thành", () => {
     EDIT_PAGE.indexOf("if (authLoading || loading)")
   )
   /**
-   * ⚠ HUỶ TRƯỚC RỒI LẬP LẠI, không sửa đè. Sửa đè lên một chứng từ đã
-   * vào kho và vào sổ nợ là chứng từ nói một đằng, kho nói một nẻo.
-   * Đi đường huỷ thì phép sửa THỪA HƯỞNG mọi chốt chặn của phép huỷ.
+   * ⚠ (mig 235) PHIẾU ĐÃ HOÀN THÀNH SỬA TẠI CHỖ — chủ nhà 06/10/2026: "những phiếu nhập hàng từ NCC đã bán hàng ra
+   * không sửa được, tao muốn sửa được". Huỷ-rồi-lập-lại bị chặn khi hàng đã bán / đã trả tiền; RPC `sua_phieu_nhap`
+   * giữ lô, sửa công nợ, một giao dịch.
    */
-  it("phiếu đã hoàn thành thì huỷ trước rồi mới ghi đè", () => {
-    const cancelAt = SUBMIT.indexOf('rpc("cancel_purchase_invoice"')
-    const updateAt = SUBMIT.indexOf('.from("purchase_invoices")')
-    const completeAt = SUBMIT.indexOf('rpc("complete_purchase_invoice"')
-    expect(cancelAt, "không huỷ bản cũ trước khi sửa").toBeGreaterThan(0)
-    expect(updateAt, "ghi đè TRƯỚC khi huỷ — kho vẫn giữ lô cũ").toBeGreaterThan(cancelAt)
-    expect(completeAt).toBeGreaterThan(updateAt)
-    expect(EDIT_PAGE).toContain("wasCompleted")
+  it("phiếu đã hoàn thành → suaPhieuNhapDaXong, không huỷ, không đưa về phiếu tạm", () => {
+    const blk = SUBMIT.slice(SUBMIT.indexOf("if (wasCompleted)"), SUBMIT.indexOf('.from("purchase_invoices")'))
+    expect(blk).toContain("suaPhieuNhapDaXong(supabase, id, dauPhieu, lines, percentToRatio)")
+    expect(blk).toContain("return")
+    expect(SUBMIT).not.toContain('rpc("cancel_purchase_invoice"')
+    expect(EDIT_PAGE).not.toContain('status: "draft"')
   })
 
-  /**
-   * ⚠ HUỶ HỎNG THÌ DỪNG HẲN. Đi tiếp khi kho chưa hoàn về là ghi đè
-   * dòng hàng của một phiếu vẫn đang giữ lô cũ trong kho.
-   */
-  it("huỷ hỏng thì ném lỗi, không đi tiếp", () => {
-    const blk = SUBMIT.slice(
-      SUBMIT.indexOf("if (wasCompleted)"),
-      SUBMIT.indexOf('.from("purchase_invoices")')
-    )
-    expect(blk).toContain("throw new Error")
-  })
-
-  /** Phiếu vừa huỷ phải về `draft` thì RPC hoàn thành mới nhận. */
-  it("đưa phiếu về phiếu tạm và xoá dấu huỷ cũ", () => {
-    expect(EDIT_PAGE).toContain('status: "draft"')
-    expect(EDIT_PAGE).toContain("cancelled_at: null")
-    expect(EDIT_PAGE).toContain("cancel_reason: null")
-  })
-
-  /**
-   * ⚠ BA BƯỚC KHÔNG NẰM TRONG MỘT GIAO DỊCH. Hỏng ở bước cuối thì kho
-   * đã hoàn về đúng nhưng phiếu chưa lập lại — phải NÓI RA, nếu không
-   * người dùng tưởng mất hàng.
-   */
-  it("hoàn thành lại hỏng thì nói rõ kho đã hoàn về đúng", () => {
-    expect(EDIT_PAGE).toContain("PHIẾU TẠM")
-    expect(EDIT_PAGE).toContain("kho đã hoàn về đúng")
+  it("sửa hỏng thì ném lỗi dễ hiểu, không đi tiếp", () => {
+    const blk = SUBMIT.slice(SUBMIT.indexOf("if (wasCompleted)"), SUBMIT.indexOf('.from("purchase_invoices")'))
+    expect(blk).toContain("throw new Error(friendlyReceiptError(")
   })
 
   /** ⚠ Dựng dòng từ phiếu đã lưu, không lấy lại giá vốn hôm nay. */

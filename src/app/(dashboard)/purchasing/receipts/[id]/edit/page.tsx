@@ -42,7 +42,7 @@ import {
   type ReceiptLine, type ReceiptProduct,
 } from "@/lib/purchasing/receipt-form"
 import { percentToRatio, ratioToPercent } from "@/lib/purchasing/return-form"
-import { saveReceiptLines } from "@/lib/purchasing/save-receipt"
+import { saveReceiptLines, suaPhieuNhapDaXong } from "@/lib/purchasing/save-receipt"
 import type { Supplier } from "@/types"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
 import { errorMessage } from "@/lib/errors"
@@ -175,36 +175,35 @@ export default function EditPurchaseReceiptPage() {
 
     setSubmitting(true)
     try {
+      const dauPhieu = {
+        supplier_id: form.supplierId,
+        invoice_number: form.invoiceNumber.trim() || null,
+        invoice_date: form.invoiceDate,
+        warehouse_zone: form.zone,
+        discount: totals.discount,
+        notes: form.notes.trim() || null,
+        /* ⚠ Ô TRỐNG → `null`, nghĩa là "để máy chủ tự cộng". Gửi 0 lên là khai "hoá đơn này không có thuế". */
+        vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride),
+      }
       /**
-       * ⚠ HUỶ TRƯỚC, và nếu bước này hỏng thì DỪNG HẲN. Đi tiếp khi kho
-       *   chưa hoàn về là ghi đè dòng hàng của một phiếu vẫn đang giữ lô
-       *   cũ trong kho — chứng từ nói một đằng, kho nói một nẻo.
+       * ⚠ PHIẾU ĐÃ HOÀN THÀNH: SỬA TẠI CHỖ (mig 235) — chủ nhà 06/10/2026: "những phiếu nhập hàng từ NCC đã bán hàng
+       *   ra không sửa được, tao muốn sửa được". Không huỷ-rồi-lập-lại nữa (huỷ bị chặn khi hàng đã bán / đã trả tiền
+       *   NCC); RPC giữ lô, sửa công nợ, tính lại giá vốn phần đã bán — một giao dịch, hỏng thì không đổi gì.
        */
       if (wasCompleted) {
-        const { error } = await supabase.rpc("cancel_purchase_invoice", {
-          p_invoice_id: id, p_reason: "Sửa phiếu — lập lại",
-        })
-        if (error) throw new Error(friendlyReceiptError(error.message))
+        try {
+          await suaPhieuNhapDaXong(supabase, id, dauPhieu, lines, percentToRatio)
+        } catch (e) {
+          throw new Error(friendlyReceiptError(errorMessage(e)))
+        }
+        toast({ title: "Đã sửa phiếu nhập" })
+        router.push(`/purchasing/receipts/${id}`)
+        return
       }
 
       const { error: hErr } = await supabase
         .from("purchase_invoices")
-        .update({
-          supplier_id: form.supplierId,
-          invoice_number: form.invoiceNumber.trim() || null,
-          invoice_date: form.invoiceDate,
-          warehouse_zone: form.zone,
-          discount: totals.discount,
-          notes: form.notes.trim() || null,
-          /* ⚠ Ô TRỐNG → `null`, nghĩa là "để máy chủ tự cộng". Gửi 0
-             lên là khai "hoá đơn này không có thuế". */
-          vat_override: form.vatOverride.trim() === "" ? null : Number(form.vatOverride),
-          subtotal: totals.subtotal, vat: totals.vat, total: totals.total,
-          /* Phiếu vừa huỷ phải quay về phiếu tạm thì mới hoàn thành lại
-             được — `complete_purchase_invoice` chỉ nhận `draft`. */
-          status: "draft",
-          cancelled_at: null, cancelled_by: null, cancel_reason: null,
-        })
+        .update({ ...dauPhieu, subtotal: totals.subtotal, vat: totals.vat, total: totals.total })
         .eq("id", id)
         .select("id")
       if (hErr) throw new Error(hErr.message)
@@ -215,11 +214,11 @@ export default function EditPurchaseReceiptPage() {
         const { error } = await supabase.rpc("complete_purchase_invoice", { p_invoice_id: id })
         if (error) {
           throw new Error(
-            `${friendlyReceiptError(error.message)} — Phiếu đã lưu lại thành PHIẾU TẠM và kho đã hoàn về đúng. Vào lại phiếu rồi bấm Hoàn thành.`
+            `${friendlyReceiptError(error.message)} — Phiếu đã lưu thành PHIẾU TẠM. Vào lại phiếu rồi bấm Hoàn thành.`
           )
         }
       }
-      toast({ title: complete ? "Đã lập lại và hoàn thành phiếu" : "Đã lưu thay đổi" })
+      toast({ title: complete ? "Đã hoàn thành phiếu" : "Đã lưu thay đổi" })
       router.push(`/purchasing/receipts/${id}`)
     } catch (e) {
       toast({ title: "Không lưu được", description: errorMessage(e), variant: "destructive" })
@@ -263,9 +262,9 @@ export default function EditPurchaseReceiptPage() {
       chuRieng={{
         them: "Sửa phiếu nhập",
         phieu: "Sửa phiếu nhập hàng",
-        xong: daXong ? "Lập lại" : "Hoàn thành",
+        xong: daXong ? "Lưu sửa" : "Hoàn thành",
         goiY: daXong
-          ? "Phiếu đã hoàn thành: Lập lại = hoàn kho + công nợ bản cũ rồi ghi theo số mới."
+          ? "Phiếu đã hoàn thành: Lưu sửa = sửa kho + công nợ NCC theo số mới (hàng đã bán vẫn giữ; SL không thấp hơn số đã xuất)."
           : "Phiếu tạm — Hoàn thành = nhập kho + ghi công nợ NCC.",
       }}
       fields={<TruongPhieuNhap form={form} patch={patch} />}

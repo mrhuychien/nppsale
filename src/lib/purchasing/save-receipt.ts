@@ -127,3 +127,36 @@ export async function saveReturnLines(
   if (error) throw new Error(error.message)
   assertWrote(data, "phiếu trả NCC")
 }
+
+/** Đầu phiếu gửi `sua_phieu_nhap` (mig 235). `vat_override` null = máy chủ tự cộng thuế từ dòng. */
+export interface DauPhieuNhapSua {
+  supplier_id: string
+  invoice_number: string | null
+  invoice_date: string
+  warehouse_zone: string
+  discount: number
+  vat_override: number | null
+  notes: string | null
+}
+
+/**
+ * SỬA TẠI CHỖ phiếu nhập ĐÃ HOÀN THÀNH — RPC `sua_phieu_nhap` (mig 235, chủ nhà 06/10/2026: "những phiếu nhập hàng từ
+ * NCC đã bán hàng ra không sửa được, tao muốn sửa được").
+ *
+ * ⚠ KHÔNG còn huỷ-rồi-lập-lại: huỷ bị chặn khi hàng đã bán / đã trả tiền NCC. RPC giữ nguyên lô (phần đã bán vẫn trừ
+ *   đúng lô), sửa công nợ tại chỗ, tính lại giá vốn phần đã bán — MỘT giao dịch, hỏng thì không đổi gì.
+ */
+export async function suaPhieuNhapDaXong(
+  supabase: SupabaseClient,
+  invoiceId: string,
+  head: DauPhieuNhapSua,
+  lines: ReceiptLine[],
+  percentToRatio: (p: string | number | null | undefined) => number
+): Promise<void> {
+  const { error } = await supabase.rpc("sua_phieu_nhap", {
+    p_invoice_id: invoiceId,
+    p_head: head,
+    p_lines: lines.map((l, i) => linePayloadOf(l, i, percentToRatio)),
+  })
+  if (error) throw new Error(error.message)
+}

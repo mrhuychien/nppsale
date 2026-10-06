@@ -30,7 +30,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { createOrderRecords, type OfflineOrderPayload } from "@/lib/orders/create"
 import { applyOrderEdit } from "@/lib/sell/order-edit"
 import { completeReturn, explainReturnError, type ReturnZone } from "@/lib/returns/complete-return"
-import { saveReceiptLines, saveReturnLines } from "@/lib/purchasing/save-receipt"
+import { saveReceiptLines, saveReturnLines, suaPhieuNhapDaXong } from "@/lib/purchasing/save-receipt"
 import { percentToRatio } from "@/lib/purchasing/return-form"
 import type { ReceiptLine } from "@/lib/purchasing/receipt-form"
 import { lineGross, discountAmount } from "@/lib/pos/discount"
@@ -496,19 +496,30 @@ export async function savePosPurchase(
     if (trangThai === "cancelled") {
       throw new Error("Phiếu nhập này đã huỷ — không sửa được. Lập phiếu mới.")
     }
+    /**
+     * ⚠ PHIẾU ĐÃ HOÀN THÀNH: SỬA TẠI CHỖ (mig 235), KHÔNG huỷ-rồi-lập-lại. Huỷ bị chặn khi hàng đã bán ra / đã trả
+     *   tiền NCC — chủ nhà 06/10/2026: "những phiếu nhập hàng từ NCC đã bán hàng ra không sửa được, tao muốn sửa
+     *   được". RPC giữ lô, sửa công nợ, tính lại giá vốn phần đã bán trong MỘT giao dịch.
+     */
     if (trangThai === "completed") {
-      const { error } = await sb.rpc("cancel_purchase_invoice", { p_invoice_id: id, p_reason: "Sửa phiếu từ POS — lập lại" })
-      if (error) throw error
-    }
-    const { data, error } = await sb
-      .from("purchase_invoices")
-      .update(
-        trangThai === "completed"
-          ? { ...head, status: "draft", cancelled_at: null, cancelled_by: null, cancel_reason: null }
-          : head
+      await suaPhieuNhapDaXong(
+        sb,
+        id,
+        {
+          supplier_id: head.supplier_id,
+          invoice_number: head.invoice_number,
+          invoice_date: head.invoice_date,
+          warehouse_zone: head.warehouse_zone,
+          discount: head.discount,
+          vat_override: head.vat_override,
+          notes: head.notes,
+        },
+        posLinesToReceipt(o.lines),
+        percentToRatio
       )
-      .eq("id", id)
-      .select("id")
+      return { receiptId: id }
+    }
+    const { data, error } = await sb.from("purchase_invoices").update(head).eq("id", id).select("id")
     if (error) throw error
     assertWrote(data as unknown[], "phiếu nhập")
   }

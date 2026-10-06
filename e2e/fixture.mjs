@@ -451,6 +451,22 @@ export const rpc = {
   create_cash_receipt: () => "00000000-0000-4000-8000-00000000f0c1",
   /* Hoàn thành phiếu nhập / gửi phiếu trả NCC (mig 142 / 146) — chốt chỉ đọc tải trọng. */
   complete_purchase_invoice: () => null,
+  /* Sửa tại chỗ phiếu nhập đã hoàn thành (mig 235): ghi lại đầu phiếu + dòng; luật kho / công nợ kiểm ở
+     scripts/sql/thu-235-sua-phieu-nhap-da-ban.sql. */
+  sua_phieu_nhap: ({ p_invoice_id, p_head, p_lines }, { db, newId }) => {
+    const inv = (db.purchase_invoices || []).find((x) => x.id === p_invoice_id)
+    if (!inv) throw Object.assign(new Error("PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu nhập này."), { code: "P0001" })
+    if (inv.status !== "completed") throw Object.assign(new Error("PHIEU_CHUA_HOAN_THANH: Chỉ sửa tại chỗ phiếu nhập đã hoàn thành."), { code: "P0001" })
+    const sub = (p_lines || []).reduce((s, l) => s + Number(l.quantity) * Number(l.unit_price) - Number(l.line_discount || 0), 0)
+    Object.assign(inv, {
+      supplier_id: p_head.supplier_id, invoice_number: p_head.invoice_number, invoice_date: p_head.invoice_date,
+      warehouse_zone: p_head.warehouse_zone, discount: p_head.discount, notes: p_head.notes, vat_override: p_head.vat_override,
+      subtotal: sub, total: Math.max(0, sub + Number(p_head.vat_override || 0) - Number(p_head.discount || 0)),
+    })
+    db.purchase_invoice_lines = (db.purchase_invoice_lines || []).filter((l) => l.invoice_id !== p_invoice_id)
+    ;(p_lines || []).forEach((l, i) => db.purchase_invoice_lines.push({ id: newId(), invoice_id: p_invoice_id, sort_order: i + 1, ...l }))
+    return { id: p_invoice_id, total: inv.total }
+  },
   /* Bảng giá nhập (mig 234): sửa tay — price null/"" = bỏ giá; vai mua hàng mới được. */
   luu_gia_nhap: ({ p_dong }, { db, user, newId }) => {
     const u = (db.users || []).find((x) => x.id === user?.id)

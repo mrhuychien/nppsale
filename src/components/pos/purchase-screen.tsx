@@ -285,6 +285,9 @@ export function PurchaseScreen({
     [suppliers]
   )
 
+  /** Phiếu đang sửa đã hoàn thành — lưu là sửa tại chỗ kho + công nợ (mig 235). */
+  const [daHoanThanh, setDaHoanThanh] = useState(false)
+
   /** Nạp phiếu nhập đã lưu. */
   useEffect(() => {
     if (!receiptId) return
@@ -310,6 +313,7 @@ export function PurchaseScreen({
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu nhập này."); return }
+        setDaHoanThanh((data as { status?: string } | null)?.status === "completed")
         setSlipCode(r.receipt_code)
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
         setSoHdDauVao(r.invoice_number || "")
@@ -411,7 +415,11 @@ export function PurchaseScreen({
           lines.length === 0 ? (
             <span className="text-[var(--pos-dim)]">chưa có dòng hàng</span>
           ) : (
-            <DeltaStock sku={`${lines.length} lô mới`} net={lines.reduce((s, l) => s + l.qty, 0)} unit="sp" />
+            <DeltaStock
+              sku={daHoanThanh ? `${lines.length} dòng · giữ lô cũ` : `${lines.length} lô mới`}
+              net={lines.reduce((s, l) => s + l.qty, 0)}
+              unit="sp"
+            />
           ),
       },
       /* ⚠ Chưa đọc được công nợ NCC hiện tại → `đang tính…`. */
@@ -420,12 +428,12 @@ export function PurchaseScreen({
         label: "Giá vốn lô",
         body: (
           <span className="text-[var(--pos-muted)]">
-            mỗi dòng ghi một lô, giá vốn riêng từng lô
+            {daHoanThanh ? "đổi giá thì phần đã bán tính lại giá vốn" : "mỗi dòng ghi một lô, giá vốn riêng từng lô"}
           </span>
         ),
       },
     ],
-    [lines]
+    [lines, daHoanThanh]
   )
 
   const g = POS_GRID.purchase
@@ -466,12 +474,13 @@ export function PurchaseScreen({
               màn 7 ("cùng một giao dịch", "giá vốn bình quân"); bên MUA
               không có cả hai thứ đó. Xem đầu tệp.
           */}
-          {mode === "sua" && (
+          {mode === "sua" && daHoanThanh && (
+            /* Mig 235 (chủ nhà 06/10/2026: "phiếu nhập hàng từ NCC đã bán hàng ra không sửa được, tao muốn sửa
+               được"): phiếu đã hoàn thành sửa TẠI CHỖ — `sua_phieu_nhap`. */
             <DocBanner tone="warn">
-              Bên mua <strong>không có lệnh lập lại một bước</strong> như hóa đơn bán. Sửa
-              phiếu nhập là <strong>huỷ phiếu này rồi lập một phiếu mới</strong> — hai thao
-              tác riêng, và phiếu mới mang số mới. Giá vốn ghi theo từng lô, không có số
-              bình quân nào được tính lại.
+              Phiếu đã hoàn thành: <strong>Lưu là sửa luôn kho và công nợ NCC</strong> theo số mới, giữ
+              nguyên số phiếu. Hàng đã bán ra vẫn giữ trên lô — số lượng mới không được thấp hơn số đã
+              xuất; giá vốn của phần đã bán tính lại theo giá mới.
             </DocBanner>
           )}
 
@@ -593,7 +602,10 @@ export function PurchaseScreen({
           </LineTableFrame>
 
           {mode === "sua" && (
-            <DeltaPreviewStrip subtitle="Huỷ phiếu rồi lập phiếu mới" cells={deltaCells} />
+            <DeltaPreviewStrip
+              subtitle={daHoanThanh ? "Sửa tại chỗ — giữ lô, hàng đã bán giữ nguyên" : "Lưu phiếu tạm"}
+              cells={deltaCells}
+            />
           )}
         </div>
 
@@ -730,7 +742,7 @@ export function PurchaseScreen({
                     : undefined
               }
             >
-              {dangLuu ? "Đang ghi…" : "Hoàn thành & nhập kho"}
+              {dangLuu ? "Đang ghi…" : daHoanThanh ? "Lưu sửa" : "Hoàn thành & nhập kho"}
             </PanelButton>
           </PanelActions>
         </div>

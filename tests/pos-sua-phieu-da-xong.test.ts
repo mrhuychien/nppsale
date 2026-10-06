@@ -53,23 +53,26 @@ const CHUNG = {
 }
 
 describe("sửa phiếu nhập đã hoàn thành trên POS", () => {
-  it("huỷ phiếu cũ TRƯỚC, rồi mới ghi lại và hoàn thành", async () => {
+  /* Mig 235 — chủ nhà 06/10/2026: "những phiếu nhập hàng từ NCC đã bán hàng ra không sửa được, tao muốn sửa được".
+     Phiếu đã hoàn thành sửa TẠI CHỖ qua MỘT RPC `sua_phieu_nhap` (giữ lô, sửa công nợ) — không huỷ-rồi-lập-lại
+     (huỷ bị chặn khi hàng đã bán / đã trả tiền). */
+  it("gọi sua_phieu_nhap — không huỷ, không ghi thẳng đầu phiếu / dòng hàng, không hoàn thành lại", async () => {
     const sb = db("completed")
     await savePosPurchase(sb as never, { ...CHUNG, receiptId: "r1", invoiceNumber: "", invoiceDate: "2026-09-22" })
-    const iHuy = sb.log.indexOf("rpc:cancel_purchase_invoice")
-    const iSua = sb.log.indexOf("update:purchase_invoices:draft")
-    const iXong = sb.log.indexOf("rpc:complete_purchase_invoice")
-    expect(iHuy, "không huỷ phiếu cũ").toBeGreaterThan(-1)
-    expect(iSua, "không đưa phiếu về nháp").toBeGreaterThan(iHuy)
-    expect(iXong).toBeGreaterThan(iSua)
+    expect(sb.log).toContain("rpc:sua_phieu_nhap")
+    expect(sb.log.some((x) => x.startsWith("rpc:cancel_") || x === "rpc:complete_purchase_invoice")).toBe(false)
+    expect(sb.log.some((x) => x.startsWith("update:") || x.startsWith("delete:") || x.startsWith("insert:"))).toBe(false)
   })
 
-  it("huỷ hỏng thì DỪNG — không ghi đè dòng hàng", async () => {
-    const sb = db("completed", { message: "SUPPLIER_PAID: …" })
+  it("RPC sửa hỏng thì ném lỗi (một giao dịch — không đổi gì)", async () => {
+    const sb = db("completed")
+    sb.rpc = (fn: string) => {
+      sb.log.push(`rpc:${fn}`)
+      return Promise.resolve({ data: null, error: fn === "sua_phieu_nhap" ? { message: "DA_XUAT_NHIEU_HON: …" } : null })
+    }
     await expect(
       savePosPurchase(sb as never, { ...CHUNG, receiptId: "r1", invoiceNumber: "", invoiceDate: "2026-09-22" })
-    ).rejects.toBeTruthy()
-    expect(sb.log.some((x) => x.startsWith("update:") || x.startsWith("delete:"))).toBe(false)
+    ).rejects.toThrow(/DA_XUAT_NHIEU_HON/)
   })
 
   it("phiếu đã huỷ thì không sửa", async () => {

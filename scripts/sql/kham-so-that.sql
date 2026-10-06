@@ -678,4 +678,16 @@ SELECT 73, 'Mig 234 (Bảng giá nhập · tự cập nhật theo phiếu nhập
        THEN 'CHƯA — chạy migration 234' ELSE 'OK — đã vá' END,
   CASE WHEN to_regclass('public.purchase_price_lists') IS NULL THEN 'Chưa có bảng giá nhập'
        ELSE 'Số giá nhập đã lưu: ' || (SELECT count(*) FROM purchase_price_lists)::text END
+UNION ALL
+-- 74. Mig 235 — sửa tại chỗ phiếu nhập đã bán hàng ra; huỷ / sửa phiếu trả NCC không kẹt lô đã đóng (chủ nhà
+--     06/10/2026: "những phiếu nhập hàng từ NCC đã bán hàng ra không sửa được, tao muốn sửa được").
+SELECT 74, 'Mig 235 (Sửa phiếu nhập đã bán · sửa phiếu trả NCC)',
+  CASE WHEN to_regprocedure('public.sua_phieu_nhap(uuid,jsonb,jsonb)') IS NULL
+         OR position('LO_DA_DONG: Không huỷ' IN pg_get_functiondef('public.cancel_supplier_return(uuid,text)'::regprocedure)) > 0
+       THEN 'CHƯA — chạy migration 235' ELSE 'OK — đã vá' END,
+  'Phiếu nhập hoàn thành có hàng đã xuất (nay sửa được): ' || (
+    SELECT count(*) FROM purchase_invoices pi
+    WHERE pi.status = 'completed'
+      AND EXISTS (SELECT 1 FROM stock_entry_lines sel JOIN batches b ON b.id = sel.batch_id
+                  WHERE sel.entry_id = pi.stock_entry_id AND b.qty_on_hand <> b.qty_initial))::text
 ) t ORDER BY stt;

@@ -106,7 +106,10 @@ describe("nhập hàng: đổi đơn vị thì giá nhập đi theo hệ số", 
 
   it("màn nhập hàng nối ô đơn vị vào phép ấy", () => {
     const S = read("src/components/pos/purchase-screen.tsx")
-    expect(S).toMatch(/patchLine\(l\.key, doiDonViTheoHeSo\(l, e\.target\.value\)\)/)
+    // Bảng giá nhập (mig 234): ô đơn vị đi qua `doiDonViDongPos` — giá còn là giá gợi ý thì lấy giá bảng của đơn vị
+    // mới, đã gõ giá thì vẫn quy theo hệ số (`doiDonViTheoHeSo`).
+    expect(S).toMatch(/patchLine\(l\.key, doiDonViDongPos\(l, e\.target\.value\)\)/)
+    expect(S).toMatch(/return doiDonViTheoHeSo\(l, donVi\)/)
     expect(S, "ô đơn vị chỉ đổi nhãn").not.toMatch(/patchLine\(l\.key, \{ unit: e\.target\.value \}\)/)
   })
 

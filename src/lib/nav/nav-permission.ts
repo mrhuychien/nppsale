@@ -93,6 +93,7 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
    *   quyền `create` của nó.
    */
   "/purchasing/reorder": { module: "inventory", feature: "purchasing.invoices" },
+  "/purchasing/price-list": { module: "inventory", feature: "purchasing.invoices" },
   "/purchase-returns": { module: "inventory", feature: "purchasing.returns" },
   "/suppliers": { module: "inventory", feature: "suppliers" },
   "/payables": { module: "receivables", feature: "payables" },

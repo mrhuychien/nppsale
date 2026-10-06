@@ -15,6 +15,7 @@ import {
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, PackageCheck, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
+  Tags,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -68,6 +69,8 @@ const NAV_GROUPS: NavGroup[] = [
       //   nhóm này; mọi thứ còn lại là tra cứu hoặc danh mục.
       { label: "Phiếu nhập hàng", href: "/purchasing/receipts", icon: ShoppingCart },
       { label: "Trả hàng NCC", href: "/purchase-returns", icon: RotateCcw },
+      /* Chủ nhà 06/10/2026: "Làm thêm phần bảng giá nhập hàng" (mig 234). */
+      { label: "Bảng giá nhập", href: "/purchasing/price-list", icon: Tags },
       /**
        * ⚠ THAY CHO "Hoá đơn mua (tra cứu)" (chủ nhà chốt 20/09/2026:
        *   "Menu bên trái thay Hoá đơn mua (tra cứu) (bỏ Hoá đơn mua)").

@@ -38,7 +38,7 @@ trống, trong một transaction.
 
 | | |
 |---|---|
-| Bảng trong `public` | **78** |
+| Bảng trong `public` | **79** |
 | Policy RLS | **167** |
 | Storage bucket | **3** (`customer-photos`, `pod-photos`, `visit-photos`) |
 | Lỗi | **0** |

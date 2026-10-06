@@ -39,6 +39,8 @@ import { useToast } from "@/hooks/use-toast"
 import { loadSupplierDebt } from "@/lib/pos/load"
 import { donViNapLai, donViCuaSanPham, doiDonViTheoHeSo } from "@/lib/pos/units"
 import { savePosPurchase } from "@/lib/pos/save"
+import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
+import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
@@ -173,10 +175,20 @@ export function PurchaseScreen({
     setLines((cu) => cu.map((l) => (l.key === key ? { ...l, ...p } : l)))
   }, [])
 
+  /* Bảng giá nhập (mig 234) — chủ nhà 06/10/2026: "lưu giá nhập load lại khi làm đơn … (vẫn được toàn quyền sửa giá
+     trên đơn nhập)". */
+  const bangGiaNhap = useBangGiaNhap()
+  const giaNhapGoiY = useCallback(
+    (productId: string, base: string, units: PosLine["units"], unit: string) =>
+      giaNhapDonVi({ base_unit: base, units, gia_nhap: bangGiaNhap.get(productId) }, unit),
+    [bangGiaNhap]
+  )
+
   const themHang = useCallback(
     (productId: string) => {
       const p = products.find((x) => x.id === productId)
       if (!p) return
+      const units = donViCuaSanPham(p)
       setLines((cu) => [
         ...cu,
         {
@@ -185,18 +197,34 @@ export function PurchaseScreen({
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: donViCuaSanPham(p),
+          units,
           qty: 1,
           /* ⚠ GIÁ NHẬP KHÔNG LẤY GIÁ BÁN. `sell_price` là giá mình bán
              ra; điền nó vào ô giá nhập là ghi giá vốn bằng giá bán, và
-             mọi báo cáo lãi lỗ về sau báo lãi 0. Để trống, người nhập
-             gõ theo hóa đơn NCC. */
-          price: 0,
+             mọi báo cáo lãi lỗ về sau báo lãi 0. Lấy giá nhập đã lưu
+             (bảng giá nhập — lần nhập gần nhất); chưa có thì để trống,
+             người nhập gõ theo hóa đơn NCC. */
+          price: giaNhapGoiY(p.id, p.base_unit, units, p.base_unit),
           discount: { value: 0, unit: "vnd" },
         },
       ])
     },
-    [products]
+    [products, giaNhapGoiY]
+  )
+
+  /**
+   * Đổi ĐVT của dòng: giá đang là giá gợi ý của đơn vị cũ → lấy giá gợi ý của đơn vị mới (thùng có giá thùng riêng
+   * trong bảng giá nhập); người dùng đã gõ giá khác → quy đổi theo hệ số như cũ.
+   */
+  const doiDonViDongPos = useCallback(
+    (l: PosLine, donVi: string) => {
+      const base = l.units[0]?.unit_name ?? l.unit
+      const cu = giaNhapGoiY(l.productId, base, l.units, l.unit)
+      const moi = giaNhapGoiY(l.productId, base, l.units, donVi)
+      if (cu > 0 && l.price === cu && moi > 0) return { unit: donVi, price: moi }
+      return doiDonViTheoHeSo(l, donVi)
+    },
+    [giaNhapGoiY]
   )
 
   /* ⚠ Từ khoá thuộc về ô tìm dùng chung, không thuộc màn — xem
@@ -511,7 +539,7 @@ export function PurchaseScreen({
                   <select
                     aria-label={`Đơn vị tính dòng ${i + 1}`}
                     value={l.unit}
-                    onChange={(e) => patchLine(l.key, doiDonViTheoHeSo(l, e.target.value))}
+                    onChange={(e) => patchLine(l.key, doiDonViDongPos(l, e.target.value))}
                     className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11.5px]"
                   >
                     {l.units.map((u) => (

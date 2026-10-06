@@ -668,4 +668,14 @@ SELECT 72, 'Mig 233 (Xoá NCC: chỉ Chủ NPP · kèm mặt hàng / ngừng bá
       AND NOT EXISTS (SELECT 1 FROM payables x WHERE x.supplier_id = p.primary_supplier_id)
       AND NOT EXISTS (SELECT 1 FROM purchase_orders x WHERE x.supplier_id = p.primary_supplier_id)
       AND NOT EXISTS (SELECT 1 FROM stock_entries x WHERE x.supplier_id = p.primary_supplier_id))
+UNION ALL
+-- 73. Mig 234 — bảng giá nhập, phiếu nhập hoàn thành tự cập nhật giá (chủ nhà 06/10/2026: "lưu giá nhập load lại khi làm
+--     đơn, nếu giá có thay đổi thì tự cập nhật thay đổi").
+SELECT 73, 'Mig 234 (Bảng giá nhập · tự cập nhật theo phiếu nhập)',
+  CASE WHEN to_regclass('public.purchase_price_lists') IS NULL
+         OR to_regprocedure('public.luu_gia_nhap(jsonb)') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_gia_nhap_tu_phieu')
+       THEN 'CHƯA — chạy migration 234' ELSE 'OK — đã vá' END,
+  CASE WHEN to_regclass('public.purchase_price_lists') IS NULL THEN 'Chưa có bảng giá nhập'
+       ELSE 'Số giá nhập đã lưu: ' || (SELECT count(*) FROM purchase_price_lists)::text END
 ) t ORDER BY stt;

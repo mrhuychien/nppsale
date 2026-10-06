@@ -48,6 +48,8 @@ import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
 import { TaoNhanhNcc } from "@/components/tao-nhanh/tao-nhanh-ncc"
 import type { Product } from "@/types"
 import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
+import { ganGiaNhap } from "@/lib/purchasing/bang-gia-nhap"
 
 /** Trần số thẻ vẽ một lúc — như /sell. */
 const RENDER_CAP = 60
@@ -153,7 +155,9 @@ export function PhieuNccMobile({
   const [nccMoi, setNccMoi] = useState<NccMuc[]>([])
   const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
   const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
-  const dsHang = useMemo(() => gopVuaTao(products, hangMoi), [products, hangMoi])
+  /* Giá gợi ý theo bảng giá nhập (mig 234, chủ nhà 06/10/2026: "lưu giá nhập load lại khi làm đơn"). */
+  const bangGiaNhap = useBangGiaNhap()
+  const dsHang = useMemo(() => ganGiaNhap(gopVuaTao(products, hangMoi), bangGiaNhap), [products, hangMoi, bangGiaNhap])
   const dsNcc = useMemo(() => gopVuaTao(suppliers, nccMoi), [suppliers, nccMoi])
 
   const lines = value.lines

@@ -45,6 +45,8 @@ import {
 } from "@/lib/pos/load"
 import { donViNapLai, donViCuaSanPham } from "@/lib/pos/units"
 import { savePosSupplierReturn } from "@/lib/pos/save"
+import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
+import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
@@ -196,10 +198,13 @@ export function SupplierReturnScreen({
     setLines((cu) => cu.map((l) => (l.key === key ? { ...l, ...p } : l)))
   }, [])
 
+  /* Giá trả NCC gợi ý = giá nhập đã lưu (bảng giá nhập, mig 234) — vẫn sửa tự do. */
+  const bangGiaNhap = useBangGiaNhap()
   const themHang = useCallback(
     (productId: string) => {
       const p = products.find((x) => x.id === productId)
       if (!p) return
+      const units = donViCuaSanPham(p)
       setLines((cu) => [
         ...cu,
         {
@@ -208,9 +213,9 @@ export function SupplierReturnScreen({
           sku: p.sku ?? "",
           name: p.name,
           unit: p.base_unit,
-          units: donViCuaSanPham(p),
+          units,
           qty: 1,
-          price: 0,
+          price: giaNhapDonVi({ base_unit: p.base_unit, units, gia_nhap: bangGiaNhap.get(p.id) }, p.base_unit),
           discount: { value: 0, unit: "vnd" },
           /**
            * ⚠ `lots` ĐỂ RỖNG, KHÔNG ĐỔ TOÀN KHO VÀO (spec §8 mục 4).
@@ -224,7 +229,7 @@ export function SupplierReturnScreen({
         },
       ])
     },
-    [products]
+    [products, bangGiaNhap]
   )
 
   /* ⚠ Từ khoá thuộc về ô tìm dùng chung, không thuộc màn — xem

@@ -451,6 +451,27 @@ export const rpc = {
   create_cash_receipt: () => "00000000-0000-4000-8000-00000000f0c1",
   /* Hoàn thành phiếu nhập / gửi phiếu trả NCC (mig 142 / 146) — chốt chỉ đọc tải trọng. */
   complete_purchase_invoice: () => null,
+  /* Bảng giá nhập (mig 234): sửa tay — price null/"" = bỏ giá; vai mua hàng mới được. */
+  luu_gia_nhap: ({ p_dong }, { db, user, newId }) => {
+    const u = (db.users || []).find((x) => x.id === user?.id)
+    if (!["owner", "manager", "accountant", "warehouse"].includes(u?.role))
+      throw Object.assign(new Error("KHONG_DU_QUYEN_GIA_NHAP: vai này không sửa được bảng giá nhập"), { code: "P0001" })
+    db.purchase_price_lists = db.purchase_price_lists || []
+    let luu = 0, bo = 0
+    for (const d of p_dong || []) {
+      const i = db.purchase_price_lists.findIndex((r) => r.product_id === d.product_id && r.unit_name === d.unit_name)
+      if (d.price === null || d.price === "") {
+        if (i >= 0) db.purchase_price_lists.splice(i, 1)
+        bo++
+        continue
+      }
+      const row = { product_id: d.product_id, unit_name: d.unit_name, price: Math.round(Number(d.price)), effective_date: "2026-09-30", source_invoice_id: null, updated_at: "2026-09-30T03:00:00Z", invoice: null }
+      if (i >= 0) db.purchase_price_lists[i] = { ...db.purchase_price_lists[i], ...row }
+      else db.purchase_price_lists.push({ id: newId(), org_id: u.org_id, ...row })
+      luu++
+    }
+    return { luu, bo }
+  },
   complete_supplier_return: () => null,
   /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
   cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],

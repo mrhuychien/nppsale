@@ -7,12 +7,13 @@
  * làm y như vậy trên dòng `ReceiptLine` của phiếu nhập / phiếu trả — cùng kiểu dòng với
  * biểu mẫu máy tính và POS, nên lưu xuống vẫn qua `saveReceiptLines` / `saveReturnLines`.
  *
- * ⚠ GIÁ THEO ĐÚNG ĐƠN VỊ. `products.cost_price` là giá mỗi đơn vị CƠ SỞ; dòng tính tiền
+ * ⚠ GIÁ THEO ĐÚNG ĐƠN VỊ. Bảng giá nhập lưu giá từng đơn vị; `products.cost_price` là giá mỗi đơn vị CƠ SỞ; dòng tính tiền
  *   = SL × giá, nên thêm 1 thùng 24 thì giá gợi ý là giá lon × 24 (CLAUDE.md: "giá phải
  *   là giá của đúng đơn vị đó").
  */
 
 import { lineFromProduct, lineNetOf, unitPatch, type ReceiptLine, type ReceiptProduct } from "./receipt-form"
+import { giaNhapDonVi } from "./bang-gia-nhap"
 
 const so = (s: string | number | null | undefined): number => {
   const n = Number(s)
@@ -35,10 +36,13 @@ export function heSoDonVi(p: Pick<ReceiptProduct, "base_unit" | "units">, unit: 
   return u && so(u.conversion) > 0 ? so(u.conversion) : 1
 }
 
-/** Giá nhập gợi ý ở đơn vị này = giá vốn đơn vị cơ sở × hệ số; chưa có giá vốn → 0. */
-export function giaGoiY(p: Pick<ReceiptProduct, "base_unit" | "units" | "cost_price">, unit: string): number {
-  const c = so(p.cost_price)
-  return c > 0 ? Math.round(c * heSoDonVi(p, unit)) : 0
+/**
+ * Giá nhập gợi ý ở đơn vị này: bảng giá nhập (mig 234, chủ nhà 06/10/2026: "lưu giá nhập load lại khi làm đơn") —
+ * giá đúng đơn vị, không có thì quy từ đơn vị khác; chưa có trong bảng thì giá vốn mặc định × hệ số; không có → 0.
+ * Xem `giaNhapDonVi`.
+ */
+export function giaGoiY(p: Pick<ReceiptProduct, "base_unit" | "units" | "cost_price" | "gia_nhap">, unit: string): number {
+  return giaNhapDonVi(p, unit)
 }
 
 /** Vị trí dòng của (mặt hàng, đơn vị) trên phiếu, −1 nếu chưa có. */

@@ -29,9 +29,11 @@
 
 import type { Product, ProductUnit } from "@/types"
 import { ratioToPercent } from "./return-form"
+import type { GiaNhap } from "./bang-gia-nhap"
 
 /** Sản phẩm kèm bảng quy đổi đơn vị. */
-export type ReceiptProduct = Product & { units?: ProductUnit[] }
+/** `gia_nhap`: giá nhập đã lưu của mặt hàng (bảng giá nhập, mig 234) — gắn ở màn lập phiếu (`ganGiaNhap`). */
+export type ReceiptProduct = Product & { units?: ProductUnit[]; gia_nhap?: GiaNhap[] }
 
 /**
  * Một dòng của phiếu nhập.

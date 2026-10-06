@@ -60,7 +60,7 @@ describe("phiếu nhập / trả NCC điện thoại — Thêm sản phẩm ở 
     expect(daTao).toContain("setHangMoi(")
     expect(daTao).toContain("cham(moi, moi.base_unit, false)")
     // Thẻ, tra mã và cảnh báo NCC khác đều đọc danh mục đã ghép hàng mới — không phải `products` của trang.
-    expect(PHIEU).toContain("const dsHang = useMemo(() => gopVuaTao(products, hangMoi)")
+    expect(PHIEU).toContain("const dsHang = useMemo(() => ganGiaNhap(gopVuaTao(products, hangMoi), bangGiaNhap)")
     expect(PHIEU).toContain("new Map(dsHang.map(")
     expect(PHIEU).toContain("dsHang.filter((p) => inSupplierScope(")
     expect(PHIEU).toContain("linesOutOfSupplierScope(lines, dsHang")

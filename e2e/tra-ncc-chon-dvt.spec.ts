@@ -6,8 +6,9 @@ import { dangNhap, nhatKy } from "./helpers"
  *   POS: cột ĐVT trên dòng (giá quy theo hệ số). Điện thoại: nút ĐVT ngay trên dòng của phiếu (trước chỉ có ở khung sửa
  *   dòng, phải chạm tên hàng mới thấy).
  */
-const goiCuoi = async (duong: string, method = "POST") =>
-  (await nhatKy()).filter((r) => r.method === method && r.path.includes(duong)).at(-1)
+/* ⚠ Nhật ký CHUNG cả lượt chạy — đếm trước khi bấm, chờ lần ghi MỚI (không đọc nhầm lần ghi của spec trước). */
+const cacLan = async (duong: string, method = "POST") =>
+  (await nhatKy()).filter((r) => r.method === method && r.path.includes(duong))
 
 test("POS trả NCC: có cột ĐVT, đổi thùng / hộp thì giá quy theo hệ số", async ({ page }) => {
   await dangNhap(page)
@@ -40,9 +41,10 @@ test.describe("điện thoại", () => {
     await dong.getByTestId("dvt-dong-ncc").getByRole("button", { name: "thùng" }).click()
     await expect(dong).toContainText("/ thùng")
     await expect(dong.getByTestId("dvt-dong-ncc").getByRole("button", { name: "thùng" })).toHaveAttribute("aria-pressed", "true")
+    const truoc = (await cacLan("/rest/v1/supplier_return_lines")).length
     await page.getByRole("button", { name: "Lưu nháp" }).click()
-    await expect.poll(async () => !!(await goiCuoi("/rest/v1/supplier_return_lines"))).toBe(true)
-    const ghi = (await goiCuoi("/rest/v1/supplier_return_lines"))!.body as Array<Record<string, unknown>>
+    await expect.poll(async () => (await cacLan("/rest/v1/supplier_return_lines")).length).toBeGreaterThan(truoc)
+    const ghi = (await cacLan("/rest/v1/supplier_return_lines")).at(-1)!.body as Array<Record<string, unknown>>
     expect(ghi[0]).toMatchObject({ unit_name: "thùng", conversion_factor: 24 })
   })
 })

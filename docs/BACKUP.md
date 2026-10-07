@@ -24,6 +24,24 @@ Supabase đầy đủ: role, extension, schema/type/function phụ thuộc bên 
 dump có thể chưa có. `BACKUP_RESTORE_TARGET_INCOMPATIBLE` yêu cầu môi trường
 diễn tập tương thích, không phải lý do bỏ qua lỗi hay tạo stub để ép pass.
 
+Trước restore, workflow đọc metadata catalog nguồn bằng SELECT read-only.
+Nó tạo schema `extensions` và các extension PostgreSQL thực sự cần trong DB
+tạm, đúng schema/version đã kiểm kê (có `unaccent` của migration 177 và
+`pg_trgm` của migration 205 nếu được cài ở nguồn). Dependency qua catalog
+được truy theo `pg_depend`; hai module này còn được kiểm kê khi có mặt vì
+thân hàm SQL dạng chuỗi có thể không ghi dependency đầy đủ. Không chạy SQL
+hay thân hàm lấy từ nguồn trong bước bootstrap, không cài module tuỳ ý.
+
+Các role chuẩn được RLS policy tham chiếu được tạo NOLOGIN, không superuser,
+không BYPASSRLS trong DB tạm. Đây là kiểm chứng cấu trúc policy, không tái
+tạo mật khẩu, grants, membership hoặc quyền vận hành của Supabase. Module,
+schema, role ngoài allowlist hoặc version thiếu đều chặn lượt chạy.
+
+Mỗi lượt thành công có hai file mã hoá: `nppsale-YYYYMMDD.pgc.age` và
+`nppsale-YYYYMMDD.dependencies.json.age`. Giữ cả hai. Manifest chỉ chứa tên
+dependency, schema/version và identity role; vẫn được mã hoá trước upload.
+File thô và SQL bootstrap được xoá kể cả khi lượt chạy thất bại.
+
 Đếm bảng public và dòng auth.users là kiểm tra bổ sung, chưa chứng minh mọi
 dữ liệu/chức năng ứng dụng hoặc file Storage khôi phục được. Nếu dữ liệu
 nguồn thay đổi giữa dump và phép đếm sau đó, phép đếm có thể chặn lượt chạy;
@@ -332,17 +350,24 @@ age --decrypt -i nppsale-backup-key.txt \
 
 # 3. Khôi phục vào một project Supabase MỚI (đừng đè lên cái đang chạy)
 pg_restore --dbname "postgresql://postgres:MATKHAU@db.xxx.supabase.co:5432/postgres" \
-  --no-owner --no-privileges --clean --if-exists \
-  nppsale.pgc
+    --no-owner --no-privileges --clean --if-exists \
+    --exit-on-error --single-transaction \
+    nppsale.pgc
 
 # 4. Đếm lại cho chắc
 psql "$URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
 psql "$URL" -c "SELECT count(*) FROM auth.users;"
 ```
 
-`pg_restore` sẽ kêu một số cảnh báo về extension và role không có trên máy
-đích — bình thường. Thứ cần nhìn là **số bảng và số dòng**, không phải mã
-thoát.
+Trước restore, giải mã manifest dependency bằng khoá riêng trong phiên riêng
+và chuẩn bị đúng extension/schema/version ở project phục hồi. Không chạy
+script CI bootstrap vào nguồn đang hoạt động: script đó cố định target DB
+tạm tại `localhost:5433/verify`.
+
+**Mã thoát khác 0 là restore thất bại.** Dừng, xử lý dependency hoặc lỗi dữ
+liệu thật và thử lại trên đích cô lập; không bỏ qua lỗi, bỏ object hoặc tạo
+hàm giả để ép pass. Đếm bảng/dòng chỉ là kiểm tra bổ sung, không thay thế
+mã thoát thành công. Diễn tập đăng nhập, quyền và nghiệp vụ vẫn cần làm riêng.
 
 Sau khi khôi phục, ba thứ vẫn thiếu (xem bảng ở trên): file Storage,
 `EINVOICE_ENC_KEY`, và mọi biến môi trường khác.

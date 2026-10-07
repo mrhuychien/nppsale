@@ -117,6 +117,12 @@ describe("CI gates with dummy command binaries only", () => {
     const result = run("verify-dump.sh", { pg_restore: `echo 'ERROR: role "${marker}" does not exist' >&2; exit 1` })
     expect(result.status).toBe(1); expect(result.stdout).toContain("BACKUP_RESTORE_TARGET_INCOMPATIBLE")
   })
+  it("reports only whitelisted public schema names", () => {
+    const known = run("verify-dump.sh", { pg_restore: 'echo \'pg_restore: error: could not execute query: ERROR:  schema "extensions" does not exist\' >&2; exit 1' })
+    expect(known.status).toBe(1); expect(known.stdout).toContain("Missing restore schema: extensions")
+    const unknown = run("verify-dump.sh", { pg_restore: `echo 'pg_restore: error: could not execute query: ERROR:  schema "${marker}" does not exist' >&2; exit 1` })
+    expect(unknown.status).toBe(1); expect(unknown.stdout).not.toContain("Missing restore schema:")
+  })
   it("targets only disposable localhost and enables fail-fast transaction", () => {
     const result = run("verify-dump.sh", { pg_restore: '[ "$2" = "postgresql://postgres@localhost:5433/verify" ] && [[ "$*" == *"--exit-on-error"* ]] && [[ "$*" == *"--single-transaction"* ]]' })
     expect(result.status).toBe(0)

@@ -26,7 +26,8 @@ jobs:
       # Postgres tạm để KIỂM CHỨNG bản dump khôi phục được. Một bản sao
       # chưa từng restore thì không phải bản sao, chỉ là một file.
       verify_db:
-        image: postgres:16
+        # Match pg_dump/pg_restore 17; this is not a full Supabase platform.
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: verify
           POSTGRES_DB: verify
@@ -40,6 +41,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Kiểm tra đủ cấu hình trước khi kết nối
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: bash scripts/backup/preflight.sh
 
       - uses: actions/setup-node@v4
         with:
@@ -58,7 +69,8 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17 age
-          pg_dump --version
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
           age --version
 
       # --- Kết xuất -----------------------------------------------------
@@ -71,13 +83,16 @@ jobs:
           PGURL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          [ -n "$PGURL" ] || { echo "::error::Thiếu secret SUPABASE_DB_URL"; exit 1; }
+          set +x
+          umask 077
           mkdir -p out
-          pg_dump "$PGURL" \
+          if ! pg_dump "$PGURL" \
             --format=custom \
             --no-owner --no-privileges \
             --schema=public --schema=auth --schema=storage \
-            --file=out/dump.pgc
+            --file=out/dump.pgc >/dev/null 2>&1; then
+            echo "::error::BACKUP_DUMP_FAILED"; exit 1
+          fi
           ls -lh out/dump.pgc
 
       # --- Kiểm chứng: khôi phục thật rồi đếm ---------------------------
@@ -88,36 +103,13 @@ jobs:
       - name: Khôi phục thử vào Postgres tạm
         env:
           PGPASSWORD: verify
-        run: |
-          set -euo pipefail
-          pg_restore --dbname "postgresql://postgres@localhost:5433/verify" \
-            --no-owner --no-privileges --clean --if-exists \
-            out/dump.pgc 2>restore.log || true
-          # pg_restore kêu nhiều cảnh báo vô hại (extension, role không có
-          # trên máy tạm). Không lấy mã thoát làm chuẩn — đếm bảng mới là
-          # bằng chứng.
-          tail -20 restore.log || true
+        run: bash scripts/backup/verify-dump.sh
 
       - name: Đối chiếu số bảng và số dòng
         env:
           PGPASSWORD: verify
           PGURL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          set -euo pipefail
-          q="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
-          src=$(psql "$PGURL" -tAc "$q")
-          dst=$(psql "postgresql://postgres@localhost:5433/verify" -tAc "$q")
-          echo "Bảng — nguồn: $src, bản khôi phục: $dst"
-          [ "$src" = "$dst" ] || { echo "::error::Số bảng lệch: nguồn $src, khôi phục $dst"; exit 1; }
-          [ "$dst" -gt 0 ] || { echo "::error::Bản khôi phục không có bảng nào"; exit 1; }
-
-          # Dữ liệu, không chỉ schema. Một bản dump --schema-only cũng qua
-          # được phép đếm bảng ở trên — phép này mới bắt được.
-          usq="SELECT count(*) FROM auth.users;"
-          su=$(psql "$PGURL" -tAc "$usq")
-          du=$(psql "postgresql://postgres@localhost:5433/verify" -tAc "$usq")
-          echo "auth.users — nguồn: $su, bản khôi phục: $du"
-          [ "$su" = "$du" ] || { echo "::error::Số người dùng lệch: $su vs $du"; exit 1; }
+        run: bash scripts/backup/verify-counts.sh
 
       # --- Mã hoá -------------------------------------------------------
       #
@@ -129,9 +121,12 @@ jobs:
           AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
-          [ -n "$AGE_PUBLIC_KEY" ] || { echo "::error::Thiếu secret AGE_PUBLIC_KEY"; exit 1; }
+          set +x
+          umask 077
           stamp=$(date -u +%Y%m%d)
-          age -r "$AGE_PUBLIC_KEY" -o "out/nppsale-$stamp.pgc.age" out/dump.pgc
+          if ! age -r "$AGE_PUBLIC_KEY" -o "out/nppsale-$stamp.pgc.age" out/dump.pgc >/dev/null 2>&1; then
+            echo "::error::BACKUP_ENCRYPT_FAILED"; exit 1
+          fi
           rm -f out/dump.pgc   # không để bản thô nằm lại trên runner
           ls -lh out/
 
@@ -171,3 +166,7 @@ jobs:
           path: out/*.age
           retention-days: 90
           if-no-files-found: error
+
+      - name: Dọn dữ liệu thô trên runner kể cả khi thất bại
+        if: always()
+        run: rm -f out/dump.pgc restore.log

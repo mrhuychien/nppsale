@@ -28,6 +28,34 @@ const KEEP_DAILY = 7
 const KEEP_WEEKLY = 4 // bản của Chủ nhật
 const KEEP_MONTHLY = 6 // bản ngày 1
 
+class BackupFailure extends Error {
+  constructor(readonly code: string, readonly status?: number) {
+    super(code)
+  }
+}
+
+/** Never publish exception messages, HTTP response bodies, or request URLs. */
+export function safeFailure(error: unknown): string {
+  if (!(error instanceof BackupFailure)) return "BACKUP_UNEXPECTED_FAILURE"
+  return error.code + (Number.isInteger(error.status) ? ` (HTTP ${error.status})` : "")
+}
+
+async function request(code: string, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch {
+    throw new BackupFailure(code + "_NETWORK")
+  }
+}
+
+async function json<T>(res: Response, code: string): Promise<T> {
+  try {
+    return await res.json() as T
+  } catch {
+    throw new BackupFailure(code + "_INVALID_RESPONSE")
+  }
+}
+
 /**
  * Đọc secret LÚC CẦN, không phải lúc import.
  *
@@ -37,13 +65,13 @@ const KEEP_MONTHLY = 6 // bản ngày 1
  */
 function env(k: string): string {
   const v = process.env[k]
-  if (!v) throw new Error(`Thiếu biến môi trường ${k}. Xem docs/BACKUP.md.`)
+  if (!v) throw new BackupFailure("BACKUP_MISSING_CONFIGURATION")
   return v
 }
 
 /** Đổi refresh token lấy access token ngắn hạn. */
 async function accessToken(): Promise<string> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await request("OAUTH", "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -53,16 +81,9 @@ async function accessToken(): Promise<string> {
       grant_type: "refresh_token",
     }),
   })
-  const body = (await res.json()) as { access_token?: string; error_description?: string; error?: string }
-  if (!res.ok || !body.access_token) {
-    // Nói rõ nguyên nhân hay gặp nhất thay vì ném nguyên lỗi của Google:
-    // refresh token của "Testing app" hết hạn sau 7 ngày.
-    throw new Error(
-      `Không lấy được access token: ${body.error_description || body.error || res.status}. ` +
-        `Nếu là "invalid_grant": OAuth app đang ở chế độ Testing thì refresh token hết hạn sau 7 ngày — ` +
-        `chuyển app sang Production trong Google Cloud Console rồi lấy token mới.`
-    )
-  }
+  if (!res.ok) throw new BackupFailure("OAUTH_HTTP_FAILURE", res.status)
+  const body = await json<{ access_token?: string }>(res, "OAUTH")
+  if (typeof body?.access_token !== "string" || !body.access_token) throw new BackupFailure("OAUTH_MISSING_ACCESS_TOKEN")
   return body.access_token
 }
 
@@ -79,11 +100,11 @@ async function listBackups(token: string): Promise<DriveFile[]> {
       pageSize: "100",
     })
     if (pageToken) q.set("pageToken", pageToken)
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${q}`, {
+    const res = await request("DRIVE_LIST", `https://www.googleapis.com/drive/v3/files?${q}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) throw new Error(`Liệt kê thư mục Drive lỗi: ${res.status} ${await res.text()}`)
-    const body = (await res.json()) as { files?: DriveFile[]; nextPageToken?: string }
+    if (!res.ok) throw new BackupFailure("DRIVE_LIST_HTTP_FAILURE", res.status)
+    const body = await json<{ files?: DriveFile[]; nextPageToken?: string }>(res, "DRIVE_LIST")
     out.push(...(body.files ?? []))
     pageToken = body.nextPageToken
   } while (pageToken)
@@ -94,7 +115,7 @@ async function upload(token: string, path: string, name: string): Promise<string
   const size = statSync(path).size
   // Upload nhiều bước (resumable): file backup có thể lớn, và upload một
   // phát thì đứt giữa chừng là mất trắng, phải làm lại từ đầu.
-  const start = await fetch(
+  const start = await request("DRIVE_UPLOAD_START",
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
     {
       method: "POST",
@@ -106,29 +127,30 @@ async function upload(token: string, path: string, name: string): Promise<string
       body: JSON.stringify({ name, parents: [env("GDRIVE_FOLDER_ID")] }),
     }
   )
-  if (!start.ok) throw new Error(`Mở phiên upload lỗi: ${start.status} ${await start.text()}`)
+  if (!start.ok) throw new BackupFailure("DRIVE_UPLOAD_START_HTTP_FAILURE", start.status)
   const location = start.headers.get("location")
-  if (!location) throw new Error("Google không trả về địa chỉ upload")
+  if (!location) throw new BackupFailure("DRIVE_UPLOAD_MISSING_LOCATION")
 
-  const put = await fetch(location, {
+  const put = await request("DRIVE_UPLOAD", location, {
     method: "PUT",
     headers: { "Content-Length": String(size) },
     // @ts-expect-error — Node fetch nhận stream, kiểu của lib chưa khai báo
     body: createReadStream(path),
     duplex: "half",
   })
-  if (!put.ok) throw new Error(`Upload lỗi: ${put.status} ${await put.text()}`)
-  const done = (await put.json()) as { id: string }
+  if (!put.ok) throw new BackupFailure("DRIVE_UPLOAD_HTTP_FAILURE", put.status)
+  const done = await json<{ id: string }>(put, "DRIVE_UPLOAD")
+  if (typeof done?.id !== "string" || !done.id) throw new BackupFailure("DRIVE_UPLOAD_MISSING_ID")
   return done.id
 }
 
 async function remove(token: string, id: string): Promise<void> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+  const res = await request("DRIVE_DELETE", `https://www.googleapis.com/drive/v3/files/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok && res.status !== 404) {
-    throw new Error(`Xoá file cũ lỗi: ${res.status} ${await res.text()}`)
+    throw new BackupFailure("DRIVE_DELETE_HTTP_FAILURE", res.status)
   }
 }
 
@@ -168,20 +190,20 @@ export function keepSet(names: string[]): Set<string> {
 
 export async function main(dir: string | undefined, prune = false) {
   if (!dir) {
-    console.error("Thiếu tham số: thư mục chứa file .age")
+    console.error("BACKUP_MISSING_DIRECTORY")
     process.exit(1)
   }
   const files = readdirSync(dir).filter((f) => f.endsWith(".age"))
   if (files.length === 0) {
-    console.error(`Không có file .age nào trong ${dir} — không có gì để tải lên.`)
+    console.error("BACKUP_NO_ENCRYPTED_FILES")
     process.exit(1)
   }
 
   const token = await accessToken()
 
   for (const f of files) {
-    const id = await upload(token, join(dir, f), f)
-    console.log(`Đã tải lên ${f} (${(statSync(join(dir, f)).size / 1024 / 1024).toFixed(2)} MB) → ${id}`)
+    await upload(token, join(dir, f), f)
+    console.log(`Đã tải lên ${f} (${(statSync(join(dir, f)).size / 1024 / 1024).toFixed(2)} MB)`)
   }
 
   // Mặc định chỉ upload. Xoá vĩnh viễn cần chủ nhà duyệt riêng trước
@@ -208,9 +230,12 @@ export async function main(dir: string | undefined, prune = false) {
 if (process.argv[1]?.endsWith("upload-drive.ts")) {
   const args = process.argv.slice(2)
   const unknown = args.slice(1).filter((arg) => arg !== "--prune")
-  if (unknown.length > 0) throw new Error("Tham số không hợp lệ; dùng <thư-mục> [--prune]")
+  if (unknown.length > 0) {
+    console.error("BACKUP_INVALID_ARGUMENTS")
+    process.exit(1)
+  }
   main(args[0], args.includes("--prune")).catch((e) => {
-    console.error(e instanceof Error ? e.message : e)
+    console.error(safeFailure(e))
     process.exit(1)
   })
 }

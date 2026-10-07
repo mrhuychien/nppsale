@@ -11,6 +11,26 @@ chỉ xoay vòng khi chủ nhà duyệt riêng việc xoá vĩnh viễn.
 
 ---
 
+## Giới hạn kiểm chứng và log
+
+Workflow kiểm tra đủ sáu secrets trước khi gọi database/OAuth. Log chỉ chứa
+mã lỗi cố định và HTTP status, không chứa response body, URL kết nối hoặc
+raw restore log. Diagnostic restore chỉ tồn tại trong file tạm riêng trên
+runner để phân loại lỗi, không được in/upload và được xoá khi bước kết thúc.
+
+Restore dùng PostgreSQL 17 tạm, `--exit-on-error --single-transaction`; bất kỳ
+lỗi nào đều chặn mã hoá/upload. Vanilla PostgreSQL không phải môi trường
+Supabase đầy đủ: role, extension, schema/type/function phụ thuộc bên ngoài
+dump có thể chưa có. `BACKUP_RESTORE_TARGET_INCOMPATIBLE` yêu cầu môi trường
+diễn tập tương thích, không phải lý do bỏ qua lỗi hay tạo stub để ép pass.
+
+Đếm bảng public và dòng auth.users là kiểm tra bổ sung, chưa chứng minh mọi
+dữ liệu/chức năng ứng dụng hoặc file Storage khôi phục được. Nếu dữ liệu
+nguồn thay đổi giữa dump và phép đếm sau đó, phép đếm có thể chặn lượt chạy;
+workflow không giảm tiêu chí kiểm tra để bỏ qua sự khác biệt này.
+
+---
+
 ## Ba lớp, không phải một
 
 | Lớp | Là gì | Bảo vệ khỏi |

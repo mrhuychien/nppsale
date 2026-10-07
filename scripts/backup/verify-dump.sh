@@ -25,12 +25,13 @@ if ! pg_restore --dbname 'postgresql://postgres@localhost:5433/verify' \
       dependency=type
     fi
     printf '::error::BACKUP_RESTORE_TARGET_INCOMPATIBLE (missing dependency: %s; upload blocked)\n' "$dependency"
-    # Report only a validated schema identifier, never SQL or raw error lines.
+    # Report only fixed public schema names, never arbitrary identifiers.
     if [[ "$dependency" == schema ]]; then
-      missing_schema=$(sed -nE 's/^pg_restore: error: could not execute query: ERROR:  schema "([A-Za-z_][A-Za-z0-9_]{0,62})" does not exist[[:space:]]*$/\1/p' "$diagnostic" | head -n 1)
-      if [[ -n "$missing_schema" ]]; then
-        printf '::notice::Missing restore schema: %s\n' "$missing_schema"
-      fi
+      for schema in public auth storage extensions pg_catalog vault graphql graphql_public; do
+        if grep -Fq "schema \"$schema\" does not exist" "$diagnostic"; then
+          printf '::notice::Missing restore schema: %s\n' "$schema"
+        fi
+      done
     fi
     # Only report fixed, public Supabase role names; never print raw errors.
     if [[ "$dependency" == role ]]; then

@@ -100,6 +100,12 @@ jobs:
       # Chạy TRƯỚC khi mã hoá, vì khoá riêng cố ý KHÔNG có mặt trong CI —
       # nên CI không giải mã được bản đã mã hoá. Kiểm ở đây là kiểm đúng
       # thứ sắp được mã hoá, chỉ khác một bước bọc ngoài.
+      - name: Chuẩn bị dependency thật trong Postgres tạm
+        env:
+          PGPASSWORD: verify
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: bash scripts/backup/prepare-target.sh
+
       - name: Khôi phục thử vào Postgres tạm
         env:
           PGPASSWORD: verify
@@ -127,7 +133,10 @@ jobs:
           if ! age -r "$AGE_PUBLIC_KEY" -o "out/nppsale-$stamp.pgc.age" out/dump.pgc >/dev/null 2>&1; then
             echo "::error::BACKUP_ENCRYPT_FAILED"; exit 1
           fi
-          rm -f out/dump.pgc   # không để bản thô nằm lại trên runner
+          if ! age -r "$AGE_PUBLIC_KEY" -o "out/nppsale-$stamp.dependencies.json.age" out/dependencies.json >/dev/null 2>&1; then
+            echo "::error::BACKUP_DEPENDENCY_ENCRYPT_FAILED"; exit 1
+          fi
+          rm -f out/dump.pgc out/dependencies.json
           ls -lh out/
 
           # File mã hoá phải bắt đầu bằng header của age. Không kiểm thì
@@ -169,4 +178,4 @@ jobs:
 
       - name: Dọn dữ liệu thô trên runner kể cả khi thất bại
         if: always()
-        run: rm -f out/dump.pgc restore.log
+        run: rm -f out/dump.pgc out/dependencies.json out/available-extensions.json out/bootstrap.sql restore.log

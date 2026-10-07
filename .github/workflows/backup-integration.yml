@@ -1,0 +1,45 @@
+name: Backup dependency integration
+on:
+  push:
+    paths: ['scripts/backup/**', '.github/workflows/backup*.yml']
+  pull_request:
+    paths: ['scripts/backup/**', '.github/workflows/backup*.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  restore-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      source:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: fixture
+        ports: ['5434:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      target:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: verify
+        ports: ['5433:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Restore genuine dependency fixture without secrets
+        run: bash scripts/backup/test-integration.sh
+      - name: Remove dummy data
+        if: always()
+        run: rm -f out/dump.pgc out/dependencies.json out/available-extensions.json out/bootstrap.sql

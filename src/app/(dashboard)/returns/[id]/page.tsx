@@ -38,6 +38,7 @@ import {
 import type { Return, ReturnLine } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
+import { DoiNgayPhieuTra } from "@/components/returns/doi-ngay-phieu-tra"
 
 export default function ReturnDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -388,6 +389,10 @@ export default function ReturnDetailPage() {
           </Link>
         </Button>
         <XuatExcelPhieu loai="tra-khach" id={ret.id} />
+        {/* Đổi ngày chứng từ — cả phiếu tự sinh (chủ nhà 08/10/2026); quyền như sửa phiếu (RLS `returns`). */}
+        {canEdit && ret.status !== "cancelled" && (
+          <DoiNgayPhieuTra phieu={ret} ngay={ngayPhieu} onDaDoi={setNgayPhieu} />
+        )}
         {(() => {
           const sua = duongSuaPhieuTra(ret)
           return sua ? (

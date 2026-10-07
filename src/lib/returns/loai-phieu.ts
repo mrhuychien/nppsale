@@ -72,3 +72,26 @@ export function duongSuaPhieuTra(r: PhieuTraXet & { id: string }): { href: strin
   if (laNhapTheoDon(r)) return r.order_id ? { href: `/pos/don-hang/${r.order_id}`, nhan: "Sửa đơn" } : null
   return { href: `/pos/tra-hang/${r.id}`, nhan: "Sửa" }
 }
+
+/**
+ * ĐỔI NGÀY CHỨNG TỪ (`return_date`) của phiếu trả — chủ nhà 08/10/2026: "phiếu tự sinh theo đơn đặt hàng tao cũng
+ * muốn sửa được ngày tháng".
+ * - Mọi phiếu chưa huỷ, kể cả phiếu TỰ SINH (các nút sửa hàng / tiền của nó vẫn khoá — sửa từ hóa đơn). Máy chủ cho
+ *   ghi `return_date` (danh sách cột sửa được của `_khoa_ghi_thang_phieu_tra`, mig 227).
+ * - ⚠ Phiếu tự sinh: công nợ và doanh số VẪN theo ngày hóa đơn (`_ngay_tru_doanh_so`, mig 192) — chỉ đổi ngày in trên
+ *   phiếu / ngày nhóm ở danh sách. Phiếu tự lập đã hoàn thành: ngày trừ doanh số đi theo ngày phiếu (mig 188).
+ * - Không cho ngày sau hôm nay (giờ VN).
+ */
+export function loiDoiNgayPhieuTra(r: PhieuTraXet, ngay: string, homNay: string): string | null {
+  if (r.status === "cancelled") return "Phiếu đã huỷ — không đổi ngày."
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay)) return "Chọn ngày phiếu."
+  if (ngay > homNay) return "Ngày phiếu không được sau hôm nay."
+  return null
+}
+
+/** Câu giải thích dưới ô đổi ngày — nói đúng ngày đổi ảnh hưởng tới đâu. */
+export function giaiThichDoiNgay(r: PhieuTraXet): string {
+  if (laPhieuTuSinh(r)) return "Phiếu tự sinh theo hóa đơn: công nợ và doanh số vẫn tính theo ngày hóa đơn — chỉ đổi ngày của phiếu."
+  if (r.status === "completed") return "Ngày trừ doanh số và công nợ của phiếu đi theo ngày mới."
+  return "Ngày chứng từ của phiếu trả."
+}

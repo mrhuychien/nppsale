@@ -32,7 +32,7 @@ jobs:
           POSTGRES_PASSWORD: verify
           POSTGRES_DB: verify
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

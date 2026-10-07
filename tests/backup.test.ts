@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { keepSet, dateFromName } from "../scripts/backup/upload-drive"
 
@@ -192,5 +192,24 @@ describe("Quy trình sao lưu", () => {
   it("dừng ngay nếu thiếu secret", () => {
     expect(WF).toContain("bash scripts/backup/preflight.sh")
     expect(read("scripts/backup/preflight.sh")).toContain("SUPABASE_DB_URL AGE_PUBLIC_KEY GDRIVE_CLIENT_ID GDRIVE_CLIENT_SECRET GDRIVE_REFRESH_TOKEN GDRIVE_FOLDER_ID")
+  })
+})
+
+/**
+ * 08/10/2026: verify-dump.sh mang xuống dòng CRLF → bash báo "set: +\r: invalid option", bước khôi phục thử chết
+ * nên bản sao lưu không bao giờ lên được Google Drive. Script / workflow sao lưu phải là LF.
+ */
+describe("backup — xuống dòng LF", () => {
+  const TEP = [
+    ".github/workflows/backup.yml",
+    ".github/workflows/backup-integration.yml",
+    ...readdirSync(resolve(ROOT, "scripts/backup")).map((f) => `scripts/backup/${f}`),
+  ]
+  it.each(TEP)("%s không có CRLF", (f) => {
+    expect(read(f).includes("\r")).toBe(false)
+  })
+  it(".gitattributes ép LF cho .sh / .yml / .ts", () => {
+    const ga = read(".gitattributes")
+    for (const k of ["*.sh", "*.yml", "*.ts"]) expect(ga).toMatch(new RegExp(`^\\${k.slice(0, 1)}\\${k.slice(1)}\\s+text eol=lf`, "m"))
   })
 })

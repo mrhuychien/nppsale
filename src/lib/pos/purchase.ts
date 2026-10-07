@@ -83,6 +83,35 @@ export function supplierReturnMax(receivedRemaining: number | null | undefined):
   return Math.max(0, Math.floor(Number(receivedRemaining)))
 }
 
+/**
+ * ĐỔI ĐƠN VỊ MỘT DÒNG PHIẾU TRẢ NCC (chủ nhà 07/10/2026: "Phiếu trả hàng NCC cả ở pos và mobile chưa chọn được đơn vị
+ * tính").
+ * - Giá: đang là giá gợi ý của đơn vị cũ (`goiY`, bảng giá nhập) → giá gợi ý của đơn vị mới; không thì quy theo hệ số
+ *   (`giá / hệ số cũ × hệ số mới`) — giá vốn không có bảng giá riêng từng đơn vị như giá bán.
+ * - Trần "đã nhập" (`ordered`, theo ĐƠN VỊ của dòng) quy đổi theo — 2 thùng ×24 đổi sang hộp là trần 48 hộp; SL đang
+ *   gõ vượt trần mới thì kẹp lại.
+ * Thiếu hệ số của một trong hai đơn vị thì giữ giá / trần — đoán là ghi sai.
+ */
+export function doiDonViDongTraNcc<
+  L extends { unit: string; price: number; qty: number; units: ReadonlyArray<{ unit_name: string; conversion: number }>; ordered?: number | null }
+>(l: L, donVi: string, goiY?: (unit: string) => number): { unit: string; price: number; qty: number; ordered?: number | null } {
+  if (donVi === l.unit) return { unit: l.unit, price: l.price, qty: l.qty, ordered: l.ordered }
+  const cu = l.units.find((u) => u.unit_name === l.unit)?.conversion
+  const moi = l.units.find((u) => u.unit_name === donVi)?.conversion
+  const coHeSo = !!cu && !!moi && cu > 0 && moi > 0
+  const giaCu = goiY ? goiY(l.unit) : 0
+  const giaMoi = goiY ? goiY(donVi) : 0
+  const price =
+    giaCu > 0 && l.price === giaCu && giaMoi > 0
+      ? giaMoi
+      : coHeSo
+        ? Math.round((l.price / (cu as number)) * (moi as number))
+        : l.price
+  const ordered = l.ordered == null || !coHeSo ? l.ordered : (l.ordered * (cu as number)) / (moi as number)
+  const tran = supplierReturnMax(ordered)
+  return { unit: donVi, price, qty: tran == null ? l.qty : Math.min(l.qty, tran), ordered }
+}
+
 /* ==================================================================
  * KHOÁ — vì sao chưa huỷ / sửa được
  * ================================================================== */

@@ -40,7 +40,8 @@ export const POS_GRID = {
   invoiceEdit: { cols: "24px 80px minmax(0,1fr) 62px 98px 84px 88px 92px 96px 60px", gap: 7 },
   returnDoc: { cols: "24px 64px 80px minmax(0,1fr) 96px 56px 84px 84px 56px 92px 24px", gap: 7 },
   purchase: { cols: "24px 80px minmax(0,1fr) 56px 92px 84px 96px 92px 108px 60px", gap: 7 },
-  supplierReturn: { cols: "24px 80px minmax(0,1fr) 92px 60px 84px 96px 92px 104px 60px", gap: 7 },
+  /* Cột ĐVT (56px) sau Tên hàng — chủ nhà 07/10/2026: "Phiếu trả hàng NCC … chưa chọn được đơn vị tính". */
+  supplierReturn: { cols: "24px 80px minmax(0,1fr) 56px 92px 60px 84px 96px 92px 104px 60px", gap: 7 },
 } as const
 
 export type PosGridKey = keyof typeof POS_GRID

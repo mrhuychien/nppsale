@@ -500,7 +500,7 @@ describe("ô tìm hàng: bấm cả dòng, có NCC và tồn kho", () => {
     const DONG = [
       "src/app/(dashboard)/inventory/stock-in/page.tsx",
       "src/app/(dashboard)/inventory/stock-issue/page.tsx",
-      "src/app/(dashboard)/returns/new/page.tsx",
+      /* `/returns/new` rời danh sách 07/10/2026: màn kiểu /sell (thẻ sản phẩm), không còn ProductPicker. */
       "src/components/orders/invoice-editor.tsx",
       "src/components/purchasing/purchasing-lines-editor.tsx",
     ]

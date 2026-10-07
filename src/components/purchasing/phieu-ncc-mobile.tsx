@@ -473,6 +473,31 @@ export function PhieuNccMobile({
                         />
                         <span className="text-[15px] font-bold tabular-data">{formatCurrency(lineNetOf(l))}</span>
                       </div>
+                      {/* ĐVT chọn ngay trên dòng (chủ nhà 07/10/2026: "Phiếu trả hàng NCC … chưa chọn được đơn vị tính")
+                          — trước đây phải chạm tên hàng mở sheet mới thấy, dễ bỏ sót. */}
+                      {(() => {
+                        const sp = byId.get(l.product_id)
+                        const dvs = sp ? donViNhap(sp) : []
+                        if (!sp || dvs.length < 2) return null
+                        return (
+                          <div role="group" aria-label={`Đơn vị tính ${l.product_name}`} className="flex flex-wrap gap-1.5" data-testid="dvt-dong-ncc">
+                            {dvs.map((u) => (
+                              <button
+                                key={u}
+                                type="button"
+                                aria-pressed={u === l.unit_name}
+                                onClick={() => u !== l.unit_name && onChange({ lines: doiDonViDong(lines, i, sp, u) })}
+                                className={cn(
+                                  "h-8 rounded-full border px-3 text-[13px] font-semibold",
+                                  u === l.unit_name ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
+                                )}
+                              >
+                                {u}
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )
                 })

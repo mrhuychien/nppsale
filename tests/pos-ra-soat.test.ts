@@ -938,7 +938,7 @@ describe("§đợt9 — một ô thêm hàng trên header, nền xanh", () => {
       "src/components/purchasing/purchasing-lines-editor.tsx",
       "src/app/(dashboard)/inventory/stock-issue/page.tsx",
       "src/app/(dashboard)/inventory/stock-in/page.tsx",
-      "src/app/(dashboard)/returns/new/page.tsx",
+      /* `/returns/new` rời danh sách 07/10/2026: nay là màn kiểu /sell (thẻ sản phẩm, không có ô ProductPicker). */
     ]) {
       const src = code(read(rel))
       const so = (src.match(/<ProductPicker\b/g) ?? []).length

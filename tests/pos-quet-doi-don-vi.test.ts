@@ -113,7 +113,8 @@ describe("mọi màn POS đổi đơn vị qua hàm dùng chung", () => {
     const coODonVi = tep.filter((f) => /value=\{l\.unit\}|<PosUnitSelect|u\.unit_name[,)]|<UnitCycleButton\b/.test(readFileSync(resolve(GOC, f), "utf-8")))
     expect(coODonVi.map((f) => f.split("/").pop()).sort()).toEqual(
       /* Từ 24/09/2026 màn hóa đơn cũng dùng `UnitCycleButton` — vào diện quét. */
-      ["invoice-screen.tsx", "order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx"]
+      /* Từ 07/10/2026 màn trả NCC có cột ĐVT (chủ nhà: "Phiếu trả hàng NCC … chưa chọn được đơn vị tính"). */
+      ["invoice-screen.tsx", "order-screen.tsx", "purchase-screen.tsx", "return-screen.tsx", "supplier-return-screen.tsx"]
     )
   })
 

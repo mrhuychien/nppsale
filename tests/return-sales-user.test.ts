@@ -207,9 +207,10 @@ describe("màn lập phiếu trả — ô chọn nhân viên", () => {
     expect(m![1]).toContain('"manager"')
     expect(m![1]).not.toContain('"sales"')
     /* Và ô chọn phải thật sự nằm sau cái cổng ấy. */
-    const iO = ma.indexOf('id="ret-seller"')
-    expect(iO).toBeGreaterThan(0)
-    expect(ma.slice(Math.max(0, iO - 1200), iO)).toContain("canPickSeller &&")
+    /* Màn kiểu /sell (07/10/2026): ô chọn nhân viên ở phần vẽ, chỉ hiện khi trang đưa danh sách (null = không quyền). */
+    expect(ma).toMatch(/sellers=\{canPickSeller \? [\s\S]{0,200}: null\}/)
+    const ve = boChuThich(doc("src/components/returns/phieu-tra-khach-mobile.tsx"))
+    expect(ve).toContain("{p.sellers && (")
   })
 
   it("danh sách nhân viên đúng bộ vai trò trigger cho phép", () => {

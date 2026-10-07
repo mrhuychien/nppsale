@@ -4,45 +4,32 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewReturnHref } from "@/lib/nav/pos-preview"
-import { Plus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
-import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { MoneyInput } from "@/components/ui/money-input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { SearchSelect } from "@/components/ui/search-select"
-import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TaoNhanhKhach } from "@/components/tao-nhanh/tao-nhanh-khach"
 import { TaoNhanhSanPham } from "@/components/tao-nhanh/tao-nhanh-san-pham"
-import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
+import { duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useToast } from "@/hooks/use-toast"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
-import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { lapPhieuTraMotLan } from "@/lib/sell/create-return"
 import { mayChuThieuCot } from "@/lib/db/co-rpc"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import {
-  RETURN_REASONS,
   addReturnLine,
-  patchReturnLine,
   returnCreditOf,
   returnPriceViolation,
-  searchReturnable,
-  setReturnQty,
   toReturnLine,
   boCotMoiCuaDongTra,
   type ReturnCartLine,
 } from "@/lib/sell/returns"
 import type { Customer } from "@/types"
+import type { PricedProduct } from "@/lib/sell/pricing"
+import { PhieuTraKhachMobile, giaBangTra } from "@/components/returns/phieu-tra-khach-mobile"
 
 /**
  * Lập phiếu trả hàng.
@@ -87,22 +74,14 @@ interface InvoiceLineLite {
   unit_price: number
 }
 
-interface ProductLite {
-  id: string
-  name: string
-  sku: string
-  barcode: string | null
-  base_unit: string
-  vat_rate: number | null
-  sell_price: number | null
-}
+/* Đủ cho thẻ sản phẩm /sell: ĐVT quy đổi + bảng giá (giá theo nhóm khách, `unitPriceFor`). */
+type ProductLite = PricedProduct
 
 /**
  * ⚠ DÙNG TRẦN CHUNG `PICKER_PEEK`, KHÔNG GIỮ MỘT CON SỐ RIÊNG. Năm ô
  * tìm hàng trong kho mã này xổ cùng một số mục; một màn lệch số là
  * người dùng thấy hai ô hành xử khác nhau mà không hiểu vì sao.
  */
-const PICK_CAP = PICKER_PEEK
 
 /**
  * Lỗi "cơ sở dữ liệu chưa có cột `sales_user_id`" — tức mã nguồn đã lên
@@ -143,8 +122,9 @@ export default function NewReturnPage() {
    *   Đây đúng bộ ba mà ô tìm ở màn Đơn hàng đang dùng.
    */
   const [customers, setCustomers] = useState<
-    Pick<Customer, "id" | "store_name" | "owner_name" | "phone">[]
+    Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id">[]
   >([])
+  const [dangNap, setDangNap] = useState(true)
   const [products, setProducts] = useState<ProductLite[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -162,21 +142,6 @@ export default function NewReturnPage() {
   const [reason, setReason] = useState("")
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<ReturnCartLine[]>([])
-  /**
-   * ⚠ DỰNG MỘT LẦN THEO `customers`. Dựng lại ở mỗi lần vẽ là mảng mới
-   *   mỗi lần, và `SearchSelect` nhận một danh sách "đổi" liên tục.
-   */
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        id: c.id,
-        label: c.store_name,
-        /* Hiện số điện thoại để phân biệt hai cửa hàng trùng tên. */
-        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
-        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
-      })),
-    [customers]
-  )
 
   /**
    * NPP LẬP PHIẾU TRẢ GIÚP NHÂN VIÊN (chủ nhà chốt 22/09/2026).
@@ -213,17 +178,7 @@ export default function NewReturnPage() {
     }
   }, [canPickSeller, user?.org_id])
 
-  const sellerOptions = useMemo(
-    () =>
-      sellers.map((u) => ({
-        id: u.id,
-        label: u.full_name || "(chưa đặt tên)",
-        hint: u.id === user?.id ? "chính bạn" : u.role,
-      })),
-    [sellers, user?.id]
-  )
 
-  const [q, setQ] = useState("")
   const [saving, setSaving] = useState(false)
   /** Khung tạo nhanh khách / sản phẩm đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026) — phiếu giữ nguyên. */
   const [taoKhach, setTaoKhach] = useState<{ chu: string } | null>(null)
@@ -234,10 +189,10 @@ export default function NewReturnPage() {
       const [custRes, prodRes] = await Promise.all([
         // ⚠ Phân trang: hơn 1.000 khách là chuyện thường, mà server cắt ở
         // 1.000 dòng và KHÔNG báo — khách nằm sau đó thì không lập được phiếu.
-        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>((from, to) =>
+        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id">>((from, to) =>
           createClient()
             .from("customers")
-            .select("id, store_name, owner_name, phone", { count: "exact" })
+            .select("id, store_name, owner_name, phone, group_id", { count: "exact" })
             .eq("status", "active")
             // ⚠ Khoá phụ `id`: trùng tên cửa hàng là chuyện thường, các
             //   trang song song thiếu khoá duy nhất là lặp / sót khách.
@@ -248,7 +203,7 @@ export default function NewReturnPage() {
         fetchAllForAggregate<ProductLite>((from, to) =>
           createClient()
             .from("products")
-            .select("id, name, sku, barcode, base_unit, vat_rate, sell_price", { count: "exact" })
+            .select("id, name, sku, barcode, base_unit, vat_rate, sell_price, images, price_lists(*), units:product_units(*)", { count: "exact" })
             .eq("status", "active")
             .order("name")
             .order("id")
@@ -260,6 +215,7 @@ export default function NewReturnPage() {
       setLoadError(custRes.error ?? prodRes.error ?? null)
       setCustomers(custRes.rows)
       setProducts(prodRes.rows)
+      setDangNap(false)
     }
     load()
   }, [])
@@ -339,64 +295,28 @@ export default function NewReturnPage() {
     const m = new Map(products.map((p) => [p.id, p]))
     return (id: string) => m.get(id)
   }, [products])
+  /** Nhóm khách → giá bảng theo nhóm (`unitPriceFor`), như màn bán hàng /sell. */
+  const groupId = customers.find((c) => c.id === customerId)?.group_id ?? null
 
   /**
-   * ⚠ GIÁ LẤY TỪ ĐƠN ĐÃ BÁN, không lấy giá bảng hôm nay. Khách mua có chiết
-   * khấu thì trả lại phải tính đúng số tiền họ đã trả — lấy giá hôm nay là
-   * hoàn cho khách nhiều hơn (hoặc ít hơn) số đã thu.
+   * ⚠ GIÁ LẤY TỪ HOÁ ĐƠN ĐÃ BÁN nếu phiếu gắn hoá đơn có (hàng, ĐVT) đó — khách mua có chiết khấu thì trả lại phải
+   *   tính đúng số tiền họ đã trả. Không thì giá bảng của nhóm khách ở đúng ĐVT.
    */
-  const addFromOrder = (l: InvoiceLineLite) => {
-    const p = productById(l.product_id)
-    setLines((prev) =>
-      addReturnLine(prev, {
-        productId: l.product_id,
-        unit: l.unit_name,
-        qty: 1,
-        price: Number(l.unit_price) || 0,
-        vatRate: Number(p?.vat_rate ?? 0),
-        isExchange: false,
-        note: "",
-      })
-    )
+  const giaDaBan = (productId: string, unit: string) =>
+    invoiceLines.find((o) => o.product_id === productId && o.unit_name === unit)
+  const giaGoiY = (productId: string, unit: string) => {
+    const sold = giaDaBan(productId, unit)
+    return sold ? Number(sold.unit_price) || 0 : giaBangTra(productById(productId), unit, groupId)
   }
-
-  const addFromCatalog = (p: ProductLite) => {
-    setLines((prev) =>
-      addReturnLine(prev, {
-        productId: p.id,
-        unit: p.base_unit,
-        qty: 1,
-        price: Number(p.sell_price) || 0,
-        vatRate: Number(p.vat_rate ?? 0),
-        isExchange: false,
-        note: "",
-      })
-    )
+  /** ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền — trần như màn cũ (`returnPriceViolation`). */
+  const tranGia = (l: ReturnCartLine) => {
+    const sold = giaDaBan(l.productId, l.unit)
+    const ceiling = sold ? Number(sold.unit_price) : giaBangTra(productById(l.productId), l.unit, groupId)
+    return { ceiling, sold: !!sold, bad: returnPriceViolation(l, ceiling, priceRules) !== null }
   }
-
-  /**
-   * ⚠ Ô TRỐNG CŨNG XỔ DANH SÁCH. Chủ nhà chốt 20/09/2026 "bấm vào là
-   *   phải xổ list rồi", và 21/09/2026 hỏi lại đúng màn này: "Đơn trả
-   *   hàng phần tìm kiếm sản phẩm khi tìm kiếm phải xổ list". Màn này
-   *   bị bỏ sót vì nó TỰ VẼ ô tìm thay vì dùng `ProductPicker` — cùng
-   *   một lý do với màn hóa đơn hôm nay. `viMatchAllWords` khớp tất cả
-   *   khi từ khoá rỗng, nên bỏ câu `if (!term) return []` là đủ.
-   *
-   * ⚠ TRẦN GIỮ NGUYÊN. Đổ cả 1.700 mã xuống là dựng lại đúng cái danh
-   *   sách phải cuộn mà ô tìm sinh ra để thay thế.
-   */
-  /* ⚠ LUẬT NẰM Ở `searchReturnable`, không viết lại ở đây — xem chú
-     thích của hàm ấy: bản viết thẳng vào màn thì không chốt nào canh
-     được, và nó đã trôi hai lần. */
-  const found = useMemo(() => searchReturnable(products, q, PICK_CAP), [q, products])
 
   const credit = returnCreditOf(lines)
-  /** ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền. */
-  const priceBad = lines.filter((l) => {
-    const sold = invoiceLines.find((o) => o.product_id === l.productId && o.unit_name === l.unit)
-    const ceiling = sold ? Number(sold.unit_price) : Number(productById(l.productId)?.sell_price ?? 0)
-    return returnPriceViolation(l, ceiling, priceRules) !== null
-  }).length
+  const priceBad = lines.filter((l) => tranGia(l).bad).length
 
   const blocked =
     !customerId
@@ -411,8 +331,8 @@ export default function NewReturnPage() {
             ? "Có dòng trả vượt trần giá"
             : null
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (blocked || saving || !user?.org_id) return
     setSaving(true)
     try {
@@ -543,360 +463,73 @@ export default function NewReturnPage() {
   if (authLoading) return <Skeleton className="h-96" />
 
   return (
-    <div className="space-y-4">
+    <>
       {/* ⚠ Máy tính thì lập phiếu trả trên màn `/pos` — chủ nhà báo 23/09/2026
           "Tạo phiếu trả hàng → chưa chuyển sang pos". Chặn ở CỬA: nút "Tạo
           phiếu trả" ở danh sách và nút "Trả hàng" ở hóa đơn đều vào đây. */}
       <PosDesktopRedirect
         to={posNewReturnHref({ invoiceId: params.get("invoiceId"), customerId: params.get("customerId") })}
       />
-      <PageHeader title="Lập phiếu trả hàng" backHref="/returns" />
-
-      {loadError && (
-        <div className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
-          Không tải được danh mục: {loadError}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Khách hàng &amp; lý do</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Khách hàng *
-              </Label>
-              {/*
-                ⚠ Ô CHỌN PHẢI GÕ TÌM ĐƯỢC (chủ nhà báo 21/09/2026: "list
-                  khách hàng xổ xuống chưa tìm kiếm được khách hàng").
-                  Danh sách này kéo ĐỦ theo trang — với NPP có hơn một
-                  nghìn khách thì một `<Select>` liệt kê hết rồi bắt cuộn
-                  là không dùng được. `SearchSelect` là ô mà chủ nhà đã
-                  chỉ đích danh làm mẫu ("như khi chọn NCC ấy").
-
-                ⚠ KHÔNG CHO GÕ TỰ DO. Phiếu trả PHẢI gắn vào một khách có
-                  thật — `customer_id` đi thẳng vào công nợ. Một cái tên
-                  gõ tay không trừ nợ cho ai cả.
-              */}
-              <SearchSelect
-                id="ret-customer"
-                options={customerOptions}
-                valueId={customerId}
-                onPick={(o) => setCustomerId(o?.id ?? "")}
-                placeholder="Gõ tên cửa hàng, tên chủ hoặc số điện thoại…"
-                emptyHint="Không tìm thấy khách nào khớp."
-                taoMoi={
-                  duocTaoNhanh(user?.role, "khach")
-                    ? { nhan: NHAN_TAO_NHANH.khach, onTao: (chu) => setTaoKhach({ chu }) }
-                    : undefined
-                }
-              />
-              <TaoNhanhKhach
-                open={!!taoKhach}
-                onOpenChange={(o) => !o && setTaoKhach(null)}
-                chuBanDau={taoKhach?.chu}
-                onDaTao={(k) => {
-                  setCustomers((ds) =>
-                    gopVuaTao(ds, [{ id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? "", phone: k.phone ?? "" }])
-                  )
-                  setCustomerId(k.id)
-                }}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Lý do *
-              </Label>
-              <Select value={reason} onValueChange={setReason}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn lý do" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RETURN_REASONS.map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* ⚠ Gắn phiếu vào HÓA ĐƠN ĐÃ XUẤT thì mới đối chiếu được:
-                hàng này giao ngày nào, giá bao nhiêu, đã thu chưa. Không
-                bắt buộc vì khách vẫn trả được hàng mua từ lâu không còn
-                tra ra chứng từ. */}
-            <div className="space-y-2 sm:col-span-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Hóa đơn liên quan
-              </Label>
-              <Select value={invoiceId || "none"} onValueChange={(v) => setInvoiceId(v === "none" ? "" : v)}>
-                <SelectTrigger disabled={!customerId}>
-                  <SelectValue placeholder={customerId ? "Không gắn hóa đơn nào" : "Chọn khách trước"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Không gắn hóa đơn nào</SelectItem>
-                  {invoices.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.invoice_code} · {formatDate(o.invoice_date)} · {formatCurrency(o.total)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/*
-              ⚠ Ô NÀY NÓI VỀ NGƯỜI, KHÔNG NÓI VỀ HÀNG — và nó ở ngay thẻ
-                đầu, cạnh khách hàng, chứ không lẫn xuống bảng dòng hàng.
-
-              ⚠ ĐỂ TRỐNG KHÔNG CÓ NGHĨA LÀ "KHÔNG AI". Trigger mig 160
-                điền hộ: có hóa đơn gốc thì theo nhân viên của đơn ấy,
-                không có thì theo bạn. Nói ra đúng câu đó, vì một ô rỗng
-                không nhãn là người dùng không biết phiếu sẽ tính cho ai.
-            */}
-            {canPickSeller && (
-              <div className="space-y-2 sm:col-span-2">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Phiếu này tính cho nhân viên nào
-                </Label>
-                <SearchSelect
-                  id="ret-seller"
-                  options={sellerOptions}
-                  valueId={sellerId}
-                  onPick={(o) => setSellerId(o?.id ?? "")}
-                  placeholder="Gõ tên nhân viên…"
-                  emptyHint="Không tìm thấy nhân viên nào khớp."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Để trống thì phiếu theo nhân viên của hóa đơn gốc; không gắn hóa đơn
-                  thì đứng tên bạn. Báo cáo nhân viên trừ doanh số của người này.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Hàng trả *</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Hàng trong đơn đã chọn — đường nhanh nhất và đúng giá nhất. */}
-            {invoiceLines.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Hàng trên hóa đơn này
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {invoiceLines.map((l) => (
-                    <Button
-                      key={`${l.product_id}|${l.unit_name}`}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-auto py-1.5"
-                      onClick={() => addFromOrder(l)}
-                    >
-                      <Plus className="mr-1.5 h-3.5 w-3.5" />
-                      {productById(l.product_id)?.name ?? "—"}
-                      <span className="ml-1.5 text-muted-foreground">
-                        {l.unit_name} · {formatCurrency(l.unit_price)}
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/*
-              ⚠ DÙNG `ProductPicker`, KHÔNG TỰ VẼ. Ô tìm tự vẽ ở đây
-                chính là lý do màn này bị bỏ sót khi chủ nhà chốt "bấm
-                vào là phải xổ list" — bốn màn phiếu đổi theo, hai màn
-                tự vẽ (hóa đơn và phiếu trả) thì không. Nay năm màn một
-                ô tìm.
-            */}
-            <ProductPicker
-              closeOnPick
-              id="ret-add-product"
-              label="Tìm sản phẩm khác"
-              placeholder="Tên hàng, mã hàng hoặc mã vạch…"
-              emptyHint="Không tìm thấy mã nào khớp."
-              term={q}
-              onTermChange={setQ}
-              disabled={products.length === 0 && !duocTaoNhanh(user?.role, "san-pham")}
-              items={found.map((p) => ({
-                ...p,
-                title: p.name,
-                subtitle: [p.sku || "—", p.base_unit].filter(Boolean).join(" · "),
-              }))}
-              onPick={(p) => addFromCatalog(p)}
-              taoMoi={
-                duocTaoNhanh(user?.role, "san-pham")
-                  ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) }
-                  : undefined
-              }
-            />
-            {/* Tạo xong: ghép mã vào danh mục (`productById` tra ở đó) rồi thêm luôn một dòng. */}
-            <TaoNhanhSanPham
-              open={!!taoSp}
-              onOpenChange={(o) => !o && setTaoSp(null)}
-              chuBanDau={taoSp?.chu}
-              moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào phiếu trả."
-              onDaTao={(sp) => {
-                const moi: ProductLite = {
-                  id: sp.id, name: sp.name, sku: sp.sku, barcode: sp.barcode ?? null,
-                  base_unit: sp.base_unit, vat_rate: sp.vat_rate ?? null, sell_price: sp.sell_price ?? null,
-                }
-                setProducts((ds) => gopVuaTao(ds, [moi]))
-                addFromCatalog(moi)
-              }}
-            />
-
-            {lines.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Chưa có mặt hàng nào. Chọn từ đơn ở trên hoặc tìm trong danh mục.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {lines.map((l, i) => {
-                  const p = productById(l.productId)
-                  const sold = invoiceLines.find(
-                    (o) => o.product_id === l.productId && o.unit_name === l.unit
-                  )
-                  const ceiling = sold ? Number(sold.unit_price) : Number(p?.sell_price ?? 0)
-                  const bad = returnPriceViolation(l, ceiling, priceRules) !== null
-                  return (
-                    <div
-                      key={`${l.productId}|${l.unit}`}
-                      className="grid gap-3 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">
-                          {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
-                          <span data-testid="stt-dong" className="mr-1.5 tabular-nums text-muted-foreground">{i + 1}.</span>
-                          {p?.name ?? "—"}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {p?.sku ?? "—"} · {l.unit}
-                          {ceiling > 0 && ` · ${sold ? "giá đã bán" : "giá bảng"} ${formatCurrency(ceiling)}`}
-                        </p>
-                        {bad && (
-                          <p className="mt-0.5 text-xs font-bold text-destructive">
-                            Giá trả vượt trần so với {sold ? "giá đã bán" : "giá bảng"}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-end gap-2">
-                        <div className="w-20 space-y-1">
-                          <Label className="text-[10px] uppercase text-muted-foreground">SL</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            step="any"
-                            value={l.qty}
-                            onChange={(e) =>
-                              setLines((prev) =>
-                                patchReturnLine(prev, i, {
-                                  qty: Math.max(1, parseFloat(e.target.value) || 1),
-                                })
-                              )
-                            }
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="w-32 space-y-1">
-                          <Label className="text-[10px] uppercase text-muted-foreground">
-                            Đơn giá
-                          </Label>
-                          <MoneyInput
-                            value={Math.round(l.price)}
-                            onChange={(n) =>
-                              setLines((prev) =>
-                                patchReturnLine(prev, i, {
-                                  price: Math.max(0, n),
-                                })
-                              )
-                            }
-                            inputClassName={cn("h-9 lg:h-9", bad && "border-destructive")}
-                          />
-                        </div>
-                        <div className="w-36 space-y-1">
-                          <Label className="text-[10px] uppercase text-muted-foreground">Loại</Label>
-                          <Select
-                            value={l.isExchange ? "exchange" : "refund"}
-                            onValueChange={(v) =>
-                              setLines((prev) =>
-                                patchReturnLine(prev, i, { isExchange: v === "exchange" })
-                              )
-                            }
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="refund">Trả tiền</SelectItem>
-                              <SelectItem value="exchange">Đổi hàng</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 text-destructive"
-                          aria-label={`Xoá ${p?.name ?? "dòng"}`}
-                          onClick={() => setLines((prev) => setReturnQty(prev, i, 0))}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* ⚠ Dòng ĐỔI HÀNG không trừ đồng nào — nói ra ngay cạnh số tiền,
-                nếu không người lập phiếu tưởng hệ thống tính thiếu. */}
-            <div className="flex items-center justify-between border-t pt-3">
-              <span className="text-sm font-semibold text-muted-foreground">
-                Trừ công nợ khách
-                {lines.some((l) => l.isExchange) && (
-                  <span className="ml-1.5 text-xs">(dòng đổi hàng không trừ tiền)</span>
-                )}
-              </span>
-              <span className="text-xl font-black tabular-nums">{formatCurrency(credit)}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ghi chú</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="VD: hàng móp thùng khi giao, khách báo lúc nhận…"
-            />
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
-            Huỷ
-          </Button>
-          {/* ⚠ Khoá kèm LÝ DO. Nút mờ không nói gì là người dùng bấm mãi rồi
-              đi hỏi; `title` cho desktop, dòng chữ bên dưới cho điện thoại. */}
-          <Button type="submit" disabled={!!blocked || saving} title={blocked ?? undefined}>
-            {saving ? "Đang lưu..." : (blocked ?? "Tạo phiếu trả")}
-          </Button>
-        </div>
-      </form>
-    </div>
+      {/* Điện thoại: cùng kiểu màn bán hàng /sell (chủ nhà 07/10/2026: "Phiếu trả hàng tạo trên mobile chưa có giao
+          diện như sell mobile"). Dữ liệu, trần giá, cách lưu vẫn ở trang này. */}
+      <PhieuTraKhachMobile
+        loading={dangNap}
+        loadError={loadError}
+        customers={customers}
+        customerId={customerId}
+        onCustomer={setCustomerId}
+        onTaoKhach={duocTaoNhanh(user?.role, "khach") ? (chu) => setTaoKhach({ chu }) : undefined}
+        products={products}
+        groupId={groupId}
+        invoices={invoices}
+        invoiceId={invoiceId}
+        onInvoice={setInvoiceId}
+        invoiceLines={invoiceLines}
+        reason={reason}
+        onReason={setReason}
+        notes={notes}
+        onNotes={setNotes}
+        sellers={canPickSeller ? sellers.map((u) => ({ value: u.id, label: u.id === user?.id ? `${u.full_name} (bạn)` : u.full_name || "(chưa đặt tên)" })) : null}
+        sellerId={sellerId}
+        onSeller={setSellerId}
+        lines={lines}
+        onLines={setLines}
+        tranGia={tranGia}
+        giaGoiY={giaGoiY}
+        credit={credit}
+        blocked={blocked}
+        saving={saving}
+        onSave={() => handleSubmit()}
+        onBack={() => router.push("/returns")}
+        onTaoSp={duocTaoNhanh(user?.role, "san-pham") ? (chu) => setTaoSp({ chu }) : undefined}
+      />
+      <TaoNhanhKhach
+        open={!!taoKhach}
+        onOpenChange={(o) => !o && setTaoKhach(null)}
+        chuBanDau={taoKhach?.chu}
+        onDaTao={(k) => {
+          setCustomers((ds) =>
+            gopVuaTao(ds, [{ id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? "", phone: k.phone ?? "", group_id: null }])
+          )
+          setCustomerId(k.id)
+        }}
+      />
+      <TaoNhanhSanPham
+        open={!!taoSp}
+        onOpenChange={(o) => !o && setTaoSp(null)}
+        chuBanDau={taoSp?.chu}
+        moTa="Sản phẩm vừa tạo sẽ được thêm luôn vào phiếu trả."
+        onDaTao={(sp) => {
+          const moi = { ...sp, price_lists: [], units: [] } as unknown as ProductLite
+          setProducts((ds) => gopVuaTao(ds, [moi]))
+          setLines((prev) =>
+            addReturnLine(prev, {
+              productId: moi.id, unit: moi.base_unit, qty: 1, price: Number(moi.sell_price) || 0,
+              vatRate: Number(moi.vat_rate ?? 0), isExchange: false, note: "",
+            })
+          )
+        }}
+      />
+    </>
   )
 }

@@ -19,7 +19,8 @@ const CO_DONG = [
   "src/app/(dashboard)/orders/[id]/page.tsx",
   "src/app/(dashboard)/sales-invoices/[id]/page.tsx",
   "src/app/(dashboard)/returns/[id]/page.tsx",
-  "src/app/(dashboard)/returns/new/page.tsx",
+  /* Lập phiếu trả trên điện thoại (07/10/2026): dòng hàng vẽ ở phần vẽ kiểu /sell. */
+  "src/components/returns/phieu-tra-khach-mobile.tsx",
   "src/app/(dashboard)/finance/cash-receipts/[id]/page.tsx",
   "src/components/orders/mobile-order-detail.tsx",
   "src/components/orders/order-drawer.tsx",

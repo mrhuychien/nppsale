@@ -218,11 +218,9 @@ test.describe("điện thoại", () => {
   test("phiếu trả hàng: tạo sản phẩm tại chỗ — dòng hàng vừa tạo được thêm luôn vào phiếu", async ({ page }) => {
     await dangNhap(page)
     await page.goto("/returns/new")
-    const tim = page.locator("#ret-add-product")
-    await tim.click()
-    await tim.fill("Sữa chua mới")
-    await expect(page.getByTestId("product-picker-tao-moi").filter({ visible: true })).toHaveText("Tạo sản phẩm mới “Sữa chua mới”")
-    await page.getByTestId("product-picker-tao-moi").filter({ visible: true }).click()
+    /* Màn kiểu /sell (07/10/2026): gõ tên chưa có → nút tạo sản phẩm ngay dưới ô tìm. */
+    await page.getByLabel("Tìm hàng trả").fill("Sữa chua mới")
+    await page.getByRole("button", { name: "+ Tạo sản phẩm “Sữa chua mới”" }).click()
 
     const khung = page.getByTestId("tao-nhanh-san-pham")
     await expect(khung.locator("#name")).toHaveValue("Sữa chua mới")
@@ -234,7 +232,7 @@ test.describe("điện thoại", () => {
     await expect(khung).toHaveCount(0)
 
     await expect(page).toHaveURL(/\/returns\/new$/)
-    await expect(page.getByText("Chưa có mặt hàng nào. Chọn từ đơn ở trên hoặc tìm trong danh mục.")).toHaveCount(0)
-    await expect(page.getByText("Sữa chua mới").filter({ visible: true }).first()).toBeVisible()
+    await page.getByRole("button", { name: /Xem phiếu/ }).click()
+    await expect(page.getByTestId("dong-tra-khach")).toContainText("Sữa chua mới")
   })
 })

@@ -294,7 +294,6 @@ const KHONG_TAO_MOI: Record<string, string> = {
   "src/app/(dashboard)/sales-invoices/page.tsx#inv-customer": "lọc danh sách",
   "src/app/(dashboard)/receivables/aging/page.tsx#aging-customer": "tra cứu tuổi nợ — khách mới không có nợ",
   "src/app/(dashboard)/returns/[id]/page.tsx#ret-seller": "nhân viên — không có form tạo",
-  "src/app/(dashboard)/returns/new/page.tsx#ret-seller": "nhân viên — không có form tạo",
   "src/components/customers/customer-form.tsx#customer-ward": "danh mục phường / xã cố định",
   "src/components/customers/tao-khach-dien-thoai.tsx#tk-ward": "danh mục phường / xã cố định",
   "src/components/customers/tao-khach-dien-thoai.tsx#tk-group": "nhóm khách — không có form tạo nhanh",
@@ -316,8 +315,8 @@ describe("mọi ô chọn có tìm (trừ bán hàng / POS) có dòng “+ Tạo
       "src/app/(dashboard)/payables/new/page.tsx#payable-supplier",
       "src/components/products/product-form.tsx#primary_supplier",
       "src/app/(dashboard)/inventory/stock-issue/page.tsx#si-find",
-      "src/app/(dashboard)/returns/new/page.tsx#ret-customer",
-      "src/app/(dashboard)/returns/new/page.tsx#ret-add-product",
+      /* `/returns/new` (07/10/2026) là màn kiểu /sell — tạo nhanh khách / SP ở khung chọn khách và ô tìm hàng
+         (`onTaoKhach`, `onTaoSp`), chốt riêng ở dưới. */
       "src/components/orders/invoice-editor.tsx#inv-add-find",
       "src/components/orders/invoice-editor.tsx#inv-add-return",
       "src/app/(dashboard)/inventory/batches/new/page.tsx#batch-product",
@@ -409,7 +408,10 @@ describe("tạo xong: chọn luôn / thêm luôn dòng ở đúng chỗ", () => 
     expect(kh).toContain("setCustomers((ds) =>")
     const sp = cat(P, "<TaoNhanhSanPham", "/>\n")
     expect(sp).toContain("setProducts((ds) => gopVuaTao(ds, [moi]))")
-    expect(sp).toContain("addFromCatalog(moi)")
+    expect(sp).toContain("addReturnLine(prev, {")
+    /* Màn kiểu /sell: nút tạo nhanh có ở khung chọn khách và khi tìm hàng không ra — gác theo quyền. */
+    expect(P).toContain('onTaoKhach={duocTaoNhanh(user?.role, "khach") ?')
+    expect(P).toContain('onTaoSp={duocTaoNhanh(user?.role, "san-pham") ?')
   })
 
   it("hóa đơn: hai ô (hàng bán / hàng đổi trả) mở chung một khung, thêm đúng vào ô đã mở", () => {

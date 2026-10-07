@@ -50,7 +50,7 @@ import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
-  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock, vatNapLai, MUC_VAT_POS,
+  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock, vatNapLai, MUC_VAT_POS, doiDonViDongTraNcc,
 } from "@/lib/pos/purchase"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -206,6 +206,11 @@ export function SupplierReturnScreen({
 
   /* Giá trả NCC gợi ý = giá nhập đã lưu (bảng giá nhập, mig 234) — vẫn sửa tự do. */
   const bangGiaNhap = useBangGiaNhap()
+  const giaTraGoiY = useCallback(
+    (l: PosLine, unit: string) =>
+      giaNhapDonVi({ base_unit: l.units[0]?.unit_name ?? l.unit, units: l.units, gia_nhap: bangGiaNhap.get(l.productId) }, unit),
+    [bangGiaNhap]
+  )
   const themHang = useCallback(
     (productId: string) => {
       const p = products.find((x) => x.id === productId)
@@ -559,6 +564,7 @@ export function SupplierReturnScreen({
                 grid="supplierReturn"
                 cells={[
                   { label: "#" }, { label: "Mã hàng" }, { label: "Tên hàng" },
+                  { label: "ĐVT" },
                   { label: "Lô của phiếu gốc" },
                   { label: "Đã nhập", align: "center" },
                   { label: "SL trả", align: "center" },
@@ -614,6 +620,16 @@ export function SupplierReturnScreen({
                   <div className="n text-[11.5px] text-[var(--pos-dim)]">{i + 1}</div>
                   <div className="n truncate text-[11px] text-[var(--pos-muted)]">{l.sku || "—"}</div>
                   <div className="truncate text-[12.5px] font-semibold text-[var(--pos-ink)]">{l.name}</div>
+                  <select
+                    aria-label={`Đơn vị tính dòng ${i + 1}`}
+                    value={l.unit}
+                    onChange={(e) => patchLine(l.key, doiDonViDongTraNcc(l, e.target.value, (u) => giaTraGoiY(l, u)))}
+                    className="h-7 w-full rounded-md border border-[var(--pos-edge)] bg-white px-1 text-[11.5px]"
+                  >
+                    {l.units.map((u) => (
+                      <option key={u.unit_name} value={u.unit_name}>{u.unit_name}</option>
+                    ))}
+                  </select>
                   {/*
                     ⚠ CHỮ ĐỌC, KHÔNG PHẢI Ô CHỌN. Máy chủ lấy lô FIFO và
                       `supplier_return_lines` không có cột lô để nhận

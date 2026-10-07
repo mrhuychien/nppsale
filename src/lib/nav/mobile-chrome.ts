@@ -30,6 +30,8 @@ export const OWN_ACTION_BAR_ROUTES = [
   /* Phiếu nhập hàng / trả hàng NCC trên điện thoại (chủ nhà 30/09/2026) — thanh đáy riêng. */
   "/purchasing/receipts/new",
   "/purchase-returns/new",
+  /* Lập phiếu trả hàng của khách trên điện thoại kiểu /sell (chủ nhà 07/10/2026) — thanh đáy riêng. */
+  "/returns/new",
   /* Nhập kho / kiểm kê trên điện thoại theo bản thiết kế 30/09/2026 — thanh đáy riêng. */
   "/inventory/stock-in",
   "/inventory/stocktake-adjust",
@@ -120,6 +122,8 @@ export function hidesMobileAppBar(pathname: string): boolean {
     /* Phiếu nhập hàng / trả hàng NCC di động có đầu màn riêng như /sell (chủ nhà 30/09/2026). */
     pathname === "/purchasing/receipts/new" ||
     pathname === "/purchase-returns/new" ||
+    /* Lập phiếu trả hàng của khách — đầu màn riêng như /sell (chủ nhà 07/10/2026). */
+    pathname === "/returns/new" ||
     laSuaPhieuNcc(pathname) ||
     pathname === "/bao-cao" ||
     pathname.startsWith("/bao-cao/")

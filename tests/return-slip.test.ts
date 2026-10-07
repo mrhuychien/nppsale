@@ -11,7 +11,8 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8")
 const code = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
-const NEW = code(read("src/app/(dashboard)/returns/new/page.tsx"))
+/* Màn lập phiếu trả = trang (dữ liệu, trần giá, lưu) + phần vẽ điện thoại kiểu /sell (chủ nhà 07/10/2026). */
+const NEW = code(read("src/app/(dashboard)/returns/new/page.tsx") + "\n" + read("src/components/returns/phieu-tra-khach-mobile.tsx"))
 const MIG035 = read("supabase/migrations/035_return_exchange.sql")
 
 const r = (over: Partial<ReturnCartLine> = {}): ReturnCartLine => ({
@@ -79,17 +80,19 @@ describe("Giá trả bám theo giá ĐÃ BÁN", () => {
    * nó bám vào đơn nào.
    */
   it("thêm từ đơn thì lấy đơn giá của đơn", () => {
-    const i = NEW.indexOf("const addFromOrder =")
-    expect(i, "không tìm thấy addFromOrder").toBeGreaterThan(0)
+    /* Màn kiểu /sell (07/10/2026): giá gợi ý = giá đã bán trên HĐ gắn kèm ở đúng ĐVT, không thì giá bảng nhóm khách. */
+    const i = NEW.indexOf("const giaGoiY =")
+    expect(i, "không tìm thấy giaGoiY").toBeGreaterThan(0)
     const body = NEW.slice(i, NEW.indexOf("\n  }", i))
-    expect(body).toContain("price: Number(l.unit_price) || 0")
+    expect(body).toContain("sold ? Number(sold.unit_price) || 0 : giaBangTra(")
     expect(body).not.toContain("sell_price")
+    expect(NEW).toContain("price: p.giaGoiY(x.id, unit)")
   })
 
   /** Trần giá cũng là giá đã bán khi có đơn, chứ không phải giá bảng. */
   it("trần giá lấy theo đơn khi phiếu gắn đơn", () => {
     expect(NEW).toContain(
-      "const ceiling = sold ? Number(sold.unit_price) : Number(p?.sell_price ?? 0)"
+      "const ceiling = sold ? Number(sold.unit_price) : giaBangTra(productById(l.productId), l.unit, groupId)"
     )
     expect(NEW).toContain("returnPriceViolation(l, ceiling, priceRules)")
     // ⚠ Trần giá trả = trần giá bán của chính người đó, ở CẢ hai màn lập
@@ -116,7 +119,7 @@ describe("Giá trả bám theo giá ĐÃ BÁN", () => {
    */
   it("gắn hóa đơn là tuỳ chọn", () => {
     expect(NEW).toContain("invoice_id: invoiceId || null")
-    expect(NEW).toContain("Không gắn hóa đơn nào")
+    expect(NEW).toContain("Không gắn hoá đơn nào")
   })
 
   /**
@@ -180,9 +183,10 @@ describe("Ghi hỏng thì nói ra", () => {
 
   /** Nút mờ không nói gì là người dùng bấm mãi rồi đi hỏi. */
   it("nút bị khoá thì nói rõ vì sao", () => {
-    expect(NEW).toContain("disabled={!!blocked || saving}")
-    expect(NEW).toContain("title={blocked ?? undefined}")
-    expect(NEW).toContain("{saving ? \"Đang lưu...\" : (blocked ?? \"Tạo phiếu trả\")}")
+    expect(NEW).toContain("disabled={!!p.blocked || p.saving}")
+    /* Điện thoại không có tooltip — lý do khoá in ngay trên nút Lưu. */
+    expect(NEW).toContain("{p.blocked && <p")
+    expect(NEW).toContain("{p.blocked}</p>}")
   })
 })
 
@@ -226,11 +230,10 @@ const MIG125 = read("supabase/migrations/125_wf2b_invoice_rpcs.sql")
  * "đọc đủ" thì cái ô càng dài, và người lập phiếu càng khổ.
  */
 describe("chọn khách ở phiếu trả: gõ để tìm", () => {
-  it("dùng SearchSelect, không phải Select liệt kê rồi cuộn", () => {
-    expect(NEW, "màn phiếu trả không dùng ô chọn có tìm kiếm").toContain("<SearchSelect")
-    /* ⚠ SOI ĐÚNG Ô KHÁCH. Màn này còn vài `<Select>` khác (lý do, hóa
-       đơn, trả tiền/đổi hàng) và chúng liệt kê vài mục cố định — đòi bỏ
-       hết `<Select>` là đòi một thứ không liên quan. */
+  /* Màn kiểu /sell (07/10/2026): chọn khách ở khung kéo lên (`ChonKhachSheet`) có ô tìm — không phải ô chọn liệt kê. */
+  it("chọn khách qua khung có ô tìm, không phải Select liệt kê rồi cuộn", () => {
+    expect(NEW).toContain("<ChonKhachSheet")
+    expect(NEW).toContain('aria-label="Tìm khách hàng"')
     expect(
       /<Select[\s\S]{0,600}?\{\s*customers\.map\(/.test(NEW),
       "ô chọn khách vẫn là <Select> liệt kê cả danh sách rồi bắt cuộn"
@@ -238,29 +241,17 @@ describe("chọn khách ở phiếu trả: gõ để tìm", () => {
   })
 
   /**
-   * ⚠ TÌM ĐƯỢC NGHĨA LÀ TÌM ĐƯỢC BẰNG THỨ NGƯỜI TA NHỚ. Người lập phiếu
-   * trả thường chỉ nhớ số điện thoại hoặc tên chủ cửa hàng. Một ô tìm
-   * chỉ soi `store_name` thì gõ số điện thoại ra rỗng — vẫn là "chưa
-   * tìm kiếm được khách hàng", chỉ khác cách hỏng.
+   * ⚠ TÌM ĐƯỢC NGHĨA LÀ TÌM ĐƯỢC BẰNG THỨ NGƯỜI TA NHỚ — tên chủ cửa hàng, số điện thoại, không chỉ `store_name`.
    */
   it("đọc cả tên chủ và số điện thoại để tìm theo", () => {
     expect(NEW).toContain("id, store_name, owner_name, phone")
-    const opt = NEW.match(/const customerOptions = useMemo\(([\s\S]{0,600}?)\n  \)/)
-    expect(opt, "không dựng được danh sách cho ô tìm").not.toBeNull()
-    expect(opt![1], "ô tìm không soi tên chủ cửa hàng").toContain("owner_name")
-    expect(opt![1], "ô tìm không soi số điện thoại").toContain("phone")
+    expect(NEW).toContain("viMatchAllWords(q, c.store_name, c.owner_name, c.phone)")
   })
 
-  /**
-   * ⚠ KHÔNG CHO GÕ TỰ DO Ở Ô NÀY. `customer_id` đi thẳng vào công nợ;
-   * một cái tên gõ tay không trừ nợ cho ai cả. `SearchSelect` chỉ cho
-   * gõ tự do khi nơi gọi bật `allowFreeText`.
-   */
+  /** ⚠ KHÔNG CHO GÕ TỰ DO: `customer_id` đi thẳng vào công nợ — chỉ chọn được khách có trong sổ (hoặc tạo mới). */
   it("không cho gõ tay một khách không có trong sổ", () => {
-    const blk = NEW.match(/<SearchSelect[\s\S]{0,700}?\/>/)
-    expect(blk, "không đọc được ô chọn khách").not.toBeNull()
-    expect(blk![0], "ô chọn khách cho gõ tự do — tên gõ tay không trừ nợ cho ai")
-      .not.toContain("allowFreeText")
+    expect(NEW).toContain("onClick={() => onPick(c.id)}")
+    expect(NEW).not.toContain("allowFreeText")
   })
 })
 
@@ -428,8 +419,10 @@ describe("không màn nào MỚI bắt cuộn để chọn khách", () => {
  * và trí nhớ đã hỏng hai lần rồi. Chốt dưới cùng canh đúng chuyện đó.
  */
 describe("ô tìm hàng ở phiếu trả xổ danh sách khi bấm vào", () => {
-  it("dùng ProductPicker, không tự vẽ ô tìm", () => {
-    expect(NEW, "màn phiếu trả vẫn tự vẽ ô tìm hàng").toContain("<ProductPicker")
+  /* Màn kiểu /sell (07/10/2026): danh sách thẻ sản phẩm của /sell hiện sẵn khi ô tìm còn trống. */
+  it("dùng thẻ sản phẩm của /sell, danh sách hiện sẵn khi ô tìm trống", () => {
+    expect(NEW).toContain("<ProductCard")
+    expect(NEW).toContain("danhSach.map((x) =>")
   })
 
   /**
@@ -464,16 +457,16 @@ describe("ô tìm hàng ở phiếu trả xổ danh sách khi bấm vào", () =>
   })
 
   /** ⚠ Và màn hình phải GỌI cái luật ấy, không chép lại một bản riêng. */
-  it("màn hình gọi luật chung, không tự lọc", () => {
-    expect(NEW).toContain("searchReturnable(products, q, PICK_CAP)")
+  it("màn hình gọi luật tìm chung (như /sell), không tự lọc danh mục hàng", () => {
+    expect(NEW).toContain("timXepHang(p.products, q, (x) => [x.sku, x.barcode, x.name]")
     expect(
-      /viMatchAllWords\(/.test(NEW),
-      "màn hình vẫn tự lọc — luật lại nằm ở chỗ không chốt nào canh được"
+      /products\.filter\([\s\S]{0,120}viMatchAllWords/.test(NEW),
+      "màn hình vẫn tự lọc danh mục hàng — luật lại nằm ở chỗ không chốt nào canh được"
     ).toBe(false)
   })
 
-  it("dùng trần chung PICKER_PEEK như bốn màn phiếu kia", () => {
-    expect(NEW).toContain("PICKER_PEEK")
+  it("có trần số thẻ vẽ ra như /sell", () => {
+    expect(NEW).toContain(".slice(0, RENDER_CAP)")
   })
 })
 

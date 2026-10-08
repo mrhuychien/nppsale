@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { docMaCuTraNcc } from "@/lib/purchasing/ma-tra-ncc"
 import { useParams, useRouter } from "next/navigation"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
@@ -56,6 +57,8 @@ export default function PurchaseReturnDetailPage() {
   const supabase = createClient()
   const { toast } = useToast()
   const [data, setData] = useState<Detail | null>(null)
+  /** Mã cũ TH-… trước khi đánh lại PTNCC- (mig 240), đọc riêng — sổ chưa chạy 240 thì chỉ không hiện. */
+  const [maCu, setMaCu] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
@@ -83,6 +86,7 @@ export default function PurchaseReturnDetailPage() {
       const hdr = hdrRes.data as unknown as Detail
       hdr.lines = (lineRes.data as unknown as LineRow[]) || []
       setData(hdr)
+      void docMaCuTraNcc(supabase, [hdr.id]).then((m) => setMaCu(m.get(hdr.id) ?? null))
     } else {
       setData(null)
     }
@@ -222,6 +226,7 @@ export default function PurchaseReturnDetailPage() {
           <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
             <Info label="Nhà cung cấp" value={data.supplier?.name || "—"} />
             <Info label="Mã phiếu" value={data.return_code || "(chưa sinh — sẽ tạo khi gửi)"} mono />
+            {maCu && <Info label="Mã cũ (trên giấy cũ)" value={maCu} mono />}
             <Info label="Ngày trả" value={formatDate(data.return_date)} />
             <Info label="Xuất từ kho" value={ZONE_LABEL[data.warehouse_zone] || data.warehouse_zone} />
             <Info label="Lý do" value={data.reason ? REASON_LABEL[data.reason] || data.reason : "—"} />

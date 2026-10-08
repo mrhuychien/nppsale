@@ -60,8 +60,10 @@ function columnsOf(table: string): Set<string> {
     if (/^[a-z_][a-z0-9_]*$/.test(w)) out.add(w)
   }
 
+  /* ⚠ Có hoặc không có tiền tố `public.` — mig 240 viết `ALTER TABLE public.supplier_returns ADD COLUMN …`; bỏ qua
+     dạng có schema là báo oan cột có thật. */
   const reAlter = new RegExp(
-    `ALTER TABLE (?:ONLY )?${table}\\b([\\s\\S]*?);`,
+    `ALTER TABLE (?:ONLY )?(?:public\\.)?${table}\\b([\\s\\S]*?);`,
     "g"
   )
   let a: RegExpExecArray | null

@@ -38,6 +38,7 @@ import { LOC_TRA_HANG_NCC } from "@/lib/search/list-filter-fields"
 import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import { StatusChips } from "@/components/ui/status-chips"
 import { DocListLayout, DocListSearch, XoaLocButton } from "@/components/ui/doc-list-layout"
+import { docMaCuTraNcc } from "@/lib/purchasing/ma-tra-ncc"
 import { DocTable, DocCodeLink, DocCellDate, DocCellText, type DocColumn } from "@/components/ui/doc-table"
 import { sapXepTaiCho, type BangSoSanh, type DocSort } from "@/lib/list/sap-xep-may-chu"
 import { DocCardList } from "@/components/ui/doc-card-list"
@@ -70,8 +71,8 @@ type Row = Omit<SupplierReturn, "supplier"> & {
 }
 
 /**
- * Mã phiếu chỉ được sinh khi GỬI cho NCC, nên phiếu nháp chưa có mã — đó là thiết kế, không
- * phải lỗi. Nhưng để "—" thì trông y như dữ liệu bị mất.
+ * Mã phiếu PTNCC-xxxx đánh lúc LẬP (mig 240, chủ nhà 08/10/2026: "Đổi đầu PTNCC"). Sổ chưa chạy 240 thì mã chỉ sinh
+ * khi GỬI cho NCC, nên phiếu nháp chưa có mã — để "—" thì trông y như dữ liệu bị mất.
  */
 const maPhieu = (r: Row) => r.return_code || "chưa sinh mã"
 
@@ -98,6 +99,8 @@ export default function PurchaseReturnsPage() {
   const [search, setSearch] = useState("")
   const [filterSheet, setFilterSheet] = useState(false)
   const [xemId, setXemId] = useState<string | null>(null)
+  /** Mã cũ TH-… của phiếu đã đánh lại (mig 240), đọc riêng — để tra giấy cũ đã đưa NCC. */
+  const [maCu, setMaCu] = useState<Map<string, string>>(new Map())
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("purchase-returns", LOC_TRA_HANG_NCC)
   const {
@@ -134,6 +137,7 @@ export default function PurchaseReturnsPage() {
       setCanhBao(res.error ? `Không đọc được danh sách phiếu trả NCC — ${res.error}` : res.truncated ? truncationWarning() : null)
       setRows(res.rows)
       setLoading(false)
+      void docMaCuTraNcc(supabase, res.rows.map((r) => r.id)).then(setMaCu)
     }
     fetch()
   }, [user?.org_id, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,8 +145,8 @@ export default function PurchaseReturnsPage() {
   /** Mọi bộ lọc TRỪ trạng thái — để dải trạng thái đếm đúng. */
   const locRows = useMemo(() => {
     const t = search.trim()
-    return t ? rows.filter((r) => viMatchAllWords(t, r.return_code, r.supplier?.name, r.supplier?.code)) : rows
-  }, [rows, search])
+    return t ? rows.filter((r) => viMatchAllWords(t, r.return_code, maCu.get(r.id), r.supplier?.name, r.supplier?.code)) : rows
+  }, [rows, search, maCu])
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: locRows.length, draft: 0, completed: 0, cancelled: 0 }
     for (const r of locRows) if (c[r.status] !== undefined) c[r.status] += 1
@@ -165,7 +169,10 @@ export default function PurchaseReturnsPage() {
       {
         key: "code", label: "Mã phiếu", width: "150px",
         render: (r) => (r.return_code
-          ? <DocCodeLink href={`/purchase-returns/${r.id}`}>{r.return_code}</DocCodeLink>
+          ? <>
+              <DocCodeLink href={`/purchase-returns/${r.id}`}>{r.return_code}</DocCodeLink>
+              {maCu.get(r.id) && <span className="block text-[11px] text-muted-foreground" data-testid="ma-cu-tra-ncc">cũ {maCu.get(r.id)}</span>}
+            </>
           : <span className="text-xs text-muted-foreground">chưa sinh mã</span>),
       },
       {
@@ -193,7 +200,7 @@ export default function PurchaseReturnsPage() {
       },
     ]
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
-  }, [visibleColumns])
+  }, [visibleColumns, maCu])
 
   /**
    * XUẤT EXCEL (chủ nhà 05/10/2026) — MỌI phiếu khớp bộ lọc / ô tìm / trạng thái, theo đúng thứ tự đang xếp (`daXep`,
@@ -299,7 +306,7 @@ export default function PurchaseReturnsPage() {
               accent: (STATUS_LABEL[r.status] || STATUS_LABEL.draft).accent,
               title: r.supplier?.name || "—",
               total: formatCurrency(r.total),
-              meta: maPhieu(r),
+              meta: [maPhieu(r), maCu.get(r.id) ? `cũ ${maCu.get(r.id)}` : null].filter(Boolean).join(" · "),
               payment: ZONE_LABEL[r.warehouse_zone] || r.warehouse_zone,
               badge: r.status === "completed" ? null : {
                 label: (STATUS_LABEL[r.status] || STATUS_LABEL.draft).label,

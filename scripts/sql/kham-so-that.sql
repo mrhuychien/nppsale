@@ -736,4 +736,16 @@ SELECT 78, 'Mig 239 (Công nợ theo NCC: cột hàng trả lại)',
        THEN 'CHƯA — chạy migration 239 (màn Công nợ theo NCC hiện "—" ở cột Hàng trả lại)'
        ELSE 'OK — đã vá' END,
   'Phiếu trả NCC đang trừ nợ: ' || (SELECT count(*) FROM supplier_returns WHERE payable_credit_id IS NOT NULL)
+UNION ALL
+-- 79. Mig 240 — phiếu trả hàng NCC đánh số PTNCC-xxxx, đánh lại cả phiếu cũ (chủ nhà 08/10/2026: "Đổi đầu PTNCC",
+--     chọn "Đánh lại cả phiếu cũ"); mã cũ TH-… giữ ở return_code_cu.
+SELECT 79, 'Mig 240 (Phiếu trả NCC PTNCC-xxxx)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_danh_so_tra_ncc')
+         OR EXISTS (SELECT 1 FROM supplier_returns WHERE return_code IS NULL OR return_code NOT LIKE 'PTNCC-%')
+       THEN 'CHƯA — chạy migration 240 (phiếu trả NCC còn mã TH-YYMMDD-HHMMSS)'
+       ELSE 'OK — đã vá' END,
+  'Phiếu trả NCC: ' || (SELECT count(*) FROM supplier_returns)
+    || ' · còn mã TH-: ' || (SELECT count(*) FROM supplier_returns WHERE return_code LIKE 'TH-%')
+    || ' · dòng nợ NCC còn số TH-: ' || (SELECT count(*) FROM payables p JOIN supplier_returns s ON s.payable_credit_id = p.id
+                                          WHERE p.invoice_number LIKE 'TH-%')
 ) t ORDER BY stt;

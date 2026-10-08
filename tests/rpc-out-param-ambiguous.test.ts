@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync, readdirSync } from "node:fs"
-import { resolve, join } from "node:path"
+import { hamDangChay } from "./helpers/sql-ham-dang-chay"
 
 /**
  * TÊN CỘT TRÙNG TÊN THAM SỐ OUT CỦA CHÍNH HÀM ẤY.
@@ -28,17 +27,15 @@ import { resolve, join } from "node:path"
  * báo lỗi cho những câu đã được sửa từ lâu.
  */
 
-const MIG = resolve(__dirname, "..", "supabase/migrations")
-
-/** Bản ĐANG CHẠY của mỗi hàm: định nghĩa cuối cùng theo thứ tự migration. */
+/**
+ * Bản ĐANG CHẠY của mỗi hàm: định nghĩa cuối cùng theo thứ tự migration (phần đầu `RETURNS TABLE` + thân).
+ * ⚠ (08/10/2026) Lấy qua `hamDangChay` — đọc mọi kiểu thẻ dollar; bản cũ chỉ bắt `$$;` nên không thấy hàm `$fn$`.
+ */
 function banDangChay(): Map<string, { file: string; body: string }> {
   const out = new Map<string, { file: string; body: string }>()
-  for (const name of readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-    const src = readFileSync(join(MIG, name), "utf-8")
-    const re = /CREATE OR REPLACE FUNCTION public\.(\w+)\s*\([\s\S]*?\$\$;/g
-    let m: RegExpExecArray | null
-    while ((m = re.exec(src))) out.set(m[1], { file: name, body: m[0] })
-  }
+  hamDangChay().forEach((h) => {
+    if (h.ten.startsWith("public.")) out.set(h.ten.slice("public.".length), { file: h.file, body: h.dau + h.than })
+  })
   return out
 }
 

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { readFileSync, readdirSync } from "node:fs"
-import { resolve, join } from "node:path"
+import { hamDangChay } from "./helpers/sql-ham-dang-chay"
 
 /**
  * `UPDATE … FROM` CỘNG DỒN PHẢI GOM TRƯỚC.
@@ -28,10 +27,11 @@ import { resolve, join } from "node:path"
  * LỚN NHẤT. Soi cả lịch sử là chốt đỏ vĩnh viễn vì migration 143 — một
  * tệp đã chạy xong và không được sửa lại — trong khi thứ thật sự chạy
  * trên máy chủ đã đúng từ 147.
+ *
+ * ⚠ (08/10/2026) Thân hàm lấy qua `hamDangChay` — đọc MỌI kiểu thẻ dollar.
+ * Bản cũ chỉ cắt theo `$$` nên không thấy hàm nào viết theo luật `$fn$`
+ * (CLAUDE.md §3), kể cả bản đang chạy của chính `cancel_supplier_return`.
  */
-
-const ROOT = resolve(__dirname, "..")
-const DIR = resolve(ROOT, "supabase/migrations")
 
 /** Bỏ dòng chú thích SQL — chữ trong chú thích không phải là câu lệnh. */
 const stripSql = (s: string) =>
@@ -43,26 +43,12 @@ interface LiveFn {
   body: string
 }
 
-/**
- * Bản ĐANG CHẠY của mỗi hàm: lần `CREATE OR REPLACE FUNCTION` cuối cùng
- * theo thứ tự số migration.
- */
-const LIVE: LiveFn[] = (() => {
-  const byName = new Map<string, LiveFn>()
-  for (const f of readdirSync(DIR).filter((n) => n.endsWith(".sql")).sort()) {
-    const src = stripSql(readFileSync(join(DIR, f), "utf-8"))
-    const re = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:public\.)?(\w+)/g
-    let m: RegExpExecArray | null
-    while ((m = re.exec(src)) !== null) {
-      const open = src.indexOf("$$", m.index + m[0].length)
-      if (open === -1) continue
-      const close = src.indexOf("$$", open + 2)
-      if (close === -1) continue
-      byName.set(m[1], { file: f, name: m[1], body: src.slice(open, close) })
-    }
-  }
-  return Array.from(byName.values())
-})()
+/** Bản ĐANG CHẠY của mỗi hàm: định nghĩa cuối cùng theo thứ tự số migration. */
+const LIVE: LiveFn[] = Array.from(hamDangChay().values()).map((h) => ({
+  file: h.file,
+  name: h.ten.replace(/^public\./, ""),
+  body: stripSql(h.than),
+}))
 
 /**
  * Câu `UPDATE t a SET c = a.c + b.c …` — CỘNG DỒN vào chính cột đang
@@ -109,8 +95,7 @@ const ACCUMULATORS: Acc[] = (() => {
 describe("UPDATE … FROM cộng dồn phải gom nguồn trước", () => {
   /**
    * ⚠ KHÔNG QUÉT RA GÌ THÌ CHỐT DƯỚI XANH VÌ RỖNG, KHÔNG VÌ ĐÚNG. Phép
-   * cắt thân hàm bám vào `$$`; đổi kiểu đánh dấu thân hàm là cả tệp này
-   * im lặng không canh gì nữa.
+   * cắt thân hàm hỏng là cả tệp này im lặng không canh gì nữa.
    */
   it("quét được thân hàm đang chạy", () => {
     expect(LIVE.length, "không cắt ra thân hàm nào — phép quét hỏng").toBeGreaterThan(50)
@@ -120,10 +105,14 @@ describe("UPDATE … FROM cộng dồn phải gom nguồn trước", () => {
     ).toBe(true)
   })
 
-  /** ⚠ Bản đang chạy phải là bản ĐÃ SỬA, không phải bản của 143. */
+  /**
+   * ⚠ Bản đang chạy phải là bản ĐÃ SỬA, không phải bản của 143 — và là bản
+   * MỚI NHẤT (mig 235, thẻ `$fn$`), không phải bản 147 mà phép cắt `$$` cũ
+   * tưởng là đang chạy.
+   */
   it("bản đang chạy của cancel_supplier_return là bản đã gom", () => {
     const fn = LIVE.find((f) => f.name === "cancel_supplier_return")!
-    expect(fn.file).toBe("147_cancel_supplier_return_sum_by_batch.sql")
+    expect(fn.file).toBe("235_sua_phieu_nhap_da_ban.sql")
     expect(fn.body).toContain("SUM(sel.qty_in_base_uom)")
     expect(fn.body).toContain("GROUP BY sel.batch_id")
     expect(

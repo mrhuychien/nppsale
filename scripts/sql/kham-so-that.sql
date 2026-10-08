@@ -690,4 +690,16 @@ SELECT 74, 'Mig 235 (Sửa phiếu nhập đã bán · sửa phiếu trả NCC)'
     WHERE pi.status = 'completed'
       AND EXISTS (SELECT 1 FROM stock_entry_lines sel JOIN batches b ON b.id = sel.batch_id
                   WHERE sel.entry_id = pi.stock_entry_id AND b.qty_on_hand <> b.qty_initial))::text
+UNION ALL
+-- 75. Mig 236 — sửa phiếu nhập đã hoàn thành báo "UPDATE requires a WHERE clause" (chủ nhà 08/10/2026): Supabase nạp
+--     safeupdate cho lượt gọi API, câu UPDATE bảng tạm không WHERE trong sua_phieu_nhap (mig 235) bị chặn.
+SELECT 75, 'Mig 236 (Sửa phiếu nhập đã hoàn thành chạy được qua API)',
+  CASE WHEN to_regprocedure('public.sua_phieu_nhap(uuid,jsonb,jsonb)') IS NULL
+         OR position('WHERE quantity > 0 AND cf > 0' IN pg_get_functiondef(to_regprocedure('public.sua_phieu_nhap(uuid,jsonb,jsonb)'))) = 0
+       THEN 'CHƯA — chạy migration 236 (sửa phiếu nhập đã hoàn thành báo "UPDATE requires a WHERE clause")'
+       ELSE 'OK — đã vá' END,
+  'Lượt gọi API nạp safeupdate: ' || CASE WHEN EXISTS (
+      SELECT 1 FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
+      WHERE r.rolname = 'authenticator' AND array_to_string(s.setconfig, ',') ILIKE '%safeupdate%')
+    THEN 'có — UPDATE / DELETE trong hàm phải có WHERE' ELSE 'không thấy' END
 ) t ORDER BY stt;

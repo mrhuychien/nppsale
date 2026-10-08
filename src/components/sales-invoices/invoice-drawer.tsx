@@ -117,7 +117,8 @@ export function InvoiceDrawer({
        *   có nhiều hóa đơn; hỏi theo đơn là tờ hóa đơn này hiện cả hàng
        *   trả của tờ khác, và người đọc trừ nhầm công nợ.
        *
-       * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN — phần phụ của màn xem nhanh.
+       * ⚠ ĐỌC HỎNG THÌ KHÔNG CHẶN, NHƯNG NÓI RA — phần phụ của màn xem nhanh, nhưng im lặng là tờ hoá đơn trông như
+       *   KHÔNG có hàng trả, và người đọc tính nợ theo tiền chưa trừ.
        */
       supabase
         .from("returns")
@@ -125,8 +126,12 @@ export function InvoiceDrawer({
         .eq("invoice_id", invoiceId)
         .neq("status", "cancelled")
         .order("created_at", { ascending: true })
-        .then(({ data: retData }) => {
+        .then(({ data: retData, error: retErr }) => {
           if (cancelled) return
+          if (retErr) {
+            toast({ title: "Chưa đọc được hàng đổi / trả của hoá đơn", description: errorMessage(retErr), variant: "destructive" })
+            return
+          }
           setReturns(((retData as unknown) as ReturnSummaryRow[]) ?? [])
         })
 
@@ -134,6 +139,7 @@ export function InvoiceDrawer({
        * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN — phần phụ của màn xem nhanh, và
        *   dòng hàng mới là thứ người ta mở ngăn ra để xem.
        */
+      // audit-ok: ghi chú + tiền trước thuế của ngăn xem nhanh — hỏng thì không hiện hai khối ấy (chú thích ngay trên).
       supabase
         .from("sales_invoices")
         .select("subtotal, vat, notes, order:sales_orders(notes)")

@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { HopLoiTai } from "@/components/ui/hop-loi-tai"
 import { StatusChips, type StatusChip } from "@/components/ui/status-chips"
 import { formatInt } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
@@ -53,6 +54,7 @@ export default function ReorderPage() {
   const [rows, setRows] = useState<ReorderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [truncated, setTruncated] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   /** "" = xem tổng; ngược lại là mã NCC (hoặc "none" cho nhóm chưa gán). */
   const [supplierKey, setSupplierKey] = useState("")
@@ -114,6 +116,16 @@ export default function ReorderPage() {
           .range(from, to)
       ),
     ])
+    /* ⚠ ĐỌC HỎNG THÌ NÓI RA. `fetchAllForAggregate` trả mảng RỖNG kèm `error`; bỏ qua là màn hình vẽ "Không có mặt
+       hàng nào cần đặt — mọi đơn đang treo đều đủ tồn", và người mua hàng không đặt gì. */
+    const loi = [lineRes, batchRes, prodRes, supRes].find((r) => r.error)?.error
+    setLoadError(loi ?? null)
+    if (loi) {
+      setRows([])
+      setTruncated(false)
+      setLoading(false)
+      return
+    }
 
     const stock: StockByProduct = {}
     for (const b of batchRes.rows) {
@@ -207,6 +219,8 @@ export default function ReorderPage() {
 
       {loading ? (
         <Skeleton className="h-64" />
+      ) : loadError ? (
+        <HopLoiTai tieuDe="Không tải được dữ liệu đề xuất đặt hàng" loi={loadError} onRetry={load} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<PackageSearch className="h-8 w-8 text-muted-foreground" />}

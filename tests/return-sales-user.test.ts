@@ -214,8 +214,9 @@ describe("màn lập phiếu trả — ô chọn nhân viên", () => {
   })
 
   it("danh sách nhân viên đúng bộ vai trò trigger cho phép", () => {
-    /* Hiện ra một cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
-    const m = ma.match(/\.in\("role",\s*\[([^\]]*)\]\)/)
+    /* Hiện ra một cái tên mà máy chủ sẽ từ chối là bẫy người dùng. Câu đọc dùng chung với POS / /sell (`docNguoiBan`). */
+    expect(ma).toContain("docNguoiBan(createClient(), user.org_id)")
+    const m = boChuThich(doc("src/lib/users/nguoi-ban.ts")).match(/\.in\("role",\s*\[([^\]]*)\]\)/)
     expect(m).not.toBeNull()
     for (const vt of ["sales", "manager", "owner"]) expect(m![1]).toContain(`"${vt}"`)
     for (const vt of ["warehouse", "accountant", "driver"]) expect(m![1]).not.toContain(`"${vt}"`)

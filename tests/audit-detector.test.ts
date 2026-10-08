@@ -64,6 +64,19 @@ describe("Máy dò truy vấn chưa kiểm lỗi", () => {
       "probe_wrapper_json_key_bad", // trong Promise.all, dưới là khoá JSON
       "probe_write_bad", // GHI: update
       "probe_insert_bad", // GHI: insert
+      "probe_wrapper_unknown_bad", // hàm bọc lạ — không tự ném lỗi
+      "probe_after_wrapper_bad", // đứng dưới lời gọi hàm bọc tự ném lỗi
+      "probe_let_sb_bad", // client `sb`, biến nhận kết quả không bị soi `.error`
+      "probe_far_check_bad", // câu kiểm quá 8 dòng code
+      "probe_local_swallow_bad", // hàm bọc trong tệp NUỐT lỗi
+      "probe_builder_wrapped_bad", // query bọc hàm gắn thứ tự, await không kiểm
+      "probe_builder_unknown_wrap_bad", // kết quả đi vào hàm lạ
+      "probe_inside_long_fn_bad", // truy vấn trơn trong thân một hàm DÀI có `throw`
+      "probe_long_fn_call_bad", // gọi hàm DÀI quanh truy vấn — hàm dài không phải hàm bọc
+      "probe_inside_short_wrapper_bad", // trong thân hàm bọc ngắn — dòng khai báo không phải lời gọi
+      "probe_after_checked_then_bad", // dưới một handler `.then` đã kiểm của câu lệnh KHÁC
+      "probe_ternary_await_bad", // await qua toán tử ba ngôi, không kiểm
+      "probe_ngoac_le_bad", // ngoặc lẻ trong chú thích / chuỗi / regex ở dòng trên
     ]
     for (const t of expected) {
       expect(flagged.has(t), `bỏ lọt mồi ${t}`).toBe(true)
@@ -86,6 +99,21 @@ describe("Máy dò truy vấn chưa kiểm lỗi", () => {
   it("audit-ok phải kèm lý do mới được bỏ qua", () => {
     expect(flagged.has("probe_auditok"), "audit-ok có lý do vẫn bị kêu").toBe(false)
     expect(flagged.has("probe_auditok_noreason"), "audit-ok trống mà được tha").toBe(true)
+  })
+})
+
+describe("Máy dò đếm ngoặc đúng trên CẢ mã thật", () => {
+  /**
+   * ⚠ Mọi phân tích của máy dò (khối bao, hết câu lệnh, `.then` gắn vào câu nào) dựa trên ĐỘ SÂU NGOẶC. Đếm cả ngoặc
+   * trong chú thích / chuỗi thì "(chủ nhà 26/09/2026: …" kéo lệch cả phần còn lại của tệp — 13 tệp trong src từng lệch
+   * như thế (08/10/2026), và ở phần lệch máy dò tha nhầm cả một hàm. Tệp nào lệch là máy dò đang nhìn sai tệp ấy.
+   */
+  it("mọi tệp trong src cân ngoặc sau khi bỏ chú thích / chuỗi / regex", () => {
+    const out = execFileSync("python3", [resolve(ROOT, "scripts/audit-unchecked-db.py"), "--depth-check"], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    })
+    expect(JSON.parse(out)).toEqual([])
   })
 })
 

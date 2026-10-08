@@ -25,6 +25,7 @@ import { PAYMENT_TERMS } from "@/lib/constants"
 import { orderTone, vnTime } from "@/lib/orders/status-tone"
 import { isSellEditable } from "@/lib/sell/order-edit"
 import { errorMessage } from "@/lib/errors"
+import { toast } from "@/hooks/use-toast"
 import type { SalesOrder } from "@/types"
 import { CustomerQuickInfo } from "@/components/orders/customer-quick-info"
 import { SoThuTu } from "@/components/mobile/so-thu-tu"
@@ -110,8 +111,8 @@ export function OrderDrawer({
        *   nó; để nó nằm đó là một dòng đỏ vô nghĩa ngay cạnh những dòng
        *   đang thật sự chờ xử lý.
        *
-       * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN. Đây là phần phụ của màn xem nhanh;
-       *   ném lỗi ở đây là đóng cả màn vì một khối bổ sung.
+       * ⚠ ĐỌC HỎNG THÌ KHÔNG CHẶN, NHƯNG NÓI RA. Đây là phần phụ của màn xem nhanh — ném lỗi ở đây là đóng cả màn
+       *   vì một khối bổ sung; im lặng thì đơn trông như KHÔNG có hàng đổi / trả nào đang chờ.
        */
       supabase
         .from("returns")
@@ -119,8 +120,12 @@ export function OrderDrawer({
         .eq("order_id", orderId)
         .neq("status", "cancelled")
         .order("created_at", { ascending: true })
-        .then(({ data: retData }) => {
+        .then(({ data: retData, error: retErr }) => {
           if (cancelled) return
+          if (retErr) {
+            toast({ title: "Chưa đọc được hàng đổi / trả của đơn", description: errorMessage(retErr), variant: "destructive" })
+            return
+          }
           setReturns(((retData as unknown) as ReturnSummaryRow[]) ?? [])
         })
 

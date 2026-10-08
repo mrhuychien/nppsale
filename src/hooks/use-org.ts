@@ -84,6 +84,7 @@ export function useOrg() {
     if (!p) {
       /* ⚠ BỌC `Promise.resolve` NGAY: builder của Supabase là "thenable" LƯỜI — mỗi lần `.then` là
          gửi lại truy vấn. Giữ builder rồi cho 3 nơi `.then` là 3 lượt gọi (log e2e 27/09/2026). */
+      // audit-ok: lỗi đọc ở `p.then(({ data, error })` ngay dưới (ghi log; `allow_oversell` về tắt — mặc định an toàn).
       p = Promise.resolve(createClient().from("organizations").select("id, name, allow_oversell").eq("id", orgId).maybeSingle())
       dangDoc.set(orgId, p)
       void Promise.resolve(p).finally(() => dangDoc.delete(orgId))

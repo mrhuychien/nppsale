@@ -143,13 +143,16 @@ export function SalesHome({
         let vuotHanMuc = 0
         const ds = Array.from(ids)
         for (let i = 0; i < ds.length; i += 200) {
-          const { data } = await sb.from("customers").select("id, store_name, channel, credit_limit").in("id", ds.slice(i, i + 200))
+          const { data, error: khErr } = await sb.from("customers").select("id, store_name, channel, credit_limit").in("id", ds.slice(i, i + 200))
+          /* Đọc hỏng thì báo (như hoá đơn / đơn ở trên) — thiếu khách là thiếu tên trong danh sách và đếm "vượt hạn mức" hụt. */
+          if (khErr && !huy) setLoi(errorMessage(khErr, "Không đọc được danh sách khách"))
           for (const c of (data ?? []) as Array<{ id: string; store_name: string; channel: string | null; credit_limit: number | null }>) {
             khach.set(c.id, { store: c.store_name, channel: c.channel })
             const hm = Number(c.credit_limit || 0)
             if (hm > 0 && (noTheoKhach.get(c.id) ?? 0) > hm) vuotHanMuc++
           }
         }
+        // audit-ok: chỉ là TÊN kênh; đọc hỏng thì hiện mã kênh thay tên — không con số nào đổi.
         const { data: kenhData } = await sb.from("sales_routes").select("code, name")
         const kenhTen = new Map<string, string>()
         for (const r of (kenhData ?? []) as Array<{ code: string; name: string }>) kenhTen.set(r.code, r.name)

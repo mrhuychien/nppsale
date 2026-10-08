@@ -52,6 +52,7 @@ export function DocPeople({
   useEffect(() => {
     if (!canKey) return
     let huy = false
+    // audit-ok: chỉ tra TÊN người tạo / người được gán đã nghỉ (không có trong danh sách nhân viên) — hỏng thì không hiện tên.
     createClient()
       .from("users")
       .select("id, full_name")

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, QrCode, ShieldCheck, Truck, BarChart3, Boxes } from "lucide-react"
 import { VN_TZ } from "@/lib/utils"
+import { errorMessage } from "@/lib/errors"
 
 const QR_MESSAGES: Record<string, string> = {
   invalid: "Mã QR không hợp lệ hoặc đã bị thu hồi. Liên hệ quản lý để được cấp lại.",
@@ -86,11 +87,18 @@ function LoginForm() {
       const uid = signed?.user?.id
       let vaiTro: string | null = null
       if (uid) {
-        const { data: me } = await supabase
+        const { data: me, error: meErr } = await supabase
           .from("users")
           .select("is_active, role")
           .eq("id", uid)
           .maybeSingle()
+        /* ⚠ ĐỌC HỎNG THÌ CHẶN, KHÔNG CHO QUA. Đi tiếp là bỏ qua đúng phép kiểm "tài khoản đã khoá" ngay dưới, và vai
+           trò rỗng đưa nhân viên vào màn văn phòng. Đăng xuất để lần bấm sau đọc lại từ đầu. */
+        if (meErr) {
+          await supabase.auth.signOut()
+          setError(`Chưa kiểm tra được tài khoản (${errorMessage(meErr)}). Vui lòng thử lại.`)
+          return
+        }
         vaiTro = (me?.role as string | undefined) ?? null
         if (me?.is_active === false) {
           await supabase.auth.signOut()

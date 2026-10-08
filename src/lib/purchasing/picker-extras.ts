@@ -48,8 +48,9 @@ export async function loadPickerExtras(
     )
   ) as string[]
   if (supIds.length > 0) {
-    const { data } = await supabase.from("suppliers").select("id, name").in("id", supIds)
-    const byId = new Map(((data as Array<{ id: string; name: string }>) || []).map((s) => [s.id, s.name]))
+    /* Đọc hỏng thì tên NCC để trống (`null`) — cùng luật "để trống, không bịa" với tồn bên dưới. */
+    const { data, error } = await supabase.from("suppliers").select("id, name").in("id", supIds)
+    const byId = new Map((error ? [] : (data as Array<{ id: string; name: string }>) || []).map((s) => [s.id, s.name]))
     for (const p of prods) {
       const sid = (p as { primary_supplier_id?: string | null }).primary_supplier_id
       if (sid && next[p.id]) next[p.id].supplierName = byId.get(sid) ?? null
@@ -71,7 +72,9 @@ export async function loadPickerExtras(
       .order("id")
       .range(from, to)
   )
-  if (!res.truncated) {
+  /* ⚠ `error` CŨNG PHẢI CHẶN, không chỉ `truncated`: đọc hỏng thì `fetchAllForAggregate` trả mảng RỖNG kèm
+     `truncated: false` — chỉ soi `truncated` là mọi mặt hàng hiện tồn 0, đúng câu nói dối nói ở trên. */
+  if (!res.error && !res.truncated) {
     const sum: Record<string, number> = {}
     for (const b of res.rows as Array<{ product_id: string; qty_on_hand: number | null }>) {
       sum[b.product_id] = (sum[b.product_id] ?? 0) + Number(b.qty_on_hand ?? 0)

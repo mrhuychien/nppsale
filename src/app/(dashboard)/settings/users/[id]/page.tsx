@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import Link from "@/components/ui/link"
 import { PageHeader } from "@/components/ui/page-header"
+import { HopLoiTai } from "@/components/ui/hop-loi-tai"
 import { useToast } from "@/hooks/use-toast"
 import { ROLE_LABELS } from "@/lib/constants"
 import type { User, Role } from "@/types"
@@ -67,6 +68,7 @@ export default function UserDetailPage() {
    */
   const [giamGia, setGiamGia] = useState<{ bat: boolean; kieu: "pct" | "vnd"; max: string }>({ bat: false, kieu: "pct", max: "" })
   const [coCotGiamGia, setCoCotGiamGia] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [allSuppliers, setAllSuppliers] = useState<{ id: string; name: string }[]>([])
   const [supplierIds, setSupplierIds] = useState<Set<string>>(new Set())
   const supabase = createClient()
@@ -79,6 +81,17 @@ export default function UserDetailPage() {
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("user_suppliers").select("supplier_id").eq("user_id", id),
     ])
+    /* ⚠ ĐỌC HỎNG THÌ DỪNG, KHÔNG DỰNG FORM. `user_suppliers` đọc hỏng mà vẫn dựng form là ô NCC phụ trách TRỐNG — bấm
+       Lưu (đổi vai trò, số điện thoại…) là xoá sạch NCC đã gán, vì phần Lưu so danh sách trên màn với sổ rồi xoá phần
+       "không còn". Hồ sơ đọc hỏng cũng không phải "Không tìm thấy người dùng". */
+    const qErr = ([userRes, supRes, mySupRes] as Array<{ error?: { message?: string } | null }>)
+      .find((r) => r?.error)?.error
+    if (qErr) {
+      setLoadError(errorMessage(qErr, "Không đọc được người dùng"))
+      setLoading(false)
+      return
+    }
+    setLoadError(null)
     const ggRes = await supabase.from("users").select("allow_discount, discount_max_type, discount_max_value").eq("id", id).maybeSingle()
     setCoCotGiamGia(!ggRes.error)
     if (ggRes.data) {
@@ -89,9 +102,6 @@ export default function UserDetailPage() {
         max: g.discount_max_value == null ? "" : String(g.discount_max_value),
       })
     }
-    const qErr = ([userRes, supRes, mySupRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr) console.error("[users/id] truy vấn lỗi:", qErr.message)
     if (userRes.data) {
       const u = userRes.data as User
       setTarget(u)
@@ -212,6 +222,14 @@ export default function UserDetailPage() {
   }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Không mở được người dùng" backHref="/settings/users" />
+        <HopLoiTai tieuDe="Không tải được thông tin người dùng" loi={loadError} onRetry={fetchUser} />
+      </div>
+    )
+  }
   if (!target) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy người dùng</div>
 
   // Show email only when viewing the currently logged-in user (auth.users not directly readable for other users)

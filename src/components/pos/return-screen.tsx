@@ -305,7 +305,9 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setTraLines(ds.filter((x) => !x.isExchange))
         setDoiLines(ds.filter((x) => x.isExchange))
         if (r.invoice_id) {
-          const { data: hd } = await sb.from("sales_invoices").select("invoice_code").eq("id", r.invoice_id).maybeSingle()
+          const { data: hd, error: hdErr } = await sb.from("sales_invoices").select("invoice_code").eq("id", r.invoice_id).maybeSingle()
+          // Hỏng thì ném (→ "không nạp được"): thiếu mã, phiếu trả theo hoá đơn trông như phiếu tự lập.
+          if (hdErr) throw hdErr
           if (!huy) setInvoiceCode(((hd as unknown) as { invoice_code?: string } | null)?.invoice_code ?? null)
         }
         setDaNap(true)
@@ -363,6 +365,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             .select("invoice_code, customer_id, customer:customers(store_name, phone, address)")
             .eq("id", id).maybeSingle(),
         ])
+        /* Đầu hoá đơn hỏng thì ném — đi tiếp là phiếu trả gắn hoá đơn mà KHÔNG có khách của hoá đơn trên card. */
+        if (hd.error) throw hd.error
         const head = (hd.data as unknown) as {
           invoice_code?: string; customer_id?: string
           customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null

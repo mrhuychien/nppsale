@@ -221,6 +221,7 @@ export function InvoiceEditor({
   useEffect(() => {
     let cancelled = false
     setHeadLoaded(false)
+    // audit-ok: khối thông tin ĐẦU ĐƠN (khách, ghi chú) — hỏng thì để trống, không chặn xuất hàng (chú thích ngay trên).
     supabase
       .from("sales_orders")
       .select(
@@ -255,8 +256,18 @@ export function InvoiceEditor({
       )
       .eq("order_id", orderId)
       .neq("status", "cancelled")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return
+        /* ⚠ KHÔNG CHẶN, NHƯNG PHẢI NÓI. Im lặng là màn xuất hàng tính tiền như đơn KHÔNG có hàng trả (số trừ hàng trả về
+           0) và bỏ qua câu hỏi "Cần huỷ phiếu nhập trước?" khi sửa hoá đơn — người xuất tưởng thế là đúng. */
+        if (error) {
+          toast({
+            title: "Chưa đọc được hàng đổi / trả của đơn",
+            description: "Số trừ hàng trả trên màn này có thể thiếu — tải lại trang trước khi xuất. " + errorMessage(error),
+            variant: "destructive",
+          })
+          return
+        }
         const rs = ((data as unknown) as Array<PhieuTraCuaDon & {
           credit_note_amount: number | null
           lines?: Array<{

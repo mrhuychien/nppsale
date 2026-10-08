@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { PosDesktopRedirect } from "@/components/sell/pos-desktop-redirect"
 import { posNewReturnHref } from "@/lib/nav/pos-preview"
 import { createClient } from "@/lib/supabase/client"
+import { docNguoiBan } from "@/lib/users/nguoi-ban"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -159,24 +160,17 @@ export default function NewReturnPage() {
   useEffect(() => {
     if (!canPickSeller || !user?.org_id) return
     let cancelled = false
-    createClient()
-      .from("users")
-      .select("id, full_name, role, is_active")
-      .eq("org_id", user.org_id)
-      /* ⚠ ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP — xem mig 160. Hiện ra một
-         cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
-      .in("role", ["sales", "manager", "owner"])
-      .order("full_name")
-      .then(({ data }) => {
-        if (!cancelled) {
-          // Người đã nghỉ / tạm khoá không gán được (mig 223).
-          setSellers(((data as Array<{ id: string; full_name: string; role: string; is_active?: boolean | null }>) || []).filter((u) => u.is_active !== false))
-        }
+    /* ⚠ Cùng câu đọc với POS (`docNguoiBan`): ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP (mig 160) — hiện ra một cái tên mà
+       máy chủ sẽ từ chối là bẫy người dùng — và bỏ người đã nghỉ / tạm khoá (mig 223). Đọc hỏng thì NÓI RA. */
+    docNguoiBan(createClient(), user.org_id)
+      .then((ds) => { if (!cancelled) setSellers(ds) })
+      .catch((e) => {
+        if (!cancelled) toast({ title: "Không tải được danh sách nhân viên bán", description: errorMessage(e), variant: "destructive" })
       })
     return () => {
       cancelled = true
     }
-  }, [canPickSeller, user?.org_id])
+  }, [canPickSeller, user?.org_id, toast])
 
 
   const [saving, setSaving] = useState(false)
@@ -238,8 +232,9 @@ export default function NewReturnPage() {
         .order("invoice_date", { ascending: false })
         .limit(20)
       if (cancelled) return
+      /* Đọc hỏng thì NÓI RA — ô chọn hoá đơn trống trơn trông như "khách chưa mua gì". */
       if (error) {
-        console.error("[returns/new] truy vấn hóa đơn lỗi:", error.message)
+        toast({ title: "Không tải được hoá đơn của khách", description: errorMessage(error), variant: "destructive" })
         return
       }
       const rows = (data as InvoiceLite[]) ?? []
@@ -250,20 +245,21 @@ export default function NewReturnPage() {
        *   dòng hàng của nó — người dùng thấy một màn tự mâu thuẫn.
        */
       if (invoiceId && !rows.some((r) => r.id === invoiceId)) {
-        const { data: one } = await supabase
+        const { data: one, error: oneErr } = await supabase
           .from("sales_invoices")
           .select("id, invoice_code, invoice_date, total, order_id")
           .eq("id", invoiceId)
           .maybeSingle()
         if (cancelled) return
-        if (one) rows.unshift(one as InvoiceLite)
+        if (oneErr) toast({ title: "Không tải được hoá đơn đang chọn", description: errorMessage(oneErr), variant: "destructive" })
+        else if (one) rows.unshift(one as InvoiceLite)
       }
       setInvoices(rows)
     })()
     return () => {
       cancelled = true
     }
-  }, [customerId, invoiceId, supabase])
+  }, [customerId, invoiceId, supabase, toast])
 
   // Dòng hàng của đơn được chọn — nguồn gợi ý chuẩn nhất cho phiếu trả.
   useEffect(() => {

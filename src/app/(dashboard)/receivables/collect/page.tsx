@@ -202,6 +202,7 @@ export default function CollectPaymentPage() {
       /* ⚠ ĐỌC HỎNG KHÔNG ĐƯỢC LÀM HỎNG VIỆC ĐÃ XONG. Tiền đã ghi trong
          một giao dịch rồi; không đọc ra mã thì hiện tạm theo id chứ
          đừng ném, vì ném ở đây là người dùng tưởng chưa thu được. */
+      // audit-ok: tiền đã ghi xong; chỉ đọc MÃ phiếu để hiện — hỏng thì hiện tạm theo id (chú thích ngay trên).
       const { data: rcRow } = await supabase
         .from("cash_receipts")
         .select("receipt_code")

@@ -16,6 +16,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { toast } from "@/hooks/use-toast"
+import { errorMessage } from "@/lib/errors"
 import { useKhoMay } from "@/hooks/use-is-desktop"
 import { Skeleton } from "@/components/ui/skeleton"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
@@ -77,7 +79,12 @@ function Trang() {
           .select("id, invoice_code, invoice_date, status, total, sales_user_id, customer:customers(store_name, phone, channel), order:sales_orders(order_code)")
           .in("id", ids)
           .eq("status", "posted")
-          .then(({ data }) => {
+          .then(({ data, error }) => {
+            // Đọc hỏng thì nói — im lặng là mở "soạn các hoá đơn đã chọn" ra một lượt trống.
+            if (error) {
+              toast({ title: "Không mở được các hoá đơn đã chọn", description: errorMessage(error), variant: "destructive" })
+              return
+            }
             const m = new Map(((data as unknown as HoaDonSoan[]) ?? []).map((d) => [d.id, d]))
             L.them(ids.map((id) => m.get(id)).filter((d): d is HoaDonSoan => !!d))
           })

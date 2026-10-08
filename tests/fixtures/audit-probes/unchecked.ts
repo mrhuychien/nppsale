@@ -10,7 +10,57 @@
 /* eslint-disable */
 // @ts-nocheck
 
-export async function probes(supabase: any, fetchAllForAggregate: any) {
+/* 17. Hàm DÀI có `if (… error) throw` ở đâu đó KHÔNG phải hàm bọc tự kiểm: dòng khai báo của nó không được coi là
+       "lời gọi hàm bọc" bao quanh truy vấn trơn trong thân, và gọi nó quanh một truy vấn cũng không được tha. */
+async function luuDai(supabase: any, q: any) {
+  const { error } = await supabase.from("probe_long_fn_checked_x").update({ a: 1 }).eq("id", 1)
+  if (error) throw error
+  await supabase.from("probe_inside_long_fn_bad").update({ b: 2 }).eq("id", 1)
+  console.log(1)
+  console.log(2)
+  console.log(3)
+  console.log(4)
+  console.log(5)
+  console.log(6)
+  console.log(7)
+  console.log(8)
+  return q
+}
+
+/* 18. Hàm bọc NGẮN, tự ném lỗi — nhưng dòng KHAI BÁO `async function nganCo(` không phải lời gọi bao quanh truy vấn
+       trơn trong thân nó. */
+async function nganCo(supabase: any, q: any) {
+  await supabase.from("probe_inside_short_wrapper_bad").update({ c: 3 }).eq("id", 1)
+  const { data, error } = await q
+  if (error) throw error
+  return data
+}
+
+/* 19. Handler `.then` CÓ kiểm lỗi của một câu lệnh KHÁC đứng đầu hàm — không được "cho mượn" phần kiểm. */
+export function hamCoThenDaKiem(supabase: any) {
+  supabase.from("probe_then_first_ok_x").select("id").then(({ data, error }) => {
+    if (error) console.error("lỗi")
+    console.log(data)
+  })
+  supabase.from("probe_after_checked_then_bad").delete().eq("id", 1)
+  return nganCo
+}
+
+/* 21. Ngoặc LẺ trong chú thích / chuỗi / regex không được làm lệch độ sâu. Đếm thô thì phần dưới sâu thêm vài
+       tầng, và lời gọi hàm bọc tự ném lỗi ở dòng trên thành "khối bao" của truy vấn trơn bên dưới → được tha. */
+export async function ngoacLe(supabase: any, ghiPhaiTrungDong: any) {
+  await ghiPhaiTrungDong(supabase.from("probe_ngoac_le_ok_x").delete().eq("id", 1)) // (chưa đóng
+  const s = "(" + '[' + `{` + /\(/.source
+  await supabase.from("probe_ngoac_le_bad").update({ a: s }).eq("id", 1)
+}
+
+export async function goiHamDai(supabase: any) {
+  return luuDai(supabase, supabase.from("probe_long_fn_call_bad").select("id"))
+}
+
+export async function probes(
+  supabase: any, fetchAllForAggregate: any, ghiPhaiTrungDong: any, boQuaLoi: any, sb: any, apSapXep: any, apLoc: any
+) {
   // 1. Hàm bọc, KHÔNG kiểm lỗi.
   const aRes = await fetchAllForAggregate((from: number, to: number) =>
     supabase
@@ -82,6 +132,62 @@ export async function probes(supabase: any, fetchAllForAggregate: any) {
   if (!jsonRes[0].data) {
     return { error: "Không có dữ liệu." }
   }
+
+  // 10. Hàm bọc LẠ (không nằm trong danh sách tự ném lỗi) — không được tha.
+  await boQuaLoi(supabase.from("probe_wrapper_unknown_bad").delete().eq("id", 1))
+
+  // 11. Truy vấn trơn đứng NGAY DƯỚI một lời gọi hàm bọc tự ném lỗi — không được ăn theo.
+  await ghiPhaiTrungDong(supabase.from("probe_ghi_trung_dong_neighbour_ok").delete().eq("id", 1))
+  await supabase.from("probe_after_wrapper_bad").update({ ten: "x" }).eq("id", 1)
+
+  // 12. Client `sb`, gán vào biến nhưng KHÔNG soi `.error` của biến ấy.
+  let r1 = await sb.from("probe_let_sb_bad").insert({ id: 1 }).select("id").single()
+  console.log(r1.data)
+
+  // 13. Câu kiểm nằm QUÁ XA (hơn 8 dòng code) — bỏ dòng chú thích không có nghĩa là nới cửa sổ code.
+  const [xaRes] = await Promise.all([
+    supabase.from("probe_far_check_bad").select("id"),
+  ])
+  console.log(1)
+  console.log(2)
+  console.log(3)
+  console.log(4)
+  console.log(5)
+  console.log(6)
+  console.log(7)
+  console.log(8)
+  if (xaRes.error) console.error("muộn quá")
+
+  // 14. Hàm bọc TRONG TỆP nhưng NUỐT lỗi (không ném) — không được coi là hàm bọc tự kiểm.
+  const nuot = async (q: any) => {
+    const { data: d2, error: loi } = await q
+    if (loi) console.warn("bỏ qua")
+    return d2 ?? []
+  }
+  const n1 = await nuot(sb.from("probe_local_swallow_bad").select("id"))
+  console.log(n1)
+
+  // 15. Query bọc trong hàm gắn thứ tự rồi await mà KHÔNG kiểm lỗi.
+  let q2 = apSapXep(
+    supabase.from("probe_builder_wrapped_bad").select("id"),
+    "x"
+  )
+  const { data: d9 } = await q2
+  console.log(d9)
+
+  // 16. Kết quả đi vào một hàm LẠ (không có trong danh sách hàm bọc tự kiểm lỗi).
+  const qLa = supabase.from("probe_builder_unknown_wrap_bad").select("id")
+  console.log(boQuaLoi(await apLoc(qLa)))
+
+  // 20. Await qua toán tử BA NGÔI mà KHÔNG kiểm lỗi.
+  const coSoBad = supabase
+    .from("probe_ternary_await_bad")
+    .select("id")
+  const { data: tnBad } = await (n1.length >= 2
+    ? coSoBad.or("id.eq.1")
+    : coSoBad
+  )
+  console.log(tnBad)
 
   // 9. GHI trong nhánh, không kiểm lỗi.
   await supabase.from("probe_insert_bad").insert({

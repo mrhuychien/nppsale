@@ -9,6 +9,7 @@ import {
 } from "@/lib/users/nghi-viec"
 import { chipNhanVien, dongPhuNhanVien, khopLocNv } from "@/lib/users/mobile-list"
 import { loadSellers } from "@/lib/pos/load"
+import { docNguoiBan } from "@/lib/users/nguoi-ban"
 
 describe("trạng thái nhân viên", () => {
   it("đã nghỉ đứng trước tạm khoá; is_active NULL = chưa ai khoá", () => {
@@ -71,6 +72,14 @@ describe("ô chọn người đứng tên (POS) bỏ người đã nghỉ / tạ
     const q = { select: () => q, eq: () => q, in: () => q, order: async () => ({ data, error: null }) }
     const sb = { from: () => q } as unknown as Parameters<typeof loadSellers>[0]
     expect((await loadSellers(sb, "org")).map((u) => u.id)).toEqual(["1", "3"])
+  })
+
+  /** Đọc hỏng mà trả `[]` là ô "Nhân viên bán" trống trơn không lời nào (08/10/2026 — rà truy vấn không kiểm lỗi). */
+  it("đọc hỏng thì NÉM, không trả danh sách rỗng", async () => {
+    const q = { select: () => q, eq: () => q, in: () => q, order: async () => ({ data: null, error: { message: "mất mạng" } }) }
+    const sb = { from: () => q } as unknown as Parameters<typeof docNguoiBan>[0]
+    await expect(docNguoiBan(sb, "org")).rejects.toMatchObject({ message: "mất mạng" })
+    await expect(loadSellers(sb, "org")).rejects.toMatchObject({ message: "mất mạng" })
   })
 })
 

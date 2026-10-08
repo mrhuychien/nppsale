@@ -17,6 +17,7 @@
 import { tongNoNcc } from "@/lib/payables/so-no-ncc"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { docTheoLoId, fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docNguoiBan } from "@/lib/users/nguoi-ban"
 import type { PosLine, PosLotOption } from "@/lib/pos/types"
 
 /* ==================================================================
@@ -51,23 +52,11 @@ export interface PosSeller {
 }
 
 /**
- * Nhân viên đứng tên đơn được.
- *
- * ⚠ ĐÚNG BỘ VAI TRÒ TRIGGER CHO PHÉP (mig 153). Hiện ra một cái tên mà
- * máy chủ sẽ từ chối là bẫy người dùng: họ chọn, bấm lưu, rồi nhận một
- * câu lỗi cho một việc màn hình vừa mời họ làm.
+ * Nhân viên đứng tên đơn được — câu đọc dùng chung với `/sell` và màn phiếu trả (`docNguoiBan`: đúng bộ vai trò
+ * trigger cho phép, bỏ người đã nghỉ, đọc hỏng thì NÉM).
  */
 export async function loadSellers(sb: SupabaseClient, orgId: string): Promise<PosSeller[]> {
-  const { data } = await sb
-    .from("users")
-    .select("id, full_name, role, is_active")
-    .eq("org_id", orgId)
-    .in("role", ["sales", "manager", "owner"])
-    .order("full_name")
-  // Người đã nghỉ / tạm khoá không gán được (mig 223). Tên trên chứng từ cũ tra riêng (`DocPeople`).
-  return (((data as unknown) as Array<PosSeller & { is_active?: boolean | null }>) ?? [])
-    .filter((u) => u.is_active !== false)
-    .map((u) => ({ id: u.id, full_name: u.full_name, role: u.role }) as PosSeller)
+  return docNguoiBan(sb, orgId)
 }
 
 /* ==================================================================
@@ -333,6 +322,8 @@ export async function loadReceiptLinesForReturn(
       .order("sort_order", { ascending: true }),
   ])
   if (l.error) throw l.error
+  /* Đầu phiếu đọc hỏng thì không có mã phiếu → không tìm được lô nào: danh sách lô TRỐNG trông như "phiếu không có lô". */
+  if (h.error) throw h.error
   const code = ((h.data as unknown) as { receipt_code?: string | null } | null)?.receipt_code ?? null
 
   const rows = ((l.data as unknown) as Array<{
@@ -355,6 +346,7 @@ export async function loadReceiptLinesForReturn(
         .order("id")
         .range(from, to)
     )
+    if (res.error) throw new Error(`Lô của phiếu nhập: ${res.error}`)
     lots = res.rows
   }
 

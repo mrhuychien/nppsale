@@ -29,6 +29,7 @@ import { cn, formatCurrency, formatDate, formatInt, generateOrderCode } from "@/
 import { PAYMENT_TERMS, VAT_RATES } from "@/lib/constants"
 import { loadDebtByCustomer } from "@/lib/sell/debt"
 import { createClient } from "@/lib/supabase/client"
+import { docNguoiBan } from "@/lib/users/nguoi-ban"
 import { buildOrderPayload, grossBeforeDiscountOf } from "@/lib/sell/create-order"
 import { loadApprovalContext, EMPTY_APPROVAL_CONTEXT } from "@/lib/sell/approval-context"
 import { submitSellOrder } from "@/lib/sell/submit"
@@ -149,19 +150,12 @@ export default function SellCartPage() {
   useEffect(() => {
     if (!canPickSeller || !user?.org_id) return
     let cancelled = false
-    createClient()
-      .from("users")
-      .select("id, full_name, role, is_active")
-      .eq("org_id", user.org_id)
-      /* ⚠ ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP — xem mig 153. Hiện ra
-         một cái tên mà máy chủ sẽ từ chối là bẫy người dùng. */
-      .in("role", ["sales", "manager", "owner"])
-      .order("full_name")
-      .then(({ data }) => {
-        if (!cancelled) {
-          // Người đã nghỉ / tạm khoá không gán được (mig 223).
-          setSellers(((data as Array<{ id: string; full_name: string; role: string; is_active?: boolean | null }>) || []).filter((u) => u.is_active !== false))
-        }
+    /* ⚠ Cùng câu đọc với POS (`docNguoiBan`): ĐÚNG BỘ VAI TRÒ MÀ TRIGGER CHO PHÉP (mig 153) — hiện ra một cái tên mà
+       máy chủ sẽ từ chối là bẫy người dùng — và bỏ người đã nghỉ / tạm khoá (mig 223). Đọc hỏng thì NÓI RA. */
+    docNguoiBan(createClient(), user.org_id)
+      .then((ds) => { if (!cancelled) setSellers(ds) })
+      .catch((e) => {
+        if (!cancelled) toast({ title: "Không tải được danh sách nhân viên bán", description: errorMessage(e), variant: "destructive" })
       })
     return () => { cancelled = true }
   }, [canPickSeller, user?.org_id])

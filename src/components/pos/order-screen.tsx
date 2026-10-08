@@ -480,6 +480,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   useEffect(() => {
     if (!orderId) return
     let huy = false
+    // audit-ok: chỉ là dòng chữ "Người tạo" — hỏng (sổ chưa chạy mig 178) thì bỏ trống, cố ý (chú thích ngay trên).
     createClient().from("sales_orders").select("created_by").eq("id", orderId).maybeSingle()
       .then(({ data }) => { if (!huy) setNguoiTao((data as { created_by?: string | null } | null)?.created_by ?? null) })
     return () => { huy = true }
@@ -510,6 +511,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             .neq("status", "cancelled"),
         ])
         if (huy) return
+        /* ⚠ ĐẦU ĐƠN / HOÁ ĐƠN ĐÃ XUẤT ĐỌC HỎNG THÌ NÉM (→ băng "Không nạp được đơn"). Im lặng là "Không tìm thấy đơn này"
+           cho một đơn có thật, hoặc một đơn ĐÃ xuất hoá đơn trông như chưa xuất. Hàng trả kèm đơn có đường riêng ở dưới. */
+        if (h.error) throw h.error
+        if (hd.error) throw hd.error
         const head = (h.data as unknown) as {
           order_code: string; status: string; customer_id: string
           payment_terms: string | null; expected_delivery: string | null

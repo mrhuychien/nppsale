@@ -15,7 +15,8 @@ Cách nhận biết "đã kiểm": trong PHẠM VI CẢ BIỂU THỨC — tính 
 ngoặc chứ không phải một cửa sổ N dòng cố định — có xuất hiện `error`
 (destructure `{ error }`, biến kết thúc bằng Err) hoặc `.throwOnError()`.
 
-Chạy: python3 scripts/audit-unchecked-db.py [--json]
+Chạy: python3 scripts/audit-unchecked-db.py [--json] [--strict]
+      python3 scripts/audit-unchecked-db.py --depth-check   ← tệp nào ngoặc không cân (máy dò đang nhìn sai tệp ấy)
 """
 import json
 import os
@@ -25,6 +26,39 @@ import sys
 ROOTS = ["src/app", "src/components", "src/hooks", "src/lib"]
 WRITE_OPS = ("insert", "update", "delete", "upsert", "rpc")
 TRAILING_CHECK_LINES = 3
+
+# Hàm bọc TỰ KIỂM LỖI VÀ NÉM: truy vấn là ĐỐI SỐ của chúng thì lỗi không thể trôi im lặng.
+#   ghiPhaiTrungDong (src/lib/db/must-write.ts)   — `if (error) throw error`, ghi không trúng dòng nào cũng ném.
+#   docDuHoacNem / docTheoLoId (src/lib/supabase/aggregate.ts) — `if (r.error) throw new Error(...)`.
+#   demHoacNem (analytics/_shared/doc-du.ts)      — `if (error) throw new Error(...)`.
+#   locDanhSachMa (lib/customers/loc-nhanh.ts), docTheoLoNho (lib/analytics/sales.ts) — chỉ gọi docTheoLoId, không bắt.
+# ⚠ CHỈ thêm tên khi đã đọc thân hàm và thấy nó NÉM. Hàm bọc TRẢ lỗi trong kết quả (như fetchAllForAggregate,
+#   selectResilient) thì chỗ gọi vẫn phải kiểm — đã có luật riêng cho chúng. Thiếu luật này là 60+ báo nhầm (08/10/2026),
+#   cổng CI đỏ thường trực và không ai còn nhìn.
+THROWING_WRAPPERS = ("ghiPhaiTrungDong", "docDuHoacNem", "docTheoLoId", "demHoacNem", "locDanhSachMa", "docTheoLoNho")
+# Hàm bọc NHẬN LỖI VÀ TRẢ `null` ("không biết"), kiểu trả về có `| null` nên nơi gọi buộc phải có đường lùi:
+#   docDemNhom (lib/list/dem-nhom.ts), docDemNcc (lib/products/mobile-list.ts) — null → nơi gọi đếm kiểu cũ (có kiểm lỗi).
+#   docThongKeNgay (lib/list/thong-ke-ngay.ts) — null → đầu nhóm ngày cộng các dòng đã tải.
+# Lỗi không thành "danh sách rỗng" hay "số 0" — nó thành "chưa có số", và màn hình đã có cách nói điều đó.
+NULL_ON_ERROR_WRAPPERS = ("docDemNhom", "docDemNcc", "docThongKeNgay")
+# Đuôi một lời gọi: `ten(`, `ten<T>(`, `ten<Record<string, unknown>>(`, hoặc `ten<{` mà kiểu còn chạy sang dòng dưới.
+_CALL_TAIL = r"\s*(?:<(?:[^<>()]|<[^<>()]*>)*>\s*\(|<[^()]*$|\()"
+
+
+def wrapper_call_re(names):
+    # `(?<!function )`: dòng KHAI BÁO `async function docDu<T>(` trông y hệt một lời gọi — không phải lời gọi.
+    return re.compile(r"(?<!function )\b(?:%s)%s" % ("|".join(re.escape(n) for n in names), _CALL_TAIL))
+
+
+_THROWING_CALL = wrapper_call_re(THROWING_WRAPPERS + NULL_ON_ERROR_WRAPPERS)
+
+# Hàm bọc KHAI BÁO NGAY TRONG TỆP (`const mot = async (q) => { … if (error) throw … }`, `async function docDu(…)`):
+# máy dò tự đọc thân hàm, thấy `if (… error) throw` thì coi như hàm bọc tự ném — khỏi phải liệt kê tay từng tệp.
+_LOCAL_FN = re.compile(
+    r"^\s*(?:export\s+)?(?:const\s+([A-Za-z_$][\w$]*)\s*=\s*async\b|async\s+function\s+([A-Za-z_$][\w$]*)\s*[<(])"
+)
+_THROW_ON_ERROR = re.compile(r"\bif\s*\(\s*[\w$.]*\berror\b\s*\)\s*throw\b")
+LOCAL_WRAPPER_MAX_LINES = 12
 
 
 def iter_files():
@@ -53,8 +87,9 @@ def span_end(lines, i):
     nào dòng sau vẫn còn nối chuỗi (bắt đầu bằng dấu chấm).
     """
     depth = 0
+    code = code_of(lines)
     for j in range(i, min(i + 60, len(lines))):
-        depth += lines[j].count("(") - lines[j].count(")")
+        depth += code[j].count("(") - code[j].count(")")
         if depth > 0:
             continue
         # Ngoặc đã cân bằng — câu lệnh còn nối sang dòng dưới không?
@@ -85,7 +120,15 @@ def checked_after(lines, end, window):
     Nên phải bám theo TÊN BIẾN: chỉ chấp nhận khi vài dòng sau có
     `<tên biến>.error`, đúng biến vừa gán.
     """
-    m = re.search(r"(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?supabase", window)
+    # Tên client tuỳ tệp (`supabase`, `sb`, `admin`…), và gán lại không `let` cũng tính:
+    #     let res = await sb.from("x").insert(…)
+    #     if (res.error && …) res = await sb.from("x").insert(…)   ← gán lại, kiểm ngay dưới
+    #     if (res.error) throw res.error
+    m = re.search(
+        r"(?:\b(?:const|let)\s+|^[^\S\n]*)([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?[A-Za-z_$][\w$]*\s*\.\s*(?:from|rpc)\(",
+        window,
+        re.M,
+    )
     if not m:
         return False
     name = re.escape(m.group(1))
@@ -158,10 +201,135 @@ def promise_all_checked(lines, i):
     return enclosing_assignment_checked(lines, line_depths(lines), i)
 
 
+def strip_non_code(lines):
+    """
+    Bản sao các dòng: chú thích / chuỗi / regex thay bằng khoảng trắng (GIỮ NGUYÊN độ dài) — chỉ để ĐẾM NGOẶC.
+
+    ⚠ Đếm ngoặc trên chữ thô thì "(chủ nhà 26/09/2026: …" chạy sang dòng sau, "1) Lưu…" trong chú thích, `"("` trong
+      chuỗi đều làm lệch độ sâu CẢ PHẦN CÒN LẠI của tệp. 13 tệp trong src lệch như thế (08/10/2026), và trong phần lệch
+      máy dò nhận sai khối bao: một dòng chú thích có `nganCo(` từng làm cả một hàm mồi được tha.
+    """
+    out = []
+    mode = "code"  # code | block (chú thích /* */) | tpl (chuỗi `…`)
+    tpl_stack = []  # số ngoặc nhọn đang mở lúc gặp `${`
+    brace = 0
+    for line in lines:
+        buf = list(line)
+        i, n = 0, len(line)
+        while i < n:
+            c = line[i]
+            nx = line[i + 1] if i + 1 < n else ""
+            if mode == "block":
+                if c == "*" and nx == "/":
+                    buf[i] = buf[i + 1] = " "
+                    i += 2
+                    mode = "code"
+                    continue
+                buf[i] = " "
+                i += 1
+                continue
+            if mode == "tpl":
+                if c == "\\":
+                    buf[i : i + 2] = " " * len(buf[i : i + 2])
+                    i += 2
+                    continue
+                if c == "`":
+                    buf[i] = " "
+                    i += 1
+                    mode = "code"
+                    continue
+                if c == "$" and nx == "{":
+                    buf[i] = buf[i + 1] = " "
+                    i += 2
+                    tpl_stack.append(brace)
+                    brace += 1
+                    mode = "code"
+                    continue
+                buf[i] = " "
+                i += 1
+                continue
+            if c == "/" and nx == "/":
+                buf[i:] = " " * (n - i)
+                break
+            if c == "/" and nx == "*":
+                buf[i] = buf[i + 1] = " "
+                i += 2
+                mode = "block"
+                continue
+            if c in "'\"":
+                j = i + 1
+                while j < n and line[j] != c:
+                    j += 2 if line[j] == "\\" else 1
+                buf[i : j + 1] = " " * len(buf[i : j + 1])
+                i = j + 1
+                continue
+            if c == "`":
+                buf[i] = " "
+                i += 1
+                mode = "tpl"
+                continue
+            if c == "/" and _regex_start(line, i):
+                j, lop = i + 1, False
+                while j < n:
+                    if line[j] == "\\":
+                        j += 2
+                        continue
+                    if line[j] == "[":
+                        lop = True
+                    elif line[j] == "]":
+                        lop = False
+                    elif line[j] == "/" and not lop:
+                        break
+                    j += 1
+                # Chỉ là regex khi đóng được trên CÙNG dòng; không thì để nguyên (phép chia, thẻ JSX…).
+                if j < n:
+                    buf[i : j + 1] = " " * (j + 1 - i)
+                    i = j + 1
+                    continue
+            if c == "{":
+                brace += 1
+            elif c == "}":
+                if tpl_stack and brace - 1 == tpl_stack[-1]:
+                    tpl_stack.pop()
+                    brace -= 1
+                    buf[i] = " "
+                    i += 1
+                    mode = "tpl"
+                    continue
+                brace -= 1
+            i += 1
+        out.append("".join(buf))
+    return out
+
+
+def _regex_start(line, i):
+    """`/` ở vị trí i mở một regex (không phải phép chia / thẻ JSX `</` `/>`)?"""
+    k = i - 1
+    while k >= 0 and line[k] in " \t":
+        k -= 1
+    if k < 0:
+        return True
+    # KHÔNG có `}` / `)` / `]`: sau chúng `/` là phép chia hoặc chữ JSX (`{a}/{b}`), không phải regex.
+    if line[k] in "(,=:[!&|?{;+-*%~^":
+        return True
+    return line[: k + 1].endswith(("return", "typeof", "case"))
+
+
+_code_cache = (None, None)
+
+
+def code_of(lines):
+    """`strip_non_code(lines)`, nhớ cho đúng một tệp đang phân tích (mọi hàm nhận cùng một list `lines`)."""
+    global _code_cache
+    if _code_cache[0] is not lines:
+        _code_cache = (lines, strip_non_code(lines))
+    return _code_cache[1]
+
+
 def line_depths(lines):
-    """Độ sâu ngoặc (gộp cả ba loại) tại ĐẦU mỗi dòng."""
+    """Độ sâu ngoặc (gộp cả ba loại) tại ĐẦU mỗi dòng — chỉ đếm ngoặc của CODE (xem `strip_non_code`)."""
     d, out = 0, []
-    for l in lines:
+    for l in code_of(lines):
         out.append(d)
         d += l.count("(") + l.count("[") + l.count("{")
         d -= l.count(")") + l.count("]") + l.count("}")
@@ -208,14 +376,27 @@ def enclosing_assignment_checked(lines, depths, i):
         # và khi đó chỗ kiểm lỗi nằm TRONG thân handler chứ không phải sau
         # câu lệnh — `end` lúc này đã trỏ ra tận sau dấu `})` đóng handler.
         if not names:
+            code = code_of(lines)
             for k in range(j, end):
-                if ".then(" not in lines[k] or "=>" not in lines[k]:
+                p = code[k].find(".then(")
+                if p < 0 or "=>" not in code[k]:
+                    continue
+                # ⚠ CHỈ `.then(` GẮN VÀO CHÍNH câu lệnh mở ở `j` — cùng độ sâu ngoặc với nó (`]).then(`). Bản trước lấy
+                #   `.then(` ĐẦU TIÊN bất kỳ trong khoảng [j, end): với j là dòng mở cả một HÀM (component, effect), đó
+                #   là handler của một câu lệnh khác — handler ấy có kiểm lỗi là mọi truy vấn trơn trong hàm được tha.
+                if depth_at(code[k], depths[k], p) != depths[j]:
                     continue
                 params = handler_params(lines, k)
                 if params and trailing_checked(lines, k + 1, params):
                     return True
                 break
     return False
+
+
+def depth_at(line, start_depth, pos):
+    """Độ sâu ngoặc tại vị trí `pos` của một dòng bắt đầu ở độ sâu `start_depth`."""
+    seg = line[:pos]
+    return start_depth + seg.count("(") + seg.count("[") + seg.count("{") - seg.count(")") - seg.count("]") - seg.count("}")
 
 
 def ancestors(lines, depths, i, limit=120):
@@ -304,7 +485,7 @@ def trailing_checked(lines, end, names, span=8):
     tới mức nhận cả nó là bỏ lọt một lỗi thật.
     """
     names = set(names)
-    for line in lines[end : end + span]:
+    for line in code_lines(lines, end, span):
         for n in names:
             if re.search(r"\b%s\s*[?.]?\.\s*error\b" % re.escape(n), line):
                 return True
@@ -316,6 +497,31 @@ def trailing_checked(lines, end, names, span=8):
         if m and any(re.search(r"\b%s\b" % re.escape(n), m.group(3)) for n in names):
             names |= set(re.findall(r"[A-Za-z_$][\w$]*", m.group(1) or m.group(2) or ""))
     return False
+
+
+def code_lines(lines, start, limit):
+    """
+    `limit` dòng CODE kể từ `start` — dòng chú thích không tính.
+
+    Khối chú thích giải thích vì sao phải ném (dashboard: 9 dòng `/** … */` giữa `Promise.all` và `if (qErr) throw`)
+    đẩy câu kiểm lỗi ra ngoài cửa sổ 8 dòng → báo nhầm. Chú thích không phải code: bỏ qua, đừng đếm.
+    """
+    out, in_block = [], False
+    for line in lines[start:]:
+        s = line.strip()
+        if in_block:
+            if "*/" in s:
+                in_block = False
+            continue
+        if s.startswith("//"):
+            continue
+        if s.startswith("/*"):
+            in_block = "*/" not in s
+            continue
+        out.append(line)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def statement_end(lines, depths, start):
@@ -332,7 +538,56 @@ def statement_end(lines, depths, start):
     return min(start + 200, len(lines))
 
 
-def builder_checked(lines, i):
+def local_throwing_wrappers(lines, depths):
+    """
+    Tên các hàm khai báo trong tệp mà thân có `if (… error) throw` — xem `_LOCAL_FN`. Biến lỗi đổi tên khi destructure
+    (`const { data, error: loi } = await q` rồi `if (loi) throw …`) cũng tính.
+
+    ⚠ CHỈ HÀM NGẮN (≤ `LOCAL_WRAPPER_MAX_LINES` dòng). Hàm bọc thật chỉ vài dòng (await đối số, ném nếu lỗi, trả dữ
+      liệu). Một hàm DÀI có `if (x.error) throw` ở đâu đó (hàm lưu phiếu, hàm nạp màn) không phải hàm bọc — coi nó là
+      hàm bọc thì mọi truy vấn trơn trong thân nó được tha (đã gặp: chính hàm mồi `probes` của test).
+    """
+    names = set()
+    for i, line in enumerate(lines):
+        m = _LOCAL_FN.match(line)
+        if not m:
+            continue
+        end = statement_end(lines, depths, i)
+        if end - i > LOCAL_WRAPPER_MAX_LINES:
+            continue
+        body = "\n".join(lines[i:end])
+        doi_ten = re.findall(r"\berror\s*:\s*([A-Za-z_$][\w$]*)", body)
+        nem = [re.compile(r"\bif\s*\(\s*%s\s*\)\s*throw\b" % re.escape(n)) for n in doi_ten]
+        if _THROW_ON_ERROR.search(body) or any(r.search(body) for r in nem):
+            names.add(m.group(1) or m.group(2))
+    return names
+
+
+def wrapped_by_throwing(lines, depths, i, call_re=_THROWING_CALL):
+    """
+    Truy vấn nằm TRONG đối số của một hàm bọc tự kiểm lỗi (`THROWING_WRAPPERS`, `NULL_ON_ERROR_WRAPPERS`, hàm bọc
+    khai báo trong tệp):
+
+        await ghiPhaiTrungDong(supabase.from("x").delete().eq("id", id))      ← cùng dòng
+        const r = await docDuHoacNem<Row>(
+          (from, to) => supabase.from("x").select("id", { count: "exact" }).range(from, to),
+          "đọc x"
+        )
+
+    Cùng dòng: tên hàm bọc phải đứng TRƯỚC chỗ bắt đầu truy vấn. Khác dòng: một dòng MỞ KHỐI đang bao quanh truy vấn
+    (`ancestors` — ngoặc nó mở vẫn còn mở) gọi hàm bọc. Câu lệnh ANH EM đứng trên không tính: truy vấn trơn nằm dưới
+    một lời gọi hàm bọc vẫn phải bị bắt.
+    """
+    m = re.search(r"supabase\b|\.from\(\s*[\"']", lines[i])
+    if m and call_re.search(lines[i][: m.start()]):
+        return True
+    for j in ancestors(lines, depths, i):
+        if call_re.search(lines[j]):
+            return True
+    return False
+
+
+def builder_checked(lines, i, depths=None, call_re=None):
     """
     Mẫu dựng query dần rồi mới await:
 
@@ -343,22 +598,49 @@ def builder_checked(lines, i):
     Phần kiểm lỗi cách chỗ khai báo cả chục dòng nên không nằm trong phạm
     vi biểu thức. Cách xử lý: lấy tên biến rồi tìm chỗ nó được await (hoặc
     truyền vào selectResilient / trả về cho hàm gọi) và soi ở đó.
+
+    Hai biến thể của cùng mẫu ấy (các màn danh sách):
+
+        let q = apSapXep(                           ← hàm gắn bộ lọc / thứ tự bọc NGOÀI query (chưa await)
+          supabase.from("x").select(...),           ← chỗ bị soi
+          …
+        )
+        return applyFilters(q as never) as typeof q ← trả query (vẫn bọc thêm bộ lọc) cho nơi gọi
+        const { count, error } = await applyFilters(q as never)   ← hoặc await qua hàm gắn bộ lọc
     """
     # `i` thường trỏ vào dòng `.from("x")` giữa chuỗi, nên phải lùi về đầu
     # câu lệnh mới thấy được `let q = supabase`.
     head = span_start(lines, i)
     m = re.match(r"\s*(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=", lines[head])
+    if not m and depths is not None:
+        # Query là đối số của một hàm bọc KHÔNG await (`let q = apSapXep(`) — giá trị gán vẫn là query chưa chạy.
+        # Chỉ xét khối bao gần nhất: xa hơn là câu lệnh khác.
+        for j in ancestors(lines, depths, head):
+            m = re.match(r"\s*(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?!await\b)[A-Za-z_$][\w$.]*\s*\($", lines[j])
+            break
     if not m:
         return False
     name = re.escape(m.group(1))
+    # `q`, `applyFilters(q`, `(applyFilters(q`, `applyStatusFilter(applyCommonFilters(q` — query đi qua hàm gắn bộ lọc.
+    qua_loc = r"(?:\(?\s*[\w$.]+\s*\(\s*)*%s\b" % name
     for j in range(i + 1, min(i + 60, len(lines))):
         # Query được nhét vào một Promise.all — phần kiểm lỗi nằm ở đó.
         if re.match(r"\s*%s\s*,?\s*$" % name, lines[j]):
             return promise_all_checked(lines, j)
-        if re.search(r"await\s+%s\b" % name, lines[j]):
+        mw = re.search(r"await\s+" + qua_loc, lines[j])
+        # `await (dk ? base.or(…) : base).abortSignal(…)` — query được await qua toán tử ba ngôi, tên nằm ở dòng dưới.
+        ma = None if mw else re.search(r"\bawait\s*\(", lines[j])
+        if ma:
+            tiep = lines[j][ma.end() :] + "\n" + "\n".join(lines[j + 1 : span_end(lines, j)])
+            if re.search(r"\b%s\b" % name, tiep):
+                mw = ma
+        if mw:
+            # `docDemNhom(await apDungLoc(q, true))` — kết quả đi thẳng vào hàm bọc tự kiểm lỗi.
+            if call_re is not None and call_re.search(lines[j][: mw.start()]):
+                return True
             return bool(re.search(r"\berror\b|\w+Err\b", "\n".join(lines[max(0, j - 2) : j + 4])))
         # Trả query ra ngoài (build = (select) => ...) → nơi gọi chịu trách nhiệm.
-        if re.search(r"return\s+%s\b" % name, lines[j]):
+        if re.search(r"return\s+" + qua_loc, lines[j]):
             return True
     return False
 
@@ -366,6 +648,8 @@ def builder_checked(lines, i):
 def analyse(path):
     lines = open(path, encoding="utf-8").read().split("\n")
     depths = line_depths(lines)
+    local = local_throwing_wrappers(lines, depths)
+    call_re = wrapper_call_re(THROWING_WRAPPERS + NULL_ON_ERROR_WRAPPERS + tuple(sorted(local)))
     out = []
     for i, line in enumerate(lines):
         if "supabase" not in line and ".from(" not in line and "await" not in line:
@@ -414,7 +698,8 @@ def analyse(path):
             or "throwOnError" in window
             or checked_after(lines, end, window)
             or enclosing_assignment_checked(lines, depths, i)
-            or builder_checked(lines, i)
+            or builder_checked(lines, i, depths, call_re)
+            or wrapped_by_throwing(lines, depths, i, call_re)
         )
         if checked:
             continue
@@ -445,7 +730,21 @@ def analyse(path):
     return out
 
 
+def unbalanced_files():
+    """Tệp mà ngoặc của CODE không cân — trong tệp ấy độ sâu (khối bao, hết câu lệnh) không còn đáng tin."""
+    out = []
+    for f in sorted(iter_files()):
+        code = strip_non_code(open(f, encoding="utf-8").read().split("\n"))
+        d = sum(l.count("(") + l.count("[") + l.count("{") - l.count(")") - l.count("]") - l.count("}") for l in code)
+        if d != 0:
+            out.append({"file": f, "lech": d})
+    return out
+
+
 def main():
+    if "--depth-check" in sys.argv:
+        print(json.dumps(unbalanced_files(), ensure_ascii=False))
+        return 0
     findings = []
     for f in sorted(iter_files()):
         findings += analyse(f)

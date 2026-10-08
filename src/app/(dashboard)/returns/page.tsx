@@ -420,15 +420,18 @@ export default function ReturnsPage() {
       let d = nhom
       if (!d) {
         const cu: DemNhom = {}
+        let hong = false
         await Promise.all(
           TAB_TRA_MOBILE.filter((t) => t.key !== "all").map(async (t) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const qHead = supabase.from("returns").select("id", { count: "exact", head: true }) as any
-            const { count } = (await apDungLoc(qHead, true).eq("status", t.key)) as { count: number | null }
+            const { count, error } = (await apDungLoc(qHead, true).eq("status", t.key)) as { count: number | null; error: unknown }
+            if (error) hong = true
             cu[t.key] = count ?? 0
           })
         )
-        d = cu
+        /* ⚠ Đếm hỏng thì tab KHÔNG đeo số (`null`) — `count ?? 0` là "0 phiếu" trông như thật. */
+        d = hong ? null : cu
       }
       if (!huy) setDemTab(d)
     })()

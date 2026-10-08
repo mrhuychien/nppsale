@@ -52,6 +52,7 @@ const GUARD = migrationMoiNhatCo(
 const CREATE = code(read("src/lib/orders/create.ts"))
 const BUILD = code(read("src/lib/sell/create-order.ts"))
 const CART = code(read("src/app/(dashboard)/sell/cart/page.tsx"))
+const CHUNG = code(read("src/lib/users/nguoi-ban.ts"))
 const EDIT = code(read("src/lib/sell/order-edit.ts"))
 const HOOK = code(read("src/hooks/use-sell-cart.tsx"))
 const LOADER = code(read("src/app/(dashboard)/sell/edit/[id]/page.tsx"))
@@ -134,7 +135,9 @@ describe("chỉ NPP mới lập được đơn đứng tên người khác", () 
    * rồi nhận một câu lỗi cho một việc màn hình vừa mời họ làm.
    */
   it("ô chọn chỉ liệt kê vai trò máy chủ chấp nhận", () => {
-    expect(CART).toContain('.in("role", ["sales", "manager", "owner"])')
+    /* Câu đọc dùng chung (POS, /sell, phiếu trả) — một chỗ giữ bộ vai trò, không chép bốn bản. */
+    expect(CART).toContain("docNguoiBan(createClient(), user.org_id)")
+    expect(CHUNG).toContain('.in("role", ["sales", "manager", "owner"])')
   })
 
   /** ⚠ Và chỉ chủ nhà / quản lý mới thấy ô ấy. */

@@ -55,7 +55,6 @@ export async function loadApprovalContext(
   // ⚠ CHẠM TRẦN (`truncated`) CŨNG TÍNH LÀ HỎNG: tổng đang thiếu, mà tổng
   //   thiếu thì chấm ngưỡng nào cũng lọt.
   const [rulesRes, recRes, repRes] = await Promise.all([
-    // audit-ok: xem chú thích ngay trên — gộp vào cờ `failed`.
     supabase.from("approval_rules").select(RULE_COLS).eq("org_id", opts.orgId).maybeSingle(),
     fetchAllForAggregate<{ amount: number; paid: number; due_date: string | null }>((from, to) =>
       supabase
@@ -76,6 +75,8 @@ export async function loadApprovalContext(
         .range(from, to)
     ),
   ])
+  // Đọc hỏng hay chạm trần đều là HỎNG — xem chú thích ngay trên Promise.all.
+  const failed = !!(rulesRes.error || recRes.error || repRes.error || recRes.truncated || repRes.truncated)
 
   const rows = recRes.rows
   const now = opts.now ?? Date.now()
@@ -94,12 +95,6 @@ export async function loadApprovalContext(
       .filter((r) => r.due_date && String(r.due_date).slice(0, 10) < homNay)
       .reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
     repPortfolioDebt: repRes.rows.reduce((s, r) => s + (Number(r.amount) - Number(r.paid)), 0),
-    failed: !!(
-      rulesRes.error ||
-      recRes.error ||
-      repRes.error ||
-      recRes.truncated ||
-      repRes.truncated
-    ),
+    failed,
   }
 }

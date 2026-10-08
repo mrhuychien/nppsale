@@ -32,6 +32,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { HopLoiTai } from "@/components/ui/hop-loi-tai"
 import { useToast } from "@/hooks/use-toast"
 import type { PurchaseReceiptFormValue } from "@/components/purchasing/purchase-receipt-form"
 import { PhieuNccMobile } from "@/components/purchasing/phieu-ncc-mobile"
@@ -63,6 +64,7 @@ export default function EditPurchaseReceiptPage() {
   const [catTruncated, setCatTruncated] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [extras, setExtras] = useState<Record<string, PickerExtra>>({})
   const [form, setForm] = useState<PurchaseReceiptFormValue>({
@@ -91,6 +93,16 @@ export default function EditPurchaseReceiptPage() {
         .select("id, product_id, unit_name, quantity, unit_price, line_discount, vat_rate, conversion_factor, notes, sort_order")
         .eq("invoice_id", id).order("sort_order"),
     ])
+    /* ⚠ ĐỌC HỎNG THÌ DỪNG, KHÔNG DỰNG FORM. Dòng hàng đọc hỏng mà vẫn dựng form là một phiếu KHÔNG DÒNG nào — thêm một
+       dòng rồi Lưu là lưu đè cả phiếu bằng đúng một dòng ấy (mất hàng, lệch kho, lệch công nợ NCC). Phiếu đọc hỏng /
+       không có cũng thế: một form trống mang mã của một phiếu có thật. */
+    const loi = supRes.error || hRes.error || lRes.error
+    if (loi || !hRes.data) {
+      setLoadError(loi ? errorMessage(loi, "Không đọc được phiếu nhập") : "Không tìm thấy phiếu nhập này.")
+      setLoading(false)
+      return
+    }
+    setLoadError(null)
     /* ⚠ `rows`, KHÔNG PHẢI `data` — danh mục nay kéo ĐỦ theo trang,
        không dừng ở 1.000 mã đầu. Xem `loadCatalogue`. */
     const prods = prodRes.rows
@@ -104,8 +116,7 @@ export default function EditPurchaseReceiptPage() {
       supplier_id: string; invoice_number: string | null; invoice_date: string | null
       warehouse_zone: string | null; discount: number | null; vat_override: number | null
       notes: string | null; status: string
-    } | null
-    if (!h) { setLoading(false); return }
+    }
     setStatus(h.status)
 
     /**
@@ -228,6 +239,15 @@ export default function EditPurchaseReceiptPage() {
   }
 
   if (authLoading || loading) return <Skeleton className="h-96" />
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Không mở được phiếu nhập" backHref={`/purchasing/receipts/${id}`} />
+        <HopLoiTai tieuDe="Không tải được phiếu nhập để sửa" loi={loadError} onRetry={load} />
+      </div>
+    )
+  }
 
   if (status === "cancelled") {
     return (

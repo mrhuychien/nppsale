@@ -240,6 +240,7 @@ export async function loadOneSellProduct(supabase: unknown, id: string): Promise
 function docLoBan(sb: Client) {
   return (
     fetchAllForAggregate<{ product_id: string; qty_on_hand: number }>((from, to) =>
+      // audit-ok: trả NGUYÊN kết quả (kèm `error`) — loadSellStock / loadSellRefData kiểm `.error` rồi mới dùng.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (sb.from("batches").select("product_id, qty_on_hand", { count: "exact" }).gt("qty_on_hand", 0).eq("warehouse_zone", "sale").order("id").range(from, to)) as any
     )

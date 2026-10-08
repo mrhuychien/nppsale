@@ -173,7 +173,10 @@ export function useLuotSoan(orgReady: boolean, tenTuyen: (channel: string | null
   const docLai = useCallback(async () => {
     const l = luotRef.current
     if (!l || !coLuot) return
-    const { data } = await supabase.from("luot_soan").select(COT_LUOT).eq("id", l.id).maybeSingle()
+    const { data, error } = await supabase.from("luot_soan").select(COT_LUOT).eq("id", l.id).maybeSingle()
+    /* Đọc lại ĐỊNH KỲ (20 giây / mỗi lần quay lại tab): hỏng thì giữ nguyên màn đang hiện, lần sau đọc lại — báo mỗi
+       lần là một chuỗi thông báo đỏ khi mạng chập chờn. Việc ghi tiến độ có đường báo lỗi riêng. */
+    if (error) return
     const r = data as LuotSoanRow | null
     if (!r || r.updated_at === luotRef.current?.updated_at) return
     if (r.trang_thai !== "dang_soan") {
@@ -210,7 +213,9 @@ export function useLuotSoan(orgReady: boolean, tenTuyen: (channel: string | null
           return null
         }
         const id = data as string
-        const { data: r } = await supabase.from("luot_soan").select(COT_LUOT).eq("id", id).maybeSingle()
+        const { data: r, error: rErr } = await supabase.from("luot_soan").select(COT_LUOT).eq("id", id).maybeSingle()
+        /* Lượt ĐÃ tạo trên máy chủ — đọc lại hỏng thì vẫn trả mã (đừng tạo lượt thứ hai), chỉ báo để người soạn tải lại. */
+        if (rErr) toast({ title: "Đã tạo lượt soạn nhưng chưa đọc lại được", description: loiLuotSoan(rErr.message), variant: "destructive" })
         if (r) apLuot(r as LuotSoanRow)
         void docDsLuot()
         return id

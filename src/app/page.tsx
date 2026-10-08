@@ -8,6 +8,7 @@ export default async function Home() {
 
   if (user) {
     // Nhân viên về Trang chủ, khối văn phòng về Tổng quan (chủ nhà 26/09/2026).
+    // audit-ok: chỉ để CHỌN TRANG ĐẦU; đọc hỏng thì về trang mặc định — trang đích tự kiểm quyền và báo lỗi của nó.
     const { data: me } = await supabase.from("users").select("role").eq("id", user.id).maybeSingle()
     redirect(trangGoc(me?.role))
   } else {

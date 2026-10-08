@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
+import { docNguoiBan } from "@/lib/users/nguoi-ban"
 import { useAuth } from "@/hooks/use-auth"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
@@ -162,24 +163,17 @@ export default function ReturnDetailPage() {
   useEffect(() => {
     if (!canPickSeller || !coCotNguoiDungTen || !user?.org_id) return
     let cancelled = false
-    createClient()
-      .from("users")
-      .select("id, full_name, role, is_active")
-      .eq("org_id", user.org_id)
-      /* Đúng bộ vai trò trigger cho phép — hiện tên mà máy chủ từ chối
-         là bẫy người dùng. */
-      .in("role", ["sales", "manager", "owner"])
-      .order("full_name")
-      .then(({ data }) => {
-        if (!cancelled) {
-          // Người đã nghỉ / tạm khoá không gán được (mig 223).
-          setSellers(((data as Array<{ id: string; full_name: string; role: string; is_active?: boolean | null }>) || []).filter((u) => u.is_active !== false))
-        }
+    /* Cùng câu đọc với POS (`docNguoiBan`): đúng bộ vai trò trigger cho phép — hiện tên mà máy chủ từ chối là bẫy
+       người dùng — và bỏ người đã nghỉ / tạm khoá (mig 223). Đọc hỏng thì NÓI RA: ô trống không cho biết vì sao. */
+    docNguoiBan(createClient(), user.org_id)
+      .then((ds) => { if (!cancelled) setSellers(ds) })
+      .catch((e) => {
+        if (!cancelled) toast({ title: "Không tải được danh sách nhân viên bán", description: errorMessage(e), variant: "destructive" })
       })
     return () => {
       cancelled = true
     }
-  }, [canPickSeller, coCotNguoiDungTen, user?.org_id])
+  }, [canPickSeller, coCotNguoiDungTen, user?.org_id, toast])
 
   const sellerOptions = useMemo(
     () =>

@@ -1,7 +1,7 @@
 import type { ListViewOption } from "@/components/ui/list-view-toolbar"
 
 export const PAYABLE_COLUMNS = [
-  { key: "invoiceNumber", label: "Mã HĐ" },
+  { key: "invoiceNumber", label: "Chứng từ" },
   { key: "amount", label: "Số tiền" },
   { key: "paid", label: "Đã trả" },
   { key: "remaining", label: "Còn lại" },

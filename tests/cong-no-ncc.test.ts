@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { ghepChungTu, tongNoNcc, type DongNoNcc } from "@/lib/payables/so-no-ncc"
+import { ghepChungTu, tongNoNcc, chungTuCuaNo, docChungTuNoNcc, type DongNoNcc } from "@/lib/payables/so-no-ncc"
 
 /**
  * Chủ nhà 05/10/2026: "Vào xem chi tiết nhà cung cấp hiển thị công nợ chưa đúng (công nợ tính theo phiếu nhập)".
@@ -64,5 +64,57 @@ describe("các nơi tính nợ NCC dùng cùng luật", () => {
   })
   it("Công nợ theo NCC: bấm NCC mở tab Công nợ của NCC (màn danh sách không đọc ?supplier=)", () => {
     expect(doc("src/app/(dashboard)/payables/by-supplier/page.tsx")).toMatch(/\/suppliers\/\$\{row\.supplierId\}\?tab=debt/)
+  })
+})
+
+/**
+ * Chủ nhà 08/10/2026 (ảnh màn Công nợ NCC): "sao cột mã HĐ ko có mã phiếu nhập nhỉ". Cột hiện `invoice_number` — SỐ
+ * HOÁ ĐƠN CỦA NCC gõ tay, hay trống ("-"). Nay hiện mã chứng từ gốc; số HĐ NCC (nếu có) là dòng phụ.
+ */
+describe("màn Công nợ NCC: cột chứng từ hiện mã phiếu nhập", () => {
+  const nhap = new Map([["p1", { id: "pi1", payable_id: "p1", receipt_code: "PN-0012" }], ["p5", { id: "pi5", payable_id: "p5", receipt_code: "PN-0013" }]])
+  const tra = new Map([["p2", { id: "sr1", payable_credit_id: "p2", return_code: "PTNCC-0008" }]])
+
+  it("dòng của phiếu nhập: mã PN-, số HĐ NCC thành dòng phụ (trống thì không có)", () => {
+    expect(chungTuCuaNo({ id: "p1", invoice_number: "0001234" }, nhap, tra)).toEqual({
+      loai: "phieu-nhap", ma: "PN-0012", href: "/purchasing/receipts/pi1", soHdNcc: "0001234",
+    })
+    expect(chungTuCuaNo({ id: "p5", invoice_number: null }, nhap, tra)).toMatchObject({ ma: "PN-0013", soHdNcc: null })
+    expect(chungTuCuaNo({ id: "p5", invoice_number: "  " }, nhap, tra)).toMatchObject({ ma: "PN-0013", soHdNcc: null })
+  })
+
+  it("phiếu trả NCC → PTNCC-; nợ đầu kỳ / lập tay không có phiếu thì như cũ", () => {
+    expect(chungTuCuaNo({ id: "p2", invoice_number: "PTNCC-0008" }, nhap, tra)).toEqual({
+      loai: "tra-ncc", ma: "PTNCC-0008", href: "/purchase-returns/sr1", soHdNcc: null,
+    })
+    expect(chungTuCuaNo({ id: "p3", invoice_number: null, opening_balance: true }, nhap, tra)).toMatchObject({ loai: "dau-ky", ma: "Nợ đầu kỳ" })
+    expect(chungTuCuaNo({ id: "p4", invoice_number: "TAY-1" }, nhap, tra)).toMatchObject({ loai: "lap-tay", ma: "TAY-1" })
+  })
+
+  it("docChungTuNoNcc: đọc phiếu theo mã khoản nợ; đọc hỏng thì trả RỖNG (không gán nhầm nhãn)", async () => {
+    const sb = (loi: boolean) => ({
+      from: (bang: string) => {
+        const kq = loi
+          ? { data: null, error: { message: "mất mạng" }, count: null }
+          : bang === "purchase_invoices"
+            ? { data: [{ id: "pi1", payable_id: "p1", receipt_code: "PN-0012" }], error: null, count: 1 }
+            : { data: [], error: null, count: 0 }
+        const chain: Record<string, unknown> = { then: (ok: (v: unknown) => unknown, bad: (e: unknown) => unknown) => Promise.resolve(kq).then(ok, bad) }
+        for (const m of ["select", "in", "order", "range"]) chain[m] = () => chain
+        return chain
+      },
+    })
+    const m = await docChungTuNoNcc(sb(false) as never, [{ id: "p1", invoice_number: null }, { id: "p9", invoice_number: "HD9" }])
+    expect(m.get("p1")).toMatchObject({ loai: "phieu-nhap", ma: "PN-0012" })
+    expect(m.get("p9")).toMatchObject({ loai: "lap-tay", ma: "HD9" })
+    expect((await docChungTuNoNcc(sb(true) as never, [{ id: "p1", invoice_number: null }])).size).toBe(0)
+  })
+
+  it("trang Công nợ NCC: cột 'Chứng từ' đọc chứng từ gốc; ô tìm tra được mã phiếu nhập / phiếu trả", () => {
+    const s = readFileSync(resolve(__dirname, "..", "src/app/(dashboard)/payables/page.tsx"), "utf-8")
+    expect(s).toContain('label: "Chứng từ"')
+    expect(s).toContain("docChungTuNoNcc(supabase, payables)")
+    expect(s).toContain('{ column: "id", table: "purchase_invoices", columns: ["receipt_code"], idColumn: "payable_id" }')
+    expect(s).toContain('{ column: "id", table: "supplier_returns", columns: ["return_code"], idColumn: "payable_credit_id" }')
   })
 })

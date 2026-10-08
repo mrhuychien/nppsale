@@ -65,3 +65,22 @@ test("công nợ theo NCC: thanh chuyển ở màn Công nợ NCC, bấm NCC m�
   await expect(page).toHaveURL(new RegExp(`/suppliers/${NCC}\\?tab=debt$`))
   await expect(page.getByTestId("ncc-con-no")).toHaveText("150.000đ")
 })
+
+/**
+ * Chủ nhà 08/10/2026 (ảnh màn Công nợ NCC): "sao cột mã HĐ ko có mã phiếu nhập nhỉ". Cột "Chứng từ" hiện mã phiếu nhập
+ * (số HĐ NCC là dòng phụ), mã phiếu trả NCC; ô tìm tra được mã phiếu nhập.
+ */
+test("công nợ NCC theo khoản nợ: cột Chứng từ hiện mã phiếu nhập + số HĐ NCC; tìm được theo mã phiếu nhập", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await dangNhap(page)
+  await page.goto("/payables")
+  const nhap = page.getByRole("row").filter({ hasText: "PN-1" })
+  await expect(nhap).toHaveCount(1)
+  await expect(nhap.getByTestId("so-hd-ncc")).toHaveText("HĐ NCC HD1")
+  await expect(page.getByRole("row").filter({ hasText: "TN-NCC-1" })).toHaveCount(1)
+  const o = page.getByPlaceholder("Tìm theo NCC, mã phiếu nhập, số HĐ…").first()
+  await o.fill("PN-9999")
+  await expect(nhap, "gõ một mã không có thì phải lọc mất").toHaveCount(0)
+  await o.fill("PN-1")
+  await expect(nhap).toHaveCount(1)
+})

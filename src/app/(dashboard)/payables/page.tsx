@@ -34,6 +34,7 @@ import { useListSearch } from "@/hooks/use-list-search"
 import { Factory, Plus } from "lucide-react"
 import Link from "@/components/ui/link"
 import type { Payable, PayableStatus } from "@/types"
+import { docChungTuNoNcc, type ChungTuNo } from "@/lib/payables/so-no-ncc"
 
 type StatusFilter = "all" | "open" | "partial" | "overdue" | "paid"
 
@@ -120,7 +121,12 @@ export default function PayablesPage() {
    */
   const listSearch = useListSearch(
     supabase, debouncedSearch, user?.org_id, ["invoice_number"],
-    [{ column: "supplier_id", table: "suppliers", columns: ["name", "code"] }],
+    [
+      { column: "supplier_id", table: "suppliers", columns: ["name", "code"] },
+      /* Mã phiếu nhập PN- / phiếu trả PTNCC- (chủ nhà 08/10/2026) — khoá ngoại trỏ NGƯỢC về `payables.id`. */
+      { column: "id", table: "purchase_invoices", columns: ["receipt_code"], idColumn: "payable_id" },
+      { column: "id", table: "supplier_returns", columns: ["return_code"], idColumn: "payable_credit_id" },
+    ],
     "payables"
   )
 
@@ -161,7 +167,7 @@ export default function PayablesPage() {
       }
       const res = await taiHaiNhip<Payable, ResilientResult<Payable>>(
         (from, to, dem) => selectResilient<Payable>((sel) => build(sel, from, to, dem),
-        "id, invoice_number, amount, paid, due_date, status, supplier:suppliers(name, code)",
+        "id, invoice_number, amount, paid, due_date, status, opening_balance, supplier:suppliers(name, code)",
         // eslint-disable-next-line no-restricted-syntax
         "*, supplier:suppliers(name, code)"),
         pg.from,
@@ -192,6 +198,17 @@ export default function PayablesPage() {
    */
   const filtered = payables
 
+  /**
+   * CHỨNG TỪ GỐC của từng khoản đang hiện — chủ nhà 08/10/2026: "sao cột mã HĐ ko có mã phiếu nhập nhỉ".
+   * `invoice_number` là SỐ HOÁ ĐƠN CỦA NCC (gõ tay, hay trống), không phải mã phiếu nhập: dòng của phiếu nhập hiện
+   * PN-, phiếu trả hiện PTNCC-, nợ đầu kỳ hiện "Nợ đầu kỳ"; số HĐ NCC (nếu có) thành dòng phụ.
+   */
+  const [chungTu, setChungTu] = useState<Map<string, ChungTuNo>>(new Map())
+  useEffect(() => {
+    let huy = false
+    void docChungTuNoNcc(supabase, payables).then((m) => { if (!huy) setChungTu(m) })
+    return () => { huy = true }
+  }, [payables]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * SỐ ĐẾM TRÊN DẢI TRẠNG THÁI — đếm ở máy chủ, cùng ô tìm + lọc nâng cao với danh sách
@@ -232,8 +249,16 @@ export default function PayablesPage() {
         render: (p) => <span className="block truncate text-sm font-bold">{p.supplier?.name || "-"}</span>,
       },
       {
-        k: "invoiceNumber", key: "invoiceNumber", label: "Mã HĐ", width: "140px",
-        render: (p) => <DocCodeLink href={`/payables/${p.id}`}>{p.invoice_number || "-"}</DocCodeLink>,
+        k: "invoiceNumber", key: "invoiceNumber", label: "Chứng từ", width: "150px",
+        render: (p) => {
+          const c = chungTu.get(p.id)
+          return (
+            <>
+              <DocCodeLink href={`/payables/${p.id}`}>{c?.ma ?? (p.invoice_number || "-")}</DocCodeLink>
+              {c?.soHdNcc && <span className="block text-[11px] text-muted-foreground" data-testid="so-hd-ncc">HĐ NCC {c.soHdNcc}</span>}
+            </>
+          )
+        },
       },
       { k: "amount", key: "amount", label: "Số tiền", width: "130px", align: "right", sortable: xepDuoc(SAP_XEP_CONG_NO_NCC, "amount"), render: (p) => formatCurrency(p.amount) },
       { k: "paid", key: "paid", label: "Đã trả", width: "130px", align: "right", render: (p) => formatCurrency(p.paid) },
@@ -262,7 +287,7 @@ export default function PayablesPage() {
       },
     ]
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
-  }, [visibleColumns])
+  }, [visibleColumns, chungTu])
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -282,6 +307,7 @@ export default function PayablesPage() {
   const suppliersWithDebt = new Set(allOpen.map((p) => p.supplier_id)).size
 
   const xem = xemId ? filtered.find((p) => p.id === xemId) ?? null : null
+  const xemChungTu = xem ? chungTu.get(xem.id) ?? null : null
   const xemStatus = xem ? (PAYABLE_STATUS_MAP[xem.status as PayableStatus] || { label: xem.status, variant: "default" as const }) : null
   const tongNote = (
     <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
@@ -341,7 +367,7 @@ export default function PayablesPage() {
       <DocListLayout
         toolbar={
           <>
-            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm theo NCC, mã hóa đơn..." />
+            <DocListSearch value={search} onChange={setSearch} placeholder="Tìm theo NCC, mã phiếu nhập, số HĐ…" />
             <XoaLocButton show={!!search} onClick={() => setSearch("")} />
           </>
         }
@@ -365,7 +391,7 @@ export default function PayablesPage() {
           title: "Công nợ NCC",
           search,
           onSearch: setSearch,
-          searchPlaceholder: "Tìm theo NCC, mã hóa đơn...",
+          searchPlaceholder: "Tìm theo NCC, mã phiếu nhập, số HĐ…",
           chips: { chips, active: statusFilter, onPick: chonTab },
           filter: {
             activeCount: locNC.soDangAp,
@@ -417,7 +443,11 @@ export default function PayablesPage() {
                 accent: p.status === "paid" ? "#22c55e" : aging === "current" ? "#b9c4d6" : "#ef5350",
                 title: p.supplier?.name || "-",
                 total: formatCurrency(p.amount - p.paid),
-                meta: [p.invoice_number ? `HĐ ${p.invoice_number}` : null, `Hạn ${p.due_date ? formatDate(p.due_date) : "-"}`].filter(Boolean).join(" · "),
+                meta: [
+                  chungTu.get(p.id)?.ma ?? (p.invoice_number ? `HĐ ${p.invoice_number}` : null),
+                  chungTu.get(p.id)?.soHdNcc ? `HĐ NCC ${chungTu.get(p.id)?.soHdNcc}` : null,
+                  `Hạn ${p.due_date ? formatDate(p.due_date) : "-"}`,
+                ].filter(Boolean).join(" · "),
                 payment: p.status !== "paid" && p.due_date ? agingLabel(daysOverdueOf(p.due_date)) : "",
                 paymentCredit: p.status !== "paid" && aging !== "current",
                 summary: `Số tiền ${formatCurrency(p.amount)} · Đã trả ${formatCurrency(p.paid)}`,
@@ -431,11 +461,18 @@ export default function PayablesPage() {
       <DocQuickView
         open={!!xem}
         onClose={() => setXemId(null)}
-        title={xem?.invoice_number || "Công nợ NCC"}
+        title={(xem && chungTu.get(xem.id)?.ma) || xem?.invoice_number || "Công nợ NCC"}
         subtitle={xem?.supplier?.name || undefined}
         badge={xemStatus ? <Badge variant={xemStatus.variant}>{xemStatus.label}</Badge> : null}
         fields={xem ? [
           { label: "Nhà cung cấp", value: xem.supplier?.name, wide: true },
+          {
+            label: "Chứng từ gốc",
+            value: xemChungTu && xemChungTu.href !== `/payables/${xem.id}`
+              ? <Link href={xemChungTu.href} className="font-semibold text-primary hover:underline">{xemChungTu.ma} →</Link>
+              : xemChungTu?.ma ?? null,
+          },
+          { label: "Số HĐ NCC", value: xemChungTu?.soHdNcc ?? null },
           { label: "Số tiền", value: formatCurrency(xem.amount) },
           { label: "Đã trả", value: formatCurrency(xem.paid) },
           { label: "Hạn trả", value: xem.due_date ? formatDate(xem.due_date) : null },

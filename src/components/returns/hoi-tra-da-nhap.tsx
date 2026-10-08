@@ -14,7 +14,7 @@ export function HoiTraDaNhap({
   onDong,
 }: {
   open: boolean
-  /** Nhãn các phiếu trả tự sinh đã nhập kho của tờ này (số TH- hoặc "Phiếu trả"). */
+  /** Nhãn các phiếu trả tự sinh đã nhập kho của tờ này (số PT- hoặc "Phiếu trả"). */
   maPhieu: string[]
   /** `returns.approve` — `cancel_return` / `complete_return` đòi quyền này. */
   coQuyenDuyet: boolean

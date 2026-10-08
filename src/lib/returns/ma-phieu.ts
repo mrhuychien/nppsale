@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 /**
- * SỐ PHIẾU TRẢ TH-xxxx (mig 193) — chủ nhà 25/09/2026: "Phiếu trả có đánh số TH-".
+ * SỐ PHIẾU TRẢ PT-xxxx — mig 193 (chủ nhà 25/09/2026: "Phiếu trả có đánh số TH-"), đổi đầu số thành PT- ở mig 237
+ * (chủ nhà 08/10/2026: "Phiếu trả hàng : đánh số bình thường. dùng PT").
  *
  * ⚠ ĐỌC RIÊNG, KHÔNG NHÉT VÀO CÂU LỚN. Mã nguồn hay lên trước migration: thêm cột
  *   `return_code` vào câu `select` chính là sổ chưa chạy 193 thì CẢ màn trắng. Đọc
@@ -23,5 +24,12 @@ export async function docMaPhieuTra(
   return out
 }
 
-/** Nhãn một phiếu trả: số TH- nếu có, không thì "Phiếu trả". */
+/** Nhãn một phiếu trả: số PT- nếu có, không thì "Phiếu trả". */
 export const tenPhieuTra = (code: string | null | undefined): string => code || "Phiếu trả"
+
+/**
+ * Số phiếu trả CŨ in trên giấy (TH-0012, trước mig 237) gõ vào ô tìm → hiểu là PT-0012: cùng số, chỉ đổi đầu.
+ * Chỉ đổi từ có dạng TH + số ("TH-12", "th0012"); chữ khác ("Thảo", "HD-0012") giữ nguyên.
+ */
+export const doiMaCuPhieuTra = (term: string): string =>
+  term.replace(/(^|\s)TH(-?\d+)(?=\s|$)/gi, (_m: string, dau: string, so: string) => `${dau}PT${so}`)

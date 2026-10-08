@@ -50,6 +50,17 @@ test("công nợ theo NCC: thanh chuyển ở màn Công nợ NCC, bấm NCC m�
   await expect(page).toHaveURL(/\/payables\/by-supplier$/)
   const hang = page.getByRole("row").filter({ hasText: "Vinamilk" })
   await expect(hang).toContainText("150.000")
+  /* Chủ nhà 08/10/2026: "thêm cột hàng trả lại, đã trả đổi tên thành đã thanh toán". Tổng nợ 300.000 − hàng trả lại
+     50.000 − đã thanh toán 100.000 = còn lại 150.000. */
+  const dau = page.getByRole("row").filter({ hasText: "Mã NCC" })
+  await expect(dau).toContainText("Hàng trả lại")
+  await expect(dau).toContainText("Đã thanh toán")
+  await expect(dau).not.toContainText("Đã trả")
+  const o = hang.getByRole("cell")
+  await expect(o.nth(3)).toHaveText(/300\.000/)
+  await expect(o.nth(4)).toHaveText(/50\.000/)
+  await expect(o.nth(5)).toHaveText(/100\.000/)
+  await expect(o.nth(6)).toHaveText(/150\.000/)
   await hang.click()
   await expect(page).toHaveURL(new RegExp(`/suppliers/${NCC}\\?tab=debt$`))
   await expect(page.getByTestId("ncc-con-no")).toHaveText("150.000đ")

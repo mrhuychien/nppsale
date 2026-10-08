@@ -133,7 +133,9 @@ export interface DocLock<C extends string> {
  *   RAISE 'DA_TRA_TIEN: Phiếu này đã trả NCC % — huỷ phiếu là xoá mất
  *          khoản đã trả. Gỡ phiếu chi trước, hoặc lập phiếu trả hàng NCC.'
  *   RAISE 'HANG_DA_XUAT: Không huỷ được vì hàng của phiếu đã xuất bớt
- *          — %. Lập phiếu trả hàng NCC hoặc phiếu điều chỉnh kho.'
+ *          — %. Lập phiếu trả hàng NCC hoặc phiếu điều chỉnh kho — hoặc
+ *          bật "Cho phép bán vượt tồn kho" …'   (chỉ khi NPP CHƯA cho
+ *          phép tồn kho âm — mig 238, chủ nhà 08/10/2026)
  *
  * ⚠ NÓI KHOÁ HÀNG ĐÃ XUẤT TRƯỚC. Gỡ phiếu chi là một thao tác ghi sổ;
  * bắt người dùng làm nó xong mới biết hàng đã xuất nên vẫn không huỷ
@@ -143,13 +145,16 @@ export function purchaseCancelLock(i: {
   paidToSupplier: number
   /** Hàng của phiếu đã bị xuất bớt khỏi kho. */
   stockIssued: boolean
+  /** NPP bật "Cho phép bán vượt tồn kho" (`organizations.allow_oversell`) — huỷ được, phần đã xuất thành tồn âm. */
+  allowNegativeStock?: boolean
 }): DocLock<PurchaseLockCode> | null {
-  if (i.stockIssued) {
+  if (i.stockIssued && !i.allowNegativeStock) {
     return {
       code: "HANG_DA_XUAT",
       message:
         "Hàng của phiếu này đã xuất bớt khỏi kho nên không huỷ được. " +
-        "Lập phiếu trả hàng NCC hoặc phiếu nhập kho điều chỉnh thay vì sửa phiếu này.",
+        "Lập phiếu trả hàng NCC hoặc phiếu nhập kho điều chỉnh thay vì sửa phiếu này — " +
+        "hoặc bật “Cho phép bán vượt tồn kho” (Cài đặt › Đơn vị) để huỷ: phần đã xuất thành tồn âm.",
     }
   }
   if (Number(i.paidToSupplier) > 0) {

@@ -481,7 +481,7 @@ export default function SupplierDetailPage() {
                               <TableHead className="text-xs uppercase">Loại</TableHead>
                               <TableHead className="text-xs uppercase">Ngày</TableHead>
                               <TableHead className="text-right text-xs uppercase">Phải trả</TableHead>
-                              <TableHead className="text-right text-xs uppercase">Đã trả</TableHead>
+                              <TableHead className="text-right text-xs uppercase">Đã thanh toán</TableHead>
                               <TableHead className="text-right text-xs uppercase">Còn lại</TableHead>
                               <TableHead className="text-xs uppercase">Trạng thái</TableHead>
                             </TableRow>
@@ -497,7 +497,7 @@ export default function SupplierDetailPage() {
                                 <TableCell className={`text-right font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</TableCell>
                                 <TableCell>
                                   <Badge variant={r.status === "paid" ? "success" : r.status === "overdue" ? "danger" : "warning"}>
-                                    {r.status === "paid" ? "Đã trả" : r.status === "overdue" ? "Quá hạn" : r.status === "partial" ? "Trả một phần" : "Chưa trả"}
+                                    {r.status === "paid" ? "Đã thanh toán" : r.status === "overdue" ? "Quá hạn" : r.status === "partial" ? "Thanh toán một phần" : "Chưa thanh toán"}
                                   </Badge>
                                 </TableCell>
                               </TableRow>
@@ -517,7 +517,7 @@ export default function SupplierDetailPage() {
                             <span className="min-w-0">
                               <span className="block truncate font-mono text-xs font-bold text-primary">{r.ma}</span>
                               <span className="block text-xs text-muted-foreground">
-                                {NHAN_LOAI_NO_NCC[r.loai]} · {formatDate(r.created_at)} · {r.status === "paid" ? "Đã trả" : "Còn nợ"}
+                                {NHAN_LOAI_NO_NCC[r.loai]} · {formatDate(r.created_at)} · {r.status === "paid" ? "Đã thanh toán" : "Còn nợ"}
                               </span>
                             </span>
                             <span className={`shrink-0 text-right text-sm font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</span>

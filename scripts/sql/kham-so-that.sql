@@ -702,4 +702,38 @@ SELECT 75, 'Mig 236 (Sửa phiếu nhập đã hoàn thành chạy được qua 
       SELECT 1 FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole
       WHERE r.rolname = 'authenticator' AND array_to_string(s.setconfig, ',') ILIKE '%safeupdate%')
     THEN 'có — UPDATE / DELETE trong hàm phải có WHERE' ELSE 'không thấy' END
+UNION ALL
+-- 76. Mig 237 — phiếu trả hàng đánh số PT-xxxx (chủ nhà 08/10/2026: "Phiếu trả hàng : đánh số bình thường. dùng PT");
+--     mã HĐ / đơn / phiếu nhập / phiếu trả không bị cắt khi qua số 9999 (lpad cắt → trùng mã → không lập được chứng từ).
+SELECT 76, 'Mig 237 (Phiếu trả PT-xxxx · mã chứng từ qua 9999)',
+  CASE WHEN to_regprocedure('public._so_chung_tu(integer)') IS NULL
+         OR public._ma_phieu_tra(12345) IS DISTINCT FROM 'PT-12345'
+         OR public._inv_code(10000, 0) IS DISTINCT FROM 'HD-10000'
+         OR public._order_code(10000, 0) IS DISTINCT FROM 'DH-10000'
+         OR position('_so_chung_tu' IN pg_get_functiondef('public.next_purchase_receipt_code(uuid)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 237 (phiếu trả còn TH-; chứng từ thứ 10.000 sẽ trùng mã)'
+       ELSE 'OK — đã vá' END,
+  'Phiếu trả còn số TH-: ' || (SELECT count(*) FROM returns WHERE return_code LIKE 'TH-%')
+    || ' · số chạy lớn nhất: HĐ ' || COALESCE((SELECT max(invoice_seq) FROM sales_invoices), 0)
+    || ' / đơn ' || COALESCE((SELECT max(order_seq) FROM sales_orders), 0)
+    || ' / phiếu trả ' || COALESCE((SELECT max(return_seq) FROM returns), 0)
+UNION ALL
+-- 77. Mig 238 — huỷ được phiếu nhập đã xuất bớt khi NPP cho phép tồn kho âm (chủ nhà 08/10/2026: "Trường hợp cho phép
+--     tồn kho âm, hành động huỷ phiếu nhập được cho phép"); lô trừ đúng số đã nhập (về âm số đã xuất), khớp thẻ kho.
+SELECT 77, 'Mig 238 (Huỷ phiếu nhập đã xuất bớt khi cho phép tồn âm)',
+  CASE WHEN position('v_cho_am' IN pg_get_functiondef('public.cancel_purchase_invoice(uuid,text)'::regprocedure)) = 0
+         OR position('b.qty_on_hand - b.qty_initial' IN pg_get_functiondef('public.cancel_purchase_invoice(uuid,text)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 238 (huỷ phiếu nhập đã xuất bớt vẫn bị chặn dù cho phép tồn âm)'
+       ELSE 'OK — đã vá' END,
+  'NPP cho phép tồn âm: ' || (SELECT count(*) FROM organizations WHERE allow_oversell)
+    || ' · lô âm của phiếu nhập đã huỷ: ' || (SELECT count(*) FROM batches WHERE qty_on_hand < 0 AND status = 'cancelled')
+UNION ALL
+-- 78. Mig 239 — công nợ theo NCC có cột hàng trả lại (chủ nhà 08/10/2026: "Phần công nợ theo NCC thêm cột hàng trả lại,
+--     đã trả đổi tên thành đã thanh toán cho dễ theo dõi").
+SELECT 78, 'Mig 239 (Công nợ theo NCC: cột hàng trả lại)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid = 'public.payables_by_supplier()'::regprocedure
+                          AND 'total_returned' = ANY (p.proargnames))
+       THEN 'CHƯA — chạy migration 239 (màn Công nợ theo NCC hiện "—" ở cột Hàng trả lại)'
+       ELSE 'OK — đã vá' END,
+  'Phiếu trả NCC đang trừ nợ: ' || (SELECT count(*) FROM supplier_returns WHERE payable_credit_id IS NOT NULL)
 ) t ORDER BY stt;

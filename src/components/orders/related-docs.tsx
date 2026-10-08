@@ -62,7 +62,7 @@ export function RelatedDocs({ orderId, invoiceId = null, pos = false, hienHangTr
   const [don, setDon] = useState<Don | null>(null)
   const [hoaDon, setHoaDon] = useState<HoaDon[]>([])
   const [tra, setTra] = useState<PhieuTra[]>([])
-  /** Số phiếu TH- (mig 193), đọc riêng — xem `docMaPhieuTra`. */
+  /** Số phiếu PT- (mig 193 / 237), đọc riêng — xem `docMaPhieuTra`. */
   const [maTra, setMaTra] = useState<Map<string, string>>(new Map())
   const [loi, setLoi] = useState<string | null>(null)
   const [xong, setXong] = useState(false)

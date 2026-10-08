@@ -42,7 +42,7 @@ export interface ReturnSlipProps {
   issuedHasTime?: boolean
   /** Chứng từ gốc — "HĐ HD-0318-1" / "Đơn DH-0154". */
   refLabel?: string | null
-  /** Số phiếu TH-xxxx (mig 193). */
+  /** Số phiếu PT-xxxx (mig 237; trước đó TH-xxxx, mig 193). */
   code?: string | null
   customerName: string
   customerAddress?: string | null

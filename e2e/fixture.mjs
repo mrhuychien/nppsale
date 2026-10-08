@@ -288,16 +288,18 @@ export const rpc = {
     return null
   },
   /* Công nợ theo NCC (mig 093 `payables_by_supplier`): gộp các khoản CHƯA TRẢ XONG theo NCC, còn lại = Σ(amount − paid)
-     — dòng âm (phiếu trả NCC) trừ vào, không kẹp. */
+     — dòng âm (phiếu trả NCC) trừ vào, không kẹp. Mig 239: `total_returned` = Σ(−amount) của dòng nợ thuộc phiếu trả NCC. */
   payables_by_supplier: (_p, { db }) => {
     const nhom = new Map()
+    const noTra = new Set((db.supplier_returns || []).map((x) => x.payable_credit_id).filter(Boolean))
     for (const r of db.payables || []) {
       if (r.status === "paid") continue
-      const g = nhom.get(r.supplier_id) ?? { supplier_id: r.supplier_id, invoice_count: 0, total_debt: 0, total_paid: 0, remaining: 0, overdue_count: 0 }
+      const g = nhom.get(r.supplier_id) ?? { supplier_id: r.supplier_id, invoice_count: 0, total_debt: 0, total_paid: 0, remaining: 0, overdue_count: 0, total_returned: 0 }
       g.invoice_count++
       g.total_debt += Number(r.amount) || 0
       g.total_paid += Number(r.paid) || 0
       g.remaining += (Number(r.amount) || 0) - (Number(r.paid) || 0)
+      if (noTra.has(r.id)) g.total_returned -= Number(r.amount) || 0
       if (r.status === "overdue") g.overdue_count++
       nhom.set(r.supplier_id, g)
     }

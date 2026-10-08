@@ -146,6 +146,13 @@ describe("khoá của phiếu nhập", () => {
   it("sạch thì không khoá", () => {
     expect(purchaseCancelLock({ paidToSupplier: 0, stockIssued: false })).toBeNull()
   })
+
+  /** Chủ nhà 08/10/2026 (mig 238): "Trường hợp cho phép tồn kho âm, hành động huỷ phiếu nhập được cho phép." */
+  it("NPP cho phép tồn kho âm: hàng đã xuất bớt vẫn huỷ được; đã trả tiền NCC thì vẫn khoá", () => {
+    expect(purchaseCancelLock({ paidToSupplier: 0, stockIssued: true, allowNegativeStock: true })).toBeNull()
+    expect(purchaseCancelLock({ paidToSupplier: 5_000_000, stockIssued: true, allowNegativeStock: true })?.code).toBe("DA_TRA_TIEN")
+    expect(purchaseCancelLock({ paidToSupplier: 0, stockIssued: true })?.message).toContain("Cho phép bán vượt tồn kho")
+  })
 })
 
 describe("khoá của phiếu trả NCC", () => {

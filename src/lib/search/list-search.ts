@@ -343,6 +343,8 @@ export interface TuyChonMenhDe {
    * tìm kiếm số theo đúng tài liệu: Đơn hàng -> chỉ tìm số đơn hàng. Trả hàng -> tìm đúng số phiếu trả,
    * hóa đơn tìm đúng theo số hóa đơn". Từ khoá có số thì KHÔNG tra bảng khác bằng cả từ khoá (SĐT khách,
    * mã đơn của hoá đơn…); chữ trong từ khoá vẫn tra khách ("minh 0123" = phiếu 0123 của khách Minh).
+   * ⚠ Trừ lượt tra MÃ CHỨNG TỪ mà màn tự bật (`LookupSpec.laMa`) — chủ nhà 08/10/2026: "Danh sách Phiếu trả
+   * hàng cho phép tìm kiếm theo số hoá đơn hoặc số đơn hàng".
    */
   soChiTimMa?: boolean
 }
@@ -365,7 +367,7 @@ export interface TuyChonMenhDe {
 export function buildOrFilter(
   term: string,
   ownColumns: string[],
-  idFilters: Array<{ column: string; match: IdMatch }>,
+  idFilters: Array<{ column: string; match: IdMatch; laMa?: boolean }>,
   opt: TuyChonMenhDe = {}
 ): OrClause {
   const t = term.trim()
@@ -392,7 +394,7 @@ export function buildOrFilter(
   let truncated = false
   const boTraCaTu = !!opt.soChiTimMa && !!tachSoChu(t).so
   idFilters.forEach((f, i) => {
-    if (boTraCaTu) return
+    if (boTraCaTu && !f.laMa) return
     const m = chia[`d${i}`][0]
     if (m.truncated) truncated = true
     if (m.ids.length > 0) parts.push(`${f.column}.in.(${m.ids.join(",")})`)
@@ -417,6 +419,11 @@ export interface LookupSpec {
   columns: string[]
   /** Cột lấy ra làm khoá — mặc định `id`. Xem `idsMatching`. */
   idColumn?: string
+  /**
+   * Lượt tra này tra MÃ CHỨNG TỪ (số hoá đơn, số đơn…) — vẫn chạy khi từ khoá có số dù màn bật `soChiTimMa`
+   * (chủ nhà 08/10/2026: phiếu trả tìm được theo số hoá đơn / số đơn hàng). Tra tên, SĐT thì không bật cờ này.
+   */
+  laMa?: boolean
 }
 
 /** Cần tra trộn không: có cả từ số lẫn từ chữ, có cột riêng và có bảng tra. */
@@ -445,12 +452,12 @@ export async function menhDeTimDanhSach(
   const boTraCaTu = soChiTimMa && !!tachSoChu(t).so
   const [timKd, matches] = await Promise.all([
     bang ? coTimKd(sb, bang) : Promise.resolve(false),
-    Promise.all(lookups.map((s) => (boTraCaTu ? Promise.resolve(NO_MATCH) : idsMatching(sb, s.table, s.columns, t, orgId, s.idColumn ?? "id")))),
+    Promise.all(lookups.map((s) => (boTraCaTu && !s.laMa ? Promise.resolve(NO_MATCH) : idsMatching(sb, s.table, s.columns, t, orgId, s.idColumn ?? "id")))),
   ])
   const chu = canTraTron(t, ownColumns.length > 0 || timKd, lookups.length)
   const tron = chu
     ? await Promise.all(lookups.map((s) => idsMatching(sb, s.table, s.columns, chu, orgId, s.idColumn ?? "id")))
     : undefined
-  const or = buildOrFilter(t, ownColumns, lookups.map((s, i) => ({ column: s.column, match: matches[i] })), { timKd, tron, soChiTimMa })
+  const or = buildOrFilter(t, ownColumns, lookups.map((s, i) => ({ column: s.column, match: matches[i], laMa: s.laMa })), { timKd, tron, soChiTimMa })
   return { ...or, timKd }
 }

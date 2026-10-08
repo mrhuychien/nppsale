@@ -55,7 +55,12 @@ const boChuThich = (s: string) =>
 function thanHam(src: string, fn: string): string {
   const i = src.search(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${fn}\\s*\\(`))
   if (i < 0) return ""
-  const j = src.indexOf("$$;", i)
+  /* ⚠ CẮT THEO ĐÚNG THẺ DOLLAR CỦA HÀM ($$, $fn$…) — chỉ tìm "$$;" thì thân `$fn$` kéo tới hết tệp, đọc phải cả
+     khối tự kiểm ở cuối (đúng cái bẫy nói ở trên). */
+  const the = /AS\s+(\$[A-Za-z_]*\$)/.exec(src.slice(i))
+  if (!the) return src.slice(i)
+  const mo = i + the.index + the[0].length
+  const j = src.indexOf(the[1], mo)
   return j < 0 ? src.slice(i) : src.slice(i, j)
 }
 
@@ -157,6 +162,17 @@ const DAU_HIEU: Record<string, Array<{ chuoi: string; vi_sao: string }>> = {
     {
       chuoi: "RETURN_FOLLOWS_INVOICE",
       vi_sao: "mig 191 — phiếu tự sinh đang Chờ xử lý không huỷ được, sửa từ hóa đơn (chủ nhà 25/09/2026)",
+    },
+  ],
+  /**
+   * ⚠ `next_purchase_receipt_code` chỉ bị mig 166 NHẮC TÊN trong khối tự kiểm (`p.proname = '…'`) — mig 166 thu
+   *   quyền gọi thẳng, không vá chuỗi thân hàm. Mig 237 viết lại (số phiếu qua 9999 không bị cắt), chép từ bản
+   *   ĐANG CHẠY; thứ phải giữ là khoá theo NPP.
+   */
+  next_purchase_receipt_code: [
+    {
+      chuoi: "pg_advisory_xact_lock(hashtext('purchase_receipt_code:' || p_org::text))",
+      vi_sao: "mig 142 — hai người bấm Hoàn thành cùng lúc mà không khoá là hai phiếu nhập mang cùng một mã",
     },
   ],
   post_invoice: [

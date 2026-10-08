@@ -65,7 +65,7 @@ export function MobileReturnSheet({
    * Không có (vd "Xử lý ngay" mở phiếu chưa nằm trong trang đang xem) thì ngăn tự đọc MỘT lượt.
    */
   row?: PhieuNgan | null
-  /** Số TH- của phiếu nếu danh sách đã đọc. */
+  /** Số PT- của phiếu nếu danh sách đã đọc. */
   code?: string | null
   /** `returns.approve` — đúng quyền `complete_return` / `cancel_return` kiểm. */
   canApprove: boolean

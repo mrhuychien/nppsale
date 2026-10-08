@@ -282,7 +282,7 @@ export default function PurchaseReceiptDetailPage() {
         title="Huỷ phiếu nhập hàng?"
         description={
           isDone
-            ? "Kho sẽ trừ lại đúng số đã nhập và công nợ NCC của phiếu này bị xoá. Không huỷ được nếu hàng đã xuất bớt hoặc đã trả tiền."
+            ? "Kho sẽ trừ lại đúng số đã nhập và công nợ NCC của phiếu này bị xoá. Đã trả tiền NCC thì không huỷ được. Hàng đã xuất bớt thì chỉ huỷ được khi bật “Cho phép bán vượt tồn kho” — phần đã xuất thành tồn âm."
             : "Phiếu tạm chưa đụng tới kho hay công nợ — huỷ chỉ đổi trạng thái."
         }
         confirmLabel="Huỷ phiếu"

@@ -45,7 +45,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
-import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
+import { docMaPhieuTra, doiMaCuPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import { DocSearchBox } from "@/components/ui/doc-search-box"
@@ -118,7 +118,7 @@ export default function ReturnsPage() {
   const [returns, setReturns] = useState<Return[]>([])
   /** Phiếu đang mở ở ngăn xem nhanh — `null` là đóng (chủ nhà 25/09/2026). */
   const [xemNhanh, setXemNhanh] = useState<string | null>(null)
-  /** Số phiếu TH- (mig 193), đọc riêng — sổ chưa có cột thì chỉ mất số. */
+  /** Số phiếu PT- (mig 193 / 237), đọc riêng — sổ chưa có cột thì chỉ mất số. */
   const [maPhieu, setMaPhieu] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   /** Khoá truy vấn lần tải trước (trừ `pg.to`) — trùng nghĩa là "Tải thêm", không vẽ lại nhịp đầu. */
@@ -209,20 +209,23 @@ export default function ReturnsPage() {
   }, [debouncedSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * ⚠ TÌM CHÉO BA BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
-   *   nghị và mã đơn gốc — cả ba đều là bảng nhúng, mà PostgREST không
-   *   cho `or` bắc qua bảng nhúng.
+   * ⚠ TÌM CHÉO BỐN BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
+   *   nghị, số đơn gốc và số hoá đơn gốc — đều là bảng nhúng, mà PostgREST
+   *   không cho `or` bắc qua bảng nhúng.
+   * ⚠ Gõ số: chỉ khớp số phiếu trả (chủ nhà 01/10/2026) VÀ số hoá đơn / số đơn hàng của phiếu (`laMa` — chủ nhà
+   *   08/10/2026: "Danh sách Phiếu trả hàng cho phép tìm kiếm theo số hoá đơn hoặc số đơn hàng"); không lan sang
+   *   SĐT khách. Số phiếu cũ TH-xxxx in trên giấy hiểu là PT-xxxx (`doiMaCuPhieuTra`, mig 237).
    */
   const listSearch = useListSearch(
-    /* Tìm theo số phiếu TH- (mig 193) như tìm HD- / DH-. */
-    supabase, debouncedSearch, authUser?.org_id, ["return_code"],
+    supabase, doiMaCuPhieuTra(debouncedSearch), authUser?.org_id, ["return_code"],
     [
       { column: "customer_id", table: "customers", columns: ["store_name", "owner_name", "phone"] },
       { column: "requested_by", table: "users", columns: ["full_name"] },
-      { column: "order_id", table: "sales_orders", columns: ["order_code"] },
+      { column: "order_id", table: "sales_orders", columns: ["order_code"], laMa: true },
+      { column: "invoice_id", table: "sales_invoices", columns: ["invoice_code"], laMa: true },
     ],
     "returns",
-    // số chỉ tìm số phiếu trả (chủ nhà 01/10/2026)
+    // số chỉ tìm số phiếu trả (chủ nhà 01/10/2026) — trừ số HĐ / số đơn của phiếu (`laMa`, chủ nhà 08/10/2026)
     true
   )
 
@@ -643,7 +646,7 @@ export default function ReturnsPage() {
                 className="w-full sm:max-w-sm"
                 value={search}
                 onChange={setSearch}
-                placeholder="Tìm khách / đơn / NV…"
+                placeholder="Tìm số phiếu / số HĐ / số đơn, khách, NV…"
                 fields={TRUONG_TRA_HANG}
                 applied={truongTim}
                 onApply={setTruongTim}

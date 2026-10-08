@@ -201,7 +201,7 @@ export interface DongTraKhach extends DongHangTho {
   note?: string | null
   reason?: string | null
 }
-/** Câu chọn đầu phiếu để xuất — số TH- đọc riêng (`docMaPhieuTra`, sổ chưa chạy mig 193 vẫn xuất được). */
+/** Câu chọn đầu phiếu để xuất — số PT- đọc riêng (`docMaPhieuTra`, sổ chưa chạy mig 193 vẫn xuất được). */
 export const CHON_PHIEU_TRA_KHACH =
   "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, destination_zone, notes, " +
   "customer:customers(store_name, phone, address), requester:users!returns_requested_by_fkey(full_name), " +

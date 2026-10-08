@@ -72,7 +72,7 @@ export default function ReturnDetailPage() {
    *   Chưa có cột mà vẫn vẽ ô chọn là mời người ta bấm một cái nút mà
    *   máy chủ chắc chắn từ chối.
    */
-  /** Số phiếu TH- (mig 193), đọc riêng — xem `docMaPhieuTra`. */
+  /** Số phiếu PT- (mig 193 / 237), đọc riêng — xem `docMaPhieuTra`. */
   const [maPhieu, setMaPhieu] = useState<string | null>(null)
   /** Ngày chứng từ (mig 188) — đọc riêng như màn xem nhanh. */
   const [ngayPhieu, setNgayPhieu] = useState<string | null>(null)

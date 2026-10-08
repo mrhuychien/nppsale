@@ -15,35 +15,16 @@ import { formatCurrency } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { Factory, Search } from "lucide-react"
 import { CheDoCongNoNcc } from "@/components/payables/che-do-cong-no-ncc"
+import { dongCongNoTheoNcc, type DongCongNoNcc, type DongCongNoNccRaw } from "@/lib/payables/theo-ncc"
 
-/** Một dòng trả về của hàm SQL `payables_by_supplier()` (migration 093). */
-interface SupplierDebtRowRaw {
-  supplier_id: string
-  supplier_name: string
-  supplier_code: string
-  invoice_count: number
-  total_debt: number
-  total_paid: number
-  remaining: number
-  overdue_count: number
-}
-
-interface SupplierDebtRow {
-  supplierId: string
-  supplierName: string
-  supplierCode: string
-  invoiceCount: number
-  totalDebt: number
-  totalPaid: number
-  remaining: number
-  overdueCount: number
-}
+/** Hàng trả lại: sổ chưa chạy mig 239 thì chưa có số — hiện "—". */
+const tienTra = (v: number | null) => (v === null ? "—" : formatCurrency(v))
 
 export default function PayablesBySupplierPage() {
   const { loading: authLoading } = useRoleGuard("receivables")
   // Database cộng sẵn (hàm SQL `payables_by_supplier`, migration 093):
   // mỗi nhà cung cấp một dòng.
-  const [rows, setRows] = useState<SupplierDebtRow[]>([])
+  const [rows, setRows] = useState<DongCongNoNcc[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const supabase = createClient()
@@ -53,19 +34,8 @@ export default function PayablesBySupplierPage() {
     async function fetchData() {
       const { data, error } = await supabase.rpc("payables_by_supplier")
       if (error) console.error("[payables/by-supplier] payables_by_supplier lỗi:", error.message)
-      const raw = (data as SupplierDebtRowRaw[] | null) || []
-      setRows(
-        raw.map((r) => ({
-          supplierId: r.supplier_id,
-          supplierName: r.supplier_name || "-",
-          supplierCode: r.supplier_code || "-",
-          invoiceCount: Number(r.invoice_count || 0),
-          totalDebt: Number(r.total_debt || 0),
-          totalPaid: Number(r.total_paid || 0),
-          remaining: Number(r.remaining || 0),
-          overdueCount: Number(r.overdue_count || 0),
-        }))
-      )
+      const raw = (data as DongCongNoNccRaw[] | null) || []
+      setRows(raw.map(dongCongNoTheoNcc))
       setLoading(false)
     }
     fetchData()
@@ -146,7 +116,8 @@ export default function PayablesBySupplierPage() {
                       <TableHead>Nhà cung cấp</TableHead>
                       <TableHead className="text-right">Số khoản</TableHead>
                       <TableHead className="text-right">Tổng nợ</TableHead>
-                      <TableHead className="text-right">Đã trả</TableHead>
+                      <TableHead className="text-right">Hàng trả lại</TableHead>
+                      <TableHead className="text-right">Đã thanh toán</TableHead>
                       <TableHead className="text-right">Còn lại</TableHead>
                       <TableHead className="text-right">QH</TableHead>
                     </TableRow>
@@ -161,9 +132,10 @@ export default function PayablesBySupplierPage() {
                         <TableCell className="font-mono text-xs text-primary font-bold">{row.supplierCode}</TableCell>
                         <TableCell className="font-medium">{row.supplierName}</TableCell>
                         <TableCell className="text-right">{row.invoiceCount}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.totalDebt)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.totalPaid)}</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(row.remaining)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.totalDebt)}</TableCell>
+                        <TableCell className="text-right tabular-nums" data-testid="ncc-hang-tra">{tienTra(row.totalReturned)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(row.totalPaid)}</TableCell>
+                        <TableCell className="text-right font-bold tabular-nums">{formatCurrency(row.remaining)}</TableCell>
                         <TableCell className="text-right">
                           {row.overdueCount > 0 ? (
                             <Badge variant="danger">{row.overdueCount}</Badge>
@@ -206,18 +178,22 @@ export default function PayablesBySupplierPage() {
                       )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t text-xs">
+                  <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t text-xs">
                     <div>
                       <p className="text-muted-foreground">Tổng nợ</p>
-                      <p className="font-medium">{formatCurrency(row.totalDebt)}</p>
+                      <p className="font-medium tabular-nums">{formatCurrency(row.totalDebt)}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Đã trả</p>
-                      <p className="font-medium">{formatCurrency(row.totalPaid)}</p>
+                      <p className="text-muted-foreground">Hàng trả lại</p>
+                      <p className="font-medium tabular-nums">{tienTra(row.totalReturned)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Đã thanh toán</p>
+                      <p className="font-medium tabular-nums">{formatCurrency(row.totalPaid)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Còn lại</p>
-                      <p className="font-bold text-destructive">{formatCurrency(row.remaining)}</p>
+                      <p className="font-bold text-destructive tabular-nums">{formatCurrency(row.remaining)}</p>
                     </div>
                   </div>
                 </div>

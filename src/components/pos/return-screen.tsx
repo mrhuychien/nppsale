@@ -265,7 +265,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu trả này."); return }
-        /* ⚠ SỐ PHIẾU TH- CÓ TỪ MIG 193 — đọc RIÊNG (`docMaPhieuTra`), không nhét vào câu
+        /* ⚠ SỐ PHIẾU (PT-, mig 237) CÓ TỪ MIG 193 — đọc RIÊNG (`docMaPhieuTra`), không nhét vào câu
            đọc chính: sổ chưa chạy 193 thì câu chính hỏng 42703 và màn không tải được
            phiếu (lỗi đã gặp 23/09/2026). Thiếu cột thì chỉ mất số. */
         setSlipCode((await docMaPhieuTra(sb, [returnId])).get(returnId) ?? null)

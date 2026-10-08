@@ -266,7 +266,7 @@ export function InvoiceEditor({
           }> | null
         }>) ?? []
         const daNhap = phieuDaNhapCuaHoaDon(rs, reissueOf?.invoiceId ?? null)
-        /* Số TH- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
+        /* Số PT- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
         const ids = daNhap.map((r) => r.id)
         setPhieuDaNhap(ids.map(() => tenPhieuTra(null)))
         if (ids.length > 0) void docMaPhieuTra(supabase, ids).then((m) => { if (!cancelled) setPhieuDaNhap(ids.map((id) => tenPhieuTra(m.get(id)))) })

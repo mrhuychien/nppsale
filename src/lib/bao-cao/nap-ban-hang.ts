@@ -230,7 +230,7 @@ async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: stri
         sb.from("returns").select("id, reason, credit_with_invoice", { count: "exact" }).in("id", lo).order("id").range(from, to),
       "đọc lý do phiếu trả"
     ),
-    // ⚠ Số phiếu TH- chỉ đọc riêng qua `docMaPhieuTra` (sổ chưa chạy mig 193 thì chỉ mất số).
+    // ⚠ Số phiếu PT- chỉ đọc riêng qua `docMaPhieuTra` (sổ chưa chạy mig 193 thì chỉ mất số).
     docMaPhieuTra(sb, traIds),
   ])
   const traThem = new Map(thongTinTra.map((r) => [r.id, { ma: maTra.get(r.id), lyDo: r.reason || "", tuSinh: !!r.credit_with_invoice }]))

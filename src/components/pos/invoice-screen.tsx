@@ -396,7 +396,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         setHangDoiCu(seed ? tatCa.filter((r) => r.isExchange && !doiTuPhieu.has(r.productId)) : [])
         {
           const daNhapDs = phieuDaNhapCuaHoaDon((rt.data as unknown as Array<PhieuTraCuaDon & { lines?: Array<{ product_id: string; is_exchange: boolean | null }> | null }>) ?? [], invoiceId ?? null)
-          /* Số TH- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
+          /* Số PT- đọc riêng (`docMaPhieuTra`) — thiếu cột thì chỉ mất số, màn vẫn chạy. */
           const ids = daNhapDs.map((r) => r.id)
           setPhieuDaNhap(ids.map(() => tenPhieuTra(null)))
           if (ids.length > 0) void docMaPhieuTra(sb, ids).then((m) => { if (!huy) setPhieuDaNhap(ids.map((id) => tenPhieuTra(m.get(id)))) })

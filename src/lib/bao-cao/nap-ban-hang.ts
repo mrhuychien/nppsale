@@ -88,17 +88,25 @@ export function dungDongBan(p: {
     const ngay = String(h.invoice_date).slice(0, 10)
     const ls = theoHd.get(h.id) || []
     const tong = Number(h.total || 0)
-    hoaDon.set(h.id, { id: h.id, ma: h.invoice_code, ngay, kh: h.customer_id, nv: h.sales_user_id || "", tong, giam: giamGiaHoaDon(h, ls), nguoiLap: h.posted_by || "" })
+    const giamHd = giamGiaHoaDon(h, ls)
+    hoaDon.set(h.id, { id: h.id, ma: h.invoice_code, ngay, kh: h.customer_id, nv: h.sales_user_id || "", tong, giam: giamHd, nguoiLap: h.posted_by || "" })
     const S = ls.reduce((s, l) => s + Number(l.line_total || 0), 0)
     const base = { ngay, loai: 1 as const, ct: h.id, hd: h.id, kh: h.customer_id, nv: h.sales_user_id || "" }
     if (!ls.length || S <= 0) {
-      dong.push({ ...base, sp: ls[0]?.product_id || "", tien: tong, giaVon: 0, sl: 0 })
+      dong.push({ ...base, sp: ls[0]?.product_id || "", tien: tong, giaVon: 0, sl: 0, ...(giamHd ? { giamDon: giamHd } : {}) })
       continue
     }
     let conLai = tong
+    /* ⚠ GIẢM GIÁ CẢ ĐƠN CHIA THEO DÒNG như tiền (tỉ lệ `line_total`, dòng cuối nhận phần dư): Σ một HĐ vẫn đúng bằng
+       giảm giá của HĐ, mà lọc Mặt hàng / NCC ra đúng phần của hàng được lọc. Bản cũ gắn cả khoản vào dòng đầu: lọc
+       hàng của dòng đầu ra nguyên khoản, lọc hàng khác ra 0 (rà báo cáo 09/10/2026 — cùng luật báo cáo Nhân viên). */
+    let conGiam = giamHd
     ls.forEach((l, i) => {
-      const tien = i === ls.length - 1 ? conLai : Math.round((Number(l.line_total || 0) / S) * tong)
+      const cuoi = i === ls.length - 1
+      const tien = cuoi ? conLai : Math.round((Number(l.line_total || 0) / S) * tong)
       conLai -= tien
+      const giamDon = cuoi ? conGiam : Math.round((Number(l.line_total || 0) / S) * giamHd)
+      conGiam -= giamDon
       const qd = quyDoiTuDanhMuc(dm, l.product_id)
       const sl = soLuongCoSoDongHd(l, qd)
       const gvCoSo = p.giaVonCoSo.get(l.product_id) || 0
@@ -107,7 +115,7 @@ export function dungDongBan(p: {
       dong.push({
         ...base, sp: l.product_id, tien, giaVon: sl * gvCoSo, sl, niemYet: c.niemYet, tienTT: c.tien,
         goc: { dv: l.unit_name || "", sl: Number(l.quantity || 0), donGia: Number(l.unit_price || 0), giam: Number(l.line_discount || 0), thanhTien: Number(l.line_total || 0) },
-        ...(i === 0 ? { giamDon: giamGiaHoaDon(h, ls) } : {}),
+        ...(giamDon ? { giamDon } : {}),
         ...(sl > 0 && !(gvCoSo > 0) ? { thieuGV: true as const } : {}),
       })
     })
@@ -150,6 +158,19 @@ export function dungDongBan(p: {
     })
   }
   return { dong, hoaDon, phieuTra }
+}
+
+/**
+ * NGƯỜI TẠO của phiếu trả (`returns.requested_by` — mig 178: "phiếu trả → requested_by") cho lọc "Người tạo" ở màn
+ * Cuối ngày. Hàm máy chủ `bao_cao_so_ban` không trả cột này → đọc riêng theo lô id.
+ */
+export async function docNguoiTaoPhieuTra(sb: SupabaseClient, ids: readonly string[]): Promise<Map<string, string>> {
+  const rows = await docTheoLoId<{ id: string; requested_by: string | null }>(
+    ids,
+    (lo, from, to) => sb.from("returns").select("id, requested_by", { count: "exact" }).in("id", lo).order("id").range(from, to),
+    "đọc người tạo phiếu trả"
+  )
+  return new Map(rows.map((r) => [r.id, r.requested_by || ""]))
 }
 
 /** Dòng thô của số bán — đọc từng bảng (cách cũ) hoặc một lượt qua hàm máy chủ (mig 204). */

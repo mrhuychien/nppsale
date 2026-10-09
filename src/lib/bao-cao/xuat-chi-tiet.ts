@@ -9,7 +9,7 @@
  * dòng trong `sales_invoices.total` / `credit_note_amount` — Σ cột này = thẻ Doanh thu thuần. SL quy về đơn
  * vị cơ sở ở cột riêng (`DongBan.sl`); SL + đơn giá theo đơn vị của dòng ở cột "SL" / "Đơn giá".
  */
-import type { DanhMucBC, DongBan, DongDat } from "./cong"
+import { chuaXuatDong, type DanhMucBC, type DongBan, type DongDat } from "./cong"
 import type { HoaDonBC, PhieuTraBC } from "./nap-ban-hang"
 import type { DonDatBC } from "./nap-don-dat"
 import type { KhoanThu, PhieuChi } from "./nap-tien"
@@ -116,7 +116,8 @@ export function chiTietDat(p: { dong: readonly DongDat[]; dm: DanhMucBC; don: Re
       g ? tron(g.thanhTien) : "",
       tron(l.tien),
       tron(l.daXuat),
-      tron(l.tien - l.daXuat),
+      // Chỉ đơn còn chờ xuất (Phiếu tạm) — đơn Hoàn thành giao thiếu là xong (mig 217).
+      tron(chuaXuatDong(l)),
     ])
   }
   return rows

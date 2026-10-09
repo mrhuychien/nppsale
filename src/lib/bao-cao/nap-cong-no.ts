@@ -145,14 +145,42 @@ export function noTaiNgay(p: {
 
 const COT_PHIEU = "id, customer_id, sales_user_id, invoice_id, return_id, amount, paid, due_date, status, created_at, invoice:sales_invoices(invoice_code, invoice_date)"
 
+/** Một khoản cộng theo KHÁCH, kèm nhân viên của phiếu nợ (dùng khi khách chưa có người phụ trách). */
+export interface TheoKhach {
+  tien: number
+  nvPhieu: string
+}
+
 export interface SoCongNo {
   phieu: PhieuNoTai[]
   khach: NoKhach[]
-  /** Khoản thu trong tháng của X, theo nhân viên (tỉ lệ thu). */
-  thuThang: Map<string, number>
-  /** Doanh số (tiền phiếu nợ dương) 90 ngày tới X, theo nhân viên (số ngày thu tiền TB). */
-  ban90: Map<string, number>
+  /**
+   * Khoản thu trong tháng của X, THEO KHÁCH (tỉ lệ thu). ⚠ Theo khách chứ không theo nhân viên của phiếu: màn Công nợ
+   * lọc theo khách (Khách / Kênh / Tình trạng) và gom nhân viên theo NGƯỜI PHỤ TRÁCH khách — cộng sẵn theo nhân viên
+   * của phiếu thì "Tỷ lệ thu" không qua lọc và lệch cột Công nợ cùng dòng (rà báo cáo 09/10/2026).
+   */
+  thuThang: Map<string, TheoKhach>
+  /** Doanh số (tiền phiếu nợ dương) 90 ngày tới X, THEO KHÁCH (số ngày thu tiền TB). */
+  ban90: Map<string, TheoKhach>
   thieu: boolean
+}
+
+/**
+ * Cộng một bản đồ theo khách về NHÂN VIÊN PHỤ TRÁCH, chỉ các khách `qua(kh, nv)` — cùng luật gom của bảng Công nợ
+ * theo nhân viên: người phụ trách khách; khách chưa gán thì nhân viên của phiếu.
+ */
+export function congTheoNhanVien(
+  m: ReadonlyMap<string, TheoKhach>,
+  nvKhach: (kh: string) => string | undefined,
+  qua: (kh: string, nv: string) => boolean
+): Map<string, number> {
+  const out = new Map<string, number>()
+  m.forEach((x, kh) => {
+    const nv = nvKhach(kh) || x.nvPhieu
+    if (!qua(kh, nv)) return
+    out.set(nv, (out.get(nv) || 0) + x.tien)
+  })
+  return out
 }
 
 export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dmVao: DanhMucVao): Promise<SoCongNo> {
@@ -191,18 +219,22 @@ export async function napCongNo(sb: SupabaseClient, orgId: string, X: string, dm
   const thuTruoc = thuTu.rows.filter((t) => vnDateOf(t.collected_at) <= X)
   const dm = await dmVao
   const { phieu, khach } = noTaiNgay({ X, phieu: mo.rows, thuSau, thuTruoc, dm })
-  const thuThang = new Map<string, number>()
+  const cong = (m: Map<string, TheoKhach>, kh: string | undefined, nvPhieu: string | null | undefined, tien: number) => {
+    if (!kh) return
+    const e = m.get(kh) || { tien: 0, nvPhieu: nvPhieu || "" }
+    e.tien += tien
+    m.set(kh, e)
+  }
+  const thuThang = new Map<string, TheoKhach>()
   for (const t of thuTruoc) {
     if (vnDateOf(t.collected_at) < dauThang) continue
-    const nv = t.receivable?.sales_user_id || ""
-    thuThang.set(nv, (thuThang.get(nv) || 0) + Number(t.amount || 0))
+    cong(thuThang, t.receivable?.customer_id, t.receivable?.sales_user_id, Number(t.amount || 0))
   }
-  const ban90 = new Map<string, number>()
+  const ban90 = new Map<string, TheoKhach>()
   for (const r of gan90.rows) {
     const d = ngayPhieu(r)
     if (d > X || d <= congNgay(X, -90) || Number(r.amount) <= 0 || !r.invoice_id) continue
-    const nv = r.sales_user_id || ""
-    ban90.set(nv, (ban90.get(nv) || 0) + Number(r.amount || 0))
+    cong(ban90, r.customer_id, r.sales_user_id, Number(r.amount || 0))
   }
   return { phieu, khach, thuThang, ban90, thieu }
 }

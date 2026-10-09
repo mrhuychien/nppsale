@@ -9,7 +9,7 @@
  * - Điện thoại: bảng thành danh sách thẻ — tên, số chính bên phải, 2–3 số phụ dòng dưới.
  * - Cột giá vốn / lãi: không có quyền thì ẩn hẳn (không để trống, không "***").
  */
-import { useMemo, useState, type MutableRefObject } from "react"
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { Check, ChevronRight, Columns3 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -203,8 +203,20 @@ export function BangBaoCao<G extends DongBang>(p: BangProps<G>) {
   const dongDt = dong.slice(0, them)
   const iChinh = hien.findIndex((c) => c.k === p.chinh)
 
+  /* ⚠ BẢNG GỠ KHỎI MÀN THÌ BỎ HÀM XUẤT CỦA NÓ. Màn chuyển sang "chưa có số" / đang tải (bảng không vẽ) mà hàm cũ
+     còn nằm trong `xuatRef` → bấm Xuất ra bảng của LẦN LỌC TRƯỚC (rà báo cáo 09/10/2026). Chỉ bỏ khi hàm trong ref
+     vẫn là của bảng này — bảng khác vừa vẽ thay thì giữ. */
+  const hamXuat = useRef<(() => (string | number)[][]) | null>(null)
+  const refXuat = p.xuatRef
+  useEffect(() => {
+    // Chế độ kiểm (StrictMode) gỡ rồi gắn lại ngay: gắn lại thì trả hàm về.
+    if (refXuat && !refXuat.current) refXuat.current = hamXuat.current
+    return () => {
+      if (refXuat && refXuat.current === hamXuat.current) refXuat.current = null
+    }
+  }, [refXuat])
   if (p.xuatRef) {
-    p.xuatRef.current = () => {
+    p.xuatRef.current = hamXuat.current = () => {
       const out: (string | number)[][] = [[p.cotDau, ...hien.map((c) => c.label)]]
       const giaTri = (c: CotBang<G>, g: G): string | number => {
         const v = c.v(g)

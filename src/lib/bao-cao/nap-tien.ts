@@ -76,17 +76,32 @@ export async function napKhoanThu(sb: SupabaseClient, a: string, b: string): Pro
   return { ds, thieu: r.truncated }
 }
 
-export async function napPhieuChi(sb: SupabaseClient, orgId: string, a: string, b: string, chiDaTra = true): Promise<{ ds: PhieuChi[]; thieu: boolean }> {
+/**
+ * Phiếu chi + khoản trả NCC của [a, b].
+ * - Mặc định theo NGÀY CHI (`expense_date`), bỏ nhóm tính vào giá vốn — như Lãi lỗ / Cuối ngày.
+ * - `theoNgayTra`: chi ĐÃ TRẢ theo NGÀY TRẢ (`paid_at`), MỌI nhóm — đúng cách `finance_cash_flow` (mig 228) cộng dòng
+ *   "− Chi phí" của Dòng tiền. ⚠ Bấm dòng ấy mà mở danh sách theo ngày chi, bỏ nhóm giá vốn thì danh sách khác số
+ *   trên dòng (rà báo cáo 09/10/2026).
+ */
+export async function napPhieuChi(
+  sb: SupabaseClient,
+  orgId: string,
+  a: string,
+  b: string,
+  chiDaTra = true,
+  theoNgayTra = false
+): Promise<{ ds: PhieuChi[]; thieu: boolean }> {
   const [cp, ncc] = await Promise.all([
-    docDuHoacNem<{ id: string; expense_date: string; amount: number; description: string | null; reference_code: string | null; is_paid: boolean; category: { name: string | null; bucket: string | null } | null }>(
+    docDuHoacNem<{ id: string; expense_date: string; paid_at: string | null; amount: number; description: string | null; reference_code: string | null; is_paid: boolean; category: { name: string | null; bucket: string | null } | null }>(
       (from, to): Trang => {
         let q = sb
           .from("expenses")
-          .select("id, expense_date, amount, description, reference_code, is_paid, category:expense_categories(name, bucket)", { count: "exact" })
+          .select("id, expense_date, paid_at, amount, description, reference_code, is_paid, category:expense_categories(name, bucket)", { count: "exact" })
           .eq("org_id", orgId)
-          .gte("expense_date", a)
-          .lte("expense_date", b)
-        if (chiDaTra) q = q.eq("is_paid", true)
+        q = theoNgayTra
+          ? q.eq("is_paid", true).gte("paid_at", vnTu(a)).lte("paid_at", vnDen(b))
+          : q.gte("expense_date", a).lte("expense_date", b)
+        if (chiDaTra && !theoNgayTra) q = q.eq("is_paid", true)
         return q.order("id").range(from, to) as unknown as Trang
       },
       "đọc phiếu chi"
@@ -105,8 +120,16 @@ export async function napPhieuChi(sb: SupabaseClient, orgId: string, a: string, 
   ])
   const ds: PhieuChi[] = [
     ...cp.rows
-      .filter((e) => e.category?.bucket !== "cogs")
-      .map((e) => ({ id: e.id, ngay: String(e.expense_date).slice(0, 10), tien: Number(e.amount || 0), nhom: e.category?.name || "Khác", dien: e.description || "", ma: e.reference_code || "", loai: "chi" as const })),
+      .filter((e) => theoNgayTra || e.category?.bucket !== "cogs")
+      .map((e) => ({
+        id: e.id,
+        ngay: theoNgayTra && e.paid_at ? vnDateOf(e.paid_at) : String(e.expense_date).slice(0, 10),
+        tien: Number(e.amount || 0),
+        nhom: e.category?.name || "Khác",
+        dien: e.description || "",
+        ma: e.reference_code || "",
+        loai: "chi" as const,
+      })),
     ...ncc.rows.map((p) => ({
       id: p.id,
       ngay: vnDateOf(p.paid_at),

@@ -111,7 +111,10 @@ export function kyTheoMa(ma: MaKy, homNay: string, ca?: string | null, cb?: stri
       const a = dauQuy(T)
       const len = soNgay(a, T) + 1
       const pa = dauQuy(congNgay(a, -1))
-      return { a, b: T, cmp: [pa, congNgay(pa, len - 1)] }
+      // ⚠ Kẹp vào cuối quý trước như "Tháng này": quý trước ngắn hơn (Q1 90 ngày) thì 30/06, 30/09 có kỳ so sánh
+      //   lấn 1 ngày sang chính quý này (rà báo cáo 09/10/2026).
+      const e = congNgay(pa, len - 1)
+      return { a, b: T, cmp: [pa, e < a ? e : congNgay(a, -1)] }
     }
     case "year":
       return { a: T.slice(0, 4) + "-01-01", b: T, cmp: null }
@@ -122,6 +125,25 @@ export function kyTheoMa(ma: MaKy, homNay: string, ca?: string | null, cb?: stri
       return { a, b, cmp: kyTruoc(a, b) }
     }
   }
+}
+
+/**
+ * CỬA SỔ NẠP số bán của một màn có so sánh kỳ trước.
+ * - Kỳ này: NGUYÊN kỳ đang chọn, bao cả khoảng đào sâu (`khoang`) — giá vốn bình quân tính trên đúng kỳ ấy, nên đào
+ *   sâu xuống một tuần ra đúng số của dòng vừa bấm.
+ * - Kỳ trước: nạp RIÊNG phần nằm ngoài cửa sổ kỳ này (giá vốn bình quân của riêng nó); nằm gọn trong thì không nạp.
+ * ⚠ Bản cũ nạp MỘT cửa sổ từ đầu kỳ trước tới cuối kỳ này: giá vốn bình quân trộn hai kỳ → bật / tắt "So với kỳ
+ *   trước" là Lãi gộp kỳ này đổi, đào sâu một tuần thì Lãi gộp khác dòng vừa bấm (rà báo cáo 09/10/2026).
+ */
+export function cuaSoNap(
+  ky: { a: string; b: string },
+  khoang: readonly [string, string] | null,
+  cmp: readonly [string, string] | null
+): { nay: [string, string]; truoc: [string, string] | null } {
+  const nay: [string, string] = khoang ? [khoang[0] < ky.a ? khoang[0] : ky.a, khoang[1] > ky.b ? khoang[1] : ky.b] : [ky.a, ky.b]
+  if (!cmp || cmp[0] >= nay[0]) return { nay, truoc: null }
+  const het = congNgay(nay[0], -1)
+  return { nay, truoc: [cmp[0], cmp[1] < het ? cmp[1] : het] }
 }
 
 /** "26/09" */

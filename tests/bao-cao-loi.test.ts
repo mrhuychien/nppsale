@@ -84,13 +84,14 @@ describe("cộng dồn dòng bán", () => {
     expect(Array.from(m.values()).reduce((s, g) => s + g.net, 0)).toBe(1900)
     expect(m.get("p1")).toMatchObject({ net: 1500, qty: 16, rqty: 1, nInv: 2, last: "2026-09-02" })
   })
-  it("đơn đặt: đã xuất / chưa xuất / tỉ lệ", () => {
+  it("đơn đặt: đã xuất / chưa xuất / tỉ lệ — chưa xuất CHỈ của đơn còn chờ xuất (Phiếu tạm)", () => {
+    // d1 Hoàn thành giao thiếu (200 không xuất) là XONG (mig 217) — không treo ở "Chưa xuất" (rà báo cáo 09/10/2026).
     const d: DongDat[] = [
-      { ngay: "2026-09-01", don: "d1", kh: "k1", nv: "n1", sp: "p1", tien: 300, daXuat: 300, trangThai: "completed", nguoiTao: "u" },
-      { ngay: "2026-09-01", don: "d1", kh: "k1", nv: "n1", sp: "p2", tien: 200, daXuat: 0, trangThai: "completed", nguoiTao: "u" },
-      { ngay: "2026-09-02", don: "d2", kh: "k2", nv: "n1", sp: "p1", tien: 500, daXuat: 0, trangThai: "submitted", nguoiTao: "u" },
+      { ngay: "2026-09-01", don: "d1", kh: "k1", nv: "n1", sp: "p1", tien: 300, daXuat: 300, choXuat: false, trangThai: "completed", nguoiTao: "u" },
+      { ngay: "2026-09-01", don: "d1", kh: "k1", nv: "n1", sp: "p2", tien: 200, daXuat: 0, choXuat: false, trangThai: "completed", nguoiTao: "u" },
+      { ngay: "2026-09-02", don: "d2", kh: "k2", nv: "n1", sp: "p1", tien: 500, daXuat: 0, choXuat: true, trangThai: "submitted", nguoiTao: "u" },
     ]
-    expect(congDat(d)).toEqual({ n: 2, val: 1000, done: 300, not: 700, rate: 0.3 })
+    expect(congDat(d)).toEqual({ n: 2, val: 1000, done: 300, not: 500, rate: 0.3 })
   })
   it("lọc theo chiều của khách / mặt hàng; loại không áp được thì bỏ qua", () => {
     const dm = danhMucRong()

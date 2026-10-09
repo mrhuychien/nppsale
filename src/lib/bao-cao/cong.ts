@@ -75,6 +75,12 @@ export interface DongDat {
   tien: number
   /** Phần tiền của dòng đã xuất hoá đơn (theo SL đã xuất). */
   daXuat: number
+  /**
+   * Đơn CÒN CHỜ XUẤT hoá đơn (Phiếu tạm) — chỉ đơn này mới có phần "Chưa xuất".
+   * ⚠ Đơn Hoàn thành giao thiếu là XONG (mig 217: "đơn nào xuất xong coi như xong"), phần thiếu không treo ở
+   *   "Chưa xuất"; đơn Nháp chưa gửi, chưa tới lượt xuất (rà báo cáo 09/10/2026).
+   */
+  choXuat: boolean
   trangThai: string
   nguoiTao: string
   goc?: DongGoc
@@ -331,19 +337,24 @@ export interface TongDat {
   n: number
   val: number
   done: number
+  /** Chưa xuất = phần chưa xuất của đơn CÒN CHỜ XUẤT (`choXuat`) — không phải `val − done`. */
   not: number
   rate: number
 }
 
+/** Phần "Chưa xuất" của một dòng đơn đặt — 0 khi đơn đã xong hoặc còn Nháp. */
+export const chuaXuatDong = (l: Pick<DongDat, "tien" | "daXuat" | "choXuat">) => (l.choXuat ? l.tien - l.daXuat : 0)
+
 export function congDat(ls: readonly DongDat[]): TongDat {
   const d = new Set<string>()
-  let val = 0, done = 0
+  let val = 0, done = 0, not = 0
   for (const l of ls) {
     d.add(l.don)
     val += l.tien
     done += l.daXuat
+    not += chuaXuatDong(l)
   }
-  return { n: d.size, val, done, not: val - done, rate: val ? done / val : 0 }
+  return { n: d.size, val, done, not, rate: val ? done / val : 0 }
 }
 
 export interface NhomDat extends TongDat {

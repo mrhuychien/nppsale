@@ -17,9 +17,9 @@ import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./
 import { createClient } from "@/lib/supabase/client"
 import { congNgay, ngayDu, ngayThang, THU_VN, thu } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
-import { congBan, quaLoc, maChuaCoGiaVon, type LoaiLoc } from "@/lib/bao-cao/cong"
+import { congBan, quaLoc, maChuaCoGiaVon, LOAI_LOC, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram, soSanh } from "@/lib/bao-cao/so"
-import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
+import { napSoBan, docNguoiTaoPhieuTra } from "@/lib/bao-cao/nap-ban-hang"
 import { chiTietBan, chiTietChi, chiTietThu, type SheetXuat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { napKhoanThu, napPhieuChi, tonQuy } from "@/lib/bao-cao/nap-tien"
 import { fetchAllOrdersDu } from "@/lib/analytics/sales"
@@ -44,19 +44,36 @@ export function ManCuoiNgay() {
           const sb = createClient()
           // Danh mục và số đọc SONG SONG — hàm nạp chỉ đợi danh mục lúc tính.
           const dmP = layDanhMuc(orgId)
+          const dmV = dmP.then((x) => x.dm)
           const truoc = congNgay(d, -1)
-          const [ban, don, thu, chi, quy] = await Promise.all([
-            nhoTam(`ban|${orgId}|${truoc}|${d}`, () => napSoBan(sb, orgId, truoc, d, dmP.then((x) => x.dm))),
+          /* ⚠ Ngày này và hôm trước nạp RIÊNG (giá vốn bình quân của riêng từng ngày) — như Bán hàng "Hôm nay". Bản cũ
+             nạp một cửa sổ [hôm trước, hôm nay] → Lãi gộp của ngày lệch số Bán hàng (rà báo cáo 09/10/2026). */
+          const [ban, banTruoc, don, thu, chi, quy] = await Promise.all([
+            nhoTam(`ban|${orgId}|${d}|${d}`, () => napSoBan(sb, orgId, d, d, dmV)),
+            st.soSanh ? nhoTam(`ban|${orgId}|${truoc}|${truoc}`, () => napSoBan(sb, orgId, truoc, truoc, dmV)) : null,
             fetchAllOrdersDu(sb, orgId, { from: truoc, to: d }),
             napKhoanThu(sb, d, d),
             napPhieuChi(sb, orgId, d, d),
             tonQuy(sb, orgId, d),
           ])
+          // Người tạo phiếu trả (`requested_by`) — lọc "Người tạo" áp cả hàng trả, không chỉ hoá đơn.
+          const traLap = await docNguoiTaoPhieuTra(sb, [...ban.phieuTra, ...(banTruoc?.phieuTra || [])].map((r) => r.id))
           const { dm, thieu } = await dmP
-          return { dm, ban, don: don.rows, thu: thu.ds, chi: chi.ds, quy, thieu: thieu || ban.thieu || don.truncated || thu.thieu || chi.thieu }
+          return {
+            dm,
+            ban,
+            dongTruoc: banTruoc?.dong || [],
+            hdTruoc: banTruoc?.hoaDon || new Map(),
+            traLap,
+            don: don.rows,
+            thu: thu.ds,
+            chi: chi.ds,
+            quy,
+            thieu: thieu || ban.thieu || !!banTruoc?.thieu || don.truncated || thu.thieu || chi.thieu,
+          }
         }
       : null,
-    `${orgId}|${d}`
+    `${orgId}|${d}|${st.soSanh}`
   )
   const dm = nap.data?.dm || null
 
@@ -64,8 +81,13 @@ export function ManCuoiNgay() {
     const x = nap.data
     if (!x || !dm) return null
     const loc = E.loc
-    const hdLap = new Map(Array.from(x.ban.hoaDon.values()).map((h) => [h.id, h.nguoiLap]))
-    const dongNgay = (n: string) => x.ban.dong.filter((l) => l.ngay === n && quaLoc({ kh: l.kh, nv: l.nv, nguoiTao: l.loai > 0 ? hdLap.get(l.hd) || "" : undefined }, loc, dm))
+    const hdLap = new Map([...Array.from(x.ban.hoaDon.values()), ...Array.from(x.hdTruoc.values())].map((h) => [h.id, h.nguoiLap]))
+    /* ⚠ "Người tạo" của dòng trả = người lập phiếu trả (`requested_by`). Bản cũ để trống → dòng trả luôn qua lọc: chọn
+       Người tạo = A thì Doanh thu chỉ của A mà Hàng trả trừ MỌI phiếu trả trong ngày (rà báo cáo 09/10/2026). */
+    const dongNgay = (n: string) =>
+      [...x.ban.dong, ...x.dongTruoc].filter(
+        (l) => l.ngay === n && quaLoc({ kh: l.kh, nv: l.nv, nguoiTao: l.loai > 0 ? hdLap.get(l.hd) || "" : x.traLap.get(l.ct) || "" }, loc, dm)
+      )
     const donNgay = (n: string) =>
       x.don.filter((o) => String(o.order_date).slice(0, 10) === n && quaLoc({ kh: o.customer_id, nv: o.sales_user_id || "", nguoiTao: o.created_by || "" }, loc, dm))
     const L = dongNgay(d)
@@ -88,12 +110,20 @@ export function ManCuoiNgay() {
       { id: "net", label: "Doanh thu thuần", value: soGon(T.net), info: GIAI_THICH.net, delta: soSanh(T.net, TP?.net, true) },
       ...(xemGiaVon ? [{ id: "gp", label: "Lãi gộp", value: soGon(T.gp), info: GIAI_THICH.gp, sub: `Biên ${phanTram(T.net ? T.gp / T.net : 0)}${nThieuGV ? ` · ${nThieuGV} mã chưa có giá vốn` : ""}`, tone: nThieuGV ? "warning" : undefined, delta: soSanh(T.gp, TP?.gp, true) } satisfies TheKpi] : []),
     ]
+    // Chi và tồn quỹ là số TOÀN NPP (không theo lọc) — đang lọc thì nói rõ, kẻo trông như số của người / khách đang lọc.
+    const dangLoc = Object.values(loc).some((v) => v && v.length)
+    const toanNpp = dangLoc ? " · toàn NPP, không theo lọc" : ""
     const tien: DongKhoi[] = [
       { label: "Tiền mặt thu", sub: `${tm.length} khoản thu`, value: soDu(sum(tm)), onClick: docs("Thu tiền mặt", "rcash") },
       { label: "Chuyển khoản thu", sub: `${ck.length} khoản thu`, value: soDu(sum(ck)), onClick: docs("Thu chuyển khoản", "rbank") },
-      { label: "Chi trong ngày", sub: `${x.chi.length} phiếu chi`, value: soDu(sum(x.chi)), onClick: docs("Phiếu chi", "pay") },
-      { label: "Tồn quỹ cuối ngày", sub: "Tiền mặt và tiền gửi", value: soDu(x.quy), bold: true, info: GIAI_THICH.cashEnd },
+      { label: "Chi trong ngày", sub: `${x.chi.length} phiếu chi${toanNpp}`, value: soDu(sum(x.chi)), onClick: docs("Phiếu chi", "pay") },
+      { label: "Tồn quỹ cuối ngày", sub: `Tiền mặt và tiền gửi${toanNpp}`, value: soDu(x.quy), bold: true, info: GIAI_THICH.cashEnd },
     ]
+    // Bộ lọc đang áp, ghi lên tờ in A5 (tờ có chỗ ký — không được trông như số toàn NPP khi đang lọc).
+    const moTaLoc = (Object.keys(loc) as LoaiLoc[])
+      .filter((k) => loc[k]?.length)
+      .map((k) => `${LOAI_LOC[k].short || LOAI_LOC[k].label}: ${loc[k]!.map((v) => tenGiaTri(dm, k, v)).join(", ")}`)
+      .join(" · ")
     const trangThai: DongKhoi[] = TRANG_THAI.map((s) => {
       const a = O.filter((o) => nhanTrangThaiDon(o.status) === s)
       return {
@@ -114,7 +144,8 @@ export function ManCuoiNgay() {
       let dienL = "Diễn giải"
       if (kind === "orders") {
         dienL = "Trạng thái"
-        ds = O.filter((o) => !E.co.status || nhanTrangThaiDon(o.status) === E.co.status).map((o) => ({ _n: o.order_code, id: o.id, loai: "don", ngay: d, doiTuong: tenGiaTri(dm, "cust", o.customer_id), dien: nhanTrangThaiDon(o.status), tien: Number(o.total || 0) }))
+        // Thẻ "Đơn tạo" không đếm đơn huỷ → danh sách mở ra cũng không có (trừ khi bấm dòng "Đã hủy").
+        ds = O.filter((o) => (E.co.status ? nhanTrangThaiDon(o.status) === E.co.status : o.status !== "cancelled")).map((o) => ({ _n: o.order_code, id: o.id, loai: "don", ngay: d, doiTuong: tenGiaTri(dm, "cust", o.customer_id), dien: nhanTrangThaiDon(o.status), tien: Number(o.total || 0) }))
       } else if (kind === "inv") {
         dienL = "Nhân viên"
         const m = new Map<string, number>()
@@ -124,9 +155,12 @@ export function ManCuoiNgay() {
           return { _n: h.ma, id, loai: "hd", ngay: h.ngay, doiTuong: tenGiaTri(dm, "cust", h.kh), dien: tenGiaTri(dm, "staff", h.nv), tien }
         })
       } else if (kind === "ret") {
+        // Đúng các dòng trả đã qua lọc của ngày (cùng bộ với thẻ "Hàng trả") — kể cả lọc Người tạo.
+        const tienTra = new Map<string, number>()
+        for (const l of L) if (l.loai < 0) tienTra.set(l.ct, (tienTra.get(l.ct) || 0) + l.tien)
         ds = x.ban.phieuTra
-          .filter((r) => r.ngay === d && quaLoc({ kh: r.kh, nv: r.nv }, loc, dm))
-          .map((r) => ({ _n: r.ma, id: r.id, loai: "tra", ngay: r.ngay, doiTuong: tenGiaTri(dm, "cust", r.kh), dien: [r.lyDo, r.loai].filter(Boolean).join(" · "), tien: r.tien }))
+          .filter((r) => tienTra.has(r.id))
+          .map((r) => ({ _n: r.ma, id: r.id, loai: "tra", ngay: r.ngay, doiTuong: tenGiaTri(dm, "cust", r.kh), dien: [r.lyDo, r.loai].filter(Boolean).join(" · "), tien: tienTra.get(r.id) || 0 }))
       } else if (kind === "rcash" || kind === "rbank") {
         ds = (kind === "rcash" ? tm : ck).map((t) => ({ _n: t.maHd ? `Thu ${t.maHd}` : "Khoản thu", id: t.id, loai: "thu", ngay: t.ngay, doiTuong: tenGiaTri(dm, "cust", t.kh), dien: `${t.hinhThuc} · ${tenGiaTri(dm, "staff", t.nguoiThu)}`, tien: t.tien }))
       } else if (kind === "pay") {
@@ -191,7 +225,7 @@ export function ManCuoiNgay() {
       { ten: "Thu tiền", rows: chiTietThu(thu, dm) },
       { ten: "Chi", rows: chiTietChi(x.chi) },
     ]
-    return { kpis, tien, trangThai, bang, tenXuat, chiTiet, T, song, soDon: O.length, thu: { tm: sum(tm), ck: sum(ck) }, chi: sum(x.chi), quy: x.quy, rong: !O.length && !L.length && !thu.length }
+    return { kpis, tien, trangThai, bang, tenXuat, chiTiet, T, song, soDon: O.length, thu: { tm: sum(tm), ck: sum(ck) }, chi: sum(x.chi), quy: x.quy, moTaLoc, rong: !O.length && !L.length && !thu.length }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, JSON.stringify(E), view, d, st.soSanh, xemGiaVon])
 
@@ -226,7 +260,7 @@ export function ManCuoiNgay() {
             loai={loai}
             loc={st.loc}
             luaChon={(k) => luaChonLoc(dm, k)}
-            onLoc={(k, vals) => dat({ loc: { ...st.loc, [k]: vals } })}
+            onLoc={bc.datLoc}
             onBoHet={() => dat({ loc: {} })}
             khoaNV={khoaNV ? bc.user?.full_name || "Tôi" : null}
             capNhat={nap.capNhat}
@@ -265,6 +299,11 @@ export function ManCuoiNgay() {
         <div className="print-cuoi-ngay-only a5-doc">
           <h1 style={{ textAlign: "center", margin: 0 }}>BÁO CÁO CUỐI NGÀY</h1>
           <p style={{ textAlign: "center", margin: "2px 0 8px" }}>Ngày {ngayDu(d)}</p>
+          {vm.moTaLoc && (
+            <p style={{ textAlign: "center", margin: "0 0 8px" }} data-testid="bc-in-loc">
+              Lọc: {vm.moTaLoc} — chi trong ngày và tồn quỹ là số toàn NPP
+            </p>
+          )}
           <table style={{ width: "100%" }}>
             <tbody>
               {[

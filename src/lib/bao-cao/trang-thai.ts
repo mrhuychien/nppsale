@@ -49,6 +49,16 @@ export const TRANG_THAI_GOC: TrangThaiBC = {
   theoThang: false,
 }
 
+/**
+ * Giá trị lọc nối bằng dấu phẩy trên đường dẫn → dấu phẩy NẰM TRONG một giá trị phải thoát (`%2C`, `%` → `%25`).
+ * ⚠ Bản cũ nối / tách thẳng: kênh "Tuyến 1, Quận 3" đọc lại thành ["Tuyến 1", " Quận 3"] → lọc Kênh không khớp dòng
+ *   nào (rà báo cáo 09/10/2026). Đường dẫn cũ không có `%` nên đọc như trước.
+ */
+const thoatGiaTri = (v: string) => v.replace(/%/g, "%25").replace(/,/g, "%2C")
+const moGiaTri = (v: string) => v.replace(/%2C/gi, ",").replace(/%25/g, "%")
+export const ghiDsLoc = (vs: readonly string[]) => vs.map(thoatGiaTri).join(",")
+export const docDsLoc = (v: string) => v.split(",").filter(Boolean).map(moGiaTri)
+
 const laBuoc = (x: unknown): x is BuocDao =>
   !!x && typeof x === "object" && typeof (x as BuocDao).l === "string" && typeof (x as BuocDao).v === "string"
 
@@ -58,7 +68,7 @@ export function docTrangThai(sp: URLSearchParams, macDinh: Partial<TrangThaiBC> 
   const loc: BoLoc = {}
   for (const k of Object.keys(LOAI_LOC) as LoaiLoc[]) {
     const v = sp.get("l_" + k)
-    if (v) loc[k] = v.split(",").filter(Boolean)
+    if (v) loc[k] = docDsLoc(v)
   }
   let dao: BuocDao[] = []
   const d = sp.get("dao")
@@ -99,7 +109,7 @@ export function ghiTrangThai(st: TrangThaiBC, macDinh: Partial<TrangThaiBC> = {}
   if (!st.soSanh) p.set("ss", "0")
   for (const k of Object.keys(st.loc) as LoaiLoc[]) {
     const v = st.loc[k]
-    if (v && v.length) p.set("l_" + k, v.join(","))
+    if (v && v.length) p.set("l_" + k, ghiDsLoc(v))
   }
   if (st.xem && st.xem !== g.xem) p.set("xem", st.xem)
   if (st.nguon !== g.nguon) p.set("nguon", st.nguon)
@@ -141,6 +151,16 @@ export function hieuLuc(st: TrangThaiBC, xemGoc: string, khoaNV?: string | null)
   }
   if (khoaNV) loc.staff = [khoaNV]
   return { loc, khoang, co, xem: st.dao.length ? st.dao[st.dao.length - 1].v : xemGoc }
+}
+
+/**
+ * Các bước đào sâu còn giữ khi người dùng đổi ô lọc `k` trên thanh: bỏ TỪ bước đầu tiên đặt cùng chiều `k` trở đi.
+ * ⚠ Bước đào sâu đè lên lọc thanh cùng chiều (`hieuLuc`) — giữ nó thì đổi lọc không có tác dụng mà thẻ lọc vẫn hiện
+ *   lựa chọn mới (rà báo cáo 09/10/2026).
+ */
+export function giuBuocKhiDoiLoc(dao: readonly BuocDao[], k: LoaiLoc): BuocDao[] {
+  const i = dao.findIndex((b) => !!b.f && k in b.f)
+  return i >= 0 ? dao.slice(0, i) : dao.slice()
 }
 
 /** Mặc định của từng màn — màn và đường dẫn tới màn phải dùng chung một bộ. */

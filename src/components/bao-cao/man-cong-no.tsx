@@ -22,7 +22,7 @@ import { hieuLuc, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { quaLoc, type LoaiLoc } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram } from "@/lib/bao-cao/so"
 import { chiTietNo } from "@/lib/bao-cao/xuat-chi-tiet"
-import { napCongNo, napSoChiTiet, NHOM_TUOI, type NoKhach, type PhieuNoTai } from "@/lib/bao-cao/nap-cong-no"
+import { napCongNo, napSoChiTiet, congTheoNhanVien, NHOM_TUOI, type NoKhach, type PhieuNoTai } from "@/lib/bao-cao/nap-cong-no"
 import { GIAI_THICH } from "@/lib/bao-cao/giai-thich"
 
 const XEM = { customer: "Khách", aging: "Tuổi nợ", staff: "Nhân viên", inv: "Hoá đơn" } as const
@@ -35,8 +35,10 @@ export function ManCongNo() {
   const { st, dat, daoThem, veBuoc, doiXem, homNay, khoaNV, xemGiaVon, orgId } = bc
   const X = st.den || homNay
   // NVBH: RLS đã chỉ trả nợ khách của họ — không lọc thêm theo người phụ trách (sẽ giấu nhầm).
-  const E = hieuLuc(st, st.xem || "customer", null)
-  const view = E.xem
+  // ⚠ `xem` lạ trên đường dẫn (gõ tay, bản cũ) → về Theo khách, không vỡ trang (`XEM[goc]` rỗng).
+  const goc = (st.xem in XEM ? st.xem : "customer") as keyof typeof XEM
+  const E = hieuLuc(st, goc, null)
+  const view = E.xem in XEM || E.xem === "ledger" ? E.xem : "customer"
   const [ct, setCt] = useState<ChungTuMo | null>(null)
   const xuatRef = useRef<(() => (string | number)[][]) | null>(null)
 
@@ -62,7 +64,8 @@ export function ManCongNo() {
     const tt = st.loc.dstatus || []
     const locKh = { ...E.loc }
     delete locKh.dstatus
-    let khach = d.khach.filter((k) => quaLoc({ kh: k.kh, nv: k.nv }, locKh, dm) && (!tt.length || k.tinhTrang.some((x) => tt.includes(x))))
+    const quaTinhTrang = (k: NoKhach) => !tt.length || k.tinhTrang.some((x) => tt.includes(x))
+    let khach = d.khach.filter((k) => quaLoc({ kh: k.kh, nv: k.nv }, locKh, dm) && quaTinhTrang(k))
     if (typeof E.co.nhom === "string") khach = khach.filter((k) => k.tuoi[Number(E.co.nhom)] > 0)
     const phaiThu = khach.reduce((s, k) => s + Math.max(0, k.no), 0)
     const qua = khach.reduce((s, k) => s + k.qua, 0)
@@ -141,10 +144,20 @@ export function ManCongNo() {
         if (a) a.push(k)
         else m.set(k.nv, [k])
       }
+      /* ⚠ Thu trong tháng / doanh số 90 ngày cộng theo KHÁCH ĐÃ QUA LỌC, gom về người phụ trách — cùng luật cột Công
+         nợ. Khách đã trả hết (không còn trong bảng) vẫn tính phần đã thu nếu qua lọc Khách / Nhân viên / Kênh; đang lọc
+         Tình trạng / nhóm tuổi thì chỉ khách đang có trong bảng (rà báo cáo 09/10/2026). */
+      const trongBang = new Map(khach.map((k) => [k.kh, k]))
+      const locTheoKhach = tt.length > 0 || typeof E.co.nhom === "string"
+      const nvTheoKhach = new Map(d.khach.map((k) => [k.kh, k.nv]))
+      const nvKhach = (kh: string) => nvTheoKhach.get(kh) || dm.khach.get(kh)?.nv
+      const qua = (kh: string, nv: string) => (locTheoKhach ? trongBang.has(kh) : quaLoc({ kh, nv }, locKh, dm))
+      const thuNv = congTheoNhanVien(d.thuThang, nvKhach, qua)
+      const banNv = congTheoNhanVien(d.ban90, nvKhach, qua)
       const ds: D[] = Array.from(m.entries()).map(([nv, ks]) => {
         const no = ks.reduce((s, k) => s + k.no, 0)
-        const thu = d.thuThang.get(nv) || 0
-        const ban = d.ban90.get(nv) || 0
+        const thu = thuNv.get(nv) || 0
+        const ban = banNv.get(nv) || 0
         return { _n: tenGiaTri(dm, "staff", nv), k: nv, no, qua: ks.reduce((s, k) => s + k.qua, 0), tile: thu + Math.max(0, no) > 0 ? thu / (thu + Math.max(0, no)) : null, dso: ban > 0 ? Math.round(no / (ban / 90)) : null }
       })
       bang = (
@@ -246,7 +259,6 @@ export function ManCongNo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nap.data, dm, JSON.stringify(E), JSON.stringify(st.loc), view, so.data, so.loi, so.dangTai, xemGiaVon, X])
 
-  const goc = (st.xem || "customer") as keyof typeof XEM
   const xemTheo = (
     <HangChon
       nhan="Xem theo"
@@ -271,7 +283,7 @@ export function ManCongNo() {
           loai={loai}
           loc={st.loc}
           luaChon={(k) => luaChonLoc(dm, k)}
-          onLoc={(k, vals) => dat({ loc: { ...st.loc, [k]: vals } })}
+          onLoc={bc.datLoc}
           onBoHet={() => dat({ loc: {} })}
           khoaNV={khoaNV ? bc.user?.full_name || "Tôi" : null}
           capNhat={nap.capNhat}

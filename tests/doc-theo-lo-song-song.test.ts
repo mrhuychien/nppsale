@@ -66,7 +66,7 @@ describe("báo cáo: danh mục song song với số, nhớ tạm giữa các m�
   it("số bán / công nợ / tồn kho dùng chung bộ nhớ tạm; Bán hàng chỉ đọc sổ công nợ ở chế độ Khách", () => {
     expect(src("src/components/bao-cao/man-tong-quan.tsx")).toMatch(/nhoTam\(`ban\|/)
     expect(src("src/components/bao-cao/man-ban-hang.tsx")).toMatch(/nhoTam\(`ban\|/)
-    expect(src("src/components/bao-cao/man-ban-hang.tsx")).toMatch(/view0 === "cust" \? \(\) => loadDebtByCustomer/)
+    expect(src("src/components/bao-cao/man-ban-hang.tsx")).toMatch(/view === "cust" \? \(\) => loadDebtByCustomer/)
     expect(src("src/components/bao-cao/dung-chung.ts")).toMatch(/boNhoTam\.clear\(\)/)
   })
 })

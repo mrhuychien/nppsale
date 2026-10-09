@@ -8,8 +8,9 @@ import { useCallback, useMemo } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useRoleGuard } from "./use-role-guard"
 import { duocXuatFile, xemDuocGiaVon, type Module } from "@/lib/permissions"
-import { docTrangThai, ghiTrangThai, type BuocDao, type TrangThaiBC } from "@/lib/bao-cao/trang-thai"
+import { docTrangThai, ghiTrangThai, giuBuocKhiDoiLoc, type BuocDao, type TrangThaiBC } from "@/lib/bao-cao/trang-thai"
 import { homNayVN } from "@/lib/bao-cao/ky"
+import type { LoaiLoc } from "@/lib/bao-cao/cong"
 
 export function useBaoCao(module: Module, macDinh: Partial<TrangThaiBC>) {
   const { user, loading } = useRoleGuard(module)
@@ -36,6 +37,14 @@ export function useBaoCao(module: Module, macDinh: Partial<TrangThaiBC>) {
   const veBuoc = useCallback((i: number) => dat({ dao: st.dao.slice(0, i) }), [dat, st.dao])
   /** Đổi chế độ xem gốc: giữ kỳ và lọc, bỏ các bước đào sâu (spec 2.6). */
   const doiXem = useCallback((xem: string) => dat({ xem, dao: [] }), [dat])
+  /**
+   * Đổi một ô lọc trên thanh. ⚠ Bước đào sâu đặt cùng chiều ĐÈ lên lọc của thanh (`hieuLuc`): giữ bước ấy thì đổi lọc
+   * không có tác dụng mà thẻ lọc vẫn hiện lựa chọn mới (rà báo cáo 09/10/2026) → bỏ từ bước ấy trở đi.
+   */
+  const datLoc = useCallback(
+    (k: LoaiLoc, vals: string[]) => dat({ loc: { ...st.loc, [k]: vals }, dao: giuBuocKhiDoiLoc(st.dao, k) }),
+    [dat, st.dao, st.loc]
+  )
 
   const role = user?.role
   return {
@@ -46,6 +55,7 @@ export function useBaoCao(module: Module, macDinh: Partial<TrangThaiBC>) {
     daoThem,
     veBuoc,
     doiXem,
+    datLoc,
     homNay: homNayVN(),
     xemGiaVon: xemDuocGiaVon(role),
     xuatFile: duocXuatFile(role, module),

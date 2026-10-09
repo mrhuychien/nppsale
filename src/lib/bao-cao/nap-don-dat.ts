@@ -3,7 +3,9 @@
  *
  * - Đơn không huỷ, theo `order_date` (`fetchAllOrdersDu`).
  * - "Đã xuất" của một dòng = tiền dòng × SL đã xuất hoá đơn / SL đặt (`invoiced_qty`, trigger
- *   `trg_sync_invoiced_qty`) — đơn xuất nhiều đợt thì phần chưa xuất vẫn hiện ở "Chưa xuất".
+ *   `trg_sync_invoiced_qty`).
+ * - "Chưa xuất" chỉ của đơn CÒN CHỜ XUẤT (Phiếu tạm — `choXuat`). Mig 217: một đơn một hoá đơn, xuất (kể cả giao
+ *   thiếu) là Hoàn thành → phần giao thiếu KHÔNG treo ở "Chưa xuất"; đơn Nháp chưa gửi thì chưa tới lượt xuất.
  * - Tiền dòng phân bổ theo tỉ lệ để Σ dòng của một đơn = `sales_orders.total` (như dòng bán).
  * - Trạng thái ghi bằng NHÃN (`ORDER_STATUS_MAP`): "Xuất một phần" và "Hoàn thành" là một.
  */
@@ -11,7 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllOrdersDu, type SalesOrderRow } from "@/lib/analytics/sales"
 import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
-import type { DongDat } from "./cong"
+import { chuaXuatDong, type DongDat } from "./cong"
 
 export interface DonDatBC {
   id: string
@@ -51,7 +53,7 @@ export function dungDongDat(don: readonly SalesOrderRow[], dong: readonly DongDo
     const tong = Number(o.total || 0)
     const trangThai = nhanTrangThaiDon(o.status)
     ds.set(o.id, { id: o.id, ma: o.order_code, ngay, kh: o.customer_id, nv: o.sales_user_id || "", tong, trangThai })
-    const base = { ngay, don: o.id, kh: o.customer_id, nv: o.sales_user_id || "", trangThai, nguoiTao: o.created_by || "" }
+    const base = { ngay, don: o.id, kh: o.customer_id, nv: o.sales_user_id || "", trangThai, nguoiTao: o.created_by || "", choXuat: o.status === "submitted" }
     const ls = theoDon.get(o.id) || []
     const S = ls.reduce((s, l) => s + Number(l.line_total || 0), 0)
     const daXong = o.status === "completed" || o.status === "closed"
@@ -91,7 +93,11 @@ export async function napDonDat(sb: SupabaseClient, orgId: string, a: string, b:
   return { ...dungDongDat(r.rows, dong), thieu: r.truncated }
 }
 
-/** Đơn đặt còn phần chưa xuất hoá đơn (mọi ngày): Phiếu tạm + Xuất một phần. */
+/**
+ * Đơn đặt CHỜ XUẤT hoá đơn (mọi ngày): Phiếu tạm. Kèm ngày đặt sớm nhất / muộn nhất để ô Tổng quan mở ĐÚNG danh
+ * sách ấy (bản cũ mở "Năm nay" — đơn năm trước còn chờ không có trong danh sách mở ra; còn tính cả "Xuất một phần",
+ * nay đã là Hoàn thành — mig 217).
+ */
 export async function napDonChuaXuat(sb: SupabaseClient, orgId: string) {
   const r = await docDuHoacNem<SalesOrderRow>(
     (from, to) =>
@@ -99,7 +105,7 @@ export async function napDonChuaXuat(sb: SupabaseClient, orgId: string) {
         .from("sales_orders")
         .select("id, order_code, order_date, status, total, subtotal, discount, vat, customer_id, sales_user_id, created_by, payment_terms", { count: "exact" })
         .eq("org_id", orgId)
-        .in("status", ["submitted", "partially_invoiced"])
+        .eq("status", "submitted")
         .order("id")
         .range(from, to),
     "đọc đơn chưa xuất hoá đơn"
@@ -111,5 +117,12 @@ export async function napDonChuaXuat(sb: SupabaseClient, orgId: string) {
     "đọc dòng đơn chưa xuất"
   )
   const { dong: ds } = dungDongDat(r.rows, dong)
-  return { soDon: r.rows.length, conLai: ds.reduce((s, l) => s + l.tien - l.daXuat, 0), thieu: r.truncated }
+  const ngay = r.rows.map((o) => String(o.order_date).slice(0, 10)).sort()
+  return {
+    soDon: r.rows.length,
+    conLai: ds.reduce((s, l) => s + chuaXuatDong(l), 0),
+    tu: ngay[0] ?? null,
+    den: ngay[ngay.length - 1] ?? null,
+    thieu: r.truncated,
+  }
 }

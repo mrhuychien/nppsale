@@ -16,7 +16,7 @@ import { HangKpi, KhoiDanhSach, HangSoNhanh, CongTacDoan, KhungCho, KhongCoSo, L
 import { BieuDoCot } from "./bieu-do"
 import { useNap, nhoTam, layDanhMuc, tenGiaTri } from "./dung-chung"
 import { createClient } from "@/lib/supabase/client"
-import { kyTheoMa, soNgay, doHat, chiaThoiGian, khoaThoiGian, tenKy, congNgay } from "@/lib/bao-cao/ky"
+import { kyTheoMa, soNgay, doHat, chiaThoiGian, khoaThoiGian, tenKy, congNgay, cuaSoNap } from "@/lib/bao-cao/ky"
 import { lienKetMan, MAC_DINH_MAN } from "@/lib/bao-cao/trang-thai"
 import { congBan, gomBan, maChuaCoGiaVon, CHUA_CO, type DongBan } from "@/lib/bao-cao/cong"
 import { soGon, soDu, phanTram, soSanh, duongXuHuong } from "@/lib/bao-cao/so"
@@ -40,6 +40,9 @@ export function ManTongQuan() {
   const ky = kyTheoMa(st.ky, homNay, st.ca, st.cb)
   const { a, b } = ky
   const cmp = st.soSanh ? ky.cmp : null
+  // Kỳ này và kỳ trước nạp RIÊNG — giá vốn bình quân không trộn hai kỳ (cùng số với màn Bán hàng, `cuaSoNap`).
+  const cs = cuaSoNap(ky, null, cmp)
+  const kt = cs.truoc
   const len = soNgay(a, b) + 1
   const [tab, setTab] = useState<(typeof TOP)[number]["id"]>("prod")
 
@@ -50,21 +53,22 @@ export function ManTongQuan() {
           // Danh mục và số đọc SONG SONG — hàm nạp chỉ đợi danh mục lúc tính.
           const dmP = layDanhMuc(orgId)
           const dmV = dmP.then((x) => x.dm)
-          const [ban, no, don, kho] = await Promise.all([
-            nhoTam(`ban|${orgId}|${cmp ? cmp[0] : a}|${b}`, () => napSoBan(sb, orgId, cmp ? cmp[0] : a, b, dmV)),
+          const [ban, banTruoc, no, don, kho] = await Promise.all([
+            nhoTam(`ban|${orgId}|${a}|${b}`, () => napSoBan(sb, orgId, a, b, dmV)),
+            kt ? nhoTam(`ban|${orgId}|${kt[0]}|${kt[1]}`, () => napSoBan(sb, orgId, kt[0], kt[1], dmV)) : null,
             nhoTam(`no|${orgId}|${homNay}`, () => napCongNo(sb, orgId, homNay, dmV)),
             napDonChuaXuat(sb, orgId),
             nhoTam(`kho|${orgId}|${homNay}`, () => napTonKho(sb, orgId, homNay, dmV)),
           ])
           const { dm, thieu } = await dmP
-          return { dm, ban, no, don, kho, thieu: thieu || ban.thieu || no.thieu || don.thieu || kho.thieu }
+          return { dm, ban, banTruoc: banTruoc?.dong || [], no, don, kho, thieu: thieu || ban.thieu || !!banTruoc?.thieu || no.thieu || don.thieu || kho.thieu }
         }
       : null,
-    `${orgId}|${a}|${b}|${cmp?.[0] ?? ""}`
+    `${orgId}|${a}|${b}|${kt ? kt.join() : ""}`
   )
 
-  // Giữ kỳ đang chọn khi sang màn khác.
-  const kyDi = { ky: st.ky, ca: st.ca, cb: st.cb }
+  // Giữ kỳ và công tắc so sánh đang chọn khi sang màn khác.
+  const kyDi = { ky: st.ky, ca: st.ca, cb: st.cb, soSanh: st.soSanh }
   const di = (url: string) => router.push(url)
 
   const vm = useMemo(() => {
@@ -72,7 +76,7 @@ export function ManTongQuan() {
     if (!d) return null
     const dm = d.dm
     const cur = d.ban.dong.filter((l) => l.ngay >= a && l.ngay <= b)
-    const prev = cmp ? d.ban.dong.filter((l) => l.ngay >= cmp[0] && l.ngay <= cmp[1]) : null
+    const prev = cmp ? [...d.ban.dong, ...d.banTruoc].filter((l) => l.ngay >= cmp[0] && l.ngay <= cmp[1]) : null
     const T = congBan(cur)
     const TP = prev ? congBan(prev) : null
     const nThieuGV = xemGiaVon ? maChuaCoGiaVon(cur, dm).length : 0
@@ -126,7 +130,9 @@ export function ManTongQuan() {
     const loSapHet = d.kho.lo.filter((l) => l.hsd && l.hsd <= hanTu).length
     const giaTriTon = d.kho.ton.reduce((s, x) => s + x.giaTri, 0)
     const oSo: OSoNhanh[] = [
-      { label: "Đơn đặt chưa xuất hoá đơn", value: `${soDu(d.don.soDon)} đơn`, sub: soGon(d.don.conLai), icon: ShoppingCart, mau: "violet", onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ky: "year", nguon: "ord", xem: "time", dao: [{ l: "Chưa xuất HĐ", v: "docs", f: { chuaXuat: true } }] })) },
+      /* ⚠ Mở ĐÚNG danh sách của ô: đơn Phiếu tạm mọi ngày → kỳ từ đơn sớm nhất tới đơn muộn nhất / hôm nay. Bản cũ mở
+         "Năm nay": đơn năm trước còn chờ có trong số đếm mà không có trong danh sách (rà báo cáo 09/10/2026). */
+      { label: "Đơn đặt chưa xuất hoá đơn", value: `${soDu(d.don.soDon)} đơn`, sub: soGon(d.don.conLai), icon: ShoppingCart, mau: "violet", onClick: () => di(lienKetMan("/bao-cao/ban-hang", { ...(d.don.tu ? { ky: "custom" as const, ca: d.don.tu, cb: d.don.den && d.don.den > homNay ? d.don.den : homNay } : { ky: "year" as const }), nguon: "ord", xem: "time", dao: [{ l: "Chưa xuất HĐ", v: "docs", f: { chuaXuat: true } }] })) },
       ...(xemGiaVon
         ? [{ label: "Giá trị tồn kho", value: soGon(giaTriTon), sub: `${d.kho.ton.length} mặt hàng còn hàng`, icon: Warehouse, mau: "amber", onClick: () => di(lienKetMan("/bao-cao/kho", {})) } satisfies OSoNhanh]
         : []),

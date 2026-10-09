@@ -316,7 +316,7 @@ export function ManKho() {
           loai={loai}
           loc={st.loc}
           luaChon={(k) => luaChonLoc(dm, k)}
-          onLoc={(k, vals) => dat({ loc: { ...st.loc, [k]: vals } })}
+          onLoc={bc.datLoc}
           onBoHet={() => dat({ loc: {} })}
           capNhat={nap.capNhat}
           onTaiLai={() => (nap.taiLai(), bd.taiLai())}

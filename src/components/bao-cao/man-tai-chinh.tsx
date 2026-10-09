@@ -60,7 +60,8 @@ export function ManTaiChinh() {
             const [x, y] = E.khoang || [a, b]
             const kind = String(E.co.kind)
             if (kind === "thu") return { loai: "docs" as const, thu: (await napKhoanThu(sb, x, y)).ds.filter((t) => !E.co.hinhThuc || t.hinhThuc === E.co.hinhThuc || (E.co.hinhThuc === "khac" && t.hinhThuc !== "Tiền mặt")), chi: [] }
-            const chi = (await napPhieuChi(sb, orgId, x, y, kind !== "chiPhi")).ds.filter((c) => (kind === "ncc" ? c.loai === "ncc" : c.loai === "chi" && (!E.co.nhom || c.nhom === E.co.nhom)))
+            // "chi" (dòng "− Chi phí" của Dòng tiền) theo NGÀY TRẢ, mọi nhóm — cùng cách cộng của `finance_cash_flow`.
+            const chi = (await napPhieuChi(sb, orgId, x, y, kind !== "chiPhi", kind === "chi")).ds.filter((c) => (kind === "ncc" ? c.loai === "ncc" : c.loai === "chi" && (!E.co.nhom || c.nhom === E.co.nhom)))
             return { loai: "docs" as const, thu: [], chi }
           }
           if (tab === "pl") {
@@ -93,8 +94,12 @@ export function ManTaiChinh() {
   const vm = useMemo(() => {
     const d = nap.data
     if (!d) return null
-    const sangBan = () => router.push(lienKetMan("/bao-cao/ban-hang", { ky: st.ky, ca: st.ca, cb: st.cb, xem: "time" }))
-    const chiPhi = (nhom?: string) => () => daoThem({ l: nhom || "Chi phí", v: "docs", f: { kind: "chiPhi", ...(nhom ? { nhom } : {}), range: [a, b] } })
+    /* ⚠ "Theo tháng": bảng là số NĂM NAY (cột Cộng từ 01/01) → bấm dòng mở đúng kỳ ấy, không phải kỳ đang ẩn trên thanh
+       (bản cũ: bấm "− Chi phí" ra chứng từ của tháng này mà nhãn ghi "Năm 2026" — rà báo cáo 09/10/2026). */
+    const [ra, rb]: [string, string] = theoThang ? [`${homNay.slice(0, 4)}-01-01`, homNay] : [a, b]
+    const sangBan = () =>
+      router.push(lienKetMan("/bao-cao/ban-hang", theoThang ? { ky: "year", xem: "time" } : { ky: st.ky, ca: st.ca, cb: st.cb, xem: "time" }))
+    const chiPhi = (nhom?: string) => () => daoThem({ l: nhom || "Chi phí", v: "docs", f: { kind: "chiPhi", ...(nhom ? { nhom } : {}), range: [ra, rb] } })
     if (d.loai === "docs") {
       type D = DongBang & { id: string; ngay: string; doiTuong: string; dien: string; tien: number; mo: ChungTuMo | null }
       const ds: D[] = [
@@ -317,7 +322,7 @@ export function ManTaiChinh() {
       ),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nap.data, a, b, X, xemGiaVon])
+  }, [nap.data, a, b, X, xemGiaVon, theoThang, homNay])
 
   const dao: MatDao[] = [{ label: `Tài chính · ${TEN_TAB[tab]}`, onClick: () => veBuoc(0) }, ...st.dao.map((s, i) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
   const laDocs = E.xem === "docs"
@@ -330,7 +335,9 @@ export function ManTaiChinh() {
     const [x, y] = laDocs ? E.khoang || [a, b] : theoThang ? [`${homNay.slice(0, 4)}-01-01`, homNay] : [a, b]
     try {
       const sb = createClient()
-      const [thu, chi, { dm }] = await Promise.all([napKhoanThu(sb, x, y), napPhieuChi(sb, orgId, x, y, true), layDanhMuc(orgId)])
+      // Sheet Chi khớp dòng "− Chi phí" của bảng: Dòng tiền = chi đã trả theo NGÀY TRẢ, mọi nhóm; Kết quả kinh doanh =
+      // mọi phiếu chi theo ngày chi (cả chưa trả), bỏ nhóm giá vốn.
+      const [thu, chi, { dm }] = await Promise.all([napKhoanThu(sb, x, y), napPhieuChi(sb, orgId, x, y, tab === "cash", tab === "cash"), layDanhMuc(orgId)])
       xuatExcel(tenFile, tongHop, [
         { ten: "Thu tiền", rows: chiTietThu(thu.ds, dm) },
         { ten: "Chi", rows: chiTietChi(chi.ds) },

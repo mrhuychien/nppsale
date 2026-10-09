@@ -25,9 +25,12 @@ export interface Nap<T> {
 /**
  * Nạp số theo `khoa`. Đổi khoá → nạp lại; lượt cũ về muộn thì bỏ (không đè số mới).
  * ⚠ Lỗi thì GIỮ lỗi, không trả số 0 (spec 2.9: "Không hiện số 0 thay cho lỗi").
+ * ⚠ SỐ CỦA KHOÁ CŨ KHÔNG TRẢ RA: đổi kỳ (khoá đổi) thì `data` = null tới khi số của kỳ mới về — màn hiện khung chờ.
+ *   Bản cũ giữ số kỳ cũ rồi màn cộng lại theo kỳ mới: chuyển Tháng này → Năm nay, vài giây đầu thẻ chỉ cộng 2 tháng
+ *   đã nạp, bấm Xuất lúc ấy ra file sai (rà báo cáo 09/10/2026). Tải lại (↻, cùng khoá) thì vẫn giữ số đang xem.
  */
 export function useNap<T>(chay: (() => Promise<T>) | null, khoa: string): Nap<T> {
-  const [data, setData] = useState<T | null>(null)
+  const [kq, setKq] = useState<{ khoa: string; data: T } | null>(null)
   const [loi, setLoi] = useState<string | null>(null)
   const [dangTai, setDangTai] = useState(true)
   const [capNhat, setCapNhat] = useState("")
@@ -44,7 +47,7 @@ export function useNap<T>(chay: (() => Promise<T>) | null, khoa: string): Nap<T>
     f()
       .then((x) => {
         if (huy) return
-        setData(x)
+        setKq({ khoa, data: x })
         setCapNhat(gioPhut())
       })
       .catch((e) => {
@@ -62,7 +65,7 @@ export function useNap<T>(chay: (() => Promise<T>) | null, khoa: string): Nap<T>
     boNhoTam.clear()
     setLan((n) => n + 1)
   }, [])
-  return { data, loi, dangTai, capNhat, taiLai }
+  return { data: kq && kq.khoa === khoa ? kq.data : null, loi, dangTai, capNhat, taiLai }
 }
 
 const boNhoDanhMuc = new Map<string, { luc: number; p: Promise<KetQuaDanhMuc> }>()

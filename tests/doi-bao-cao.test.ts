@@ -168,15 +168,17 @@ const dhd = (id: string, inv: string, sp: string, unit: string, cf: number, q: n
 describe("dungDongBan — phân bổ tiền HĐ / phiếu trả, giá vốn, chênh", () => {
   const base = { giaVonCoSo: new Map([["P1", 7000], ["P5", 9000]]), giaVonTra: new Map(), nvTra: new Map<string, string>(), dm: dmMau(), tra: [], dongTra: [] }
 
-  it("Σ tiền dòng của HĐ = total (gồm VAT, sau giảm cả đơn); giảm đơn chỉ ở dòng đầu", () => {
+  it("Σ tiền dòng của HĐ = total (gồm VAT, sau giảm cả đơn); giảm đơn CHIA theo tỉ lệ dòng, Σ = giảm của HĐ", () => {
     const { dong } = dungDongBan({
       ...base,
       hoaDon: [hd("H2", 445000, 400000)],
       dongHd: [dhd("l1", "H2", "P5", "lon", 1, 20, 15000), dhd("l2", "H2", "P5", "lon", 1, 10, 15000)],
     })
     expect(dong.reduce((s, l) => s + l.tien, 0)).toBe(445000)
-    expect(dong[0].giamDon).toBe(50000)
-    expect(dong[1].giamDon).toBeUndefined()
+    // ⚠ Rà báo cáo 09/10/2026: gắn cả 50.000 vào dòng đầu thì lọc hàng của dòng sau ra 0 — nay 300k : 150k.
+    expect(dong[0].giamDon).toBe(33333)
+    expect(dong[1].giamDon).toBe(16667)
+    expect(dong.reduce((s, l) => s + (l.giamDon || 0), 0)).toBe(50000)
     // chênh trước thuế, không trộn giảm giá đơn: 30 × (15.000 − 14.000)
     expect(dong.reduce((s, l) => s + (l.tienTT! - l.niemYet!), 0)).toBe(30000)
     // giá vốn = SL cơ sở × bình quân

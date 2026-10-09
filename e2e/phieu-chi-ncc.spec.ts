@@ -57,9 +57,12 @@ const chonNcc = async (page: Page, hop: ReturnType<Page["getByRole"]>) => {
   await page.getByTestId("search-select-xo").filter({ visible: true }).getByRole("button", { name: /Vinamilk/ }).click()
 }
 
-test("màn Chi phí: Lập phiếu chi → Trả NCC → chọn NCC là xong; tiền tự trừ nợ cũ nhất, dư thành trả trước; xem, huỷ", async ({ page }) => {
+test("màn Phiếu chi: Lập phiếu chi → Trả NCC → chọn NCC là xong; tiền tự trừ nợ cũ nhất, dư thành trả trước; xem, huỷ", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/finance/expenses")
+  // Tên màn / mục menu là "Phiếu chi" — cạnh "Phiếu thu" (chủ nhà 09/10/2026).
+  await expect(page.getByRole("main").getByRole("heading", { name: "Phiếu chi", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Phiếu chi", exact: true }).first()).toHaveAttribute("href", "/finance/expenses")
   await page.getByRole("button", { name: "Lập phiếu chi" }).filter({ visible: true }).first().click()
 
   const hop = page.getByRole("dialog")

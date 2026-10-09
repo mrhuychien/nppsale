@@ -12,6 +12,7 @@ import { chungTuCuaNo, ghepChungTu, NHAN_LOAI_NO_NCC } from "@/lib/payables/so-n
 import { lichSuGiaoDich } from "@/lib/suppliers/chi-tiet"
 import { gopPhanPhieuChiNcc, type PhieuChi } from "@/lib/bao-cao/nap-tien"
 import { duocVaoTrang, mucChaCua } from "@/lib/nav/nav-permission"
+import { getFeature } from "@/lib/permissions-features"
 
 /**
  * PHIẾU CHI TRẢ NHÀ CUNG CẤP (mig 242).
@@ -373,6 +374,23 @@ describe("màn hình: lập / xem / huỷ phiếu chi trả NCC", () => {
     expect(ds.match(/nhanTrangThaiNo\((p|xem), chungTu\)/g)?.length).toBe(3)
     const ct = doc("src/app/(dashboard)/payables/[id]/page.tsx")
     expect(ct).toContain('const canRecordPayment = user && ["owner", "accountant"].includes(user.role) && payable.status !== "paid" && balance > 0')
+  })
+})
+
+describe("tên 'Phiếu chi' (chủ nhà 09/10/2026: đổi menu 'Chi phí' → 'Phiếu chi', cạnh 'Phiếu thu')", () => {
+  it("thanh bên, tiêu đề thanh trên, ô Trang chủ, danh mục phân quyền cùng gọi 'Phiếu chi'", () => {
+    expect(doc("src/components/layout/sidebar.tsx")).toContain('{ label: "Phiếu chi", href: "/finance/expenses", icon: Wallet },')
+    expect(doc("src/components/layout/header.tsx")).toContain('"/finance/expenses": "Phiếu chi",')
+    expect(doc("src/app/(dashboard)/home/page.tsx")).toContain('{ label: "Phiếu chi", href: "/finance/expenses",')
+    expect(getFeature("finance.expenses")?.label).toBe("Phiếu chi")
+  })
+
+  it("đầu trang danh sách + trống: 'Phiếu chi'; đếm cả phiếu trả NCC khi nói 'chưa có'", () => {
+    const s = doc("src/app/(dashboard)/finance/expenses/page.tsx")
+    expect(s).toContain('<PageHeader className="max-lg:hidden" title="Phiếu chi"')
+    expect(s).toMatch(/mobileHead=\{\{\s+title: "Phiếu chi",/)
+    expect(s).toContain('title={dongChi.length === 0 ? "Chưa có phiếu chi" : "Không có phiếu chi khớp bộ lọc"}')
+    expect(doc("src/components/bao-cao/xem-nhanh.tsx")).toContain('label: "Mở danh sách phiếu chi", href: "/finance/expenses"')
   })
 })
 

@@ -117,7 +117,7 @@ const TILES: Tile[] = [
   { label: "Công nợ KH", href: "/receivables", icon: CreditCard, color: "red" },
   { label: "Công nợ NCC", href: "/payables", icon: CreditCard, color: "rose" },
   { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt, color: "emerald" },
-  { label: "Chi phí", href: "/finance/expenses", icon: Wallet, color: "amber" },
+  { label: "Phiếu chi", href: "/finance/expenses", icon: Wallet, color: "amber" },
   { label: "Hoa hồng", href: "/commissions", icon: Award, color: "yellow" },
 
   // Báo cáo & Phân tích

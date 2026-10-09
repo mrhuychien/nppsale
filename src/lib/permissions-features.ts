@@ -104,7 +104,7 @@ export const FEATURES: FeatureDef[] = [
   { key: "receivables.by_rep", label: "Công nợ theo nhân viên", module: "receivables", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "finance.cash_receipts", label: "Phiếu thu", module: "receivables", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "finance.opening_balances", label: "Số dư đầu kỳ", module: "receivables", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
-  { key: "finance.expenses", label: "Chi phí", module: "settings", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
+  { key: "finance.expenses", label: "Phiếu chi", module: "settings", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
   { key: "invoices", label: "Hóa đơn bán", module: "invoices", group: "Kế toán" },
   { key: "einvoice.config", label: "Cấu hình hoá đơn điện tử (MISA)", module: "settings", group: "Kế toán", inherits: true, defaultRoles: BACK_OFFICE },
 

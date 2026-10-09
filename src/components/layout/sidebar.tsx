@@ -119,7 +119,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "CN theo NV", href: "/receivables/by-rep", icon: UserCog },
       { label: "Công nợ đầu kỳ", href: "/finance/opening-balances", icon: FileSpreadsheet },
       { label: "Phiếu thu", href: "/finance/cash-receipts", icon: Receipt },
-      { label: "Chi phí", href: "/finance/expenses", icon: Wallet },
+      { label: "Phiếu chi", href: "/finance/expenses", icon: Wallet },
       { label: "Hóa đơn điện tử", href: "/invoices", icon: FileText },
       { label: "Cấu hình HĐ điện tử", href: "/settings/einvoice", icon: Settings },
     ],

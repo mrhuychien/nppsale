@@ -58,7 +58,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/analytics/performance": "Phân tích hiệu suất",
   "/finance": "Tài chính",
   "/finance/cash-receipts": "Phiếu thu",
-  "/finance/expenses": "Chi phí",
+  "/finance/expenses": "Phiếu chi",
   "/sales": "Bán hàng",
   "/sales/visits": "Lịch sử đi tuyến",
   "/sales/pjp": "Lộ trình viếng thăm",

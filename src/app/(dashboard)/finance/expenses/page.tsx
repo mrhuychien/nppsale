@@ -1,7 +1,8 @@
 "use client"
 
 /**
- * CHI PHÍ — danh sách phiếu chi.
+ * PHIẾU CHI — danh sách phiếu chi (đường dẫn cũ /finance/expenses). Menu, tiêu đề tên "Phiếu chi" — cạnh "Phiếu thu",
+ *   đúng cách chủ nhà gọi ("Trong quỹ tiền mặt có phiếu thu và phiếu chi"; đổi tên: chủ nhà 09/10/2026 "có").
  *
  * ⚠ PHIẾU CHI CÓ HAI LOẠI (mig 242, chủ nhà 09/10/2026: "phiếu chi thêm phần chi cho ncc và chọn NCC là xong … có
  *   thể chi trả ncc 1 cục 200 triệu, nhiều hóa đơn nợ"): "Chi phí" (bảng `expenses`, vào lãi lỗ) và "Trả NCC"
@@ -532,7 +533,7 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader className="max-lg:hidden" title="Chi phí" descriptionDesktopOnly description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
+      <PageHeader className="max-lg:hidden" title="Phiếu chi" descriptionDesktopOnly description={`${formatDate(dateFrom)} → ${formatDate(dateTo)}`}>
         {nutTao}
       </PageHeader>
 
@@ -573,7 +574,7 @@ export default function ExpensesPage() {
         advanced={showAdvanced && filterActive("date") ? dateFields : null}
         totals={{ label: "Tổng chi", countText: `${filtered.length} phiếu chi`, total: formatCurrency(totals.total) }}
         mobileHead={{
-          title: "Chi phí",
+          title: "Phiếu chi",
           search,
           onSearch: setSearch,
           searchPlaceholder: "Tìm mô tả, mã tham chiếu…",
@@ -602,8 +603,9 @@ export default function ExpensesPage() {
         empty={
           <EmptyState
             icon={<Wallet className="h-8 w-8 text-muted-foreground" />}
-            title={expenses.length === 0 ? "Chưa có chi phí" : "Không có chi phí khớp bộ lọc"}
-            description={expenses.length === 0 ? "Thêm chi phí đầu tiên" : "Thử đổi khoảng thời gian hoặc danh mục"}
+            /* Đếm cả phiếu trả NCC: kỳ chỉ có phiếu trả NCC mà đang lọc ra hết thì là "không khớp", không phải "chưa có". */
+            title={dongChi.length === 0 ? "Chưa có phiếu chi" : "Không có phiếu chi khớp bộ lọc"}
+            description={dongChi.length === 0 ? "Bấm Lập phiếu chi để ghi khoản chi đầu tiên" : "Thử đổi khoảng thời gian hoặc danh mục"}
           />
         }
         pg={pg}

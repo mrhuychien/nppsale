@@ -150,7 +150,7 @@ async function napNoiDung(ct: ChungTuMo): Promise<NoiDung> {
         ],
         dong: [],
         tong: soDu(Number(e.amount || 0)),
-        nut: [{ label: "Mở danh sách chi phí", href: "/finance/expenses", chinh: true }],
+        nut: [{ label: "Mở danh sách phiếu chi", href: "/finance/expenses", chinh: true }],
       }
     }
   }

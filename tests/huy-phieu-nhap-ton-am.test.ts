@@ -12,8 +12,10 @@ import { hamDangChay } from "./helpers/sql-ham-dang-chay"
 describe("cancel_purchase_invoice (bản đang chạy)", () => {
   const h = hamDangChay().get("public.cancel_purchase_invoice(UUID,TEXT)")
 
-  it("là bản mig 238", () => {
-    expect(h?.file).toBe("238_huy_phieu_nhap_ton_am.sql")
+  // Mig 242 chép nguyên bản 238 và thêm một khối (phần phiếu chi trả NCC tự trừ vào phiếu → trả về "trả trước") —
+  // các luật bên dưới vẫn phải còn nguyên.
+  it("là bản mig 242 (= 238 + trả phần phiếu chi về trả trước)", () => {
+    expect(h?.file).toBe("242_phieu_chi_tra_ncc.sql")
   })
 
   it("chỉ chặn HANG_DA_XUAT khi NPP chưa cho phép tồn âm; câu báo chỉ cách gỡ", () => {

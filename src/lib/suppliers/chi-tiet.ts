@@ -181,6 +181,17 @@ export interface PhieuChiTom {
   paid_at: string | null
 }
 
+/** Phiếu chi trả NCC (mig 242) — MỘT dòng giao dịch dù tiền đã chia vào nhiều khoản nợ. */
+export interface PhieuChiNccTom {
+  id: string
+  code: string
+  paid_date: string | null
+  amount: number | string | null
+  method: string | null
+  status: string | null
+  created_at?: string | null
+}
+
 export type LoaiGiaoDich = "nhap" | "tra" | "chi"
 export type ToneGiaoDich = "success" | "warning" | "danger" | "secondary"
 
@@ -206,10 +217,16 @@ const trangThai = (s: string | null) => NHAN_TRANG_THAI[s ?? ""] ?? { nhan: s ||
 
 const NHAN_HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", offset: "Cấn trừ" }
 
+/**
+ * ⚠ `chi` là các lần trả THẲNG vào từng khoản nợ (Ghi trả NCC). Phần tiền của phiếu chi NCC đã chia vào khoản nợ thì
+ *   nơi gọi bỏ khỏi `chi` — phiếu hiện một dòng ở `phieuChiNcc` (chủ nhà 09/10/2026: "phiếu chi xuất hiện xong giao
+ *   dịch NCC là xong").
+ */
 export function lichSuGiaoDich(
   nhap: readonly PhieuNhapTom[],
   tra: readonly PhieuTraTom[],
-  chi: readonly PhieuChiTom[]
+  chi: readonly PhieuChiTom[],
+  phieuChiNcc: readonly PhieuChiNccTom[] = []
 ): GiaoDichNcc[] {
   const out: GiaoDichNcc[] = []
   for (const p of nhap) {
@@ -254,6 +271,21 @@ export function lichSuGiaoDich(
       trangThai: "Đã chi",
       tone: "success",
       href: `/payables/${c.payable_id}`,
+      ngay,
+    })
+  }
+  for (const p of phieuChiNcc) {
+    const ngay = sach(p.paid_date) || sach(p.created_at)
+    const huy = p.status === "cancelled"
+    out.push({
+      id: `pcn-${p.id}`,
+      loai: "chi",
+      ma: p.code,
+      meta: ["Phiếu chi trả NCC", NHAN_HINH_THUC[p.method ?? ""] ?? "", ngay ? formatDate(ngay) : ""].filter(Boolean).join(" · "),
+      soTien: Number(p.amount) || 0,
+      trangThai: huy ? "Đã huỷ" : "Đã chi",
+      tone: huy ? "danger" : "success",
+      href: `/finance/phieu-chi-ncc/${p.id}`,
       ngay,
     })
   }

@@ -298,6 +298,7 @@ const KHONG_TAO_MOI: Record<string, string> = {
   "src/components/customers/tao-khach-dien-thoai.tsx#tk-ward": "danh mục phường / xã cố định",
   "src/components/customers/tao-khach-dien-thoai.tsx#tk-group": "nhóm khách — không có form tạo nhanh",
   "src/components/suppliers/merge-supplier-dialog.tsx#gop-ncc-vao": "gộp vào NCC ĐÃ CÓ — tạo NCC mới để gộp là vô nghĩa",
+  "src/components/finance/phieu-chi-ncc.tsx#pc-ncc": "phiếu chi trả nợ NCC ĐÃ CÓ (mig 242) — NCC vừa tạo chưa nợ đồng nào",
 }
 
 describe("mọi ô chọn có tìm (trừ bán hàng / POS) có dòng “+ Tạo mới”, gác theo quyền", () => {

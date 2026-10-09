@@ -209,14 +209,16 @@ export default function PayableDetailPage() {
   const balance = payable.amount - payable.paid
   const statusConfig = PAYABLE_STATUS_MAP[payable.status as PayableStatus] || { label: payable.status, variant: "outline" as const }
 
-  const canRecordPayment = user && ["owner", "accountant"].includes(user.role) && payable.status !== "paid"
+  /* ⚠ Còn lại ≤ 0 (dòng âm của phiếu trả NCC, dòng tiền trả trước của phiếu chi NCC — mig 242) thì không có gì để
+     trả: máy chủ chặn OVERPAY với mọi số dương, nên không hiện khung ghi trả / nút đánh quá hạn. */
+  const canRecordPayment = user && ["owner", "accountant"].includes(user.role) && payable.status !== "paid" && balance > 0
   const canVerify = user && ["owner", "accountant"].includes(user.role)
   const canEdit = user && ["owner", "accountant"].includes(user.role)
   const canOverrideStatus = user && ["owner", "accountant"].includes(user.role)
   const canDelete = user && user.role === "owner" && hasPermission(user.role, "receivables", "delete") && payable.paid === 0
 
   const overrides: { status: StatusOverride; label: string; icon: React.ComponentType<{ className?: string }>; show: boolean }[] = [
-    { status: "overdue", label: "Đánh dấu quá hạn", icon: AlertTriangle, show: ["open", "partial"].includes(payable.status) },
+    { status: "overdue", label: "Đánh dấu quá hạn", icon: AlertTriangle, show: ["open", "partial"].includes(payable.status) && balance > 0 },
     // ⚠ Đã thu / đã trả một phần thì "mở" là sai: trạng thái phải là
     //   `partial`. Chỉ cho đặt lại khi chưa có đồng nào (paid = 0).
     { status: "open", label: "Đặt lại trạng thái mở", icon: RotateCcw, show: payable.status !== "open" && payable.status !== "paid" && Number(payable.paid || 0) === 0 },

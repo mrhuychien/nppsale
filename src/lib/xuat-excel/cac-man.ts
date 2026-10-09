@@ -342,7 +342,7 @@ export interface PhieuChiXuat {
   created_by?: string | null
   category?: { name?: string | null; bucket?: string | null } | null
 }
-export const NHOM_CHI: Record<string, string> = { cogs: "Giá vốn", operating: "Vận hành", hr: "Nhân sự", financial: "Tài chính", tax: "Thuế", other: "Khác" }
+export const NHOM_CHI: Record<string, string> = { cogs: "Giá vốn", operating: "Vận hành", hr: "Nhân sự", financial: "Tài chính", tax: "Thuế", other: "Khác", ncc: "Trả NCC" }
 export const HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", ewallet: "Ví điện tử" }
 
 /** Một sheet — khoản chi không có dòng hàng. */

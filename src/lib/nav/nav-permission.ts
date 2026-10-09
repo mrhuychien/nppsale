@@ -263,6 +263,8 @@ export const NAV_TIEN_TO: ReadonlyArray<readonly [string, string]> = [
   ["/purchasing/invoices/", "/purchasing/invoices"],
   ["/payables/", "/payables"],
   ["/finance/expenses/", "/finance/expenses"],
+  // Phiếu chi trả NCC (mig 242) nằm trong danh sách phiếu chi của màn Chi phí — cùng quyền với màn ấy.
+  ["/finance/phieu-chi-ncc/", "/finance/expenses"],
   ["/receivables/by-rep/", "/receivables/by-rep"],
   ["/hr/", "/hr"],
   ["/settings/users/", "/settings/users"],

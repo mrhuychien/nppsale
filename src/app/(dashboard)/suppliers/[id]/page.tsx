@@ -31,7 +31,9 @@ import Link from "@/components/ui/link"
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from "@/components/ui/table"
-import { FileText, Undo2, Pencil, CreditCard, History, Package, CheckCircle2 } from "lucide-react"
+import { FileText, Undo2, Pencil, CreditCard, History, Package, CheckCircle2, Wallet } from "lucide-react"
+import { PhieuChiNccDialog } from "@/components/finance/phieu-chi-ncc"
+import { docPhieuChiCuaNcc, duocChiTraNcc, type PhieuChiNcc } from "@/lib/payables/phieu-chi-ncc"
 import { SupplierEditSheet } from "@/components/suppliers/supplier-edit-sheet"
 import { SupplierDangerZone } from "@/components/suppliers/supplier-danger-zone"
 import { MergeSupplierDialog } from "@/components/suppliers/merge-supplier-dialog"
@@ -81,6 +83,9 @@ export default function SupplierDetailPage() {
   const [phieuNhap, setPhieuNhap] = useState<PhieuNhapTom[]>([])
   const [phieuTra, setPhieuTra] = useState<PhieuTraTom[]>([])
   const [phieuChi, setPhieuChi] = useState<PhieuChiTom[]>([])
+  /** Phiếu chi trả NCC (mig 242) — mỗi phiếu MỘT dòng giao dịch, dù tiền đã chia vào nhiều khoản nợ. */
+  const [phieuChiNcc, setPhieuChiNcc] = useState<PhieuChiNcc[]>([])
+  const [moChiNcc, setMoChiNcc] = useState(false)
   const [soSanPham, setSoSanPham] = useState(0)
   const [bangGia, setBangGia] = useState<DongBangGia[] | null>(null)
   const [bangGiaLoi, setBangGiaLoi] = useState<string | null>(null)
@@ -143,7 +148,7 @@ export default function SupplierDetailPage() {
       ...(((phuTrachRes.data as Array<{ user_id: string }> | null) ?? []).map((r) => r.user_id)),
       ...(s?.created_by ? [s.created_by] : []),
     ]))
-    const [chi, nguoi] = await Promise.all([
+    const [chi, nguoi, pcn, phanPcn] = await Promise.all([
       docTheoLoId<PhieuChiTom>(
         noRes.rows.map((r) => r.id),
         (lo, from, to) =>
@@ -154,8 +159,20 @@ export default function SupplierDetailPage() {
       userIds.length
         ? supabase.from("users").select("id, full_name").in("id", userIds)
         : Promise.resolve({ data: [] as Array<{ id: string; full_name: string }>, error: null }),
+      docPhieuChiCuaNcc(supabase, id),
+      /* Phần tiền của phiếu chi NCC đã chia vào từng khoản nợ — không hiện riêng từng phần (phiếu đã là một dòng).
+         ⚠ Cột mới (mig 242) đọc RIÊNG: sổ chưa chạy 242 thì lượt này hỏng → rỗng, các lần trả cũ hiện như trước. */
+      docTheoLoId<{ id: string }>(
+        noRes.rows.map((r) => r.id),
+        (lo, from, to) =>
+          supabase.from("payable_payments").select("id", { count: "exact" })
+            .in("payable_id", lo).not("supplier_payment_id", "is", null).order("id").range(from, to),
+        "phần tiền của phiếu chi NCC"
+      ).catch(() => [] as Array<{ id: string }>),
     ])
-    setPhieuChi(chi)
+    const phanCuaPhieu = new Set(phanPcn.map((p) => p.id))
+    setPhieuChi(chi.filter((c) => !phanCuaPhieu.has(c.id)))
+    setPhieuChiNcc(pcn)
     const ten = new Map(((nguoi.data as Array<{ id: string; full_name: string }> | null) ?? []).map((u) => [u.id, u.full_name]))
     setNguoiTao(s?.created_by ? ten.get(s.created_by) ?? null : null)
     const ds = ((phuTrachRes.data as Array<{ user_id: string }> | null) ?? [])
@@ -193,7 +210,7 @@ export default function SupplierDetailPage() {
     fetchData()
   }, [fetchData])
 
-  const lichSu = useMemo(() => lichSuGiaoDich(phieuNhap, phieuTra, phieuChi), [phieuNhap, phieuTra, phieuChi])
+  const lichSu = useMemo(() => lichSuGiaoDich(phieuNhap, phieuTra, phieuChi, phieuChiNcc), [phieuNhap, phieuTra, phieuChi, phieuChiNcc])
 
   if (authLoading || loading) return <Skeleton className="h-96" />
   if (!supplier) {
@@ -284,6 +301,12 @@ export default function SupplierDetailPage() {
           <Button variant="outline" className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto" onClick={() => diHoacMoPos(router.push, hrefTraNccMoi(supplier.id))}>
             <Undo2 className="h-4 w-4" /> Trả hàng NCC
           </Button>
+          {/* Phiếu chi trả NCC (chủ nhà 09/10/2026): chi một cục, tự trừ vào các khoản nợ cũ nhất. Chủ NPP / Kế toán. */}
+          {duocChiTraNcc(user?.role) && (
+            <Button variant="outline" className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto" onClick={() => setMoChiNcc(true)}>
+              <Wallet className="h-4 w-4" /> Chi trả NCC
+            </Button>
+          )}
           {canEdit && (
             <Button variant="outline" className="h-11 basis-full gap-2 rounded-xl sm:h-10 sm:basis-auto" onClick={() => moSua()}>
               <Pencil className="h-4 w-4" /> Sửa thông tin
@@ -331,7 +354,7 @@ export default function SupplierDetailPage() {
                 <div className="flex items-center gap-3 px-4 py-4 sm:px-6">
                   <h3 className="flex-1 text-base font-bold text-foreground">Lịch sử giao dịch</h3>
                   <span className="text-xs text-muted-foreground">
-                    {phieuNhap.length} phiếu nhập · {phieuTra.length} phiếu trả · {phieuChi.length} lần trả tiền
+                    {phieuNhap.length} phiếu nhập · {phieuTra.length} phiếu trả · {phieuChi.length + phieuChiNcc.length} lần trả tiền
                   </span>
                 </div>
                 {lichSu.length === 0 ? (
@@ -459,8 +482,13 @@ export default function SupplierDetailPage() {
               <Card className="rounded-2xl">
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">Công nợ nhà cung cấp</CardTitle>
-                  <span className="text-sm text-muted-foreground">
-                    Còn phải trả <b className="tabular-nums text-foreground">{formatCurrency(tongNo)}</b> · {noMo.length} khoản chưa xong
+                  <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                    <span>Còn phải trả <b className="tabular-nums text-foreground">{formatCurrency(tongNo)}</b> · {noMo.length} khoản chưa xong</span>
+                    {duocChiTraNcc(user?.role) && (
+                      <Button size="sm" className="h-9 gap-1.5" onClick={() => setMoChiNcc(true)}>
+                        <Wallet className="h-4 w-4" /> Chi trả NCC
+                      </Button>
+                    )}
                   </span>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -496,8 +524,9 @@ export default function SupplierDetailPage() {
                                 <TableCell className="text-right tabular-nums">{formatCurrency(r.paid)}</TableCell>
                                 <TableCell className={`text-right font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</TableCell>
                                 <TableCell>
-                                  <Badge variant={r.status === "paid" ? "success" : r.status === "overdue" ? "danger" : "warning"}>
-                                    {r.status === "paid" ? "Đã thanh toán" : r.status === "overdue" ? "Quá hạn" : r.status === "partial" ? "Thanh toán một phần" : "Chưa thanh toán"}
+                                  {/* Dòng trả trước (phiếu chi trả dư, mig 242) là tiền NCC đang giữ của mình — không phải khoản "chưa thanh toán". */}
+                                  <Badge variant={r.loai === "tra-truoc" || r.status === "paid" ? "success" : r.status === "overdue" ? "danger" : "warning"}>
+                                    {r.loai === "tra-truoc" ? "Tiền trả trước" : r.status === "paid" ? "Đã thanh toán" : r.status === "overdue" ? "Quá hạn" : r.status === "partial" ? "Thanh toán một phần" : "Chưa thanh toán"}
                                   </Badge>
                                 </TableCell>
                               </TableRow>
@@ -517,7 +546,7 @@ export default function SupplierDetailPage() {
                             <span className="min-w-0">
                               <span className="block truncate font-mono text-xs font-bold text-primary">{r.ma}</span>
                               <span className="block text-xs text-muted-foreground">
-                                {NHAN_LOAI_NO_NCC[r.loai]} · {formatDate(r.created_at)} · {r.status === "paid" ? "Đã thanh toán" : "Còn nợ"}
+                                {NHAN_LOAI_NO_NCC[r.loai]} · {formatDate(r.created_at)} · {r.loai === "tra-truoc" ? "Tiền trả trước" : r.status === "paid" ? "Đã thanh toán" : "Còn nợ"}
                               </span>
                             </span>
                             <span className={`shrink-0 text-right text-sm font-bold tabular-nums ${r.conLai < 0 ? "text-[#067647]" : ""}`}>{formatCurrency(r.conLai)}</span>
@@ -619,6 +648,14 @@ export default function SupplierDetailPage() {
           onOpenChange={setGopOpen}
           nguon={[{ id: supplier.id, name: supplier.name, code: supplier.code, is_active: supplier.is_active }]}
           onDone={(vao) => router.push(`/suppliers/${vao}`)}
+        />
+      )}
+      {duocChiTraNcc(user?.role) && (
+        <PhieuChiNccDialog
+          open={moChiNcc}
+          onOpenChange={setMoChiNcc}
+          coDinh={{ id: supplier.id, name: supplier.name }}
+          onSaved={fetchData}
         />
       )}
     </div>

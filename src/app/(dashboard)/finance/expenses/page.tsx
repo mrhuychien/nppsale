@@ -1,7 +1,12 @@
 "use client"
 
 /**
- * CHI PHÍ — danh sách.
+ * CHI PHÍ — danh sách phiếu chi.
+ *
+ * ⚠ PHIẾU CHI CÓ HAI LOẠI (mig 242, chủ nhà 09/10/2026: "phiếu chi thêm phần chi cho ncc và chọn NCC là xong … có
+ *   thể chi trả ncc 1 cục 200 triệu, nhiều hóa đơn nợ"): "Chi phí" (bảng `expenses`, vào lãi lỗ) và "Trả NCC"
+ *   (bảng `supplier_payments` — trả nợ, KHÔNG vào lãi lỗ; máy chủ tự trừ vào các khoản nợ cũ nhất). Danh sách gộp
+ *   cả hai; phiếu Trả NCC không xoá — huỷ qua RPC.
  *
  * ⚠ KHUÔN DANH SÁCH CHUNG (chủ nhà 27/09/2026: "Làm chung form hiển thị danh sách cho toàn
  *   bộ các danh sách theo form đang dùng cho Đơn hàng, hóa đơn, trả hàng"): dải trạng thái có
@@ -18,6 +23,7 @@ import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { LOC_CHI_PHI } from "@/lib/search/list-filter-fields"
 import { khoangKy, kyCuaKhoang } from "@/lib/orders/list-summary"
+import { homNayVNKey } from "@/lib/analytics/period"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate, truncationWarning } from "@/lib/supabase/aggregate"
 import { useAuth } from "@/hooks/use-auth"
@@ -67,6 +73,13 @@ import { napTenNguoi } from "@/lib/xuat-excel/nap"
 import { xuatChiPhi } from "@/lib/xuat-excel/cac-man"
 import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 import { duocXuatFile } from "@/lib/permissions"
+import Link from "@/components/ui/link"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { PhieuChiNccFields } from "@/components/finance/phieu-chi-ncc"
+import {
+  napPhieuChiNcc, lapPhieuChiNcc, huyPhieuChiNcc, thongBaoChiNcc, duocChiTraNcc, nhanHinhThucChiNcc,
+  dongChiCuaPhieuNcc, giaTriChiNccMoi, kiemPhieuChiNcc, type DongChi, type GiaTriChiNcc, type PhieuChiNcc,
+} from "@/lib/payables/phieu-chi-ncc"
 
 const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
   cogs: { label: "Giá vốn", color: "text-error bg-error-container" },
@@ -78,6 +91,11 @@ const BUCKET_LABEL: Record<ExpenseBucket, { label: string; color: string }> = {
 }
 
 const PAYMENT_LABEL: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", ewallet: "Ví điện tử" }
+
+/** Ô lọc danh mục "Trả NCC" — phiếu chi trả nhà cung cấp, không phải danh mục chi phí. */
+const LOC_TRA_NCC = "__tra_ncc__"
+const MAU_TRA_NCC = "text-[#067647] bg-[#ecfdf3]"
+const nhanNhom = (bucket: string) => (bucket === "ncc" ? "Trả NCC" : BUCKET_LABEL[bucket as ExpenseBucket]?.label || bucket)
 
 /** Dải trạng thái: đã trả / chưa trả. Khoá lưu là chữ, `is_paid` là cờ. */
 const TABS = [
@@ -91,7 +109,7 @@ const trangThaiChiPhi = (e: Expense) => (e.is_paid ? "paid" : "unpaid")
  * So sánh của các cột xếp được — xếp CẢ danh sách đã lọc rồi mới chia trang (`sapXepTaiCho`).
  * ⚠ Đừng để bảng tự xếp `trang`: đó là xếp trên 20 dòng đang xem.
  */
-const SO_SANH_CHI_PHI: BangSoSanh<Expense> = {
+const SO_SANH_CHI_PHI: BangSoSanh<DongChi> = {
   date: (a, b) => (a.expense_date ?? "").localeCompare(b.expense_date ?? ""),
   total: (a, b) => Number(a.amount) - Number(b.amount),
 }
@@ -102,9 +120,9 @@ export default function ExpensesPage() {
   const supabase = createClient()
   const { toast } = useToast()
 
-  const today = new Date()
-
   const [expenses, setExpenses] = useState<Expense[]>([])
+  /** Phiếu chi trả NCC còn hiệu lực trong kỳ (mig 242) — gộp vào danh sách thành dòng "Trả NCC". */
+  const [phieuNcc, setPhieuNcc] = useState<PhieuChiNcc[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -133,20 +151,31 @@ export default function ExpensesPage() {
   } = useListViewPrefs("expenses", DEFAULT_EXPENSE_COLUMNS, DEFAULT_EXPENSE_FILTERS, EXPENSE_COLUMNS, EXPENSE_FILTERS)
   const filterActive = (k: ExpenseFilterKey) => activeFilters.includes(k)
 
-  // Form state
-  const [formDate, setFormDate] = useState(today.toISOString().slice(0, 10))
+  // Form state — ⚠ ngày mặc định là HÔM NAY GIỜ VN (`toISOString` là giờ UTC: 0h–7h sáng ra ngày hôm qua).
+  const [formDate, setFormDate] = useState(() => homNayVNKey())
   const [formCategoryId, setFormCategoryId] = useState("")
   const [formAmount, setFormAmount] = useState("")
   const [formDescription, setFormDescription] = useState("")
   const [formReference, setFormReference] = useState("")
   const [formIsPaid, setFormIsPaid] = useState(true)
   const [formPaymentMethod, setFormPaymentMethod] = useState<string>("cash")
+  /* Loại phiếu chi đang lập: chi phí, hay trả NCC (chỉ Chủ NPP / Kế toán — như ghi trả tiền NCC). */
+  const [loaiPhieu, setLoaiPhieu] = useState<"chi-phi" | "ncc">("chi-phi")
+  const [nccForm, setNccForm] = useState<GiaTriChiNcc>(() => giaTriChiNccMoi())
+  const [dsNcc, setDsNcc] = useState<Array<{ id: string; name: string; code: string | null }>>([])
+  /* Huỷ phiếu chi trả NCC — hỏi lại, kèm lý do. */
+  const [huyNcc, setHuyNcc] = useState<PhieuChiNcc | null>(null)
+  const [lyDoHuy, setLyDoHuy] = useState("")
+  const [dangHuy, setDangHuy] = useState(false)
 
   const fetch = useCallback(async () => {
     /* Chờ đọc xong điều kiện lọc đã lưu — khỏi một lượt chưa lọc về sau đè lên. */
     if (!user?.org_id || !locNC.ready) return
     setLoading(true)
-    const [expensesRes, categoriesRes] = await Promise.all([
+    /* ⚠ Lọc nâng cao là điều kiện trên cột của `expenses` — đang lọc thì không gộp phiếu trả NCC (không áp được cùng
+       điều kiện), khỏi lẫn dòng không khớp vào danh sách đã lọc. */
+    const coLocNC = locNC.menhDe.length > 0
+    const [expensesRes, categoriesRes, nccRes] = await Promise.all([
       // Cộng tổng chi phí trong kỳ → phải lấy đủ.
       fetchAllForAggregate((from, to) => {
         let q = supabase
@@ -175,32 +204,40 @@ export default function ExpensesPage() {
         .eq("is_active", true)
         .order("bucket")
         .order("code"),
+      coLocNC ? Promise.resolve({ ds: [] as PhieuChiNcc[], loi: null, truncated: false }) : napPhieuChiNcc(supabase, user.org_id, dateFrom, dateTo),
     ])
     if (expensesRes.error) console.error("[finance/expenses] truy vấn lỗi:", expensesRes.error)
     const qErr = ([categoriesRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[finance/expenses] truy vấn lỗi:", qErr.message)
     setExpenses(expensesRes.rows as unknown as Expense[])
-    setLoadError(expensesRes.error ?? qErr?.message ?? null)
-    setTruncated(expensesRes.truncated)
+    setPhieuNcc(nccRes.ds)
+    setLoadError(expensesRes.error ?? qErr?.message ?? nccRes.loi ?? null)
+    setTruncated(expensesRes.truncated || nccRes.truncated)
     setCategories((categoriesRes.data as ExpenseCategory[]) || [])
     setLoading(false)
   }, [user?.org_id, dateFrom, dateTo, locNC.ready, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetch() }, [fetch])
 
+  /** Khoản chi phí + phiếu chi trả NCC, mới trước (theo ngày chi rồi lúc lập). */
+  const dongChi = useMemo<DongChi[]>(() => {
+    const ds: DongChi[] = [...expenses, ...phieuNcc.map(dongChiCuaPhieuNcc)]
+    return ds.sort((a, b) => (b.expense_date ?? "").localeCompare(a.expense_date ?? "") || (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+  }, [expenses, phieuNcc])
+
   /** Mọi bộ lọc TRỪ trạng thái — để dải trạng thái đếm đúng theo bộ lọc đang áp. */
   const locRows = useMemo(() => {
-    return expenses.filter((e) => {
-      if (categoryFilter !== "all" && e.category_id !== categoryFilter) return false
+    return dongChi.filter((e) => {
+      if (categoryFilter === LOC_TRA_NCC ? !e.ncc : categoryFilter !== "all" && e.category_id !== categoryFilter) return false
       if (search) {
-        if (!viMatchAllWords(search, e.reference_code, e.description, e.category?.name)) {
+        if (!viMatchAllWords(search, e.reference_code, e.description, e.category?.name, e.ncc ? "Trả NCC" : null, e.ncc?.supplier?.code, e.ncc?.reference_code)) {
           return false
         }
       }
       return true
     })
-  }, [expenses, categoryFilter, search])
+  }, [dongChi, categoryFilter, search])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: locRows.length, paid: 0, unpaid: 0 }
@@ -219,7 +256,7 @@ export default function ExpensesPage() {
     let paid = 0
     let unpaid = 0
     for (const e of filtered) {
-      const bucket = e.category?.bucket || "other"
+      const bucket = e.ncc ? "ncc" : e.category?.bucket || "other"
       byBucket[bucket] = (byBucket[bucket] || 0) + Number(e.amount)
       total += Number(e.amount)
       if (e.is_paid) paid += Number(e.amount)
@@ -234,7 +271,7 @@ export default function ExpensesPage() {
   const { pg, trang } = usePhanTrangTaiCho(daXep, JSON.stringify([status, categoryFilter, search, dateFrom, dateTo, locNC.key, sort]))
 
   const resetForm = () => {
-    setFormDate(today.toISOString().slice(0, 10))
+    setFormDate(homNayVNKey())
     setFormCategoryId(categories[0]?.id || "")
     setFormAmount("")
     setFormDescription("")
@@ -245,11 +282,67 @@ export default function ExpensesPage() {
 
   const openAdd = () => {
     resetForm()
+    setLoaiPhieu("chi-phi")
+    setNccForm(giaTriChiNccMoi())
     setDialogOpen(true)
+  }
+
+  // Danh sách NCC cho ô chọn — đọc khi lần đầu chọn loại "Trả NCC".
+  useEffect(() => {
+    if (!dialogOpen || loaiPhieu !== "ncc" || dsNcc.length > 0 || !user?.org_id) return
+    let huy = false
+    fetchAllForAggregate<{ id: string; name: string; code: string | null }>((from, to) =>
+      supabase.from("suppliers").select("id, name, code", { count: "exact" })
+        .eq("org_id", user.org_id).eq("is_active", true).order("name").order("id").range(from, to)
+    ).then((r) => {
+      if (r.error) console.error("[finance/expenses] đọc NCC lỗi:", r.error)
+      if (!huy) setDsNcc(r.rows)
+    })
+    return () => { huy = true }
+  }, [dialogOpen, loaiPhieu, user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Phiếu chi trả NCC — RPC `chi_tra_ncc` (máy chủ tự trừ vào các khoản nợ cũ nhất). */
+  const handleSaveNcc = async () => {
+    const loi = kiemPhieuChiNcc(nccForm)
+    if (loi) {
+      toast({ title: loi, variant: "destructive" })
+      return
+    }
+    setSaving(true)
+    try {
+      const k = await lapPhieuChiNcc(supabase, {
+        supplierId: nccForm.supplierId, amount: nccForm.amount, paidDate: nccForm.date,
+        method: nccForm.method, notes: nccForm.notes, reference: nccForm.reference,
+      })
+      toast(thongBaoChiNcc(k))
+      setDialogOpen(false)
+      fetch()
+    } catch (err) {
+      toast({ title: "Không lập được phiếu chi", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleHuyNcc = async () => {
+    if (!huyNcc) return
+    setDangHuy(true)
+    try {
+      await huyPhieuChiNcc(supabase, huyNcc.id, lyDoHuy)
+      toast({ title: `Đã huỷ phiếu chi ${huyNcc.code}`, description: "Các khoản nợ NCC đã về đúng số trước khi chi." })
+      setHuyNcc(null)
+      setXemId(null)
+      fetch()
+    } catch (err) {
+      toast({ title: "Không huỷ được phiếu chi", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setDangHuy(false)
+    }
   }
 
   const handleSave = async () => {
     if (!user?.org_id || !user.id) return
+    if (loaiPhieu === "ncc") return handleSaveNcc()
     if (!formAmount || !formDate) {
       toast({ title: "Vui lòng nhập số tiền và ngày", variant: "destructive" })
       return
@@ -305,21 +398,23 @@ export default function ExpensesPage() {
   // ⚠ XOÁ hẹp hơn SỬA: `expenses_delete` chỉ cho chủ + quản lý. Kế toán
   //   thấy nút xoá là bị mời bấm vào một thao tác chắc chắn bị từ chối.
   const canDelete = user && ["owner", "manager"].includes(user.role)
-  /* Chi phí tự sinh (`source_type`) không xoá tay — xoá ở chứng từ gốc. */
-  const xoaDuoc = (e: Expense) => !!canDelete && e.source_type === null
+  /* Chi phí tự sinh (`source_type`) không xoá tay — xoá ở chứng từ gốc. Phiếu trả NCC không xoá — huỷ (RPC). */
+  const xoaDuoc = (e: DongChi) => !!canDelete && e.source_type === null && !e.ncc
+  /* Lập / huỷ phiếu chi trả NCC: Chủ NPP, Kế toán (như ghi trả tiền NCC, mig 167 / 242). */
+  const chiNccDuoc = duocChiTraNcc(user?.role)
 
   const columns = useMemo(() => {
-    const cols: Array<DocColumn<Expense> & { k?: ExpenseColumnKey }> = [
+    const cols: Array<DocColumn<DongChi> & { k?: ExpenseColumnKey }> = [
       {
         key: "date", label: "Ngày chi", width: "120px",
         sortable: true,
         render: (e) => <DocCellDate date={formatDate(e.expense_date)} />,
       },
-      { k: "category", key: "category", label: "Danh mục", width: "minmax(160px,1fr)", render: (e) => <DocCellText>{e.category?.name}</DocCellText> },
+      { k: "category", key: "category", label: "Danh mục", width: "minmax(160px,1fr)", render: (e) => <DocCellText>{e.ncc ? "Trả nhà cung cấp" : e.category?.name}</DocCellText> },
       {
         k: "bucket", key: "bucket", label: "Phân loại", width: "120px",
         render: (e) => {
-          const m = BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket] ?? BUCKET_LABEL.other
+          const m = e.ncc ? { label: "Trả NCC", color: MAU_TRA_NCC } : BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket] ?? BUCKET_LABEL.other
           return <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${m.color}`}>{m.label}</span>
         },
       },
@@ -341,7 +436,7 @@ export default function ExpensesPage() {
       },
       {
         k: "status", key: "status", label: "Trạng thái", width: "120px",
-        render: (e) => (e.is_paid ? <Badge variant="success">Đã trả</Badge> : <Badge variant="warning">Chưa trả</Badge>),
+        render: (e) => (e.ncc ? <Badge variant="success">Đã chi</Badge> : e.is_paid ? <Badge variant="success">Đã trả</Badge> : <Badge variant="warning">Chưa trả</Badge>),
       },
       {
         key: "actions", label: "", width: "56px",
@@ -371,7 +466,9 @@ export default function ExpensesPage() {
    */
   const xuatExcel = async (): Promise<KetQuaXuat> => {
     const ten = await napTenNguoi(supabase, daXep.map((e) => e.created_by))
-    return { sheets: xuatChiPhi(daXep, ten), soPhieu: daXep.length, thieu: truncated }
+    // Phiếu trả NCC: danh mục "Trả nhà cung cấp", nhóm "Trả NCC" — không lẫn vào nhóm chi phí nào.
+    const dong = daXep.map((e) => (e.ncc ? { ...e, category: { name: "Trả nhà cung cấp", bucket: "ncc" } } : e))
+    return { sheets: xuatChiPhi(dong, ten), soPhieu: daXep.length, thieu: truncated }
   }
   const nutXuat = (cls?: string) => (
     <XuatExcelButton module="reports" tenTep="chi-phi" chuanBi={xuatExcel} disabled={loading || filtered.length === 0} className={cls} />
@@ -389,13 +486,14 @@ export default function ExpensesPage() {
     setDateTo(macDinh.to)
   }
   const activeFilterCount = (categoryFilter !== "all" ? 1 : 0) + (dateFrom !== macDinh.from || dateTo !== macDinh.to ? 1 : 0)
-  const xem = xemId ? expenses.find((e) => e.id === xemId) ?? null : null
+  const xem = xemId ? dongChi.find((e) => e.id === xemId) ?? null : null
 
   const categorySelect = (
     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
       <SelectTrigger aria-label="Danh mục" className="h-10 w-[180px] rounded-xl font-semibold"><SelectValue /></SelectTrigger>
       <SelectContent>
         <SelectItem value="all">Tất cả danh mục</SelectItem>
+        <SelectItem value={LOC_TRA_NCC}>Trả nhà cung cấp</SelectItem>
         {categories.map((c) => (
           <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
         ))}
@@ -416,11 +514,11 @@ export default function ExpensesPage() {
     <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
       <span>Đã trả <b className="tabular-data text-tertiary">{formatCurrency(totals.paid)}</b></span>
       <span>Chưa trả <b className="tabular-data text-[#b54708]">{formatCurrency(totals.unpaid)}</b></span>
-      {(Object.entries(totals.byBucket) as Array<[ExpenseBucket, number]>)
+      {Object.entries(totals.byBucket)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
         .map(([bucket, amount]) => (
-          <span key={bucket}>{BUCKET_LABEL[bucket]?.label || bucket} <b className="tabular-data text-on-surface">{formatCurrency(amount)}</b></span>
+          <span key={bucket}>{nhanNhom(bucket)} <b className="tabular-data text-on-surface">{formatCurrency(amount)}</b></span>
         ))}
     </p>
   )
@@ -428,7 +526,7 @@ export default function ExpensesPage() {
   const chips = TABS.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] ?? 0, accent: t.accent }))
   const nutTao = canEdit && (
     <Button onClick={openAdd}>
-      <Plus className="h-4 w-4 mr-1.5" /> Thêm chi phí
+      <Plus className="h-4 w-4 mr-1.5" /> Lập phiếu chi
     </Button>
   )
 
@@ -473,7 +571,7 @@ export default function ExpensesPage() {
           </>
         }
         advanced={showAdvanced && filterActive("date") ? dateFields : null}
-        totals={{ label: "Tổng chi phí", countText: `${filtered.length} khoản chi`, total: formatCurrency(totals.total) }}
+        totals={{ label: "Tổng chi", countText: `${filtered.length} phiếu chi`, total: formatCurrency(totals.total) }}
         mobileHead={{
           title: "Chi phí",
           search,
@@ -520,9 +618,9 @@ export default function ExpensesPage() {
             onOpen={(e) => setXemId(e.id)}
             card={(e) => ({
               accent: e.is_paid ? "#22c55e" : "#fdb022",
-              title: e.category?.name || e.description || "Chi phí",
+              title: e.ncc ? `Trả NCC · ${e.ncc.supplier?.name || "—"}` : e.category?.name || e.description || "Chi phí",
               total: formatCurrency(e.amount),
-              meta: [BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket]?.label, e.reference_code].filter(Boolean).join(" · "),
+              meta: [e.ncc ? "Trả NCC" : BUCKET_LABEL[(e.category?.bucket || "other") as ExpenseBucket]?.label, e.reference_code].filter(Boolean).join(" · "),
               payment: e.payment_method ? (PAYMENT_LABEL[e.payment_method] ?? e.payment_method) : "",
               summary: e.category?.name && e.description ? e.description : undefined,
               badge: e.is_paid ? null : { label: "Chưa trả", bg: "#fff4e0", fg: "#8a5a00" },
@@ -531,8 +629,34 @@ export default function ExpensesPage() {
         }
       />
 
+      {/* Phiếu chi trả NCC: xem nhanh riêng — NCC, mã phiếu, nút sang trang chi tiết (đã trừ vào khoản nào) và Huỷ. */}
       <DocQuickView
-        open={!!xem}
+        open={!!xem?.ncc}
+        onClose={() => setXemId(null)}
+        title={xem?.ncc ? `Phiếu chi ${xem.ncc.code}` : ""}
+        subtitle={xem ? formatDate(xem.expense_date) : undefined}
+        badge={<Badge variant="success">Trả NCC</Badge>}
+        fields={xem?.ncc ? [
+          {
+            label: "Nhà cung cấp",
+            value: <Link href={`/suppliers/${xem.ncc.supplier_id}?tab=debt`} className="font-semibold text-primary hover:underline">{xem.ncc.supplier?.name || "—"} →</Link>,
+            wide: true,
+          },
+          { label: "Hình thức", value: nhanHinhThucChiNcc(xem.ncc.method) },
+          { label: "Số tham chiếu", value: xem.ncc.reference_code },
+          { label: "Ghi chú", value: xem.ncc.notes, wide: true },
+        ] : []}
+        total={xem?.ncc ? { label: "Số tiền", value: formatCurrency(xem.amount) } : undefined}
+        detailHref={xem?.ncc ? `/finance/phieu-chi-ncc/${xem.ncc.id}` : undefined}
+        actions={xem?.ncc && chiNccDuoc ? (
+          <Button variant="outline" className="h-11 flex-1 text-destructive" onClick={() => { setLyDoHuy(""); setHuyNcc(xem.ncc ?? null) }}>
+            <Trash2 className="mr-2 h-4 w-4" /> Huỷ phiếu chi
+          </Button>
+        ) : null}
+      />
+
+      <DocQuickView
+        open={!!xem && !xem.ncc}
         onClose={() => setXemId(null)}
         title={xem?.category?.name || "Chi phí"}
         subtitle={xem ? formatDate(xem.expense_date) : undefined}
@@ -559,14 +683,36 @@ export default function ExpensesPage() {
         ) : null}
       />
 
-      {/* Add dialog */}
+      {/* Lập phiếu chi: chi phí, hoặc trả NCC (chủ nhà 09/10/2026 — "phiếu chi thêm phần chi cho ncc và chọn NCC là xong"). */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Thêm chi phí</DialogTitle>
-            <DialogDescription>Ghi nhận một khoản chi phí phát sinh</DialogDescription>
+            <DialogTitle>Lập phiếu chi</DialogTitle>
+            <DialogDescription>
+              {loaiPhieu === "ncc" ? "Chi trả nhà cung cấp — tự trừ vào các khoản nợ cũ nhất" : "Ghi nhận một khoản chi phí phát sinh"}
+            </DialogDescription>
           </DialogHeader>
 
+          {chiNccDuoc && (
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/40 p-1" role="tablist" aria-label="Loại phiếu chi">
+              {([["chi-phi", "Chi phí"], ["ncc", "Trả NCC"]] as const).map(([k, nhan]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={loaiPhieu === k}
+                  onClick={() => setLoaiPhieu(k)}
+                  className={`h-9 rounded-lg text-sm font-semibold ${loaiPhieu === k ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                >
+                  {nhan}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {loaiPhieu === "ncc" ? (
+            <PhieuChiNccFields value={nccForm} onChange={setNccForm} suppliers={dsNcc} />
+          ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label>Danh mục *</Label>
@@ -637,17 +783,35 @@ export default function ExpensesPage() {
               )}
             </div>
           </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Hủy
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Đang lưu..." : "Lưu"}
+              {saving ? "Đang lưu..." : loaiPhieu === "ncc" ? "Lưu phiếu chi" : "Lưu"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!huyNcc}
+        onOpenChange={(o) => !o && setHuyNcc(null)}
+        title={`Huỷ phiếu chi ${huyNcc?.code ?? ""}?`}
+        description="Tiền của phiếu được gỡ khỏi các khoản nợ NCC đã trừ — các khoản ấy về đúng số trước khi chi. Phiếu ở trạng thái Đã huỷ."
+        variant="destructive"
+        confirmLabel="Huỷ phiếu chi"
+        cancelLabel="Không"
+        loading={dangHuy}
+        onConfirm={handleHuyNcc}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="ly-do-huy-pc" className="text-xs uppercase tracking-wider text-muted-foreground">Lý do huỷ</Label>
+          <Input id="ly-do-huy-pc" value={lyDoHuy} onChange={(e) => setLyDoHuy(e.target.value)} placeholder="VD: chi nhầm NCC" />
+        </div>
+      </ConfirmDialog>
     </div>
   )
 }

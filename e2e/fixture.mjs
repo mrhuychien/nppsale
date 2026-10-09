@@ -510,6 +510,78 @@ export const rpc = {
     Object.assign(r, { status: st, cancel_reason: null })
     return { id: r.id, trang_thai: st, da_khoi_phuc: true, ...(r.stock_entry_id && r.e2e_ly_do ? { ly_do: r.e2e_ly_do } : {}) }
   },
+  /* Phiếu chi trả NCC (mig 242): mã PCNCC- theo NPP; tiền chia vào các khoản nợ CÒN PHẢI TRẢ của NCC — nợ đầu kỳ trước,
+     rồi khoản ghi nợ trước; dư thành dòng trả trước của chính phiếu. Luật thật (khoá, trigger khoản nợ mới, huỷ phiếu
+     nhập…) chạy ở scripts/sql/thu-242-phieu-chi-tra-ncc.sql — đây chỉ đủ để màn hình thấy kết quả. Dòng phần tiền mang
+     sẵn `payable` (máy giả không nhúng bảng). */
+  chi_tra_ncc: ({ p_supplier_id, p_amount, p_paid_date, p_method, p_notes, p_reference }, { db, newId, user }) => {
+    const u = (db.users || []).find((x) => x.id === user?.id)
+    if (!["owner", "accountant"].includes(u?.role)) throw Object.assign(new Error("FORBIDDEN: chỉ chủ NPP hoặc kế toán được lập phiếu chi trả NCC."), { code: "42501" })
+    const s = (db.suppliers || []).find((x) => x.id === p_supplier_id)
+    if (!s) throw Object.assign(new Error("NCC_KHONG_HOP_LE: Nhà cung cấp không thuộc đơn vị của bạn."), { code: "P0001" })
+    const tien = Number(p_amount)
+    if (!(tien > 0)) throw Object.assign(new Error("BAD_AMOUNT: Số tiền chi phải lớn hơn 0."), { code: "P0001" })
+    for (const b of ["supplier_payments", "payable_payments", "payables"]) db[b] = db[b] || []
+    const seq = db.supplier_payments.length + 1
+    const code = `PCNCC-${String(seq).padStart(4, "0")}`
+    const id = newId()
+    const luc = `${p_paid_date}T05:00:00Z`
+    const phan = (p, t) => db.payable_payments.push({
+      id: newId(), payable_id: p.id, amount: t, method: p_method, paid_at: luc, paid_by: user?.id ?? null,
+      notes: `Phiếu chi ${code}${p_notes ? ` — ${p_notes}` : ""}`, supplier_payment_id: id, verified_at: null,
+      payable: { id: p.id, invoice_number: p.invoice_number ?? null, opening_balance: !!p.opening_balance, created_at: p.created_at },
+    })
+    const no = db.payables
+      .filter((p) => p.supplier_id === p_supplier_id && Number(p.amount) - Number(p.paid || 0) > 0)
+      .sort((a, b) => Number(!!b.opening_balance) - Number(!!a.opening_balance) || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)))
+    let con = tien
+    let soKhoan = 0
+    for (const p of no) {
+      if (con <= 0) break
+      const t = Math.min(con, Number(p.amount) - Number(p.paid || 0))
+      p.paid = Number(p.paid || 0) + t
+      p.status = p.paid >= Number(p.amount) ? "paid" : "partial"
+      phan(p, t)
+      con -= t
+      soKhoan++
+    }
+    let truoc = null
+    if (con > 0) {
+      truoc = {
+        id: newId(), org_id: ORG, supplier_id: p_supplier_id, invoice_number: code, amount: 0, paid: con, status: "open",
+        opening_balance: false, due_date: null, notes: `Trả trước NCC — phiếu chi ${code}`, created_at: luc, supplier: { name: s.name, code: s.code },
+      }
+      db.payables.push(truoc)
+      phan(truoc, con)
+    }
+    db.supplier_payments.push({
+      id, org_id: ORG, seq, code, supplier_id: p_supplier_id, paid_date: p_paid_date, amount: tien, method: p_method,
+      reference_code: p_reference ?? null, notes: p_notes ?? null, status: "posted", prepay_payable_id: truoc?.id ?? null,
+      created_by: user?.id ?? null, created_at: new Date().toISOString(), cancelled_at: null, cancel_reason: null,
+      supplier: { name: s.name, code: s.code },
+    })
+    return { id, code, so_tien: tien, da_tru_no: tien - con, tra_truoc: con, so_khoan: soKhoan }
+  },
+  huy_phieu_chi_ncc: ({ p_id, p_reason }, { db, user }) => {
+    const sp = (db.supplier_payments || []).find((x) => x.id === p_id)
+    if (!sp) throw Object.assign(new Error("PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu chi này."), { code: "P0001" })
+    const u = (db.users || []).find((x) => x.id === user?.id)
+    if (!["owner", "accountant"].includes(u?.role)) throw Object.assign(new Error("FORBIDDEN: chỉ chủ NPP hoặc kế toán được huỷ phiếu chi trả NCC."), { code: "42501" })
+    if (sp.status === "cancelled") return { id: p_id, code: sp.code, da_huy: false, so_tien_go: 0 }
+    let go = 0
+    for (const pp of (db.payable_payments || []).filter((x) => x.supplier_payment_id === p_id)) {
+      const p = (db.payables || []).find((x) => x.id === pp.payable_id)
+      if (p) {
+        p.paid = Number(p.paid || 0) - pp.amount
+        p.status = p.paid <= 0 ? "open" : p.paid >= Number(p.amount) ? "paid" : "partial"
+      }
+      go += pp.amount
+    }
+    db.payable_payments = (db.payable_payments || []).filter((x) => x.supplier_payment_id !== p_id)
+    if (sp.prepay_payable_id) db.payables = (db.payables || []).filter((x) => x.id !== sp.prepay_payable_id)
+    Object.assign(sp, { status: "cancelled", cancelled_at: "2026-09-30T04:00:00Z", cancelled_by: user?.id ?? null, cancel_reason: p_reason ?? null, prepay_payable_id: null })
+    return { id: p_id, code: sp.code, da_huy: true, so_tien_go: go }
+  },
   /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
   cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],
   reissue_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f003", invoice_code: "HD-E2E-1-1", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "completed" }],

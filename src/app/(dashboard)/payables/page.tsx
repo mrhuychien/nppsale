@@ -54,6 +54,13 @@ const TABS: Array<{ key: StatusFilter; label: string; accent: string }> = [
   { key: "all", label: "Tất cả", accent: "#181c1e" },
 ]
 
+/** Trạng thái hiện ra — dòng trả trước của phiếu chi NCC (mig 242) là tiền NCC đang giữ, không phải "Chưa trả". */
+function nhanTrangThaiNo(p: Pick<Payable, "id" | "status">, chungTu: ReadonlyMap<string, ChungTuNo>) {
+  return chungTu.get(p.id)?.loai === "tra-truoc"
+    ? { label: "Tiền trả trước", variant: "success" as const }
+    : PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
+}
+
 export default function PayablesPage() {
   const { user, loading: authLoading } = useRoleGuard("receivables")
   const [payables, setPayables] = useState<Payable[]>([])
@@ -281,7 +288,7 @@ export default function PayablesPage() {
       {
         k: "status", key: "status", label: "Trạng thái", width: "130px",
         render: (p) => {
-          const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus] || { label: p.status, variant: "default" as const }
+          const statusCfg = nhanTrangThaiNo(p, chungTu)
           return <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
         },
       },
@@ -308,7 +315,7 @@ export default function PayablesPage() {
 
   const xem = xemId ? filtered.find((p) => p.id === xemId) ?? null : null
   const xemChungTu = xem ? chungTu.get(xem.id) ?? null : null
-  const xemStatus = xem ? (PAYABLE_STATUS_MAP[xem.status as PayableStatus] || { label: xem.status, variant: "default" as const }) : null
+  const xemStatus = xem ? nhanTrangThaiNo(xem, chungTu) : null
   const tongNote = (
     <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-on-surface-variant">
       <span>Trong hạn <b className="tabular-data text-tertiary">{formatCurrency(totalInTerm)}</b></span>
@@ -438,7 +445,8 @@ export default function PayablesPage() {
             onOpen={(p) => setXemId(p.id)}
             card={(p) => {
               const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
-              const statusCfg = PAYABLE_STATUS_MAP[p.status as PayableStatus]
+              const statusCfg = nhanTrangThaiNo(p, chungTu)
+              const traTruoc = chungTu.get(p.id)?.loai === "tra-truoc"
               return {
                 accent: p.status === "paid" ? "#22c55e" : aging === "current" ? "#b9c4d6" : "#ef5350",
                 title: p.supplier?.name || "-",
@@ -451,7 +459,9 @@ export default function PayablesPage() {
                 payment: p.status !== "paid" && p.due_date ? agingLabel(daysOverdueOf(p.due_date)) : "",
                 paymentCredit: p.status !== "paid" && aging !== "current",
                 summary: `Số tiền ${formatCurrency(p.amount)} · Đã trả ${formatCurrency(p.paid)}`,
-                badge: statusCfg && p.status !== "paid" ? { label: statusCfg.label, bg: p.status === "overdue" ? "#fdecec" : "#fff4e0", fg: p.status === "overdue" ? "#b00020" : "#8a5a00" } : null,
+                badge: traTruoc
+                  ? { label: statusCfg.label, bg: "#ecfdf3", fg: "#067647" }
+                  : statusCfg && p.status !== "paid" ? { label: statusCfg.label, bg: p.status === "overdue" ? "#fdecec" : "#fff4e0", fg: p.status === "overdue" ? "#b00020" : "#8a5a00" } : null,
               }
             }}
           />

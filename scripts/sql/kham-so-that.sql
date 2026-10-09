@@ -760,4 +760,20 @@ SELECT 80, 'Mig 241 (Khôi phục phiếu nhập / phiếu trả NCC đã huỷ)
     || ' (từng hoàn thành: ' || (SELECT count(*) FROM purchase_invoices WHERE status = 'cancelled' AND stock_entry_id IS NOT NULL)
     || ') · phiếu trả NCC đã huỷ: ' || (SELECT count(*) FROM supplier_returns WHERE status = 'cancelled')
     || ' (từng gửi: ' || (SELECT count(*) FROM supplier_returns WHERE status = 'cancelled' AND stock_entry_id IS NOT NULL) || ')'
+UNION ALL
+-- 81. Mig 242 — phiếu chi trả NCC (chủ nhà 09/10/2026: "phiếu chi thêm phần chi cho ncc và chọn NCC là xong … có thể chi
+--     trả ncc 1 cục 200 triệu, nhiều hóa đơn nợ"): tiền tự trừ vào khoản nợ cũ nhất, phần dư là trả trước.
+SELECT 81, 'Mig 242 (Phiếu chi trả NCC)',
+  CASE WHEN to_regclass('public.supplier_payments') IS NULL
+         OR to_regprocedure('public.chi_tra_ncc(uuid,numeric,date,text,text,text)') IS NULL
+         OR position('_tra_phan_bo_ve_truoc' IN pg_get_functiondef('public.cancel_purchase_invoice(uuid,text)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 242 (phiếu chi chưa có loại Trả NCC)'
+       ELSE 'OK — đã vá' END,
+  -- ⚠ Đếm qua query_to_xml: sổ chưa chạy 242 thì nhắc thẳng tên bảng là cả tệp khám nổ ở bước phân tích.
+  CASE WHEN to_regclass('public.supplier_payments') IS NULL THEN 'Chưa có bảng phiếu chi NCC'
+       ELSE 'Phiếu chi NCC đang hiệu lực: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.supplier_payments WHERE status = 'posted'$q$, false, true, '')))[1]::text
+         || ' · tiền trả trước còn: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT COALESCE(sum(p.paid), 0) AS n FROM public.payables p
+                                                    JOIN public.supplier_payments s ON s.prepay_payable_id = p.id$q$, false, true, '')))[1]::text END
 ) t ORDER BY stt;

@@ -110,7 +110,8 @@ describe("nút mảng tiền khớp RLS", () => {
     const s = doc("src/app/(dashboard)/finance/expenses/page.tsx")
     expect(s).toContain('const canDelete = user && ["owner", "manager"].includes(user.role)')
     // Khuôn danh sách chung (27/09/2026): nút xoá ở lưới VÀ ở ngăn xem nhanh cùng qua một điều kiện.
-    expect(s).toContain("const xoaDuoc = (e: Expense) => !!canDelete && e.source_type === null")
+    // Phiếu chi trả NCC (mig 242) nằm chung danh sách nhưng không xoá — huỷ qua RPC: điều kiện thêm `!e.ncc`.
+    expect(s).toContain("const xoaDuoc = (e: DongChi) => !!canDelete && e.source_type === null && !e.ncc")
     expect(s).toContain("xoaDuoc(e) ? (")
     // Ngăn xem nhanh còn có nút Xuất Excel (05/10/2026) — nút Xoá vẫn chỉ hiện khi `xoaDuoc`.
     expect(s).toMatch(/\{xoaDuoc\(xem\) && \(\s*<Button[^>]*onClick=\{\(\) => handleDelete\(xem\.id\)\}/)

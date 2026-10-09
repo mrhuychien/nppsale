@@ -6,7 +6,7 @@
  *   tính. Khoản thu `return_credit` / `credit_applied` không phải tiền vào quỹ (mig 121).
  */
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { docDuHoacNem } from "@/lib/supabase/aggregate"
+import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { vnDateOf } from "@/lib/analytics/sales"
 import { fetchPnl, fetchCashFlow, fetchBalanceSheet } from "@/lib/finance"
 import { congNgay } from "./ky"
@@ -36,6 +36,34 @@ export interface PhieuChi {
   dien: string
   ma: string
   loai: "chi" | "ncc"
+}
+
+/** Phiếu chi trả NCC (mig 242) mà một khoản trả NCC thuộc về. */
+export interface PhieuChiNccCuaPhan {
+  id: string
+  code: string
+  ncc: string
+  ghiChu: string | null
+}
+
+/**
+ * Gộp các phần của CÙNG một phiếu chi trả NCC thành MỘT dòng (mã PCNCC-…). Máy chủ chia tiền phiếu chi vào nhiều khoản
+ * nợ (mig 242) — không gộp thì phiếu chi 200 triệu trả 15 phiếu nhập hiện thành 15 dòng "Trả NCC". Tiền không đổi.
+ * Khoản trả thẳng (Ghi trả NCC) giữ nguyên từng dòng.
+ */
+export function gopPhanPhieuChiNcc(ds: readonly PhieuChi[], thuoc: ReadonlyMap<string, PhieuChiNccCuaPhan>): PhieuChi[] {
+  const out: PhieuChi[] = []
+  const gop = new Map<string, PhieuChi>()
+  for (const c of ds) {
+    const p = c.loai === "ncc" ? thuoc.get(c.id) : undefined
+    if (!p) { out.push(c); continue }
+    const cu = gop.get(p.id)
+    if (cu) { cu.tien += c.tien; continue }
+    const dong: PhieuChi = { id: p.id, ngay: c.ngay, tien: c.tien, nhom: p.ncc || c.nhom, dien: `Phiếu chi trả NCC${p.ghiChu ? " · " + p.ghiChu : ""}`, ma: p.code, loai: "ncc" }
+    gop.set(p.id, dong)
+    out.push(dong)
+  }
+  return out
 }
 
 const vnTu = (d: string) => `${d}T00:00:00+07:00`
@@ -118,6 +146,7 @@ export async function napPhieuChi(
       "đọc khoản trả nhà cung cấp"
     ),
   ])
+  const thuoc = await napPhieuChiCuaPhan(sb, ncc.rows.map((p) => p.id))
   const ds: PhieuChi[] = [
     ...cp.rows
       .filter((e) => theoNgayTra || e.category?.bucket !== "cogs")
@@ -140,7 +169,40 @@ export async function napPhieuChi(
       loai: "ncc" as const,
     })),
   ]
-  return { ds, thieu: cp.truncated || ncc.truncated }
+  return { ds: gopPhanPhieuChiNcc(ds, thuoc), thieu: cp.truncated || ncc.truncated }
+}
+
+/**
+ * Khoản trả NCC nào là phần của phiếu chi trả NCC (mig 242). ⚠ Cột / bảng mới đọc RIÊNG và nuốt lỗi: sổ chưa chạy 242
+ * thì không gộp gì — danh sách hiện từng khoản như trước, tiền vẫn đúng.
+ */
+async function napPhieuChiCuaPhan(sb: SupabaseClient, ids: readonly string[]): Promise<Map<string, PhieuChiNccCuaPhan>> {
+  const m = new Map<string, PhieuChiNccCuaPhan>()
+  if (ids.length === 0) return m
+  try {
+    const phan = await docTheoLoId<{ id: string; supplier_payment_id: string | null }>(
+      ids,
+      (lo, from, to) =>
+        sb.from("payable_payments").select("id, supplier_payment_id", { count: "exact" })
+          .in("id", lo).not("supplier_payment_id", "is", null).order("id").range(from, to),
+      "phần của phiếu chi NCC"
+    )
+    const phieu = await docTheoLoId<{ id: string; code: string; notes: string | null; supplier: { name: string | null } | null }>(
+      phan.map((p) => p.supplier_payment_id as string),
+      (lo, from, to) =>
+        sb.from("supplier_payments").select("id, code, notes, supplier:suppliers(name)", { count: "exact" })
+          .in("id", lo).order("id").range(from, to),
+      "phiếu chi NCC"
+    )
+    const theoId = new Map(phieu.map((p) => [p.id, p]))
+    for (const x of phan) {
+      const p = x.supplier_payment_id ? theoId.get(x.supplier_payment_id) : undefined
+      if (p) m.set(x.id, { id: p.id, code: p.code, ncc: p.supplier?.name || "", ghiChu: p.notes })
+    }
+  } catch {
+    return new Map()
+  }
+  return m
 }
 
 /** Tồn quỹ cuối ngày `d` (tiền mặt + tiền gửi). */

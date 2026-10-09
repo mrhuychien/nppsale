@@ -27,7 +27,8 @@ export interface DongNoNcc {
   notes: string | null
 }
 
-export type LoaiDongNoNcc = "phieu-nhap" | "tra-ncc" | "dau-ky" | "lap-tay"
+/** "tra-truoc": dòng tiền trả trước của phiếu chi trả NCC (mig 242) — phần chưa trừ được vào khoản nợ nào. */
+export type LoaiDongNoNcc = "phieu-nhap" | "tra-ncc" | "dau-ky" | "lap-tay" | "tra-truoc"
 
 export interface DongSoNoNcc extends DongNoNcc {
   loai: LoaiDongNoNcc
@@ -43,6 +44,7 @@ export const NHAN_LOAI_NO_NCC: Record<LoaiDongNoNcc, string> = {
   "tra-ncc": "Trả NCC",
   "dau-ky": "Nợ đầu kỳ",
   "lap-tay": "Công nợ lập tay",
+  "tra-truoc": "Trả trước",
 }
 
 const so = (v: unknown) => Number(v) || 0
@@ -90,6 +92,8 @@ export function gopNoTheoNcc(
 
 type PhieuNhapCuaNo = { id: string; payable_id: string | null; receipt_code: string | null }
 type PhieuTraCuaNo = { id: string; payable_credit_id: string | null; return_code: string | null }
+/** Phiếu chi trả NCC còn tiền trả trước — dòng nợ `prepay_payable_id` (mig 242). */
+type PhieuChiCuaNo = { id: string; prepay_payable_id: string | null; code: string }
 
 /** Chứng từ gốc của một dòng nợ. */
 export interface ChungTuNo {
@@ -109,7 +113,8 @@ export interface ChungTuNo {
 export function chungTuCuaNo(
   r: { id: string; invoice_number: string | null; opening_balance?: boolean | null },
   nhap: ReadonlyMap<string, PhieuNhapCuaNo>,
-  tra: ReadonlyMap<string, PhieuTraCuaNo>
+  tra: ReadonlyMap<string, PhieuTraCuaNo>,
+  truoc: ReadonlyMap<string, PhieuChiCuaNo> = new Map()
 ): ChungTuNo {
   const hd = r.invoice_number?.trim() || null
   const n = nhap.get(r.id)
@@ -119,6 +124,8 @@ export function chungTuCuaNo(
   }
   const t = tra.get(r.id)
   if (t) return { loai: "tra-ncc", ma: t.return_code || hd || "Trả NCC", href: `/purchase-returns/${t.id}`, soHdNcc: null }
+  const c = truoc.get(r.id)
+  if (c) return { loai: "tra-truoc", ma: c.code || hd || "Trả trước", href: `/finance/phieu-chi-ncc/${c.id}`, soHdNcc: null }
   return {
     loai: r.opening_balance ? "dau-ky" : "lap-tay",
     ma: hd || (r.opening_balance ? "Nợ đầu kỳ" : "Công nợ"),
@@ -127,20 +134,26 @@ export function chungTuCuaNo(
   }
 }
 
-const theoNo = (phieuNhap: ReadonlyArray<PhieuNhapCuaNo>, phieuTra: ReadonlyArray<PhieuTraCuaNo>) => ({
+const theoNo = (
+  phieuNhap: ReadonlyArray<PhieuNhapCuaNo>,
+  phieuTra: ReadonlyArray<PhieuTraCuaNo>,
+  phieuChi: ReadonlyArray<PhieuChiCuaNo> = []
+) => ({
   nhap: new Map(phieuNhap.filter((p) => p.payable_id).map((p) => [p.payable_id as string, p])),
   tra: new Map(phieuTra.filter((p) => p.payable_credit_id).map((p) => [p.payable_credit_id as string, p])),
+  truoc: new Map(phieuChi.filter((p) => p.prepay_payable_id).map((p) => [p.prepay_payable_id as string, p])),
 })
 
 /** Gắn mỗi dòng nợ với chứng từ sinh ra nó. */
 export function ghepChungTu(
   rows: DongNoNcc[],
   phieuNhap: ReadonlyArray<PhieuNhapCuaNo>,
-  phieuTra: ReadonlyArray<PhieuTraCuaNo>
+  phieuTra: ReadonlyArray<PhieuTraCuaNo>,
+  phieuChi: ReadonlyArray<PhieuChiCuaNo> = []
 ): DongSoNoNcc[] {
-  const { nhap, tra } = theoNo(phieuNhap, phieuTra)
+  const { nhap, tra, truoc } = theoNo(phieuNhap, phieuTra, phieuChi)
   return rows.map((r) => {
-    const c = chungTuCuaNo(r, nhap, tra)
+    const c = chungTuCuaNo(r, nhap, tra, truoc)
     return { ...r, loai: c.loai, ma: c.ma, href: c.href, conLai: so(r.amount) - so(r.paid) }
   })
 }
@@ -149,8 +162,8 @@ export function ghepChungTu(
 export async function docPhieuCuaNo(
   sb: SupabaseClient,
   ids: readonly string[]
-): Promise<{ nhap: PhieuNhapCuaNo[]; tra: PhieuTraCuaNo[] }> {
-  const [nhap, tra] = await Promise.all([
+): Promise<{ nhap: PhieuNhapCuaNo[]; tra: PhieuTraCuaNo[]; chi: PhieuChiCuaNo[] }> {
+  const [nhap, tra, chi] = await Promise.all([
     docTheoLoId<PhieuNhapCuaNo>(
       [...ids],
       (lo, from, to) =>
@@ -165,8 +178,15 @@ export async function docPhieuCuaNo(
         sb.from("supplier_returns").select("id, payable_credit_id, return_code", { count: "exact" }).in("payable_credit_id", lo).order("id").range(from, to),
       "phiếu trả NCC"
     ),
+    /* ⚠ Bảng mới (mig 242) đọc RIÊNG và nuốt lỗi: sổ chưa chạy 242 thì dòng trả trước chỉ hiện như công nợ lập tay. */
+    docTheoLoId<PhieuChiCuaNo>(
+      [...ids],
+      (lo, from, to) =>
+        sb.from("supplier_payments").select("id, prepay_payable_id, code", { count: "exact" }).in("prepay_payable_id", lo).order("id").range(from, to),
+      "phiếu chi trả NCC"
+    ).catch(() => [] as PhieuChiCuaNo[]),
   ])
-  return { nhap, tra }
+  return { nhap, tra, chi }
 }
 
 /**
@@ -180,8 +200,8 @@ export async function docChungTuNoNcc(
   if (rows.length === 0) return new Map()
   try {
     const p = await docPhieuCuaNo(sb, rows.map((r) => r.id))
-    const { nhap, tra } = theoNo(p.nhap, p.tra)
-    return new Map(rows.map((r) => [r.id, chungTuCuaNo(r, nhap, tra)]))
+    const { nhap, tra, truoc } = theoNo(p.nhap, p.tra, p.chi)
+    return new Map(rows.map((r) => [r.id, chungTuCuaNo(r, nhap, tra, truoc)]))
   } catch {
     return new Map()
   }
@@ -203,8 +223,8 @@ export async function docSoNoNcc(
   )
   if (res.error) return { rows: [], error: res.error, truncated: false }
   try {
-    const { nhap, tra } = await docPhieuCuaNo(sb, res.rows.map((r) => r.id))
-    return { rows: ghepChungTu(res.rows, nhap, tra), error: null, truncated: res.truncated }
+    const { nhap, tra, chi } = await docPhieuCuaNo(sb, res.rows.map((r) => r.id))
+    return { rows: ghepChungTu(res.rows, nhap, tra, chi), error: null, truncated: res.truncated }
   } catch (e) {
     return { rows: ghepChungTu(res.rows, [], []), error: errorMessage(e, "Không đọc được chứng từ của khoản nợ"), truncated: res.truncated }
   }

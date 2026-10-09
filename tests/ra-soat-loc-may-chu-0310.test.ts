@@ -274,7 +274,8 @@ describe("#7–#10 thứ tự / đọc đủ", () => {
     const s = code(read("src/app/(dashboard)/finance/expenses/page.tsx"))
     expect(s).toMatch(/\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id"\)\s*\.range\(from, to\)/)
     expect(s).toContain("{truncationWarning()}")
-    expect(s).toContain("setTruncated(expensesRes.truncated)")
+    // Danh sách gộp cả phiếu chi trả NCC (mig 242): thiếu ở bất kỳ nguồn nào cũng báo.
+    expect(s).toContain("setTruncated(expensesRes.truncated || nccRes.truncated)")
   })
   it("#10 thông báo: mốc phụ id", () => {
     const s = code(read("src/app/(dashboard)/notifications/page.tsx"))

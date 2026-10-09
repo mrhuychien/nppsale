@@ -255,7 +255,7 @@ export default function EditPurchaseReceiptPage() {
         <PageHeader title="Không sửa được" backHref={`/purchasing/receipts/${id}`} />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Phiếu này đã huỷ. Tạo phiếu nhập mới thay vì sửa lại một chứng từ đã đóng.
+            Phiếu này đã huỷ. Muốn sửa thì bấm Khôi phục ở màn chi tiết trước, hoặc tạo phiếu nhập mới.
           </CardContent>
         </Card>
       </div>

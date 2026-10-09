@@ -491,6 +491,25 @@ export const rpc = {
     return { luu, bo }
   },
   complete_supplier_return: () => null,
+  /* Khôi phục phiếu nhập / phiếu trả NCC đã huỷ (mig 241) — chỉ đổi trạng thái như máy chủ trả về; luật kho / công nợ
+     kiểm ở scripts/sql/thu-241-khoi-phuc-phieu-ncc.sql. Có phiếu kho = đã hoàn thành / đã gửi trước khi huỷ.
+     Phiếu trả mang `e2e_ly_do` = gửi lại không được (kho thiếu) → dừng ở Nháp kèm lý do. */
+  khoi_phuc_phieu_nhap: ({ p_invoice_id }, { db }) => {
+    const inv = (db.purchase_invoices || []).find((x) => x.id === p_invoice_id)
+    if (!inv) throw Object.assign(new Error("PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu nhập này."), { code: "P0001" })
+    if (inv.status !== "cancelled") return { id: inv.id, trang_thai: inv.status, da_khoi_phuc: false, so_lo: 0 }
+    const st = inv.stock_entry_id ? "completed" : "draft"
+    Object.assign(inv, { status: st, cancelled_at: null, cancelled_by: null, cancel_reason: null })
+    return { id: inv.id, trang_thai: st, da_khoi_phuc: true, so_lo: st === "completed" ? 1 : 0 }
+  },
+  khoi_phuc_phieu_tra_ncc: ({ p_return_id }, { db }) => {
+    const r = (db.supplier_returns || []).find((x) => x.id === p_return_id)
+    if (!r) throw Object.assign(new Error("PHIEU_KHONG_TON_TAI: Không tìm thấy phiếu trả NCC này."), { code: "P0001" })
+    if (r.status !== "cancelled") return { id: r.id, trang_thai: r.status, da_khoi_phuc: false }
+    const st = r.stock_entry_id && !r.e2e_ly_do ? "completed" : "draft"
+    Object.assign(r, { status: st, cancel_reason: null })
+    return { id: r.id, trang_thai: st, da_khoi_phuc: true, ...(r.stock_entry_id && r.e2e_ly_do ? { ly_do: r.e2e_ly_do } : {}) }
+  },
   /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
   cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],
   reissue_invoice: () => [{ invoice_id: "00000000-0000-4000-8000-00000000f003", invoice_code: "HD-E2E-1-1", entry_id: null, receivable_id: null, short_qty: 0, near_expiry_skipped: 0, order_status: "completed" }],

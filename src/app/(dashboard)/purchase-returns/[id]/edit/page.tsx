@@ -275,7 +275,7 @@ export default function EditPurchaseReturnPage() {
         <PageHeader title="Không thể sửa" backHref={`/purchase-returns/${id}`} />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Phiếu này đã huỷ. Lập phiếu trả mới thay vì sửa lại một chứng từ đã đóng.
+            Phiếu này đã huỷ. Muốn sửa thì bấm Khôi phục ở màn chi tiết trước, hoặc lập phiếu trả mới.
           </CardContent>
         </Card>
       </div>

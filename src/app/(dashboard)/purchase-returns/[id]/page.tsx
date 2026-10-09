@@ -13,12 +13,14 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Send, Trash2, ExternalLink, Pencil, XCircle } from "lucide-react"
+import { Send, Trash2, ExternalLink, Pencil, RotateCcw, XCircle } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ratioToPercent } from "@/lib/purchasing/return-form"
 import type { SupplierReturn, SupplierReturnLine, Supplier, Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { khoiPhucPhieuNcc, thongBaoKhoiPhuc } from "@/lib/purchasing/khoi-phuc"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 const STATUS_LABEL: Record<string, { label: string; variant: "secondary" | "success" | "warning" }> = {
@@ -61,6 +63,7 @@ export default function PurchaseReturnDetailPage() {
   const [maCu, setMaCu] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [askRestore, setAskRestore] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,6 +148,21 @@ export default function PurchaseReturnDetailPage() {
     }
   }
 
+  /** KHÔI PHỤC PHIẾU ĐÃ HUỶ (mig 241) — đã gửi thì máy chủ gửi lại (kho không đủ → dừng ở Nháp, báo lý do); nháp về Nháp. */
+  const handleRestore = async () => {
+    if (!data) return
+    setBusy(true)
+    try {
+      toast(thongBaoKhoiPhuc("tra", await khoiPhucPhieuNcc(supabase, "tra", data.id)))
+      await load()
+    } catch (err) {
+      toast({ title: "Không khôi phục được", description: errorMessage(err), variant: "destructive" })
+    } finally {
+      setBusy(false)
+      setAskRestore(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!data) return
     if (!window.confirm("Xoá phiếu nháp này?")) return
@@ -209,6 +227,11 @@ export default function PurchaseReturnDetailPage() {
             <XCircle className="h-4 w-4 mr-1.5" /> Huỷ phiếu
           </Button>
         )}
+        {ghiDuoc && data.status === "cancelled" && (
+          <Button size="sm" onClick={() => setAskRestore(true)} disabled={busy}>
+            <RotateCcw className="h-4 w-4 mr-1.5" /> Khôi phục
+          </Button>
+        )}
       </PageHeader>
 
       {data.status === "cancelled" && (
@@ -217,6 +240,9 @@ export default function PurchaseReturnDetailPage() {
           {/* ⚠ LÝ DO HUỶ PHẢI HIỆN RA — không hiện thì người mở lại chỉ
               thấy một chứng từ chết mà không biết vì sao. */}
           {data.cancel_reason || "Không ghi lý do."}
+          {ghiDuoc && (
+            <span className="text-muted-foreground"> Huỷ nhầm thì bấm Khôi phục — phiếu về đúng trạng thái trước khi huỷ.</span>
+          )}
         </div>
       )}
 
@@ -348,6 +374,16 @@ export default function PurchaseReturnDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={askRestore}
+        onOpenChange={setAskRestore}
+        title="Khôi phục phiếu trả NCC?"
+        description="Phiếu về đúng trạng thái trước khi huỷ. Đã gửi: gửi lại — xuất kho theo FIFO từ tồn hiện tại và ghi lại khoản giảm công nợ NCC; kho không đủ thì phiếu về Nháp để sửa. Còn là nháp: về Nháp."
+        confirmLabel="Khôi phục"
+        loading={busy}
+        onConfirm={handleRestore}
+      />
     </div>
   )
 }

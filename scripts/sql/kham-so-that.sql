@@ -748,4 +748,16 @@ SELECT 79, 'Mig 240 (Phiếu trả NCC PTNCC-xxxx)',
     || ' · còn mã TH-: ' || (SELECT count(*) FROM supplier_returns WHERE return_code LIKE 'TH-%')
     || ' · dòng nợ NCC còn số TH-: ' || (SELECT count(*) FROM payables p JOIN supplier_returns s ON s.payable_credit_id = p.id
                                           WHERE p.invoice_number LIKE 'TH-%')
+UNION ALL
+-- 80. Mig 241 — khôi phục phiếu nhập hàng / phiếu trả NCC đã huỷ (chủ nhà 09/10/2026: "Phiếu nhập hàng, phiếu trả NCC hủy
+--     xong phải có đường khôi phục"); phiếu về đúng trạng thái trước khi huỷ.
+SELECT 80, 'Mig 241 (Khôi phục phiếu nhập / phiếu trả NCC đã huỷ)',
+  CASE WHEN to_regprocedure('public.khoi_phuc_phieu_nhap(uuid)') IS NULL
+         OR to_regprocedure('public.khoi_phuc_phieu_tra_ncc(uuid)') IS NULL
+       THEN 'CHƯA — chạy migration 241 (nút Khôi phục ở phiếu nhập / phiếu trả NCC đã huỷ báo lỗi không có hàm)'
+       ELSE 'OK — đã vá' END,
+  'Phiếu nhập đã huỷ: ' || (SELECT count(*) FROM purchase_invoices WHERE status = 'cancelled')
+    || ' (từng hoàn thành: ' || (SELECT count(*) FROM purchase_invoices WHERE status = 'cancelled' AND stock_entry_id IS NOT NULL)
+    || ') · phiếu trả NCC đã huỷ: ' || (SELECT count(*) FROM supplier_returns WHERE status = 'cancelled')
+    || ' (từng gửi: ' || (SELECT count(*) FROM supplier_returns WHERE status = 'cancelled' AND stock_entry_id IS NOT NULL) || ')'
 ) t ORDER BY stt;

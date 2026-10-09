@@ -494,7 +494,7 @@ export async function savePosPurchase(
      */
     const trangThai = await docTrangThai(sb, "purchase_invoices", id)
     if (trangThai === "cancelled") {
-      throw new Error("Phiếu nhập này đã huỷ — không sửa được. Lập phiếu mới.")
+      throw new Error("Phiếu nhập này đã huỷ — không sửa được. Khôi phục phiếu ở màn chi tiết trước, hoặc lập phiếu mới.")
     }
     /**
      * ⚠ PHIẾU ĐÃ HOÀN THÀNH: SỬA TẠI CHỖ (mig 235), KHÔNG huỷ-rồi-lập-lại. Huỷ bị chặn khi hàng đã bán ra / đã trả
@@ -581,7 +581,7 @@ export async function savePosSupplierReturn(
        (hàng về lại kho, khoản giảm công nợ NCC bị xoá), hỏng thì dừng. */
     const trangThai = await docTrangThai(sb, "supplier_returns", id)
     if (trangThai === "cancelled") {
-      throw new Error("Phiếu trả NCC này đã huỷ — không sửa được. Lập phiếu mới.")
+      throw new Error("Phiếu trả NCC này đã huỷ — không sửa được. Khôi phục phiếu ở màn chi tiết trước, hoặc lập phiếu mới.")
     }
     if (trangThai === "completed") {
       const { error } = await sb.rpc("cancel_supplier_return", { p_return_id: id, p_reason: "Sửa phiếu từ POS — lập lại" })

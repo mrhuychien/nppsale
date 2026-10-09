@@ -1,17 +1,18 @@
 "use client"
 
 /**
- * CHI TIẾT PHIẾU NHẬP HÀNG — nơi bấm Hoàn thành và bấm Huỷ.
+ * CHI TIẾT PHIẾU NHẬP HÀNG — nơi bấm Hoàn thành, Huỷ và Khôi phục.
  *
- * ⚠ HAI NÚT ẤY ĐỀU GỌI RPC, KHÔNG TỰ GHI GÌ. Hoàn thành là nhập kho +
- * ghi công nợ trong một giao dịch; Huỷ là đảo ngược đúng như vậy. Màn
+ * ⚠ BA NÚT ẤY ĐỀU GỌI RPC, KHÔNG TỰ GHI GÌ. Hoàn thành là nhập kho +
+ * ghi công nợ trong một giao dịch; Huỷ là đảo ngược đúng như vậy; Khôi
+ * phục (mig 241) đưa phiếu đã huỷ về đúng trạng thái trước khi huỷ. Màn
  * này chỉ đọc và hiện kết quả.
  */
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "@/components/ui/link"
-import { Loader2, PackageCheck, Pencil, XCircle } from "lucide-react"
+import { Loader2, PackageCheck, Pencil, RotateCcw, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { duocGhiMuaHang } from "@/lib/purchasing/roles"
@@ -27,6 +28,7 @@ import { ratioToPercent } from "@/lib/purchasing/return-form"
 import { friendlyReceiptError, RECEIPT_ZONES } from "@/lib/purchasing/receipt-form"
 import { receiptStatusLabel } from "@/lib/purchasing/receipt-status"
 import { errorMessage } from "@/lib/errors"
+import { khoiPhucPhieuNcc, thongBaoKhoiPhuc } from "@/lib/purchasing/khoi-phuc"
 import { XuatExcelPhieu } from "@/components/ui/xuat-excel-phieu"
 
 interface Head {
@@ -75,6 +77,7 @@ export default function PurchaseReceiptDetailPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [askCancel, setAskCancel] = useState(false)
+  const [askRestore, setAskRestore] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -116,6 +119,19 @@ export default function PurchaseReceiptDetailPage() {
     }
   }
 
+  const khoiPhuc = async () => {
+    setBusy(true)
+    try {
+      toast(thongBaoKhoiPhuc("nhap", await khoiPhucPhieuNcc(supabase, "nhap", id)))
+      await load()
+    } catch (e) {
+      toast({ title: "Không khôi phục được", description: errorMessage(e), variant: "destructive" })
+    } finally {
+      setBusy(false)
+      setAskRestore(false)
+    }
+  }
+
   if (authLoading || loading) return <Skeleton className="h-96" />
 
   if (!head) {
@@ -153,6 +169,9 @@ export default function PurchaseReceiptDetailPage() {
           {/* ⚠ LÝ DO HUỶ PHẢI HIỆN RA. Không hiện thì người mở lại phiếu
               chỉ thấy một chứng từ chết mà không biết vì sao. */}
           {head.cancel_reason || "Không ghi lý do."}
+          {ghiDuoc && (
+            <span className="text-muted-foreground"> Huỷ nhầm thì bấm Khôi phục — phiếu về đúng trạng thái trước khi huỷ.</span>
+          )}
         </div>
       )}
 
@@ -261,6 +280,12 @@ export default function PurchaseReceiptDetailPage() {
             <XCircle className="mr-1.5 h-4 w-4" /> Huỷ phiếu
           </Button>
         )}
+        {ghiDuoc && head.status === "cancelled" && (
+          <Button onClick={() => setAskRestore(true)} disabled={busy}>
+            {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-1.5 h-4 w-4" />}
+            Khôi phục
+          </Button>
+        )}
         {ghiDuoc && isDraft && (
           <Button onClick={() => run("complete_purchase_invoice")} disabled={busy || lines.length === 0}>
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-1.5 h-4 w-4" />}
@@ -287,6 +312,16 @@ export default function PurchaseReceiptDetailPage() {
         }
         confirmLabel="Huỷ phiếu"
         onConfirm={() => run("cancel_purchase_invoice", "Người dùng huỷ từ màn chi tiết")}
+      />
+
+      <ConfirmDialog
+        open={askRestore}
+        onOpenChange={setAskRestore}
+        title="Khôi phục phiếu nhập hàng?"
+        description="Phiếu về đúng trạng thái trước khi huỷ. Đã hoàn thành: nhập lại kho vào đúng các lô cũ (phần đã xuất bán vẫn trừ) và ghi lại công nợ NCC. Còn là phiếu tạm: về Phiếu tạm, chưa đụng tới kho hay công nợ."
+        confirmLabel="Khôi phục"
+        loading={busy}
+        onConfirm={khoiPhuc}
       />
     </div>
   )

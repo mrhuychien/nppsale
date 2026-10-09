@@ -384,14 +384,51 @@ export function congLoiNhuanTheoNgay(input: {
 }
 
 /**
+ * PHẦN TIỀN CHỨNG TỪ CỦA CÁC DÒNG QUA BỘ LỌC HÀNG — lọc Hàng hoá / NCC ở báo cáo Nhân viên (chủ nhà 09/10/2026: "bộ lọc
+ * thương hiệu thay bằng NCC").
+ *
+ * ⚠ CÙNG LUẬT PHÂN BỔ VỚI BÁO CÁO TỔNG HỢP (`dungDongBan`, lib/bao-cao/nap-ban-hang.ts): tiền chứng từ (HĐ `total` —
+ *   gồm VAT, sau giảm giá cả đơn; phiếu trả `credit_note_amount`; giảm giá cả đơn) chia cho các dòng THEO TỈ LỆ
+ *   `line_total`, dòng cuối nhận phần dư → Σ mọi dòng đúng bằng tiền chứng từ. Dòng hàng đổi không nhận phần. Không có
+ *   dòng / Σ dòng ≤ 0: cả tiền về dòng đầu (không dòng nào → không mặt hàng nào → không qua lọc).
+ * ⚠ Cộng NGUYÊN tiền hoá đơn khi đang lọc hàng là doanh thu của cả những hàng không được lọc; cộng `line_total` thô là
+ *   tiền trước thuế, trước giảm giá — lệch gốc với tiền chứng từ lúc không lọc.
+ */
+export function phanTienQuaLoc(
+  tong: number,
+  dong: ReadonlyArray<{ product_id: string; line_total: number | null; is_exchange?: boolean | null }>,
+  qua: (productId: string) => boolean
+): number {
+  const ls = dong.filter((l) => !l.is_exchange)
+  const S = ls.reduce((s, l) => s + Number(l.line_total || 0), 0)
+  if (!ls.length || S <= 0) return ls.length && qua(ls[0].product_id) ? tong : 0
+  let conLai = tong
+  let phan = 0
+  ls.forEach((l, i) => {
+    const tien = i === ls.length - 1 ? conLai : Math.round((Number(l.line_total || 0) / S) * tong)
+    conLai -= tien
+    if (qua(l.product_id)) phan += tien
+  })
+  return phan
+}
+
+/** Có dòng (không phải hàng đổi) nào qua bộ lọc hàng không — chứng từ không có thì không tính vào số liệu khi lọc. */
+export function coDongQuaLoc(
+  dong: ReadonlyArray<{ product_id: string; is_exchange?: boolean | null }>,
+  qua: (productId: string) => boolean
+): boolean {
+  return dong.some((l) => !l.is_exchange && qua(l.product_id))
+}
+
+/**
  * Cấp NHÂN VIÊN lấy TIỀN CHỨNG TỪ thay cho tiền cộng dòng.
  *
  * ⚠ CHỦ NHÀ 26/09/2026: "sao doanh thu thuần trong báo cáo bán hàng vẫn lệch so với công nợ".
  *   Cộng dòng (Σ `line_total` HĐ − Σ `line_total` dòng trả) bỏ mất giảm giá cả đơn, VAT, làm
  *   tròn của hóa đơn, và chênh giữa dòng trả với `credit_note_amount` của phiếu. Công nợ thì
  *   là `sales_invoices.total − credit_note_amount`. Không lọc hàng hóa → dòng nhân viên dùng
- *   đúng hai số ấy (khớp công nợ); mặt hàng bên trong vẫn cộng dòng. Có lọc hàng hóa thì tiền
- *   chứng từ không tách được theo hàng → giữ cộng dòng.
+ *   đúng hai số ấy (khớp công nợ); mặt hàng bên trong vẫn cộng dòng. Có lọc hàng hóa / NCC thì
+ *   nơi gọi đưa PHẦN PHÂN BỔ của chứng từ cho các dòng qua lọc (`phanTienQuaLoc`, 09/10/2026).
  */
 export function chotTienChungTu<T extends HangBanNhanVien>(
   rows: readonly T[],

@@ -32,6 +32,8 @@ import {
   congHangBanNhanVien, chotTienChungTu,
   congLoiNhuanNhanVien,
   nhanVienPhieuTra,
+  phanTienQuaLoc,
+  coDongQuaLoc,
   type HangBanNhanVien,
   type HangBanSanPham,
   type SanPhamHangBan,
@@ -71,9 +73,9 @@ interface CustomerRow {
   group_id?: string | null
   channel?: string | null
 }
-/** Mặt hàng kèm đơn vị quy đổi + bảng giá (`COT_SP_QUY_DOI`). */
+/** Mặt hàng kèm đơn vị quy đổi + bảng giá (`COT_SP_QUY_DOI`) + NCC chính (bộ lọc NCC). */
 interface ProductRow extends SanPhamHangBan {
-  brand?: string | null
+  primary_supplier_id?: string | null
 }
 interface StockEntry {
   id: string
@@ -108,8 +110,10 @@ export default function EmployeesReportPage() {
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
   const [productFilter, setProductFilter] = useState<string[]>([])
-  /* Không còn lọc "Loại hàng" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng". */
-  const [brandFilter, setBrandFilter] = useState<string[]>([])
+  /* Không còn lọc "Loại hàng" (`products.category`) — chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng".
+     Lọc theo NCC CHÍNH của mặt hàng (`primary_supplier_id`) thay cho Thương hiệu — chủ nhà 09/10/2026: "bộ lọc thương
+     hiệu thay bằng NCC" (như màn Báo cáo bán hàng). */
+  const [supplierFilter, setSupplierFilter] = useState<string[]>([])
   const [groupFilter, setGroupFilter] = useState("")
   const [salesUserFilter, setSalesUserFilter] = useState<string[]>([])
   const [routeFilter, setRouteFilter] = useState<string[]>([])
@@ -157,7 +161,7 @@ export default function EmployeesReportPage() {
           fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
           fetchOrgRows<ProductRow>(
             supabase, "products", orgId,
-            `id, sku, name, base_unit, sell_price, brand, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
+            `id, sku, name, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
           fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
@@ -253,15 +257,50 @@ export default function EmployeesReportPage() {
   // Filter at the line level — applied where lines are iterated.
   const productPasses = useCallback(
     (productId: string) => {
-      if (!productFilter.length && !brandFilter.length) return true
+      if (!productFilter.length && !supplierFilter.length) return true
       const p = productMap.get(productId)
       if (!p) return false
       if (productFilter.length && !productFilter.includes(p.id)) return false
-      if (brandFilter.length && !brandFilter.includes(p.brand || "")) return false
+      if (supplierFilter.length && !supplierFilter.includes(p.primary_supplier_id || "")) return false
       return true
     },
-    [productFilter, brandFilter, productMap]
+    [productFilter, supplierFilter, productMap]
   )
+
+  /**
+   * ⚠ ĐANG LỌC HÀNG HOÁ / NCC THÌ TIỀN CẤP NHÂN VIÊN LÀ PHẦN CỦA HÀNG ĐƯỢC LỌC (chủ nhà 09/10/2026). Bản cũ cộng
+   *   NGUYÊN tiền hoá đơn ở các tab Bán hàng / Lợi nhuận / Theo khách / Theo sản phẩm dù đang lọc hàng — chọn một NCC
+   *   vẫn ra doanh thu của cả hoá đơn, và tab Lợi nhuận trừ giá vốn CHỈ của hàng đã lọc khỏi doanh thu của CẢ hoá đơn
+   *   → lãi phồng. Nay: chỉ chứng từ có dòng qua lọc, tiền = phần phân bổ của các dòng ấy (`phanTienQuaLoc` — cùng luật
+   *   Báo cáo tổng hợp). Không lọc → nguyên tiền chứng từ (khớp công nợ).
+   */
+  const coLocHang = productFilter.length > 0 || supplierFilter.length > 0
+  const hoaDonTheoLoc = useMemo(() => {
+    if (!coLocHang) return invoices
+    const out: RevenueInvoiceRow[] = []
+    for (const o of invoices) {
+      const ls = linesByInvoice.get(o.id) || []
+      if (!coDongQuaLoc(ls, productPasses)) continue
+      out.push({ ...o, total: phanTienQuaLoc(Number(o.total || 0), ls, productPasses) })
+    }
+    return out
+  }, [coLocHang, invoices, linesByInvoice, productPasses])
+  const phieuTraTheoLoc = useMemo(() => {
+    if (!coLocHang) return returns
+    const theoPhieu = new Map<string, ReturnLineRow[]>()
+    for (const l of returnLines) {
+      const a = theoPhieu.get(l.return_id)
+      if (a) a.push(l)
+      else theoPhieu.set(l.return_id, [l])
+    }
+    const out: ReturnSummaryRow[] = []
+    for (const r of returns) {
+      const ls = theoPhieu.get(r.id) || []
+      if (!coDongQuaLoc(ls, productPasses)) continue
+      out.push({ ...r, credit_note_amount: phanTienQuaLoc(Number(r.credit_note_amount || 0), ls, productPasses) })
+    }
+    return out
+  }, [coLocHang, returns, returnLines, productPasses])
 
   // Filter at the customer level (group + route) — applied where orders / customers are iterated.
   const customerPasses = useCallback(
@@ -314,16 +353,16 @@ export default function EmployeesReportPage() {
     return out
   }, [returnLines, returnById, nvPhieuTra, matchSearchUser, customerPasses, productPasses])
 
-  /** Phiếu trả đã quy nhân viên, qua bộ lọc người bán + khách (cấp tiền của phiếu). */
+  /** Phiếu trả đã quy nhân viên, qua bộ lọc người bán + khách (cấp tiền của phiếu; đang lọc hàng thì phần của hàng ấy). */
   const returnsTheoNv = useMemo(() => {
     const out: { uid: string; r: ReturnSummaryRow }[] = []
-    for (const r of returns) {
+    for (const r of phieuTraTheoLoc) {
       const uid = nvPhieuTra.get(r.id)
       if (!uid || !matchSearchUser(uid) || !customerPasses(r.customer_id)) continue
       out.push({ uid, r })
     }
     return out
-  }, [returns, nvPhieuTra, matchSearchUser, customerPasses])
+  }, [phieuTraTheoLoc, nvPhieuTra, matchSearchUser, customerPasses])
 
   // ============== Bán hàng (drill-down theo thời gian) ==============
   type SalesRow = {
@@ -338,8 +377,8 @@ export default function EmployeesReportPage() {
 
   const salesRows: SalesRow[] = useMemo(() => {
     const m = new Map<string, SalesRow>()
-    // doanh thu từ hóa đơn đã ghi sổ
-    for (const o of invoices) {
+    // doanh thu từ hóa đơn đã ghi sổ (đang lọc hàng: phần của hàng được lọc — `hoaDonTheoLoc`)
+    for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -412,7 +451,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [invoices, returnsTheoNv, userMap, matchSearchUser, customerPasses])
+  }, [hoaDonTheoLoc, returnsTheoNv, userMap, matchSearchUser, customerPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -432,7 +471,7 @@ export default function EmployeesReportPage() {
    *   dòng hóa đơn). Bản cũ lấy nguyên tiền hóa đơn — hoa hồng tính trên số phồng.
    */
   const profitRows: ProfitRow[] = useMemo(() => {
-    const hoaDon = invoices.filter((o) => matchSearchUser(o.sales_user_id) && customerPasses(o.customer_id))
+    const hoaDon = hoaDonTheoLoc.filter((o) => matchSearchUser(o.sales_user_id) && customerPasses(o.customer_id))
     const giaVonHoaDon = (invoiceId: string) => {
       let cogs = 0
       for (const l of linesByInvoice.get(invoiceId) || []) {
@@ -467,7 +506,7 @@ export default function EmployeesReportPage() {
       })
       .sort((a, b) => b.profit - a.profit)
   }, [
-    invoices, linesByInvoice, avgCostMap, returnsTheoNv, returnCosts, userMap, productMap,
+    hoaDonTheoLoc, linesByInvoice, avgCostMap, returnsTheoNv, returnCosts, userMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -493,7 +532,7 @@ export default function EmployeesReportPage() {
   }
   const employeeProductRows: EmployeeProductRow[] = useMemo(() => {
     const m = new Map<string, EmployeeProductRow>()
-    for (const o of invoices) {
+    for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -588,7 +627,7 @@ export default function EmployeesReportPage() {
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [
-    invoices, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -613,7 +652,7 @@ export default function EmployeesReportPage() {
   }
   const employeeCustomerRows: EmployeeCustomerRow[] = useMemo(() => {
     const m = new Map<string, EmployeeCustomerRow>()
-    for (const o of invoices) {
+    for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const u = userMap.get(o.sales_user_id)
@@ -728,7 +767,7 @@ export default function EmployeesReportPage() {
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [
-    invoices, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -740,12 +779,18 @@ export default function EmployeesReportPage() {
   const employeeSummaryRows: SummaryRow[] = useMemo(() => {
     const ban: { uid: string; line: InvoiceLineRow }[] = []
     const giamDon: { uid: string; tien: number }[] = []
-    for (const o of invoices) {
+    /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — tiền CHỨNG TỪ (`chotTienChungTu`). Đang lọc hàng hoá /
+       NCC thì `hoaDonTheoLoc` / `returnsTheoNv` đã là PHẦN của hàng được lọc (09/10/2026). */
+    const tienHd = new Map<string, number>()
+    for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
       if (!customerPasses(o.customer_id)) continue
       const dongHd = linesByInvoice.get(o.id) || []
-      // Giảm giá cả đơn tính RIÊNG theo hoá đơn (chủ nhà 30/09/2026), không trộn vào chênh.
-      giamDon.push({ uid: o.sales_user_id, tien: giamGiaHoaDon(o, dongHd) })
+      tienHd.set(o.sales_user_id, (tienHd.get(o.sales_user_id) ?? 0) + Number(o.total || 0))
+      // Giảm giá cả đơn tính RIÊNG theo hoá đơn (chủ nhà 30/09/2026), không trộn vào chênh. Đang lọc hàng: phần của
+      // hàng được lọc, cùng luật phân bổ với tiền hoá đơn — không phải giảm giá của CẢ hoá đơn.
+      const giam = giamGiaHoaDon(o, dongHd)
+      giamDon.push({ uid: o.sales_user_id, tien: coLocHang ? phanTienQuaLoc(giam, dongHd, productPasses) : giam })
       for (const l of dongHd) {
         if (!productPasses(l.product_id)) continue
         ban.push({ uid: o.sales_user_id, line: l })
@@ -762,27 +807,16 @@ export default function EmployeesReportPage() {
      *   MỘT TRANG, và không ai biết tin bảng nào.
      */
     const tra = returnLinesTheoNv.map(({ uid, line }) => ({ uid, line }))
-
-    let rows = congHangBanNhanVien({ ban, tra, sanPham: productMap, giamDon })
-    /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — xem `chotTienChungTu`. */
-    const coLocHang = productFilter.length > 0 || brandFilter.length > 0
-    if (!coLocHang) {
-      const tienHd = new Map<string, number>()
-      for (const o of invoices) {
-        if (!matchSearchUser(o.sales_user_id) || !customerPasses(o.customer_id)) continue
-        tienHd.set(o.sales_user_id, (tienHd.get(o.sales_user_id) ?? 0) + Number(o.total || 0))
-      }
-      const tienTra = new Map<string, number>()
-      for (const { uid, r } of returnsTheoNv) {
-        tienTra.set(uid, (tienTra.get(uid) ?? 0) + Number(r.credit_note_amount || 0))
-      }
-      rows = chotTienChungTu(rows, tienHd, tienTra)
+    const tienTra = new Map<string, number>()
+    for (const { uid, r } of returnsTheoNv) {
+      tienTra.set(uid, (tienTra.get(uid) ?? 0) + Number(r.credit_note_amount || 0))
     }
+    const rows = chotTienChungTu(congHangBanNhanVien({ ban, tra, sanPham: productMap, giamDon }), tienHd, tienTra)
     return rows.map((r) => {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [invoices, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, productFilter, brandFilter])
+  }, [hoaDonTheoLoc, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, coLocHang])
 
   const handleExport = () => {
     if (variant === "sales") {
@@ -943,12 +977,13 @@ export default function EmployeesReportPage() {
               loading={catalogs.loading}
             />
           </FilterField>
-          <FilterField label="Thương hiệu (chọn nhiều)">
+          {/* NCC chính của mặt hàng thay cho Thương hiệu — chủ nhà 09/10/2026. */}
+          <FilterField label="Nhà cung cấp (chọn nhiều)">
             <FilterMultiSelect
-              value={brandFilter}
-              onChange={setBrandFilter}
-              options={catalogs.brands}
-              placeholder="Tất cả thương hiệu"
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              options={catalogs.suppliers}
+              placeholder="Tất cả NCC"
               loading={catalogs.loading}
             />
           </FilterField>

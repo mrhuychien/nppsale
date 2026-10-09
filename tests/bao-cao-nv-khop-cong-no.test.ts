@@ -26,12 +26,12 @@ describe("báo cáo nhân viên khớp công nợ", () => {
     const [r] = chotTienChungTu([dong("nv2")], new Map(), new Map([["nv2", 5_000]]))
     expect(r.netRevenue).toBe(-5_000)
   })
-  it("màn chỉ chốt khi KHÔNG lọc hàng hóa", () => {
+  it("màn chốt tiền chứng từ; đang lọc hàng / NCC thì là PHẦN phân bổ của hàng được lọc", () => {
     const s = readFileSync(resolve(__dirname, "../src/app/(dashboard)/reports/employees/page.tsx"), "utf-8")
-    // Không còn lọc "Loại hàng" (bỏ trường nhóm hàng, chủ nhà 03/10/2026).
-    expect(s).toContain("const coLocHang = productFilter.length > 0 || brandFilter.length > 0")
-    expect(s).toContain("rows = chotTienChungTu(rows, tienHd, tienTra)")
-    expect(s).toContain("Number(o.total || 0)")
+    // Không còn lọc "Loại hàng" (bỏ trường nhóm hàng, chủ nhà 03/10/2026); Thương hiệu → NCC (09/10/2026).
+    expect(s).toContain("const coLocHang = productFilter.length > 0 || supplierFilter.length > 0")
+    expect(s).toContain("chotTienChungTu(congHangBanNhanVien({ ban, tra, sanPham: productMap, giamDon }), tienHd, tienTra)")
+    expect(s).toContain("tienHd.set(o.sales_user_id, (tienHd.get(o.sales_user_id) ?? 0) + Number(o.total || 0))")
     expect(s).toContain("Number(r.credit_note_amount || 0)")
   })
 })

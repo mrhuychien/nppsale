@@ -6,6 +6,7 @@ import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -114,8 +115,10 @@ export default function CostProfitPage() {
     [supabase]
   )
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -140,8 +143,8 @@ export default function CostProfitPage() {
       const prevOrders = prevInvRes.rows
       const retRows = retRes.rows
       const prevRetRows = prevRetRes.rows
-      setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
-      setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
+      if (conMoi()) setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
+      if (conMoi()) setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
       /**
        * ⚠ SỐ THUẦN = SỐ ĐI − SỐ TRẢ (chủ nhà 25/09/2026: "Rà soát lại toàn bộ doanh số
        *   tính bằng số đi - số trả"). Doanh thu đã trừ hàng trả thì giá vốn cũng phải
@@ -156,23 +159,23 @@ export default function CostProfitPage() {
         m.forEach((c) => { t += c.total })
         return t
       }
-      setReturnsValue(retRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
-      setPrevReturnsValue(prevRetRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
-      setCogs(cogsRes.cogs - tongGiaVonTra(retCosts))
-      setPrevCogs(prevCogsRes.cogs - tongGiaVonTra(prevRetCosts))
-      setExpenses(exp.rows)
-      setPrevExpenses(prevExp.rows)
-      setTruncated(
+      if (conMoi()) setReturnsValue(retRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+      if (conMoi()) setPrevReturnsValue(prevRetRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+      if (conMoi()) setCogs(cogsRes.cogs - tongGiaVonTra(retCosts))
+      if (conMoi()) setPrevCogs(prevCogsRes.cogs - tongGiaVonTra(prevRetCosts))
+      if (conMoi()) setExpenses(exp.rows)
+      if (conMoi()) setPrevExpenses(prevExp.rows)
+      if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
           cogsRes.truncated || prevCogsRes.truncated || exp.truncated || prevExp.truncated
       )
     } catch (e) {
       console.error("[business/cost-profit] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase, fetchExpenses])
+  }, [user?.org_id, range, supabase, fetchExpenses, batLuot])
 
   useEffect(() => {
     load()

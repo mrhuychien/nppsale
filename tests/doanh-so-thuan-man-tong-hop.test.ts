@@ -100,7 +100,9 @@ describe("Cuối ngày (reports/end-of-day) — hàng trả qua CÙNG bộ lọc
     expect(S).toContain("returnRows.filter(passesFilters)")
     expect(S).toContain("const returnsValue = filteredReturns.reduce((s, r) => s + r.amount, 0)")
     expect(S).toContain("const netRevenue = revenue - returnsValue")
-    expect(S).toContain("const grossProfit = netRevenue - (cogs - returnsCost)")
+    // Đang lọc: giá vốn của đúng các HĐ đã lọc (phiếu xuất của chính HĐ), giá vốn trả của phiếu đã lọc (rà 09/10/2026).
+    expect(S).toContain("const grossProfit = netRevenue - (giaVonBan - returnsCost)")
+    expect(S).toContain("const returnsCost = (dangLoc ? filteredReturns : returnRows).reduce((s, r) => s + r.cost, 0)")
   })
 
   it("luật lọc chung loại phiếu trả của khách khác / NV khác", () => {

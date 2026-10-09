@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame, downloadXlsx } from "@/components/analytics/report-frame"
@@ -49,8 +50,10 @@ export default function ChannelsReportPage() {
   const [customerFilter, setCustomerFilter] = useState<string[]>([])
   const catalogs = useFilterCatalogs(user?.org_id)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     /* ⚠ KHÁCH ĐỌC ĐỦ THEO TRANG. Đọc trần thì khách thứ 1.001 trở đi không
        có trong map, và doanh số của họ lặng lẽ dồn sang kênh mặc định
        "Bán trực tiếp" — con số từng kênh sai mà tổng vẫn khớp. */
@@ -62,16 +65,16 @@ export default function ChannelsReportPage() {
         fetchReturnsRowsDu(supabase, user.org_id, range),
         fetchOrgRows<CustomerRow>(supabase, "customers", user.org_id, "id, store_name, channel", "đọc khách hàng"),
       ])
-      setTruncated(invoiceRes.truncated || returnsRes.truncated || customersRes.truncated)
-      setInvoices(invoiceRes.rows)
-      setReturns(returnsRes.rows)
-      setCustomers(customersRes.rows)
+      if (conMoi()) setTruncated(invoiceRes.truncated || returnsRes.truncated || customersRes.truncated)
+      if (conMoi()) setInvoices(invoiceRes.rows)
+      if (conMoi()) setReturns(returnsRes.rows)
+      if (conMoi()) setCustomers(customersRes.rows)
     } catch (err) {
-      setLoadError(errorMessage(err))
+      if (conMoi()) setLoadError(errorMessage(err))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase])
+  }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()

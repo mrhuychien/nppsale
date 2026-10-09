@@ -6,6 +6,7 @@ import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField } from "@/components/analytics/report-shell"
@@ -97,8 +98,10 @@ export default function FinanceReportPage() {
     return range
   }, [yearMode, year, range])
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     /**
      * ⚠ HỎNG MỘT CÂU LÀ KHÔNG HIỆN BÁO CÁO. Bản cũ chỉ `console.error` lỗi
      *   của bốn hàm RPC và của bảng chi phí rồi đọc `data ?? 0` — công nợ
@@ -141,7 +144,7 @@ export default function FinanceReportPage() {
       const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
         .find((x) => x?.error)?.error
       if (rpcErr) throw new Error(`tính số tổng ở máy chủ: ${errorMessage(rpcErr)}`)
-      setTruncated(invoiceRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
+      if (conMoi()) setTruncated(invoiceRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
       const invoiceList = invoiceRes.rows
       const retVal = retRes.total
       /* Hóa đơn không có cột giảm giá: giảm = Σ dòng − subtotal (mig 183).
@@ -168,12 +171,12 @@ export default function FinanceReportPage() {
         totalRevenue += Number(o.total || 0) + giam
         totalDiscount += giam
       }
-      setRevenue(totalRevenue)
-      setDiscount(totalDiscount)
-      setReturnsValue(retVal)
+      if (conMoi()) setRevenue(totalRevenue)
+      if (conMoi()) setDiscount(totalDiscount)
+      if (conMoi()) setReturnsValue(retVal)
       let tongGiaVonTra = 0
       giaVonTra.forEach((c) => { tongGiaVonTra += c.total })
-      setCogs(cogsRes.cogs - tongGiaVonTra)
+      if (conMoi()) setCogs(cogsRes.cogs - tongGiaVonTra)
 
       const exps = expensesRes.rows.map((e) => ({
         amount: Number(e.amount || 0),
@@ -181,22 +184,22 @@ export default function FinanceReportPage() {
         is_paid: !!e.is_paid,
         category: e.category || null,
       }))
-      setExpenses(exps)
+      if (conMoi()) setExpenses(exps)
 
-      setRecvOpen(Number((recvRes.data as { total_outstanding?: number } | null)?.total_outstanding ?? 0))
-      setPayOpen(Number((payRes.data as { open_payables?: number } | null)?.open_payables ?? 0))
-      setInventoryValue(Number((batchesRes.data as { inventory_value?: number } | null)?.inventory_value ?? 0))
-      setCashIn(Number(cashRes.data ?? 0))
+      if (conMoi()) setRecvOpen(Number((recvRes.data as { total_outstanding?: number } | null)?.total_outstanding ?? 0))
+      if (conMoi()) setPayOpen(Number((payRes.data as { open_payables?: number } | null)?.open_payables ?? 0))
+      if (conMoi()) setInventoryValue(Number((batchesRes.data as { inventory_value?: number } | null)?.inventory_value ?? 0))
+      if (conMoi()) setCashIn(Number(cashRes.data ?? 0))
 
       let co = 0
       for (const e of exps) if (e.is_paid) co += e.amount
-      setCashOutPaid(co)
+      if (conMoi()) setCashOutPaid(co)
     } catch (err) {
-      setLoadError(errorMessage(err))
+      if (conMoi()) setLoadError(errorMessage(err))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, effectiveRange, supabase])
+  }, [user?.org_id, effectiveRange, supabase, batLuot])
 
   useEffect(() => {
     load()

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -37,16 +38,6 @@ import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
-type TabKey = "revenue" | "returns" | "net" | "profit" | "invoices"
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "revenue", label: "Doanh thu" },
-  { key: "returns", label: "Trả hàng" },
-  { key: "net", label: "Doanh thu thuần" },
-  { key: "profit", label: "Lợi nhuận gộp" },
-  { key: "invoices", label: "Số hóa đơn" },
-]
-
 interface UserRow {
   id: string
   full_name: string
@@ -78,7 +69,6 @@ export default function BusinessOverviewPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<TabKey>("revenue")
 
   const [orders, setOrders] = useState<RevenueInvoiceRow[]>([])
   const [prevOrders, setPrevOrders] = useState<RevenueInvoiceRow[]>([])
@@ -106,8 +96,10 @@ export default function BusinessOverviewPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -226,32 +218,32 @@ export default function BusinessOverviewPage() {
       let giaVonTraTruoc = 0
       prevRetCosts.forEach((c) => { giaVonTraTruoc += c.total })
 
-      setOrders(orderList)
-      setPrevOrders(prevOrderList)
-      setLines(lineList)
-      setPrevLines(prevLineList)
-      setReturns(retRows)
-      setPrevReturns(prevRetRows)
-      setReturnLines(retLineList)
-      setPrevReturnLines(prevRetLineList)
-      setReturnUser(nvTra)
-      setCogs(cogsRes.cogs - giaVonTra)
-      setPrevCogs(prevCogsRes.cogs - giaVonTraTruoc)
-      setCustomers(customersRes.rows)
-      setProducts(productsRes.rows)
-      setUsers(usersRes.rows)
-      setTruncated(
+      if (conMoi()) setOrders(orderList)
+      if (conMoi()) setPrevOrders(prevOrderList)
+      if (conMoi()) setLines(lineList)
+      if (conMoi()) setPrevLines(prevLineList)
+      if (conMoi()) setReturns(retRows)
+      if (conMoi()) setPrevReturns(prevRetRows)
+      if (conMoi()) setReturnLines(retLineList)
+      if (conMoi()) setPrevReturnLines(prevRetLineList)
+      if (conMoi()) setReturnUser(nvTra)
+      if (conMoi()) setCogs(cogsRes.cogs - giaVonTra)
+      if (conMoi()) setPrevCogs(prevCogsRes.cogs - giaVonTraTruoc)
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setUsers(usersRes.rows)
+      if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
           cogsRes.truncated || prevCogsRes.truncated ||
           customersRes.truncated || productsRes.truncated || usersRes.truncated
       )
     } catch (e) {
       console.error("[business/overview] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu kinh doanh"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu kinh doanh"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase])
+  }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()
@@ -614,34 +606,12 @@ export default function BusinessOverviewPage() {
         />
       </div>
 
+      {/* ⚠ Đã BỎ các nút "Phân tích theo" (Doanh thu / Trả hàng / Lợi nhuận gộp / Số hóa đơn): bấm chỉ đổi dòng chữ, bốn
+          bảng dưới vẫn xếp theo doanh thu thuần — người xem tưởng đã đổi cách xếp (rà báo cáo 09/10/2026). */}
       <div className="rounded-xl border border-border/40 bg-card p-5 shadow-sm">
-        <div className="mb-4">
-          <h3 className="text-base font-semibold">Phân tích theo</h3>
-        </div>
-        <div className="border-b border-border/40">
-          <div className="flex flex-wrap gap-1">
-            {TABS.map((t) => {
-              const active = activeTab === t.key
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={
-                    "border-b-2 px-3 py-2 text-sm font-medium -mb-px " +
-                    (active
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground")
-                  }
-                >
-                  {t.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Hiển thị xếp hạng theo {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()}.
-          Các bảng dưới đây sắp xếp giảm dần và giới hạn 10 mục.
+        <h3 className="text-base font-semibold">Xếp hạng</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Các bảng dưới đây xếp theo doanh thu thuần giảm dần, mỗi bảng 10 mục.
         </p>
       </div>
 

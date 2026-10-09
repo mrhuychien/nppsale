@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -61,8 +62,10 @@ export default function CustomersCategoriesPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -99,21 +102,21 @@ export default function CustomersCategoriesPage() {
       const prevOrderList = prevInvRes.rows
       const retRows = retRes.rows
       const prevRetRows = prevRetRes.rows
-      setOrders(orderList)
-      setPrevOrders(prevOrderList)
-      setReturns(retRows)
-      setPrevReturns(prevRetRows)
-      setCustomers(cust.rows)
-      setTruncated(
+      if (conMoi()) setOrders(orderList)
+      if (conMoi()) setPrevOrders(prevOrderList)
+      if (conMoi()) setReturns(retRows)
+      if (conMoi()) setPrevReturns(prevRetRows)
+      if (conMoi()) setCustomers(cust.rows)
+      if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || cust.truncated
       )
     } catch (e) {
       console.error("[customers/categories] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu phân loại khách hàng"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu phân loại khách hàng"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase])
+  }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()

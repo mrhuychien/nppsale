@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,21 +30,24 @@ export default function BalanceSheetPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     setLoading(true)
     setLoadError(null)
     /* ⚠ `lib/finance` NÉM khi hàm cộng sổ lỗi (thay vì trả 0đ). Bắt để
        BÁO: không bắt thì màn kẹt ở khung xương mãi; nuốt thì ra số 0. */
     try {
-      setData(await fetchBalanceSheet(supabase, user.org_id, asOf))
+      const d = await fetchBalanceSheet(supabase, user.org_id, asOf)
+      if (conMoi()) setData(d)
     } catch (e) {
-      setData(null)
-      setLoadError(errorMessage(e, "Không tải được báo cáo"))
+      if (conMoi()) setData(null)
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được báo cáo"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, asOf]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, asOf, batLuot]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
 

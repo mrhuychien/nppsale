@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils"
 import { timXepHang } from "@/lib/search"
 import { useClientNow } from "@/hooks/use-client-now"
 import { CompactSelect } from "@/components/ui/compact-select"
+import { useAuth } from "@/hooks/use-auth"
+import { duocXuatFile } from "@/lib/permissions"
 
 export interface VariantOption<T extends string> {
   key: T
@@ -54,6 +56,10 @@ export function ReportShell<T extends string>({
   // data is visible immediately. Tapping "Bộ lọc" expands it.
   const [filtersOpen, setFiltersOpen] = useState(false)
   const printedAt = useClientNow()
+  const { user } = useAuth()
+  /* ⚠ Ô "Xuất file" của ma trận quyền (mô-đun Báo cáo) — như ReportFrame. Bản cũ hiện "Xuất tất cả" cho mọi người xem
+     được báo cáo, kể cả vai trò bị tắt quyền xuất (rà báo cáo 09/10/2026). */
+  const xuat = duocXuatFile(user?.role, "reports")
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 print:hidden">
@@ -79,7 +85,7 @@ export function ReportShell<T extends string>({
       <div className="grid gap-4 lg:grid-cols-[260px_1fr] print:block">
         {/* Left filter panel — collapsed on mobile unless toggled */}
         <aside className={cn("space-y-4 print:hidden", filtersOpen ? "block" : "hidden lg:block")}>
-          {onExportCsv ? (
+          {onExportCsv && xuat ? (
             <button
               type="button"
               onClick={onExportCsv}
@@ -211,6 +217,8 @@ export interface FilterOption {
   label: string
   /** Optional secondary label shown smaller (vd: SKU / phone). */
   hint?: string
+  /** Ghi chú mờ sau tên ("đã nghỉ", "ngừng bán") — chỉ để nhìn, KHÔNG dùng để khớp (nhãn kênh khớp theo tên). */
+  ghiChu?: string
 }
 
 export function FilterSearchSelect({
@@ -319,7 +327,10 @@ export function FilterSearchSelect({
                       value === o.id ? "bg-primary/10 font-semibold" : ""
                     )}
                   >
-                    <span className="truncate">{o.label}</span>
+                    <span className="truncate">
+                      {o.label}
+                      {o.ghiChu && <span className="text-muted-foreground"> ({o.ghiChu})</span>}
+                    </span>
                     {o.hint && (
                       <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
                         {o.hint}
@@ -470,7 +481,10 @@ export function FilterMultiSelect({
                       )}>
                         {checked && <span className="text-[10px] leading-none">✓</span>}
                       </span>
-                      <span className="flex-1 truncate">{o.label}</span>
+                      <span className="flex-1 truncate">
+                        {o.label}
+                        {o.ghiChu && <span className="text-muted-foreground"> ({o.ghiChu})</span>}
+                      </span>
                       {o.hint && (
                         <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">{o.hint}</span>
                       )}

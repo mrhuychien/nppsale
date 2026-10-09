@@ -6,17 +6,21 @@ export interface StockMovementRow {
   id: string
   sku: string
   name: string
-  /** Tồn đầu kỳ (ước lượng) */
+  /** Tồn đầu kỳ — tồn cuối kỳ lùi các biến động trong kỳ. */
   beginQty: number
   importQty: number
   importValue: number
   exportQty: number
   exportValue: number
+  /** Kiểm kho / chuyển kho trong kỳ (có dấu) = cuối − đầu − nhập + xuất. */
+  otherQty: number
+  /** Tồn tại CUỐI KỲ (tồn hiện tại lùi các biến động sau kỳ). */
   endQty: number
   /** SL theo từng đơn vị cơ sở — số `…Qty` gộp nhóm thì lẫn đơn vị, không hiện. */
   beginTheoDv: SLTheoDonVi
   importTheoDv: SLTheoDonVi
   exportTheoDv: SLTheoDonVi
+  otherTheoDv: SLTheoDonVi
   endTheoDv: SLTheoDonVi
 }
 
@@ -46,8 +50,11 @@ export function StockMovementView({ rows, detail = false, detailLines }: Props) 
     begin: tongSLTheoDonVi(rows, (r) => r.beginTheoDv),
     import: tongSLTheoDonVi(rows, (r) => r.importTheoDv),
     export: tongSLTheoDonVi(rows, (r) => r.exportTheoDv),
+    other: tongSLTheoDonVi(rows, (r) => r.otherTheoDv),
     end: tongSLTheoDonVi(rows, (r) => r.endTheoDv),
   }
+  // Cột "Kiểm / chuyển kho" chỉ hiện khi kỳ có điều chỉnh — để Đầu + Nhập − Xuất ± Khác = Cuối luôn khớp.
+  const coKhac = rows.some((r) => Object.values(r.otherTheoDv).some((q) => q !== 0))
 
   return (
     <ReportTable
@@ -61,6 +68,9 @@ export function StockMovementView({ rows, detail = false, detailLines }: Props) 
         { key: "iv", label: "Giá trị nhập", align: "right", render: (r) => formatCurrency(r.importValue) },
         { key: "eq", label: "SL xuất", align: "right", render: (r) => hienSLTheoDonVi(r.exportTheoDv) },
         { key: "ev", label: "Giá trị xuất", align: "right", render: (r) => formatCurrency(r.exportValue) },
+        ...(coKhac
+          ? [{ key: "oq", label: "Kiểm / chuyển kho", align: "right" as const, render: (r: StockMovementRow) => hienSLTheoDonVi(r.otherTheoDv) }]
+          : []),
         { key: "end", label: "Tồn cuối", align: "right", render: (r) => <span className="font-semibold">{hienSLTheoDonVi(r.endTheoDv)}</span> },
       ]}
       totalsRow={
@@ -72,6 +82,7 @@ export function StockMovementView({ rows, detail = false, detailLines }: Props) 
             { content: formatCurrency(totals.importValue), align: "right" },
             { content: hienSLTheoDonVi(tong.export), align: "right" },
             { content: formatCurrency(totals.exportValue), align: "right" },
+            ...(coKhac ? [{ content: hienSLTheoDonVi(tong.other), align: "right" as const }] : []),
             { content: hienSLTheoDonVi(tong.end), align: "right", className: "text-primary" },
           ]}
         />

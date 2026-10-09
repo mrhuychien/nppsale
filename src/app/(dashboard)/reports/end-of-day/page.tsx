@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportFrame } from "@/components/analytics/report-frame"
@@ -24,6 +25,8 @@ import {
   fetchReturnsRowsDu,
   fetchReturnCosts,
   fetchCogsForRange,
+  fetchStockEntryLines,
+  giaTriDongKho,
   type SalesOrderRow,
   type RevenueInvoiceRow,
 } from "@/lib/analytics/sales"
@@ -69,13 +72,15 @@ export default function EndOfDayPage() {
   const supabase = createClient()
   const catalogs = useFilterCatalogs(user?.org_id)
   const [date, setDate] = useState<string>(rangeFromPreset("today").from)
-  const [, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   // Đơn tạo trong ngày — số liệu HOẠT ĐỘNG, không phải doanh thu.
   const [orders, setOrders] = useState<SalesOrderRow[]>([])
   // Hóa đơn ghi sổ trong ngày — DOANH THU tính theo hóa đơn (chủ nhà 24/09/2026).
   const [delivered, setDelivered] = useState<RevenueInvoiceRow[]>([])
   const [returnRows, setReturnRows] = useState<ReturnCuoiNgay[]>([])
   const [cogs, setCogs] = useState(0)
+  /** Giá vốn theo phiếu xuất của CHÍNH từng hoá đơn trong ngày — dùng khi đang lọc. */
+  const [giaVonHd, setGiaVonHd] = useState<Map<string, number>>(() => new Map())
   const [cashReceipts, setCashReceipts] = useState<CashReceiptRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -89,8 +94,10 @@ export default function EndOfDayPage() {
 
   const range: DateRange = useMemo(() => ({ from: date, to: date }), [date])
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     /* ⚠ HỎNG THÌ NÓI, KHÔNG HIỆN 0. Các hàm đọc đơn / trả / giá vốn nay
        NÉM khi truy vấn hỏng; không bắt thì trang treo. Phiếu thu và chi
        phí cũng thôi `console.error` rồi đọc `data || []` — "tiền thu 0đ"
@@ -137,7 +144,7 @@ export default function EndOfDayPage() {
       const hdThieu = retRes.rows
         .map((r) => r.invoice_id)
         .filter((id): id is string => !!id && !hdTrongNgay.has(id))
-      const [nguoiLap, hdKhac, giaVonTra] = await Promise.all([
+      const [nguoiLap, hdKhac, giaVonTra, phieuHd] = await Promise.all([
         docTheoLoId<{ id: string; requested_by: string | null }>(
           retIds,
           (lo, from, to) =>
@@ -161,7 +168,26 @@ export default function EndOfDayPage() {
           "đọc hóa đơn gắn phiếu trả"
         ),
         fetchReturnCosts(supabase, retIds),
+        // Phiếu xuất của từng hoá đơn trong ngày — giá vốn của đúng các hoá đơn đang lọc.
+        docTheoLoId<{ id: string; stock_entry_id: string | null }>(
+          delivRes.rows.map((i) => i.id),
+          (lo, from, to) =>
+            supabase
+              .from("sales_invoices")
+              .select("id, stock_entry_id", { count: "exact" })
+              .in("id", lo)
+              .order("id")
+              .range(from, to),
+          "đọc phiếu xuất của hoá đơn"
+        ),
       ])
+      const hdCuaPhieu = new Map<string, string>()
+      for (const h of phieuHd) if (h.stock_entry_id) hdCuaPhieu.set(h.stock_entry_id, h.id)
+      const gvHd = new Map<string, number>()
+      for (const l of await fetchStockEntryLines(supabase, Array.from(hdCuaPhieu.keys()))) {
+        const hd = hdCuaPhieu.get(l.entry_id)
+        if (hd) gvHd.set(hd, (gvHd.get(hd) || 0) + giaTriDongKho(l))
+      }
       const lapBoi = new Map(nguoiLap.map((r) => [r.id, r.requested_by]))
       const hdCua = new Map<string, { sales_user_id: string | null; payment_terms?: string | null }>(
         [...delivRes.rows, ...hdKhac].map((i) => [i.id, i])
@@ -178,22 +204,23 @@ export default function EndOfDayPage() {
           payment_terms: hd?.payment_terms ?? null,
         }
       })
-      setTruncated(
+      if (conMoi()) setTruncated(
         allRes.truncated || delivRes.truncated || retRes.truncated || cogsRes.truncated ||
           cashRes.truncated || expRes.truncated
       )
-      setOrders(allRes.rows)
-      setDelivered(delivRes.rows)
-      setReturnRows(rows)
-      setCogs(cogsRes.cogs)
-      setCashReceipts(cashRes.rows)
-      setExpenses(expRes.rows)
+      if (conMoi()) setOrders(allRes.rows)
+      if (conMoi()) setDelivered(delivRes.rows)
+      if (conMoi()) setReturnRows(rows)
+      if (conMoi()) setCogs(cogsRes.cogs)
+      if (conMoi()) setGiaVonHd(gvHd)
+      if (conMoi()) setCashReceipts(cashRes.rows)
+      if (conMoi()) setExpenses(expRes.rows)
     } catch (err) {
-      setLoadError(errorMessage(err))
+      if (conMoi()) setLoadError(errorMessage(err))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, date, supabase])
+  }, [user?.org_id, range, date, supabase, batLuot])
 
   useEffect(() => {
     load()
@@ -226,11 +253,14 @@ export default function EndOfDayPage() {
   // Hàng trả của ĐÚNG những khách / NV / người tạo đang lọc — không phải cả ngày.
   const returnsValue = filteredReturns.reduce((s, r) => s + r.amount, 0)
   const netRevenue = revenue - returnsValue
-  /* Lãi gộp = thuần − (giá vốn − giá vốn hàng trả đã nhập lại kho). ⚠ Giá vốn
-     (phiếu xuất) là của CẢ ngày, không theo bộ lọc — nên giá vốn hàng trả trừ đi
-     cũng lấy cả ngày cho hai vế cùng phạm vi. */
-  const returnsCost = returnRows.reduce((s, r) => s + r.cost, 0)
-  const grossProfit = netRevenue - (cogs - returnsCost)
+  /* Lãi gộp = thuần − (giá vốn − giá vốn hàng trả đã nhập lại kho).
+     - Không lọc: giá vốn = phiếu xuất của CẢ ngày (khớp Tài chính), giá vốn trả của mọi phiếu trả trong ngày.
+     - ⚠ ĐANG LỌC: giá vốn = phiếu xuất của CHÍNH các hoá đơn đã lọc, giá vốn trả của các phiếu trả đã lọc. Bản cũ lấy
+       doanh thu ĐÃ LỌC trừ giá vốn CẢ NGÀY → chọn một khách là LN gộp âm vô lý (rà báo cáo 09/10/2026). */
+  const dangLoc = customerFilter.length > 0 || salesUserFilter.length > 0 || !!creatorFilter || !!paymentMethodFilter
+  const giaVonBan = dangLoc ? filteredDelivered.reduce((s, o) => s + (giaVonHd.get(o.id) || 0), 0) : cogs
+  const returnsCost = (dangLoc ? filteredReturns : returnRows).reduce((s, r) => s + r.cost, 0)
+  const grossProfit = netRevenue - (giaVonBan - returnsCost)
   const cashIn = cashReceipts
     .filter((r) => r.status === "received")
     .reduce((s, r) => s + Number(r.submitted_amount || 0), 0)
@@ -294,6 +324,9 @@ export default function EndOfDayPage() {
       {!loadError && <ReportLoadNotice truncated={truncated} />}
       {loadError ? (
         <ReportLoadNotice error={loadError} />
+      ) : loading ? (
+        // Đang tải thì hiện khung chờ — bản cũ hiện 0đ (trông như ngày không bán được gì).
+        <Skeleton className="h-72" />
       ) : (
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -334,7 +367,10 @@ export default function EndOfDayPage() {
           </div>
 
           <div>
-            <h3 className="mb-2 font-semibold">Tiền mặt</h3>
+            <h3 className="mb-2 font-semibold">
+              Tiền mặt
+              {dangLoc && <span className="ml-2 text-xs font-normal text-muted-foreground">(toàn NPP — không theo bộ lọc)</span>}
+            </h3>
             <table className="w-full border border-border/40 text-sm">
               <tbody>
                 <tr className="border-b border-border/30">

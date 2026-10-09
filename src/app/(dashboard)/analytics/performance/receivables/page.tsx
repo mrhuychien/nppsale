@@ -6,6 +6,7 @@ import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -62,8 +63,10 @@ export default function ReceivablesAnalyticsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -117,17 +120,17 @@ export default function ReceivablesAnalyticsPage() {
             .range(from, to),
         "đọc khách hàng đang nợ"
       )
-      setReceivables(recvRes.rows)
-      setCustomers(custRows)
-      setUsers(usersRes.rows)
-      setTruncated(recvRes.truncated || usersRes.truncated)
+      if (conMoi()) setReceivables(recvRes.rows)
+      if (conMoi()) setCustomers(custRows)
+      if (conMoi()) setUsers(usersRes.rows)
+      if (conMoi()) setTruncated(recvRes.truncated || usersRes.truncated)
     } catch (e) {
       console.error("[performance/receivables] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu công nợ"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu công nợ"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, supabase])
+  }, [user?.org_id, supabase, batLuot])
 
   useEffect(() => {
     load()

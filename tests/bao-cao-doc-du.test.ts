@@ -158,14 +158,17 @@ describe("lib/analytics/sales: đọc đủ, hỏng thì ném", () => {
     expect(r.truncated).toBe(true)
   })
 
-  it("dòng hóa đơn: chia lô ≤150 id, đọc đủ", async () => {
+  it("dòng hóa đơn: chia lô ≤150 id, đọc đủ; bỏ dòng hàng đổi", async () => {
     const dong = hoaDon(400).map((h, i) => ({
       id: `sil-${pad(i)}`, invoice_id: h.id, product_id: "p", unit_name: "thùng",
-      conversion_factor: 1, quantity: 2, unit_price: 500, line_total: 1000,
+      conversion_factor: 1, quantity: 2, unit_price: 500, line_total: 1000, is_exchange: false,
     }))
-    const { client, nhatKy } = postgrestGia({ bang: { sales_invoice_lines: dong } })
+    // Hàng đổi không phải hàng bán (rà báo cáo 09/10/2026) — không về báo cáo nào.
+    const doi = { id: "sil-doi", invoice_id: dong[0].invoice_id, product_id: "p", unit_name: "thùng", conversion_factor: 1, quantity: 3, unit_price: 0, line_total: 0, is_exchange: true }
+    const { client, nhatKy } = postgrestGia({ bang: { sales_invoice_lines: [...dong, doi] } })
     const r = await fetchInvoiceLines(client, dong.map((d) => String(d.invoice_id)))
     expect(r).toHaveLength(400)
+    expect(r.some((l) => l.id === "sil-doi")).toBe(false)
     const lo = nhatKy.filter((k) => k.bang === "sales_invoice_lines").flatMap((k) => k.inLen)
     expect(Math.max(...lo)).toBeLessThanOrEqual(150)
   })
@@ -405,7 +408,8 @@ describe("reports/**: mọi màn đọc đủ và nói ra khi hỏng", () => {
         /<ReportLoadNotice truncated=\{truncated\}/.test(t.src) || /truncationWarning\(\)/.test(t.src),
         `${t.rel} bỏ cờ truncated — số thiếu mà không ai biết`
       ).toBe(true)
-      expect(t.src, `${t.rel} không bắt lỗi khi nạp`).toMatch(/catch \(err\) \{\s*setLoadError\(/)
+      // `if (conMoi())`: lượt nạp cũ về muộn không ghi lỗi đè lượt mới (`useLuotNap`, rà báo cáo 09/10/2026).
+      expect(t.src, `${t.rel} không bắt lỗi khi nạp`).toMatch(/catch \(err\) \{\s*(?:if \(conMoi\(\)\) )?setLoadError\(/)
     }
   })
 })

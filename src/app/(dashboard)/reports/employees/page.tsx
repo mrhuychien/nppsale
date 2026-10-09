@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField, FilterSearchSelect, FilterMultiSelect } from "@/components/analytics/report-shell"
@@ -135,11 +136,13 @@ export default function EmployeesReportPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     /* ⚠ CHẶN SỚM NẰM NGOÀI `try`. Để trong thì `finally` tắt vòng quay
        ngay cả khi chưa hề bắt đầu đọc — màn hiện một báo cáo rỗng trong
        lúc phiên đăng nhập còn đang tải. */
     if (!user?.org_id) return
+    const conMoi = batLuot()
     /**
      * ⚠ ĐỌC HỎNG THÌ NÓI RA, ĐỪNG QUAY MÃI. Các hàm đọc dòng nay NÉM khi
      *   truy vấn hỏng thay vì trả mảng rỗng — vì một báo cáo tiền thiếu
@@ -167,7 +170,7 @@ export default function EmployeesReportPage() {
         ])
       const invoiceList = invoiceRes.rows
       const returnsRows = returnsRes.rows
-      setTruncated(
+      if (conMoi()) setTruncated(
         invoiceRes.truncated || returnsRes.truncated || usersRes.truncated ||
           customersRes.truncated || productsRes.truncated || stockEntriesRes.truncated
       )
@@ -185,27 +188,27 @@ export default function EmployeesReportPage() {
         fetchReturnLines(supabase, returnIds),
         fetchReturnCosts(supabase, returnIds),
       ])
-      setInvoices(invoiceList)
-      setLines(linesList)
-      setReturns(returnsRows)
-      setUsers(usersRes.rows)
-      setCustomers(customersRes.rows)
-      setProducts(productsRes.rows)
-      setStockEntries(stockEntriesRes.rows)
-      setStockLines(stockLinesList)
-      setReturnLines(returnLinesList)
-      setReturnCosts(returnCostMap)
+      if (conMoi()) setInvoices(invoiceList)
+      if (conMoi()) setLines(linesList)
+      if (conMoi()) setReturns(returnsRows)
+      if (conMoi()) setUsers(usersRes.rows)
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setStockEntries(stockEntriesRes.rows)
+      if (conMoi()) setStockLines(stockLinesList)
+      if (conMoi()) setReturnLines(returnLinesList)
+      if (conMoi()) setReturnCosts(returnCostMap)
     } catch (err) {
-      setLoadError(errorMessage(err))
+      if (conMoi()) setLoadError(errorMessage(err))
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase])
+  }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()

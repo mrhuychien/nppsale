@@ -18,8 +18,8 @@ import type { FilterOption } from "@/components/analytics/report-shell"
 
 interface Catalogs {
   customers: FilterOption[]
-  salesUsers: FilterOption[]      // role = sales | manager | owner
-  allUsers: FilterOption[]        // every active user
+  salesUsers: FilterOption[]      // role = sales | manager | owner (cả người đã nghỉ — có nhãn)
+  allUsers: FilterOption[]        // mọi người dùng (người đã nghỉ xếp sau, có nhãn)
   drivers: FilterOption[]
   products: FilterOption[]
   brands: FilterOption[]          // distinct product.brand
@@ -61,6 +61,10 @@ type ClientToiThieu = { from: (bang: string) => any }
  *
  * ⚠ HỎNG THÌ NÉM. Bản cũ `console.error` rồi dùng `data || []` — ô lọc
  *   rỗng trông y hệt "chưa có dữ liệu".
+ *
+ * ⚠ GỒM CẢ NHÂN VIÊN ĐÃ NGHỈ, HÀNG NGỪNG BÁN, TUYẾN NGỪNG — có nhãn, xếp sau mục đang hoạt động. Báo cáo xem kỳ cũ:
+ *   chỉ liệt kê mục đang hoạt động thì không lọc được doanh số của người đã nghỉ / hàng đã ngừng (rà báo cáo
+ *   09/10/2026; Báo cáo tổng hợp đã đọc cả mục ngừng — `nap-danh-muc.ts`).
  */
 export async function taiDanhMucLoc(
   supabase: ClientToiThieu,
@@ -89,13 +93,12 @@ export async function taiDanhMucLoc(
           .range(from, to),
       "đọc danh sách nhân viên"
     ),
-    docDuHoacNem<{ id: string; sku: string; name: string; brand: string | null }>(
+    docDuHoacNem<{ id: string; sku: string; name: string; brand: string | null; status: string | null }>(
       (from, to): Trang =>
         supabase
           .from("products")
-          .select("id, sku, name, brand", { count: "exact" })
+          .select("id, sku, name, brand, status", { count: "exact" })
           .eq("org_id", orgId)
-          .eq("status", "active")
           .order("name")
           .order("id")
           .range(from, to),
@@ -112,13 +115,12 @@ export async function taiDanhMucLoc(
           .range(from, to),
       "đọc nhóm khách hàng"
     ),
-    docDuHoacNem<{ id: string; code: string; name: string }>(
+    docDuHoacNem<{ id: string; code: string; name: string; is_active: boolean | null }>(
       (from, to): Trang =>
         supabase
           .from("sales_routes")
-          .select("id, code, name", { count: "exact" })
+          .select("id, code, name, is_active", { count: "exact" })
           .eq("org_id", orgId)
-          .eq("is_active", true)
           .order("sort_order")
           .order("id")
           .range(from, to),
@@ -137,19 +139,30 @@ export async function taiDanhMucLoc(
     ),
   ])
 
-  const products = prodRes.rows.map((p) => ({ id: p.id, label: p.name, hint: p.sku }))
+  // Mục đang hoạt động trước, mục đã ngừng sau (giữ thứ tự đọc trong mỗi nhóm) — có nhãn để không chọn nhầm.
+  const truocSau = <T,>(rows: T[], dangDung: (r: T) => boolean) => [...rows.filter(dangDung), ...rows.filter((r) => !dangDung(r))]
+  const spDangBan = (p: { status: string | null }) => !p.status || p.status === "active"
+  const products = truocSau(prodRes.rows, spDangBan).map((p) => ({
+    id: p.id,
+    label: p.name,
+    hint: p.sku,
+    ...(spDangBan(p) ? {} : { ghiChu: "ngừng bán" }),
+  }))
 
   /* Thương hiệu (distinct). ⚠ Không còn danh sách "nhóm hàng / loại hàng" (`products.category`) —
      chủ nhà 03/10/2026 "Bỏ luôn trường nhóm hàng"; lọc hàng theo NCC (`suppliers`). */
   const brandSet = new Set<string>()
   for (const p of prodRes.rows) {
-    if (p.brand) brandSet.add(p.brand)
+    if (p.brand && spDangBan(p)) brandSet.add(p.brand)
   }
   const brands: FilterOption[] = Array.from(brandSet)
     .sort()
     .map((b) => ({ id: b, label: b }))
 
-  const activeUsers = userRes.rows.filter((u) => u.is_active)
+  const nguoi = truocSau(userRes.rows, (u) => u.is_active !== false).map((u) => ({
+    ...u,
+    nghi: u.is_active === false ? { ghiChu: "đã nghỉ" } : {},
+  }))
 
   return {
     lists: {
@@ -158,21 +171,28 @@ export async function taiDanhMucLoc(
         label: c.store_name,
         hint: c.phone || undefined,
       })),
-      salesUsers: activeUsers
+      salesUsers: nguoi
         .filter((u) => ["sales", "manager", "owner"].includes(u.role))
-        .map((u) => ({ id: u.id, label: u.full_name, hint: u.role })),
-      allUsers: activeUsers.map((u) => ({
+        .map((u) => ({ id: u.id, label: u.full_name, hint: u.role, ...u.nghi })),
+      allUsers: nguoi.map((u) => ({
         id: u.id,
         label: u.full_name,
         hint: u.role,
+        ...u.nghi,
       })),
-      drivers: activeUsers
+      drivers: nguoi
         .filter((u) => u.role === "driver")
-        .map((u) => ({ id: u.id, label: u.full_name })),
+        .map((u) => ({ id: u.id, label: u.full_name, ...u.nghi })),
       products,
       brands,
       customerGroups: groupRes.rows.map((g) => ({ id: g.id, label: g.name })),
-      routes: routeRes.rows.map((r) => ({ id: r.id, label: r.name, hint: r.code })),
+      // ⚠ Nhãn kênh = TÊN tuyến (nơi gọi khớp `customers.channel` theo id / tên / mã) — ghi "ngừng" ở `ghiChu`.
+      routes: truocSau(routeRes.rows, (r) => r.is_active !== false).map((r) => ({
+        id: r.id,
+        label: r.name,
+        hint: r.code,
+        ...(r.is_active === false ? { ghiChu: "ngừng" } : {}),
+      })),
       suppliers: suppRes.rows.map((s) => ({ id: s.id, label: s.name })),
     },
     truncated: [custRes, userRes, prodRes, groupRes, routeRes, suppRes].some((r) => r.truncated),

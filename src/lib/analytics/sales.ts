@@ -246,6 +246,11 @@ export async function fetchRevenueInvoicesDu(
 /**
  * Dòng hóa đơn của các hóa đơn đã chọn — CHIA LÔ + PHÂN TRANG như
  * `fetchOrderLines`.
+ *
+ * ⚠ BỎ DÒNG HÀNG ĐỔI (`is_exchange`, NOT NULL mig 035): hàng đổi không phải hàng bán (luật Báo cáo tổng hợp
+ *   `dungDongBan`, phía trả `fetchReturnLines`). Để lọt là SL bán / số mặt hàng phồng, giá vốn dòng × bình quân
+ *   cao giả, và lọc NCC giữ nhầm hoá đơn chỉ có hàng đổi của NCC ấy (rà báo cáo 09/10/2026 — báo cáo Bán hàng,
+ *   Khách hàng, Hàng hoá, Phân tích).
  */
 export async function fetchInvoiceLines(
   supabase: SupabaseClient,
@@ -261,6 +266,7 @@ export async function fetchInvoiceLines(
           count: "exact",
         })
         .in("invoice_id", lo)
+        .eq("is_exchange", false)
         .order("id")
         .range(from, to),
     "đọc dòng hóa đơn"
@@ -372,6 +378,14 @@ async function chiPhieuXuatBan(
   )
   const boQua = new Set(huy.filter((h) => h.status === "cancelled" && h.stock_entry_id).map((h) => h.stock_entry_id as string))
   return boQua.size === 0 ? ban : ban.filter((e) => !boQua.has(e.id))
+}
+
+/**
+ * Lọc từ các phiếu kho bất kỳ ra phiếu XUẤT BÁN (để tính giá vốn) — cùng luật `chiPhieuXuatBan`. Cho màn đã đọc mọi
+ * loại phiếu (`type = null`, cần cho Xuất – nhập – tồn) mà vẫn phải tính giá vốn đúng.
+ */
+export async function locPhieuXuatBan(supabase: SupabaseClient, rows: PostedStockEntryRow[]): Promise<PostedStockEntryRow[]> {
+  return chiPhieuXuatBan(supabase, rows.filter((e) => e.type === "export"))
 }
 
 /**

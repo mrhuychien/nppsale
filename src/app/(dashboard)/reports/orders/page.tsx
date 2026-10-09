@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useFilterCatalogs } from "@/lib/analytics/filter-catalogs"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ReportShell, FilterField, FilterCheckbox, FilterSelect, FilterSearchSelect, FilterMultiSelect } from "@/components/analytics/report-shell"
@@ -17,6 +18,7 @@ import { docTheoLoId } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { errorMessage } from "@/lib/errors"
+import { phanTienQuaLoc, coDongQuaLoc } from "@/lib/analytics/hang-ban-nhan-vien"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -98,8 +100,10 @@ export default function OrdersReportPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     /* ⚠ BẢNG TRA CỨU ĐỌC ĐỦ, HỎNG THÌ NÓI. Đọc trần thì khách / mặt hàng
        thứ 1.001 trở đi mất tên trên báo cáo; lỗi chỉ `console.error` thì
        cả trang trống mà không ai biết vì sao. */
@@ -131,38 +135,22 @@ export default function OrdersReportPage() {
             .range(from, to),
         "đọc dòng đơn hàng"
       )
-      setTruncated(orderRes.truncated || productsRes.truncated || customersRes.truncated || usersRes.truncated)
-      setOrders(orderRes.rows)
-      setLines(linesList)
-      setProducts(productsRes.rows)
-      setCustomers(customersRes.rows)
-      setUsers(usersRes.rows)
+      if (conMoi()) setTruncated(orderRes.truncated || productsRes.truncated || customersRes.truncated || usersRes.truncated)
+      if (conMoi()) setOrders(orderRes.rows)
+      if (conMoi()) setLines(linesList)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setUsers(usersRes.rows)
     } catch (err) {
-      setLoadError(errorMessage(err))
+      if (conMoi()) setLoadError(errorMessage(err))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, status, supabase])
+  }, [user?.org_id, range, status, supabase, batLuot])
 
   useEffect(() => {
     load()
   }, [load])
-
-  const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
-      if (status && o.status !== status) return false
-      if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
-      if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
-      if (customerSearch) {
-        const c = customers.find((x) => x.id === o.customer_id)
-        if (
-          !viMatchAllWords(customerSearch, o.order_code, c?.store_name)
-        )
-          return false
-      }
-      return true
-    })
-  }, [orders, customers, status, customerFilter, salesUserFilter, customerSearch])
 
   const productMap = useMemo(() => {
     const m = new Map<string, ProductMeta>()
@@ -174,6 +162,32 @@ export default function OrdersReportPage() {
     for (const c of customers) m.set(c.id, c)
     return m
   }, [customers])
+
+  /* ⚠ Lọc cấp ĐƠN (cả hai tab): trạng thái, khách, nhân viên, ô tìm và BẢNG GIÁ / NHÓM KHÁCH. Bản cũ chỉ áp bảng giá
+     ở tab Hàng hoá — tab Giao dịch vẫn liệt kê đơn của mọi nhóm khách (rà báo cáo 09/10/2026). */
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      if (status && o.status !== status) return false
+      if (customerFilter.length && !customerFilter.includes(o.customer_id)) return false
+      if (salesUserFilter.length && !salesUserFilter.includes(o.sales_user_id || "")) return false
+      if (groupFilter && customerMap.get(o.customer_id)?.group_id !== groupFilter) return false
+      if (customerSearch && !viMatchAllWords(customerSearch, o.order_code, customerMap.get(o.customer_id)?.store_name)) return false
+      return true
+    })
+  }, [orders, customerMap, status, customerFilter, salesUserFilter, groupFilter, customerSearch])
+
+  // Lọc cấp DÒNG (hàng hoá / thương hiệu) — một luật cho hai tab.
+  const coLocHang = productFilter.length > 0 || brandFilter.length > 0
+  const quaHang = useCallback(
+    (pid: string) => {
+      const p = productMap.get(pid)
+      if (!p) return false
+      if (productFilter.length && !productFilter.includes(p.id)) return false
+      if (brandFilter.length && !brandFilter.includes(p.brand || "")) return false
+      return true
+    },
+    [productMap, productFilter, brandFilter]
+  )
   const userMap = useMemo(() => {
     const m = new Map<string, UserMeta>()
     for (const u of users) m.set(u.id, u)
@@ -207,14 +221,7 @@ export default function OrdersReportPage() {
       if (!filteredOrderIdSet.has(l.order_id)) continue
       const p = productMap.get(l.product_id)
       if (!p) continue
-      // Catalog-backed filters
-      if (productFilter.length && !productFilter.includes(p.id)) continue
-      if (brandFilter.length && !brandFilter.includes(p.brand || "")) continue
-      if (groupFilter) {
-        const o = orders.find((x) => x.id === l.order_id)
-        const c = o ? customerMap.get(o.customer_id) : null
-        if (c?.group_id !== groupFilter) continue
-      }
+      if (!quaHang(p.id)) continue
       if (productSearch) {
         if (!viMatchAllWords(productSearch, p.sku, p.name)) continue
       }
@@ -242,7 +249,7 @@ export default function OrdersReportPage() {
       m.set(k, e)
     }
     return Array.from(m.values()).sort((a, b) => b.value - a.value)
-  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch, productFilter, brandFilter, groupFilter])
+  }, [lines, filteredOrderIdSet, productMap, orders, customerMap, groupSameType, productSearch, quaHang])
 
   // -------------------- By transaction --------------------
   type TxRow = {
@@ -257,24 +264,38 @@ export default function OrdersReportPage() {
     total: number
   }
   const txRows: TxRow[] = useMemo(() => {
-    const lineQty = new Map<string, SLTheoDonVi>()
+    const dongTheoDon = new Map<string, DongDon[]>()
     for (const l of lines) {
-      const p = productMap.get(l.product_id)
-      const q = lineQty.get(l.order_id) || {}
-      congSL(q, p?.base_unit, slCoSoDong(l, p))
-      lineQty.set(l.order_id, q)
+      const a = dongTheoDon.get(l.order_id)
+      if (a) a.push(l)
+      else dongTheoDon.set(l.order_id, [l])
     }
-    return filteredOrders.map((o) => ({
-      id: o.id,
-      order_code: o.order_code,
-      order_date: o.order_date,
-      customer: customerMap.get(o.customer_id)?.store_name || "—",
-      sales_user: userMap.get(o.sales_user_id)?.full_name || "—",
-      status: STATUS_LABEL[o.status] || o.status,
-      qtyTheoDv: lineQty.get(o.id) || {},
-      total: Number(o.total || 0),
-    }))
-  }, [filteredOrders, lines, customerMap, userMap, productMap])
+    /* ⚠ Đang lọc Hàng hoá / Thương hiệu: chỉ đơn có dòng qua lọc; SL là của các dòng ấy, tiền là PHẦN của chúng trong
+       tổng đơn (chia theo tỉ lệ `line_total`, như báo cáo Bán hàng / Nhân viên). Bản cũ bỏ qua hai ô lọc này ở tab
+       Giao dịch (rà báo cáo 09/10/2026). */
+    const out: TxRow[] = []
+    for (const o of filteredOrders) {
+      const ls = dongTheoDon.get(o.id) || []
+      if (coLocHang && !coDongQuaLoc(ls, quaHang)) continue
+      const q: SLTheoDonVi = {}
+      for (const l of ls) {
+        if (coLocHang && !quaHang(l.product_id)) continue
+        const p = productMap.get(l.product_id)
+        congSL(q, p?.base_unit, slCoSoDong(l, p))
+      }
+      out.push({
+        id: o.id,
+        order_code: o.order_code,
+        order_date: o.order_date,
+        customer: customerMap.get(o.customer_id)?.store_name || "—",
+        sales_user: userMap.get(o.sales_user_id)?.full_name || "—",
+        status: STATUS_LABEL[o.status] || o.status,
+        qtyTheoDv: q,
+        total: coLocHang ? phanTienQuaLoc(Number(o.total || 0), ls, quaHang) : Number(o.total || 0),
+      })
+    }
+    return out
+  }, [filteredOrders, lines, customerMap, userMap, productMap, coLocHang, quaHang])
 
   const handleExport = () => {
     if (variant === "by_product") {

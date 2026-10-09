@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -66,8 +67,10 @@ export default function ProductsCategoriesPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -119,23 +122,23 @@ export default function ProductsCategoriesPage() {
         fetchReturnLines(supabase, retRows.map((r) => r.id)),
         fetchReturnLines(supabase, prevRetRows.map((r) => r.id)),
       ])
-      setLines(lineList)
-      setPrevLines(prevLineList)
-      setReturnLines(retLineList)
-      setPrevReturnLines(prevRetLineList)
-      setProducts(productsRes.rows)
-      setSuppliers(new Map(suppliersRes.rows.map((x) => [x.id, x.name])))
-      setTruncated(
+      if (conMoi()) setLines(lineList)
+      if (conMoi()) setPrevLines(prevLineList)
+      if (conMoi()) setReturnLines(retLineList)
+      if (conMoi()) setPrevReturnLines(prevRetLineList)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setSuppliers(new Map(suppliersRes.rows.map((x) => [x.id, x.name])))
+      if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || productsRes.truncated ||
           suppliersRes.truncated
       )
     } catch (e) {
       console.error("[products/categories] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu phân loại hàng"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu phân loại hàng"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase])
+  }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()

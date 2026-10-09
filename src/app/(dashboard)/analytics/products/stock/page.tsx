@@ -6,6 +6,7 @@ import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 import { useAuth } from "@/hooks/use-auth"
+import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
@@ -41,8 +42,10 @@ export default function ProductsStockPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
+  const batLuot = useLuotNap()
   const load = useCallback(async () => {
     if (!user?.org_id) return
+    const conMoi = batLuot()
     const orgId = user.org_id
     setLoading(true)
     setLoadError(null)
@@ -82,16 +85,16 @@ export default function ProductsStockPage() {
           "đọc danh mục hàng"
         ),
       ])
-      setBatches(batchesRes.rows)
-      setProducts(productsRes.rows)
-      setTruncated(batchesRes.truncated || productsRes.truncated)
+      if (conMoi()) setBatches(batchesRes.rows)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setTruncated(batchesRes.truncated || productsRes.truncated)
     } catch (e) {
       console.error("[products/stock] tải lỗi:", e)
-      setLoadError(errorMessage(e, "Không tải được số liệu tồn kho"))
+      if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu tồn kho"))
     } finally {
-      setLoading(false)
+      if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, supabase])
+  }, [user?.org_id, supabase, batLuot])
 
   useEffect(() => {
     load()

@@ -8,6 +8,8 @@ import { dangNhap, FAKE } from "./helpers"
  *   HĐ-LOC-1 của "NV Lọc NCC": dòng A 800.000 (NCC A) + dòng B 200.000 (NCC B), giảm cả đơn 100.000, VAT 90.000
  *   → total 990.000. Lọc NCC A: doanh thu 792.000, giảm giá đơn 80.000. Bản cũ: tab Bán hàng vẫn 990.000 (cả hoá
  *   đơn), tab Hàng bán theo nhân viên giảm giá đơn 100.000 (của cả hoá đơn).
+ *   Thêm một dòng HÀNG ĐỔI 2 hộp A giá 0: không phải hàng bán (luật Báo cáo tổng hợp) — SL bán 8 hộp, chênh lệch 0.
+ *   Bản cũ: 10 hộp, chênh −200.000 (2 × (0 − 100.000)).
  *   Dòng dữ liệu RIÊNG của spec này.
  */
 const ORG = "00000000-0000-4000-8000-0000000000a1"
@@ -48,6 +50,7 @@ test.beforeAll(async () => {
   await them("sales_invoice_lines", [
     { id: "sil-loc-a", invoice_id: HD, product_id: SP_A, quantity: 8, unit_name: "hộp", conversion_factor: 1, unit_price: 100000, line_discount: 0, vat_rate: 0.1, line_total: 800000, is_exchange: false, sort_order: 0, order_line_id: null },
     { id: "sil-loc-b", invoice_id: HD, product_id: SP_B, quantity: 4, unit_name: "hộp", conversion_factor: 1, unit_price: 50000, line_discount: 0, vat_rate: 0.1, line_total: 200000, is_exchange: false, sort_order: 1, order_line_id: null },
+    { id: "sil-loc-doi", invoice_id: HD, product_id: SP_A, quantity: 2, unit_name: "hộp", conversion_factor: 1, unit_price: 0, line_discount: 0, vat_rate: 0.1, line_total: 0, is_exchange: true, sort_order: 2, order_line_id: null },
   ])
 })
 test.afterAll(async () => {
@@ -88,6 +91,10 @@ test("lọc NCC: ô lọc NCC thay Thương hiệu; tiền mọi tab là phần 
   await expect(dongNv(page)).toContainText("792.000")
   await expect(dongNv(page)).toContainText("-80.000")
   await expect(dongNv(page)).not.toContainText("-100.000")
+  /* Dòng hàng đổi không phải hàng bán: SL bán 8 hộp (không phải 10), chênh lệch bán 0 (không phải −200.000). */
+  await expect(dongNv(page)).toContainText("8 hộp")
+  await expect(dongNv(page)).not.toContainText("10 hộp")
+  await expect(dongNv(page)).not.toContainText("200.000")
 
   /* Tab Lợi nhuận: doanh thu thuần cũng là phần của A. */
   await chonTab(page, "Lợi nhuận")

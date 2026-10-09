@@ -233,9 +233,13 @@ export default function EmployeesReportPage() {
   const avgCostMap = useMemo(() => giaVonBinhQuanCoSo(stockLines), [stockLines])
 
   // Map invoice_id -> [dòng hóa đơn]
+  /* ⚠ BỎ DÒNG HÀNG ĐỔI (`is_exchange`) — không phải hàng bán (cùng luật Báo cáo tổng hợp, `dungDongBan`). Tính vào là
+     SL bán phồng, "Theo bảng giá" phồng và chênh lệch ÂM OAN (hàng đổi giá 0 so với giá bảng), trong khi phía hàng
+     trả đã bỏ hàng đổi (`fetchReturnLines`). Rà "Hàng bán theo nhân viên" 09/10/2026. */
   const linesByInvoice = useMemo(() => {
     const m = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
+      if (l.is_exchange) continue
       const a = m.get(l.invoice_id) || []
       a.push(l)
       m.set(l.invoice_id, a)

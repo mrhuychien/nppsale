@@ -106,6 +106,10 @@ describe("màn /reports/employees — bộ lọc NCC và tiền theo hàng đư�
     expect(memo("returnsTheoNv")).toContain("for (const r of phieuTraTheoLoc)")
   })
 
+  it("dòng hàng đổi trên hoá đơn KHÔNG phải hàng bán — bỏ ngay ở chỗ gom dòng (cùng luật Báo cáo tổng hợp)", () => {
+    expect(memo("linesByInvoice")).toContain("if (l.is_exchange) continue")
+  })
+
   it("Hàng bán theo nhân viên: giảm giá đơn là phần của hàng được lọc; tiền chứng từ chốt cả khi lọc", () => {
     const f = memo("employeeSummaryRows")
     expect(f).toContain("tien: coLocHang ? phanTienQuaLoc(giam, dongHd, productPasses) : giam")

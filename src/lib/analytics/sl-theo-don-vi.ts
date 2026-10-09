@@ -31,6 +31,14 @@ export function gopSL(a: SLTheoDonVi | null | undefined, b: SLTheoDonVi | null |
   return out
 }
 
+/** `a − b` theo từng đơn vị (map mới) — vd SL thực bán = SL bán − SL trả, không cộng lẫn đơn vị. */
+export function truSL(a: SLTheoDonVi | null | undefined, b: SLTheoDonVi | null | undefined): SLTheoDonVi {
+  const out: SLTheoDonVi = {}
+  for (const [u, q] of Object.entries(a || {})) congSL(out, u, q)
+  for (const [u, q] of Object.entries(b || {})) congSL(out, u, -q)
+  return out
+}
+
 const soVN = (n: number) => n.toLocaleString("vi-VN")
 
 /**

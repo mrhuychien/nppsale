@@ -11,7 +11,7 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDong } from "./chenh-lech"
+import { chenhDong, giaBangCuaDong } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
@@ -38,6 +38,36 @@ export interface DongTraHangBan {
   unit_price?: number | null
 }
 
+/**
+ * Một ĐƠN VỊ TÍNH của một mặt hàng trong "Hàng bán theo nhân viên" — chi tiết từng nhân viên.
+ * ⚠ Chủ nhà 09/10/2026: "Xem chi tiết từng nhân viên: thêm cột bảng giá (theo đơn vị), giá bán (theo đơn vị), SL thực
+ *   bán (sl bán - sl trả)". Giá chỉ so được trên CÙNG đơn vị tính (luật chênh 01/10/2026): bán thùng thì giá bảng /
+ *   giá bán là của THÙNG — nên chi tiết tách theo đơn vị của dòng, SL không quy đổi.
+ */
+export interface HangBanDonVi {
+  /** Đơn vị tính trên dòng (thùng, khay, hộp…); dòng không ghi đơn vị → đơn vị cơ sở. */
+  unit: string
+  /** Hệ số về đơn vị cơ sở (1 = chính đơn vị cơ sở). */
+  heSo: number
+  /** SL bán / SL trả theo ĐÚNG đơn vị này. */
+  qty: number
+  returnQty: number
+  /** SL thực bán = SL bán − SL trả (cùng đơn vị). */
+  netQty: number
+  /** Giá bảng của đúng đơn vị (`giaBangCuaDong`); 0 = mặt hàng chưa có giá bảng. */
+  giaBang: number
+  /** Giá bán bình quân trên hoá đơn của đơn vị này (trước thuế) = Σ SL × đơn giá ÷ SL bán; null = không bán đơn vị này. */
+  giaBan: number | null
+  listed: number
+  revenue: number
+  diff: number
+  returnValue: number
+  returnListed: number
+  diffReturn: number
+  netRevenue: number
+  diffNet: number
+}
+
 export interface HangBanSanPham {
   productId: string
   sku: string
@@ -59,6 +89,10 @@ export interface HangBanSanPham {
   returnListed: number
   diffReturn: number
   diffNet: number
+  /** SL thực bán theo đơn vị cơ sở = qty − returnQty. */
+  netQty: number
+  /** Tách theo đơn vị tính của dòng — đơn vị lớn trước (`HangBanDonVi`). */
+  donVi: HangBanDonVi[]
 }
 
 export interface HangBanNhanVien {
@@ -119,6 +153,7 @@ export function congHangBanNhanVien(input: {
     }
     return r
   }
+  const dvCua = new Map<HangBanSanPham, Map<string, HangBanDonVi & { _tienBan: number }>>()
   const matHang = (r: ReturnType<typeof dong>, pid: string) => {
     let p = r._sp.get(pid)
     if (!p) {
@@ -130,11 +165,27 @@ export function congHangBanNhanVien(input: {
         unit: sp?.base_unit || "",
         qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
         returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, returnListed: 0, diffReturn: 0, diffNet: 0,
+        netQty: 0, donVi: [],
       }
       r._sp.set(pid, p)
       r.products.push(p)
+      dvCua.set(p, new Map())
     }
     return p
+  }
+  /** Ô đơn vị tính của một mặt hàng — khoá theo tên đơn vị trên dòng. */
+  const donVi = (p: HangBanSanPham, unit: string, heSo: number, giaBang: number) => {
+    const m = dvCua.get(p)!
+    let d = m.get(unit)
+    if (!d) {
+      d = {
+        unit, heSo, qty: 0, returnQty: 0, netQty: 0, giaBang: 0, giaBan: null,
+        listed: 0, revenue: 0, diff: 0, returnValue: 0, returnListed: 0, diffReturn: 0, netRevenue: 0, diffNet: 0, _tienBan: 0,
+      }
+      m.set(unit, d)
+    }
+    if (!(d.giaBang > 0) && giaBang > 0) d.giaBang = giaBang
+    return d
   }
 
   for (const { uid, line } of input.ban) {
@@ -157,6 +208,12 @@ export function congHangBanNhanVien(input: {
     p.listed += c.niemYet
     p.revenue += revenue
     p.diff += c.chenh
+    const d = donVi(p, line.unit_name || sp.base_unit || "", heSo, giaBangCuaDong(line, sp))
+    d.qty += Number(line.quantity) || 0
+    d._tienBan += c.tien
+    d.listed += c.niemYet
+    d.revenue += revenue
+    d.diff += c.chenh
   }
 
   for (const { uid, line } of input.tra) {
@@ -179,6 +236,11 @@ export function congHangBanNhanVien(input: {
     p.returnValue += value
     p.returnListed += c.niemYet
     p.diffReturn += c.chenh
+    const d = donVi(p, line.unit_name || sp?.base_unit || "", heSo, giaBangCuaDong(line, sp))
+    d.returnQty += Number(line.quantity) || 0
+    d.returnValue += value
+    d.returnListed += c.niemYet
+    d.diffReturn += c.chenh
   }
 
   for (const g of input.giamDon ?? []) if (g.tien > 0) dong(g.uid).docDiscount += g.tien
@@ -190,6 +252,17 @@ export function congHangBanNhanVien(input: {
     for (const p of r.products) {
       p.netRevenue = p.revenue - p.returnValue
       p.diffNet = p.diff - p.diffReturn
+      p.netQty = p.qty - p.returnQty
+      p.donVi = Array.from(dvCua.get(p)!.values())
+        .map(({ _tienBan, ...d }) => ({
+          ...d,
+          netQty: d.qty - d.returnQty,
+          giaBan: d.qty !== 0 ? _tienBan / d.qty : null,
+          netRevenue: d.revenue - d.returnValue,
+          diffNet: d.diff - d.diffReturn,
+        }))
+        // Đơn vị lớn trước (thùng → hộp), cùng hệ số thì theo tên.
+        .sort((a, b) => b.heSo - a.heSo || a.unit.localeCompare(b.unit, "vi"))
     }
     r.products.sort((a, b) => b.revenue - a.revenue)
     const { _sp, ...rest } = r

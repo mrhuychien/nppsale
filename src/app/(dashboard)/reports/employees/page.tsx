@@ -39,7 +39,7 @@ import {
   type HangBanSanPham,
   type SanPhamHangBan,
 } from "@/lib/analytics/hang-ban-nhan-vien"
-import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
+import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, truSL, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -872,6 +872,8 @@ export default function EmployeesReportPage() {
           "Tên hàng",
           "Đơn vị",
           "SL bán",
+          "Bảng giá (theo ĐVT)",
+          "Giá bán (theo ĐVT)",
           "Theo bảng giá",
           "Doanh thu",
           "Chênh lệch bán",
@@ -879,6 +881,7 @@ export default function EmployeesReportPage() {
           "SL trả",
           "Giá trị trả",
           "Chênh lệch trả",
+          "SL thực bán",
           "Doanh thu thuần",
           "Chênh lệch thuần",
         ],
@@ -892,6 +895,8 @@ export default function EmployeesReportPage() {
           "",
           // Dòng tổng nhiều mặt hàng: xuất "640 hộp · 12 chai", không cộng lẫn đơn vị.
           hienSLTheoDonVi(r.qtyTheoDv),
+          "",
+          "",
           r.listed,
           r.revenue,
           Math.round(r.diff),
@@ -899,26 +904,33 @@ export default function EmployeesReportPage() {
           hienSLTheoDonVi(r.returnQtyTheoDv),
           -r.returnValue,
           Math.round(r.diffReturn),
+          hienSLTheoDonVi(truSL(r.qtyTheoDv, r.returnQtyTheoDv)),
           r.netRevenue,
           Math.round(r.diffNet),
         ])
+        // Mỗi mặt hàng × ĐƠN VỊ TÍNH một dòng — giá bảng / giá bán của đúng đơn vị ấy (chủ nhà 09/10/2026).
         for (const p of r.products) {
-          out.push([
-            r.name,
-            p.sku,
-            p.name,
-            p.unit,
-            p.qty,
-            p.listed,
-            p.revenue,
-            Math.round(p.diff),
-            "",
-            p.returnQty,
-            -p.returnValue,
-            Math.round(p.diffReturn),
-            p.netRevenue,
-            Math.round(p.diffNet),
-          ])
+          for (const d of p.donVi) {
+            out.push([
+              r.name,
+              p.sku,
+              p.name,
+              d.unit,
+              d.qty,
+              d.giaBang > 0 ? Math.round(d.giaBang) : "",
+              d.giaBan != null ? Math.round(d.giaBan) : "",
+              d.listed,
+              d.revenue,
+              Math.round(d.diff),
+              "",
+              d.returnQty,
+              -d.returnValue,
+              Math.round(d.diffReturn),
+              d.netQty,
+              d.netRevenue,
+              Math.round(d.diffNet),
+            ])
+          }
         }
       }
       downloadXlsx(`bao-cao-nv-hangban-summary-${range.from}-${range.to}`, out)
@@ -1376,7 +1388,11 @@ export default function EmployeesReportPage() {
             />
           }
           expandable={(r) => (
-            <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto">
+            /* ⚠ Chủ nhà 09/10/2026: "Xem chi tiết từng nhân viên: thêm cột bảng giá (theo đơn vị), giá bán (theo đơn
+               vị), SL thực bán (sl bán - sl trả)". Mỗi dòng là một mặt hàng × ĐƠN VỊ TÍNH của dòng hoá đơn / phiếu trả:
+               giá chỉ so được trên cùng đơn vị (luật chênh 01/10/2026), SL không quy đổi. Mặt hàng bán nhiều đơn vị có
+               thêm dòng "Cộng" quy về đơn vị cơ sở. */
+            <div className="rounded-md border border-border/40 bg-background/60 overflow-x-auto" data-testid="nv-hang-ban-chi-tiet">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#ecfdf3]/60">
@@ -1384,12 +1400,15 @@ export default function EmployeesReportPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Tên hàng</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Đơn vị</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL bán</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Bảng giá (theo ĐVT)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá bán (theo ĐVT)</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Theo bảng giá</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch bán</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch trả</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL thực bán</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">DT thuần</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh thuần</th>
                   </tr>
@@ -1397,48 +1416,64 @@ export default function EmployeesReportPage() {
                 <tbody>
                   {r.products.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={12}
-                        className="px-3 py-2 text-center text-xs text-muted-foreground"
-                      >
+                      <td colSpan={15} className="px-3 py-2 text-center text-xs text-muted-foreground">
                         Không có dòng hàng
                       </td>
                     </tr>
                   ) : (
-                    r.products.map((p) => (
-                      <tr key={p.productId} className="border-t border-border/30">
-                        <td className="px-3 py-1.5 font-mono text-xs text-primary">{p.sku}</td>
-                        <td className="px-3 py-1.5">{p.name}</td>
-                        <td className="px-3 py-1.5">{p.unit || "—"}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {p.qty.toLocaleString("vi-VN")}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {formatCurrency(p.listed)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {formatCurrency(p.revenue)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diff)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {p.returnQty > 0 ? p.returnQty.toLocaleString("vi-VN") : "0"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {p.returnValue > 0 ? (
-                            <span className="text-error">
-                              -{formatCurrency(p.returnValue)}
-                            </span>
-                          ) : (
-                            "0"
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diffReturn)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
-                          {formatCurrency(p.netRevenue)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{hienChenh(p.diffNet)}</td>
-                      </tr>
-                    ))
+                    r.products.flatMap((p) => [
+                      ...p.donVi.map((d, i) => (
+                        <tr key={`${p.productId}|${d.unit}`} className="border-t border-border/30">
+                          <td className="px-3 py-1.5 font-mono text-xs text-primary">{i === 0 ? p.sku : ""}</td>
+                          <td className="px-3 py-1.5">{i === 0 ? p.name : ""}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">
+                            {d.unit || "—"}
+                            {d.heSo > 1 && p.unit ? (
+                              <span className="text-xs text-muted-foreground"> ({d.heSo.toLocaleString("vi-VN")} {p.unit})</span>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{d.qty.toLocaleString("vi-VN")}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{d.giaBang > 0 ? formatCurrency(d.giaBang) : "—"}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{d.giaBan != null ? formatCurrency(d.giaBan) : "—"}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(d.listed)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(d.revenue)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(d.diff)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {d.returnQty ? d.returnQty.toLocaleString("vi-VN") : "0"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {d.returnValue > 0 ? <span className="text-error">-{formatCurrency(d.returnValue)}</span> : "0"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(d.diffReturn)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{d.netQty.toLocaleString("vi-VN")}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{formatCurrency(d.netRevenue)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{hienChenh(d.diffNet)}</td>
+                        </tr>
+                      )),
+                      ...(p.donVi.length > 1
+                        ? [
+                            <tr key={`${p.productId}|cong`} className="border-t border-border/30 bg-muted/30 text-xs">
+                              <td className="px-3 py-1.5" />
+                              <td className="px-3 py-1.5 text-muted-foreground">Cộng {p.name}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">quy về {p.unit || "ĐV cơ sở"}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{p.qty.toLocaleString("vi-VN")}</td>
+                              <td className="px-3 py-1.5" />
+                              <td className="px-3 py-1.5" />
+                              <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(p.listed)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(p.revenue)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diff)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{p.returnQty ? p.returnQty.toLocaleString("vi-VN") : "0"}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {p.returnValue > 0 ? <span className="text-error">-{formatCurrency(p.returnValue)}</span> : "0"}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{hienChenh(p.diffReturn)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{p.netQty.toLocaleString("vi-VN")}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{formatCurrency(p.netRevenue)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{hienChenh(p.diffNet)}</td>
+                            </tr>,
+                          ]
+                        : []),
+                    ])
                   )}
                 </tbody>
               </table>

@@ -10,7 +10,7 @@ import { useRoleGuard } from "@/hooks/use-role-guard"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KpiCard } from "@/components/analytics/kpi-card"
 import { MoneyCell, NumberCell, TopListCard } from "@/components/analytics/top-list"
-import { cn } from "@/lib/utils"
+import { cn, daysOverdueOf } from "@/lib/utils"
 
 interface ReceivableRow {
   id: string
@@ -145,11 +145,12 @@ export default function ReceivablesAnalyticsPage() {
   }, [users])
 
   const enriched = useMemo(() => {
-    const now = Date.now()
     return receivables.map((r) => {
       const outstanding = Number(r.amount || 0) - Number(r.paid || 0)
-      const due = r.due_date ? new Date(r.due_date).getTime() : null
-      const daysOverdue = due === null ? 0 : Math.ceil((now - due) / 86400000)
+      /* ⚠ Tuổi nợ theo LỊCH VN (`daysOverdueOf` — cùng luật màn Công nợ, `receivables_summary`). Bản cũ `Math.ceil` trên
+         ngày đọc theo UTC: từ 07:00 sáng mọi khoản dư 1 ngày — hạn hôm nay thành "quá hạn 1 ngày", hạn 30 ngày trước
+         nhảy sang nhóm 31-60 (rà báo cáo 09/10/2026). */
+      const daysOverdue = daysOverdueOf(r.due_date)
       return { ...r, outstanding, daysOverdue }
     })
   }, [receivables])

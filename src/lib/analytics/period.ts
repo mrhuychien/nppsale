@@ -42,8 +42,23 @@ function startOfWeek(d: Date): Date {
   return out
 }
 
+/**
+ * "Bây giờ" theo LỊCH VIỆT NAM, đặt vào 12:00 giờ máy (cộng / trừ ngày không vướng đổi giờ mùa hè).
+ * ⚠ Lấy ngày theo đồng hồ máy thì máy đặt múi giờ khác (UTC…) có "Hôm nay" là hôm qua từ 00:00 đến 06:59
+ *   giờ VN, và sáng mùng 1 thì "Tháng này" thành tháng trước — mọi số của kỳ lệch theo (rà báo cáo 09/10/2026).
+ */
+export function homNayVN(now: Date = new Date()): Date {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(now).split("-").map(Number)
+  return new Date(y, m - 1, d, 12)
+}
+
+/** Ngày hôm nay (YYYY-MM-DD) theo lịch Việt Nam. */
+export function homNayVNKey(now: Date = new Date()): string {
+  return fmt(homNayVN(now))
+}
+
 export function rangeFromPreset(preset: PeriodPreset, custom?: DateRange): DateRange {
-  const now = new Date()
+  const now = homNayVN()
   let from: Date
   let to: Date = new Date(now)
 
@@ -140,9 +155,9 @@ export function dailyBuckets(r: DateRange): { date: string; label: string }[] {
 /**
  * `n` ngày gần nhất, TÍNH CẢ HÔM NAY: `lastNDays(90)` là 90 ngày lịch, từ
  * (hôm nay − 89) tới hôm nay. Dùng làm kỳ mặc định cho các nhãn theo thời
- * gian như "Bán chậm".
+ * gian như "Bán chậm". Mặc định tính theo lịch VN (`homNayVN`).
  */
-export function lastNDays(n: number, now: Date = new Date()): DateRange {
+export function lastNDays(n: number, now: Date = homNayVN()): DateRange {
   const to = new Date(now)
   const from = new Date(now)
   from.setDate(from.getDate() - Math.max(1, Math.floor(n)) + 1)

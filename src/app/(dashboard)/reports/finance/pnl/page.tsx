@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { fetchPnl, type PnlData, type FinancePeriod } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { rangeFromPreset } from "@/lib/analytics/period"
 import { TrendingUp, TrendingDown, Printer } from "lucide-react"
 import { ReportLoadNotice } from "../../_components/report-load-notice"
 
@@ -31,11 +32,10 @@ export default function PnLPage() {
   const { user } = useAuth()
   const supabase = createClient()
 
-  const today = new Date()
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-
-  const [from, setFrom] = useState(firstOfMonth.toISOString().slice(0, 10))
-  const [to, setTo] = useState(today.toISOString().slice(0, 10))
+  /* ⚠ NGÀY THEO LỊCH VN (`rangeFromPreset`), không lấy ngày UTC — ở giờ VN "Tháng này" thành từ ngày cuối tháng trước,
+     "Năm nay" từ 31/12 năm trước, và trước 07:00 thì "đến ngày" là hôm qua (rà báo cáo 09/10/2026). */
+  const [from, setFrom] = useState(() => rangeFromPreset("this_month").from)
+  const [to, setTo] = useState(() => rangeFromPreset("this_month").to)
   const [data, setData] = useState<PnlData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -92,9 +92,9 @@ export default function PnLPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const d = new Date()
-                setFrom(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10))
-                setTo(d.toISOString().slice(0, 10))
+                const r = rangeFromPreset("this_month")
+                setFrom(r.from)
+                setTo(r.to)
               }}
             >
               Tháng này
@@ -103,9 +103,9 @@ export default function PnLPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const d = new Date()
-                setFrom(new Date(d.getFullYear(), 0, 1).toISOString().slice(0, 10))
-                setTo(d.toISOString().slice(0, 10))
+                const r = rangeFromPreset("this_year")
+                setFrom(r.from)
+                setTo(r.to)
               }}
             >
               Năm nay

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchAllForAggregate, docTheoLoId } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
+import { daysOverdueOf } from "@/lib/utils"
 
 /**
  * SỔ CÔNG NỢ CỦA MỘT NHÀ CUNG CẤP — đọc từ `payables`, không từ phiếu kho.
@@ -49,6 +50,42 @@ const so = (v: unknown) => Number(v) || 0
 /** Còn phải trả NCC = Σ(amount − paid) trên các dòng chưa xong — KHÔNG kẹp dòng âm. */
 export function tongNoNcc(rows: ReadonlyArray<Pick<DongNoNcc, "amount" | "paid" | "status">>): number {
   return rows.filter((r) => r.status !== "paid").reduce((s, r) => s + so(r.amount) - so(r.paid), 0)
+}
+
+/** Một NCC trong bảng "Công nợ NCC" của báo cáo nhà cung cấp. */
+export interface NoTheoNcc {
+  supplier_id: string
+  /** Số dòng còn phải trả (> 0) — dòng âm không phải "phiếu nợ". */
+  soPhieu: number
+  /** Còn phải trả — đã TRỪ dòng âm (phiếu trả NCC, khoản trả dư). */
+  conNo: number
+  /** Số ngày quá hạn lớn nhất của các dòng còn phải trả, theo lịch VN. */
+  quaHan: number
+}
+
+/**
+ * Gộp sổ nợ NCC theo từng NCC — cùng luật `tongNoNcc`: dòng chưa xong (`status <> 'paid'`), KHÔNG kẹp dòng âm.
+ * ⚠ Báo cáo NCC cũ bỏ mọi dòng ≤ 0 → phiếu trả NCC (dòng âm, mig 239) không trừ, nợ NCC hiện CAO hơn sổ; tuổi nợ
+ *   `Math.ceil` trên ngày UTC dư 1 ngày từ 07:00 sáng (rà báo cáo 09/10/2026).
+ */
+export function gopNoTheoNcc(
+  rows: ReadonlyArray<{ supplier_id: string; amount: number | null; paid: number | null; status: string | null; due_date: string | null }>,
+  qua: (supplierId: string) => boolean = () => true,
+): Map<string, NoTheoNcc> {
+  const m = new Map<string, NoTheoNcc>()
+  for (const r of rows) {
+    if (r.status === "paid" || !qua(r.supplier_id)) continue
+    const conLai = so(r.amount) - so(r.paid)
+    if (conLai === 0) continue
+    const e = m.get(r.supplier_id) || { supplier_id: r.supplier_id, soPhieu: 0, conNo: 0, quaHan: 0 }
+    e.conNo += conLai
+    if (conLai > 0) {
+      e.soPhieu += 1
+      e.quaHan = Math.max(e.quaHan, daysOverdueOf(r.due_date))
+    }
+    m.set(r.supplier_id, e)
+  }
+  return m
 }
 
 type PhieuNhapCuaNo = { id: string; payable_id: string | null; receipt_code: string | null }

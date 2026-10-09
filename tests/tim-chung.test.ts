@@ -408,8 +408,8 @@ const MIEN: Record<string, string> = {
   "src/components/layout/mobile-search-overlay.tsx": "Chỉ chuyển sang /orders?q=… — tìm ở danh sách đơn.",
 }
 
-/** Dấu hiệu một tệp dùng bộ tìm chung (trình duyệt hoặc máy chủ). */
-const DUNG_CHUNG = /viMatchAllWords\(|timXepHang\(|locXepHang\(|useListSearch\(|useFieldSearch\(|dieuKienTim\(|menhDeTimDanhSach\(|filterProducts\(|filterCustomers\(|<SearchDropdown|<SearchSelect|<ProductPicker|search[A-Z]\w*\(|onSearch|useAdvancedFilter/
+/** Dấu hiệu một tệp dùng bộ tìm chung (trình duyệt hoặc máy chủ). `khopTimKhach` = viMatchAllWords trên mã KH đang hiện. */
+const DUNG_CHUNG = /viMatchAllWords\(|khopTimKhach\(|timXepHang\(|locXepHang\(|useListSearch\(|useFieldSearch\(|dieuKienTim\(|menhDeTimDanhSach\(|filterProducts\(|filterCustomers\(|<SearchDropdown|<SearchSelect|<ProductPicker|search[A-Z]\w*\(|onSearch|useAdvancedFilter/
 
 describe("mọi ô tìm đi qua bộ tìm chung", () => {
   const coOTim = TEP.filter((f) => /placeholder=\{?"[^"]*\b(Tìm|tìm)\b/.test(code(read(f))))

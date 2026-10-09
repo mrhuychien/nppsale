@@ -37,7 +37,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency } from "@/lib/utils"
-import { viMatchAllWords } from "@/lib/search"
+import { khopTimKhach, maKhachBaoCao } from "@/lib/analytics/tim-khach"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
@@ -226,7 +226,7 @@ export default function CustomersReportPage() {
       if (!c) return false
       if (customerFilter.length && !customerFilter.includes(c.id)) return false
       if (!search) return true
-      return viMatchAllWords(search, c.phone, c.store_name, c.id)
+      return khopTimKhach(search, c)
     },
     [search, customerFilter]
   )
@@ -581,7 +581,7 @@ function SalesView({ rows }: { rows: { id: string; name: string; channel: string
       rows={rows}
       rowKey={(r) => r.id}
       columns={[
-        { key: "code", label: "Mã KH", render: (r) => <span className="font-mono text-xs text-primary">KH{r.id.slice(0, 6)}</span> },
+        { key: "code", label: "Mã KH", render: (r) => <span className="font-mono text-xs text-primary">{maKhachBaoCao(r.id)}</span> },
         { key: "name", label: "Khách hàng", render: (r) => r.name },
         { key: "ch", label: "Kênh", render: (r) => r.channel },
         { key: "or", label: "Số HĐ", align: "right", render: (r) => r.orders },

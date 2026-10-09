@@ -14,6 +14,7 @@ import {
   type DateRange,
   type PeriodPreset,
   rangeFromPreset,
+  homNayVN,
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import {
@@ -69,7 +70,7 @@ export default function FinanceReportPage() {
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [yearMode, setYearMode] = useState(false)
-  const [year, setYear] = useState<number>(new Date().getFullYear())
+  const [year, setYear] = useState<number>(homNayVN().getFullYear())
   const [loading, setLoading] = useState(true)
 
   const [revenue, setRevenue] = useState(0)
@@ -302,7 +303,7 @@ export default function FinanceReportPage() {
             <input
               type="number"
               value={year}
-              onChange={(e) => setYear(Number(e.target.value) || new Date().getFullYear())}
+              onChange={(e) => setYear(Number(e.target.value) || homNayVN().getFullYear())}
               className="ml-2 h-7 w-20 rounded-md border border-border/60 bg-card px-2 text-sm"
               min={2000}
               max={2100}

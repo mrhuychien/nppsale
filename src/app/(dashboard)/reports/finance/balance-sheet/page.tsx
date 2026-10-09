@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { fetchBalanceSheet, type BalanceSheetData } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { homNayVNKey } from "@/lib/analytics/period"
 import { Printer, Wallet, Receipt, Boxes, Scale } from "lucide-react"
 import { ReportLoadNotice } from "../../_components/report-load-notice"
 
@@ -22,8 +23,8 @@ export default function BalanceSheetPage() {
   const { user } = useAuth()
   const supabase = createClient()
 
-  const today = new Date().toISOString().slice(0, 10)
-  const [asOf, setAsOf] = useState(today)
+  /* ⚠ Hôm nay theo LỊCH VN — ngày UTC trước 07:00 giờ VN là hôm qua. */
+  const [asOf, setAsOf] = useState(() => homNayVNKey())
   const [data, setData] = useState<BalanceSheetData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -73,7 +74,7 @@ export default function BalanceSheetPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setAsOf(new Date().toISOString().slice(0, 10))}
+              onClick={() => setAsOf(homNayVNKey())}
             >
               Hôm nay
             </Button>

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { fetchCashFlow, type CashFlowData, type FinancePeriod } from "@/lib/finance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
+import { rangeFromPreset } from "@/lib/analytics/period"
 import { Printer, ArrowDownCircle, ArrowUpCircle, TrendingUp, TrendingDown } from "lucide-react"
 import { ReportLoadNotice } from "../../_components/report-load-notice"
 
@@ -22,11 +23,9 @@ export default function CashFlowPage() {
   const { user } = useAuth()
   const supabase = createClient()
 
-  const today = new Date()
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
-
-  const [from, setFrom] = useState(monthStart)
-  const [to, setTo] = useState(today.toISOString().slice(0, 10))
+  /* ⚠ NGÀY THEO LỊCH VN (`rangeFromPreset`), không lấy ngày UTC — xem màn Lãi lỗ. */
+  const [from, setFrom] = useState(() => rangeFromPreset("this_month").from)
+  const [to, setTo] = useState(() => rangeFromPreset("this_month").to)
   const [data, setData] = useState<CashFlowData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -80,9 +79,9 @@ export default function CashFlowPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const d = new Date()
-                setFrom(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10))
-                setTo(d.toISOString().slice(0, 10))
+                const r = rangeFromPreset("this_month")
+                setFrom(r.from)
+                setTo(r.to)
               }}
             >
               Tháng này
@@ -91,9 +90,9 @@ export default function CashFlowPage() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const d = new Date()
-                setFrom(new Date(d.getFullYear(), 0, 1).toISOString().slice(0, 10))
-                setTo(d.toISOString().slice(0, 10))
+                const r = rangeFromPreset("this_year")
+                setFrom(r.from)
+                setTo(r.to)
               }}
             >
               Năm nay

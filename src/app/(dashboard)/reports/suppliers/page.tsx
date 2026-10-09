@@ -16,6 +16,7 @@ import {
   formatRangeLabel,
 } from "@/lib/analytics/period"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { gopNoTheoNcc } from "@/lib/payables/so-no-ncc"
 import { viMatchAllWords } from "@/lib/search"
 import { fetchPostedStockEntries, fetchOrgRows } from "@/lib/analytics/sales"
 import { giaTriVonDongKho, slCoSoDong, slCoSoDongKho } from "@/lib/analytics/quy-doi-dong"
@@ -152,7 +153,9 @@ export default function SuppliersReportPage() {
               .eq("org_id", orgId)
               .gte("invoice_date", range.from)
               .lte("invoice_date", range.to)
-              .neq("status", "cancelled")
+              /* ⚠ CHỈ PHIẾU ĐÃ HOÀN THÀNH — `neq('cancelled')` để lọt phiếu Nháp (chưa nhập kho, chưa ghi công nợ) vào
+                 "Nhập hàng" (rà báo cáo 09/10/2026). Như màn chi tiết NCC (`chi-tiet.ts`). */
+              .eq("status", "completed")
               .order("id")
               .range(from, to),
           "đọc hoá đơn mua"
@@ -307,28 +310,20 @@ export default function SuppliersReportPage() {
     overdueDays: number
   }
   const payableRows: PayableViewRow[] = useMemo(() => {
-    const m = new Map<string, PayableViewRow>()
-    const now = Date.now()
-    for (const p of payables) {
-      const s = supplierMap.get(p.supplier_id)
-      if (!matchSearch(s)) continue
-      const outstanding = Number(p.amount || 0) - Number(p.paid || 0)
-      if (outstanding <= 0) continue
-      const e = m.get(p.supplier_id) || {
-        id: p.supplier_id,
+    // Dòng chưa xong, KHÔNG kẹp dòng âm (phiếu trả NCC trừ vào nợ) — `gopNoTheoNcc`, cùng luật `tongNoNcc`.
+    const out: PayableViewRow[] = []
+    for (const n of Array.from(gopNoTheoNcc(payables, (id) => matchSearch(supplierMap.get(id))).values())) {
+      const s = supplierMap.get(n.supplier_id)
+      out.push({
+        id: n.supplier_id,
         code: s?.code || "—",
         name: s?.name || "—",
-        invoices: 0,
-        outstanding: 0,
-        overdueDays: 0,
-      }
-      e.invoices += 1
-      e.outstanding += outstanding
-      const days = p.due_date ? Math.ceil((now - new Date(p.due_date).getTime()) / 86400000) : 0
-      if (days > e.overdueDays) e.overdueDays = days
-      m.set(p.supplier_id, e)
+        invoices: n.soPhieu,
+        outstanding: n.conNo,
+        overdueDays: n.quaHan,
+      })
     }
-    return Array.from(m.values()).sort((a, b) => b.outstanding - a.outstanding)
+    return out.sort((a, b) => b.outstanding - a.outstanding)
   }, [payables, supplierMap, matchSearch])
 
   // -------------------- Hàng nhập theo NCC (drill-down) --------------------

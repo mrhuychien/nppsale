@@ -126,6 +126,8 @@ export interface BalanceSheetData {
     cash: number
     accountsReceivable: number
     inventory: number
+    /** Trả trước cho NCC (mig 243): tổng nợ ròng ÂM theo từng NCC — tiền NCC đang giữ của mình. */
+    supplierPrepayments: number
     total: number
   }
   liabilities: {
@@ -144,7 +146,8 @@ export interface BalanceSheetData {
  *  - Cash = sum of received payments up to date − paid expenses − paid payables
  *  - AR   = open receivables amount - paid
  *  - Inventory = Σ batches.qty_on_hand × batches.unit_cost
- *  - AP   = open payables amount - paid
+ *  - AP   = nợ ròng DƯƠNG theo từng NCC; Trả trước cho NCC = nợ ròng ÂM theo từng NCC (mig 243 — chủ nhà 11/10/2026
+ *         "thêm dòng trả trước cho NCC vào"). Sổ chưa chạy 243 → không có cột → 0, như cũ.
  *  - Unpaid expenses = sum of expenses not marked paid
  *  - Equity = assets - liabilities (plug)
  */
@@ -166,14 +169,15 @@ export async function fetchBalanceSheet(
   const inventory = Number(r.inventory ?? 0)
   const accountsPayable = Number(r.accounts_payable ?? 0)
   const unpaidExpenses = Number(r.unpaid_expenses ?? 0)
+  const supplierPrepayments = Number(r.supplier_prepayments ?? 0)
 
-  const assetsTotal = cash + accountsReceivable + inventory
+  const assetsTotal = cash + accountsReceivable + inventory + supplierPrepayments
   const liabilitiesTotal = accountsPayable + unpaidExpenses
   const retainedEarnings = assetsTotal - liabilitiesTotal
 
   return {
     asOf,
-    assets: { cash, accountsReceivable, inventory, total: assetsTotal },
+    assets: { cash, accountsReceivable, inventory, supplierPrepayments, total: assetsTotal },
     liabilities: { accountsPayable, unpaidExpenses, total: liabilitiesTotal },
     equity: { retainedEarnings, total: retainedEarnings },
   }

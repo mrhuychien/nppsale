@@ -147,6 +147,11 @@ export default function BalanceSheetPage() {
                     <span className="pl-5">Hàng tồn kho</span>
                     <span>{formatCurrency(data.assets.inventory)}</span>
                   </div>
+                  {/* NCC có nợ ròng âm — trả dư, hàng trả NCC vượt nợ (mig 243, chủ nhà 11/10/2026). */}
+                  <div className="flex justify-between py-1.5 text-muted-foreground" data-testid="bs-tra-truoc-ncc">
+                    <span className="pl-5">Trả trước cho NCC</span>
+                    <span>{formatCurrency(data.assets.supplierPrepayments)}</span>
+                  </div>
                   <div className="flex justify-between py-2 border-t-2 border-foreground mt-2 font-black">
                     <span>TỔNG TÀI SẢN</span>
                     <span>{formatCurrency(data.assets.total)}</span>
@@ -214,6 +219,7 @@ export default function BalanceSheetPage() {
             </p>
             <p className="text-xs mt-1 text-muted-foreground">
               Ghi chú: mô hình đơn giản — tiền mặt được ước tính từ (tổng thu từ KH) − (tổng trả NCC) − (chi phí đã trả).
+              Công nợ NCC tính ròng theo từng NCC: NCC nào mình trả dư / trả hàng vượt nợ thì số ấy nằm ở “Trả trước cho NCC”.
               Chưa bao gồm vốn góp ban đầu, TSCĐ, nợ dài hạn, v.v.
             </p>
           </div>

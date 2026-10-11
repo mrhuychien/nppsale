@@ -282,15 +282,18 @@ export function ManTaiChinh() {
     }
     // Tài sản – Nguồn vốn
     const bs = d.bs
-    const ts = bs.assets.cash + d.phaiThu + bs.assets.inventory
+    /* Trả trước cho NCC (mig 243, chủ nhà 11/10/2026): NCC có nợ ròng âm — tiền NCC đang giữ của mình, là TÀI SẢN. */
+    const ts = bs.assets.cash + d.phaiThu + bs.assets.inventory + bs.assets.supplierPrepayments
     const npt = bs.liabilities.accountsPayable + bs.liabilities.unpaidExpenses
+    const congNoNcc = () => router.push("/payables/by-supplier")
     const ds: DongTc[] = [
       { _n: "Tài sản", _bold: true, nay: ts, truoc: null, chieu: 1 },
       { _n: "Tiền", _indent: true, nay: bs.assets.cash, truoc: null, chieu: 1 },
       { _n: "Phải thu khách", _indent: true, nay: d.phaiThu, truoc: null, chieu: 1, bam: () => router.push(lienKetMan("/bao-cao/cong-no", { den: X === homNay ? null : X })) },
       { _n: "Hàng tồn kho", _indent: true, nay: bs.assets.inventory, truoc: null, chieu: 1, bam: () => router.push(lienKetMan("/bao-cao/kho", {})) },
+      { _n: "Trả trước cho NCC", _indent: true, nay: bs.assets.supplierPrepayments, truoc: null, chieu: 1, bam: congNoNcc },
       { _n: "Nguồn vốn", _bold: true, nay: ts, truoc: null, chieu: 1 },
-      { _n: "Phải trả nhà cung cấp", _indent: true, nay: bs.liabilities.accountsPayable, truoc: null, chieu: -1 },
+      { _n: "Phải trả nhà cung cấp", _indent: true, nay: bs.liabilities.accountsPayable, truoc: null, chieu: -1, bam: congNoNcc },
       { _n: "Chi phí chưa trả", _indent: true, nay: bs.liabilities.unpaidExpenses, truoc: null, chieu: -1 },
       { _n: "Vốn chủ (phần chênh)", _indent: true, nay: ts - npt, truoc: null, chieu: 1 },
     ].map((x, i) => ({ ...x, _s: i }) as DongTc)

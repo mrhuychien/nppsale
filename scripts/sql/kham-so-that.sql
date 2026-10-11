@@ -776,4 +776,17 @@ SELECT 81, 'Mig 242 (Phiếu chi trả NCC)',
          || ' · tiền trả trước còn: '
          || (xpath('/row/n/text()', query_to_xml($q$SELECT COALESCE(sum(p.paid), 0) AS n FROM public.payables p
                                                     JOIN public.supplier_payments s ON s.prepay_payable_id = p.id$q$, false, true, '')))[1]::text END
+UNION ALL
+-- 82. Mig 243 — bảng cân đối có dòng "Trả trước cho NCC" (chủ nhà 11/10/2026: "thêm dòng trả trước cho NCC vào"): công nợ
+--     NCC ròng theo từng NCC — ròng âm (trả dư, hàng trả vượt nợ) là tài sản, không bị kẹp mất.
+SELECT 82, 'Mig 243 (Bảng cân đối: Trả trước cho NCC)',
+  CASE WHEN position('supplier_prepayments' IN pg_get_function_result('public.finance_balance_sheet(date)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 243 (bảng cân đối chưa có dòng Trả trước cho NCC)'
+       ELSE 'OK — đã vá' END,
+  'NCC đang có trả trước: '
+    || (SELECT count(*) FROM (SELECT 1 FROM payables WHERE status <> 'paid' GROUP BY org_id, supplier_id
+                               HAVING sum(amount - COALESCE(paid, 0)) < 0) x)
+    || ' · tổng: '
+    || (SELECT COALESCE(sum(-r), 0) FROM (SELECT sum(amount - COALESCE(paid, 0)) AS r FROM payables WHERE status <> 'paid'
+                                          GROUP BY org_id, supplier_id) x WHERE r < 0)
 ) t ORDER BY stt;

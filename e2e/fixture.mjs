@@ -308,6 +308,27 @@ export const rpc = {
       return { ...g, supplier_name: s?.name ?? "-", supplier_code: s?.code ?? "-" }
     }).sort((a, b) => b.remaining - a.remaining)
   },
+  /* Bảng cân đối (mig 243): phải trả / trả trước NCC RÒNG THEO TỪNG NCC (Σ amount − paid trên dòng chưa 'paid'); tiền =
+     thu (bỏ cấn trừ) − trả NCC − chi đã trả; phải thu không kẹp dòng âm; tồn kho = Σ tồn × giá vốn. Luật thật chạy ở
+     scripts/sql/thu-243-can-doi-tra-truoc-ncc.sql. */
+  finance_balance_sheet: (_p, { db }) => {
+    const so = (v) => Number(v) || 0
+    const rong = new Map()
+    for (const r of db.payables || []) {
+      if (r.status === "paid") continue
+      rong.set(r.supplier_id, (rong.get(r.supplier_id) || 0) + so(r.amount) - so(r.paid))
+    }
+    const tong = (ds, f) => ds.reduce((s, x) => s + f(x), 0)
+    const thu = tong((db.payments || []).filter((t) => !["return_credit", "credit_applied"].includes(t.method)), (t) => so(t.amount))
+    return {
+      cash: thu - tong(db.payable_payments || [], (t) => so(t.amount)) - tong((db.expenses || []).filter((x) => x.is_paid), (x) => so(x.amount)),
+      accounts_receivable: tong((db.receivables || []).filter((r) => r.status !== "paid"), (r) => so(r.amount) - so(r.paid)),
+      inventory: tong((db.batches || []).filter((b) => so(b.qty_on_hand) > 0), (b) => so(b.qty_on_hand) * so(b.unit_cost)),
+      accounts_payable: tong([...rong.values()], (v) => Math.max(v, 0)),
+      unpaid_expenses: tong((db.expenses || []).filter((x) => !x.is_paid), (x) => so(x.amount)),
+      supplier_prepayments: tong([...rong.values()], (v) => Math.max(-v, 0)),
+    }
+  },
   /* Đánh dấu đã soạn hàng (mig 224): chỉ HĐ đã ghi sổ; đánh dấu lại không ghi đè giờ / người. */
   danh_dau_soan_hang: ({ p_ids, p_da }, { db, user }) => {
     let n = 0

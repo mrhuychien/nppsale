@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { docTheoLoId, fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { locDanhSachMa, catTrangMa, xepTheoMa } from "@/lib/customers/loc-nhanh"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
@@ -63,6 +63,10 @@ import {
   type CustomerFilterKey,
   COT_TIM_KHACH,
 } from "./list-config"
+import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
+import { napTenNguoi } from "@/lib/xuat-excel/nap"
+import { loadDebtByCustomer } from "@/lib/sell/debt"
+import { CHON_KHACH_XUAT, napPhuTrachKhach, xuatKhachHang, type KhachXuat } from "@/lib/customers/xuat-excel"
 
 /**
  * ⚠ BA THẺ LỌC NHANH, KHÔNG PHẢI BỐN. Mẫu có thêm "Chưa đặt 30 ngày";
@@ -89,6 +93,8 @@ export default function CustomersPage() {
    * nhầm rồi bỏ qua.
    */
   const [debts, setDebts] = useState<Record<string, number> | null>(null)
+  /** Nợ quá hạn theo khách — cùng lượt đọc với `debts`, cho tệp Excel. `null` = chưa / không đọc được. */
+  const [noQuaHan, setNoQuaHan] = useState<Record<string, number> | null>(null)
   const [debtWarning, setDebtWarning] = useState<string | null>(null)
   const [overdueIds, setOverdueIds] = useState<string[]>([])
   const [visitedToday, setVisitedToday] = useState<Set<string>>(new Set())
@@ -220,6 +226,7 @@ export default function CustomersPage() {
 
       if (recvRes.error || recvRes.truncated) {
         setDebts(null)
+        setNoQuaHan(null)
         setOverdueIds([])
         setDebtWarning(
           recvRes.error
@@ -240,6 +247,7 @@ export default function CustomersPage() {
           }
         }
         setDebts(debtMap)
+        setNoQuaHan(overdueMap)
         setDebtWarning(null)
         // Sắp theo số nợ quá hạn giảm dần: người nợ nhiều nhất lên đầu.
         setOverdueIds(
@@ -275,6 +283,31 @@ export default function CustomersPage() {
     return null
   }, [quick, todayStops, overdueIds, noNhieuNhat, debts])
 
+  /* Bộ lọc khác thẻ lọc nhanh (NV / ô tìm / lọc nâng cao / trạng thái / tuyến) — áp chung cho truy vấn
+     danh sách, cho bước lọc danh sách mã bên dưới, và cho tệp Excel (cùng một bộ lọc — xuất đúng cái đang xem). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apLoc = (q: any) => {
+    /* ⚠ LỌC NHÂN VIÊN TRÊN MÁY CHỦ (chủ nhà 03/10/2026: "nhân viên 60 khách mà có 3 khách hiện") — bản cũ lọc
+       trong 20 khách của trang đang tải. NV chính đang hoạt động, như cột "Phụ trách". */
+    if (nvLoc) {
+      q = q.eq("nv_chinh.role", "primary").eq("nv_chinh.status", "active")
+      q = nvLoc === CHUA_PHAN_CONG ? q.is("nv_chinh", null) : q.eq("nv_chinh.user_id", nvLoc)
+    }
+    if (debouncedSearch) {
+      /* Tìm cả theo ĐỊA CHỈ (chủ nhà 26/09/2026) — `tim_kd` cũng có địa chỉ từ mig 203. */
+      q = q.or(dieuKienTim("customers", COT_TIM_KHACH, debouncedSearch))
+    }
+    /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
+    for (const f of locNC.menhDe) q = q.or(f)
+    if (statusFilter !== "all") q = q.eq("status", statusFilter)
+    if (channelFilter === CHUA_CO_TUYEN) q = q.or("channel.is.null,channel.eq.")
+    else if (channelFilter !== "all") q = q.eq("channel", channelFilter)
+    if (wardFilter === CHUA_CO_PHUONG) q = q.or("ward.is.null,ward.eq.")
+    else if (wardFilter !== "all") q = q.eq("ward", wardFilter)
+    return q
+  }
+  const coLocKhac = !!(nvLoc || debouncedSearch || locNC.menhDe.length || statusFilter !== "all" || channelFilter !== "all" || wardFilter !== "all")
+
   // List query — paginate + filter server-side.
   useEffect(() => {
     let cancelled = false
@@ -303,31 +336,6 @@ export default function CustomersPage() {
        * trang ở server: gửi một `in.()` dài hàng nghìn mã là URL vượt
        * trần của proxy và request chết với 414 mà không ai đoán ra vì sao.
        */
-      /* Bộ lọc khác thẻ lọc nhanh (NV / ô tìm / lọc nâng cao / trạng thái / tuyến) — áp chung cho truy vấn
-         danh sách và cho bước lọc danh sách mã bên dưới. */
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const apLoc = (q: any) => {
-        /* ⚠ LỌC NHÂN VIÊN TRÊN MÁY CHỦ (chủ nhà 03/10/2026: "nhân viên 60 khách mà có 3 khách hiện") — bản cũ lọc
-           trong 20 khách của trang đang tải. NV chính đang hoạt động, như cột "Phụ trách". */
-        if (nvLoc) {
-          q = q.eq("nv_chinh.role", "primary").eq("nv_chinh.status", "active")
-          q = nvLoc === CHUA_PHAN_CONG ? q.is("nv_chinh", null) : q.eq("nv_chinh.user_id", nvLoc)
-        }
-        if (debouncedSearch) {
-          /* Tìm cả theo ĐỊA CHỈ (chủ nhà 26/09/2026) — `tim_kd` cũng có địa chỉ từ mig 203. */
-          q = q.or(dieuKienTim("customers", COT_TIM_KHACH, debouncedSearch))
-        }
-        /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
-        for (const f of locNC.menhDe) q = q.or(f)
-        if (statusFilter !== "all") q = q.eq("status", statusFilter)
-        if (channelFilter === CHUA_CO_TUYEN) q = q.or("channel.is.null,channel.eq.")
-        else if (channelFilter !== "all") q = q.eq("channel", channelFilter)
-        if (wardFilter === CHUA_CO_PHUONG) q = q.or("ward.is.null,ward.eq.")
-        else if (wardFilter !== "all") q = q.eq("ward", wardFilter)
-        return q
-      }
-      const coLocKhac = !!(nvLoc || debouncedSearch || locNC.menhDe.length || statusFilter !== "all" || channelFilter !== "all" || wardFilter !== "all")
-
       /**
        * ⚠ THẺ LỌC NHANH + BỘ LỌC KHÁC: lọc TOÀN BỘ danh sách mã trước, rồi mới cắt trang (rà soát 03/10/2026 —
        *   bản cũ cắt 20 mã rồi mới lọc, trang gần như trống, tổng số sai). Kết quả lọc giữ trong `quickLocRef` để
@@ -610,6 +618,51 @@ export default function CustomersPage() {
     return /^tuyến/i.test(ten) ? ten : `Tuyến ${ten}`
   }
 
+  /**
+   * XUẤT EXCEL (chủ nhà 11/10/2026: "phần danh sách khách hàng thêm cho tao phần xuất excel chi tiết thông tin") —
+   * MỌI khách khớp bộ lọc / ô tìm / thẻ lọc đang xem (không chỉ trang này), đúng thứ tự đang xem, đủ thông tin từng
+   * khách (`src/lib/customers/xuat-excel.ts`). Quyền: ô "Xuất file" của mô-đun Khách hàng.
+   */
+  const xuatExcel = async (): Promise<KetQuaXuat> => {
+    let khach: KhachXuat[]
+    let thieuDong = false
+    if (quickIds) {
+      // Thẻ lọc nhanh: danh sách mã (thứ tự điểm dừng / nợ) giao với bộ lọc khác — đúng như danh sách.
+      const ma = quickIds.length === 0 ? [] : await locDanhSachMa(quickIds, coLocKhac, (lo, from, to) =>
+        apLoc(supabase.from("customers").select("id" + chonNv(nvLoc), { count: "exact" }).in("id", lo)).order("id").range(from, to)
+      )
+      const rows = await docTheoLoId<KhachXuat>(
+        ma,
+        (lo, from, to) => supabase.from("customers").select(CHON_KHACH_XUAT, { count: "exact" }).in("id", lo).order("id").range(from, to),
+        "khách hàng"
+      )
+      khach = xepTheoMa(rows, ma)
+    } else {
+      const res = await fetchAllForAggregate<KhachXuat>((from, to) =>
+        apLoc(supabase.from("customers").select(CHON_KHACH_XUAT + chonNv(nvLoc), { count: "exact" }))
+          .order("store_name")
+          .order("id")
+          .range(from, to)
+      )
+      if (res.error) throw new Error(`Không đọc được danh sách khách: ${res.error}`)
+      khach = res.rows
+      thieuDong = res.truncated
+    }
+    const [phuTrach, tenNguoi, no] = await Promise.all([
+      napPhuTrachKhach(supabase, khach.map((c) => c.id)),
+      napTenNguoi(supabase, khach.map((c) => c.created_by)),
+      // Công nợ: số màn đang dùng (đọc đủ mọi phiếu); chưa có thì đọc lại bằng hàm chung.
+      debts ? Promise.resolve(debts) : loadDebtByCustomer(),
+    ])
+    return {
+      // `noQuaHan` đặt cùng lượt với `debts` — công nợ chưa đọc được thì nó cũng `null` (ô trống).
+      sheets: xuatKhachHang(khach, { no, quaHan: noQuaHan, phuTrach, tenNguoi, tuyen: routes }),
+      soPhieu: khach.length,
+      thieu: thieuDong || no === null,
+      ghiChu: no === null && !thieuDong ? "Không đọc được công nợ — cột Công nợ / Nợ quá hạn để trống, các cột khác đủ." : undefined,
+    }
+  }
+
   /** Dựng một thẻ khách cho màn điện thoại. */
   const khachMobile = (c: Customer): KhachMobile => {
     const overdue = overdueIds.includes(c.id)
@@ -870,6 +923,14 @@ export default function CustomersPage() {
         }
         toolbarEnd={
           <>
+            <XuatExcelButton
+              module="customers"
+              tenTep="khach-hang"
+              donVi="khách hàng"
+              chuanBi={xuatExcel}
+              disabled={loading || pg.total === 0}
+              title="Xuất mọi khách khớp bộ lọc đang xem (không chỉ trang này) — đủ thông tin từng khách"
+            />
             <AdvancedFilter truong={LOC_KHACH_HANG} value={locNC.dieuKien} onApply={locNC.apDung} />
             <FilterPicker
               available={CUSTOMER_FILTERS}

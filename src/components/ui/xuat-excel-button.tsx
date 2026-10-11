@@ -34,6 +34,8 @@ export interface KetQuaXuat {
   soPhieu: number
   /** Chạm trần đọc (`truncated`) — tệp THIẾU, phải báo. */
   thieu?: boolean
+  /** Vì sao thiếu, khi không phải chạm trần dòng (vd. không đọc được công nợ) — thay câu báo trần mặc định. */
+  ghiChu?: string
   /** Xuất MỘT phiếu (trang chi tiết): mã phiếu cho tên tệp `tienTo_MA_ngày.xlsx` và câu báo. */
   ma?: string
 }
@@ -45,6 +47,7 @@ export function XuatExcelButton({
   disabled,
   className,
   title = "Xuất mọi phiếu khớp bộ lọc đang xem (không chỉ trang này) — kèm chi tiết từng dòng",
+  donVi = "phiếu",
 }: {
   /** Mô-đun của ma trận quyền mà ô "Xuất file" quyết định nút này. */
   module: Module
@@ -54,6 +57,8 @@ export function XuatExcelButton({
   disabled?: boolean
   className?: string
   title?: string
+  /** Đơn vị trong câu báo — danh mục (khách hàng…) không phải "phiếu". */
+  donVi?: string
 }) {
   const { user } = useAuth()
   const [dang, setDang] = useState(false)
@@ -70,11 +75,11 @@ export function XuatExcelButton({
       else await downloadXlsxSheets(ten, kq.sheets ?? [])
       toast({
         title: kq.thieu
-          ? `Đã xuất ${kq.soPhieu} phiếu — CHƯA ĐỦ`
+          ? `Đã xuất ${kq.soPhieu} ${donVi} — CHƯA ĐỦ`
           : motPhieu
             ? `Đã xuất phiếu ${kq.ma || "này"} ra Excel`
-            : `Đã xuất ${kq.soPhieu} phiếu ra Excel`,
-        description: kq.thieu ? truncationWarning() : undefined,
+            : `Đã xuất ${kq.soPhieu} ${donVi} ra Excel`,
+        description: kq.thieu ? kq.ghiChu ?? truncationWarning() : undefined,
         variant: kq.thieu ? "destructive" : undefined,
       })
     } catch (e) {

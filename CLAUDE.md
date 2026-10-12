@@ -102,6 +102,15 @@ Chủ nhà chốt 25/09/2026 (mig 191).
 - In ở POS: trang in riêng `/in/*` nạp vào khung ẩn (`inTaiCho`); header phải là
   `X-Frame-Options: SAMEORIGIN` (DENY làm nút In không chạy).
 
+### Ảnh + vị trí điểm bán
+Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.
+- **Chụp lại** = sửa dòng `customer_photos` tại chỗ (giữ ô), không xoá-rồi-chèn. Tấm đã ghim vị trí
+  (`isStorePinFromPhoto`) thì vị trí đi theo ảnh mới; xoá tấm ấy thì hỏi xoá luôn vị trí.
+- Tự ghim lúc chụp vẫn **chỉ khi chưa có toạ độ** (`shouldPinCustomer`). Dời / xoá vị trí là nút riêng, đọc vị trí
+  mới rồi hỏi (`canRepinStore`) — `src/components/customers/customer-photo-capture.tsx`.
+- File trong kho `customer-photos` xoá qua **`/api/customers/photo-cleanup`** (khoá máy chủ; chỉ file của đúng đơn vị,
+  không còn dòng nào trỏ tới). Trình duyệt gọi `storage.remove` thì im lặng không xoá gì — mig 207 đã bỏ policy SELECT.
+
 ## 2. Git / phát hành
 - Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ
   trên branch preview rồi mới đẩy lên production"*.

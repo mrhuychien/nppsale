@@ -11,7 +11,8 @@
  * Nói tập con cú pháp PostgREST đủ cho các màn đang chốt: lọc eq / in / is /
  * ilike, `or=(…)` (nhiều `or` ghép bằng VÀ, như PostgREST),
  * order, limit / Range, Accept object, Prefer count, HEAD; ghi insert /
- * patch / delete vào bộ nhớ; RPC theo bảng xử lý. Mọi yêu cầu được ghi
+ * patch / delete vào bộ nhớ; RPC theo bảng xử lý; kho file (Storage) tải lên /
+ * xoá / xem công khai, ghi vào bảng giả `storage_objects`. Mọi yêu cầu được ghi
  * vào `requests` — chốt đọc qua GET /__log.
  */
 import { WebSocketServer } from "ws"
@@ -245,6 +246,40 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       } catch (e) {
         return send(res, 400, { code: e.code ?? "P0001", message: String(e.message ?? e) })
       }
+    }
+
+    // ---- kho file (Storage) — đủ cho ảnh điểm bán: tải lên, xoá, xem bằng URL công khai ----
+    /* File ghi vào bảng giả `storage_objects` (bucket_id, name) như `storage.objects` thật — chốt đọc qua /__db.
+       Nội dung file không giữ (chốt chỉ cần biết file có / không). */
+    if (url.pathname.startsWith("/storage/v1/object/")) {
+      const kho = db.storage_objects ?? (db.storage_objects = [])
+      const sau = decodeURIComponent(url.pathname.slice("/storage/v1/object/".length))
+      if (req.method === "GET" || req.method === "HEAD") {
+        const [bucket, ...ten] = sau.replace(/^(public|authenticated)\//, "").split("/")
+        const co = kho.some((o) => o.bucket_id === bucket && o.name === ten.join("/"))
+        if (!co) return send(res, 400, { statusCode: "404", error: "not_found", message: "Object not found" })
+        res.writeHead(200, { "content-type": "image/svg+xml", "access-control-allow-origin": "*" })
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#888"/></svg>')
+      }
+      if (req.method === "POST" || req.method === "PUT") {
+        const [bucket, ...ten] = sau.split("/")
+        const name = ten.join("/")
+        const cu = kho.find((o) => o.bucket_id === bucket && o.name === name)
+        if (cu && req.method === "POST" && req.headers["x-upsert"] !== "true") {
+          return send(res, 400, { statusCode: "409", error: "Duplicate", message: "The resource already exists" })
+        }
+        const obj = cu ?? { id: newId(), bucket_id: bucket, name, created_at: new Date().toISOString() }
+        if (!cu) kho.push(obj)
+        return send(res, 200, { Id: obj.id, Key: `${bucket}/${name}` })
+      }
+      if (req.method === "DELETE") {
+        const bucket = sau.split("/")[0]
+        const ten = new Set(Array.isArray(json?.prefixes) ? json.prefixes : [])
+        const xoa = kho.filter((o) => o.bucket_id === bucket && ten.has(o.name))
+        db.storage_objects = kho.filter((o) => !xoa.includes(o))
+        return send(res, 200, xoa)
+      }
+      return send(res, 400, { message: "storage giả: phương thức chưa hỗ trợ" })
     }
 
     // ---- bảng ----

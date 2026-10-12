@@ -81,7 +81,7 @@ const CON_NO_GHI_KHONG_KIEM = [
   "src/components/customers/customer-form.tsx",
   // Dời từ customers/routes/page.tsx (03/10/2026): đổi mã tuyến kéo theo khách — 0 dòng là hợp lệ (tuyến chưa có khách).
   "src/components/customers/route-form.tsx",
-  "src/components/customers/customer-photo-capture.tsx",
+  // customer-photo-capture.tsx đã trả nợ 12/10/2026: ghim / dời / xoá vị trí và sửa / xoá ảnh đều qua ghiPhaiTrungDong.
   "src/components/deliveries/pod-capture-sheet.tsx",
   "src/components/layout/notification-bell.tsx",
   "src/components/products/product-form.tsx",

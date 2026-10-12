@@ -171,8 +171,13 @@ export default function CustomerDetailPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  /**
+   * `quiet === true`: tải lại KHÔNG bật khung chờ cả trang — khối ảnh điểm bán gọi sau mỗi lần chụp lại / xoá / dời
+   * vị trí; bật `loading` là cả trang thành khung xám, khối ảnh dựng lại từ đầu và điện thoại nhảy về đầu trang
+   * (chủ nhà 12/10/2026). So đúng `true`: nơi khác trao `fetchData` làm hàm bấm thì đối số là sự kiện, không phải cờ.
+   */
+  const fetchData = useCallback(async (quiet?: unknown) => {
+    if (quiet !== true) setLoading(true)
     const now = new Date()
     /* ⚠ `invoice_date` là DATE: so bằng NGÀY theo giờ VN, không bằng mốc UTC —
        nửa đêm 01/09 giờ VN là 31/08 17:00Z, so kiểu ngày là lọt cả ngày 31/08. */
@@ -490,6 +495,7 @@ export default function CustomerDetailPage() {
   }, [id, laNvbh]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData() }, [fetchData])
+  const refreshQuiet = useCallback(() => fetchData(true), [fetchData])
 
   const currentDebt = useMemo(
     () =>
@@ -829,7 +835,7 @@ export default function CustomerDetailPage() {
                       lat: customer.gps_lat != null ? Number(customer.gps_lat) : null,
                       lng: customer.gps_lng != null ? Number(customer.gps_lng) : null,
                     }}
-                    onChanged={fetchData}
+                    onChanged={refreshQuiet}
                   />
                 </CardContent>
               </Card>

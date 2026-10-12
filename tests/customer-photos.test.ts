@@ -338,8 +338,9 @@ describe("Màn chụp ảnh", () => {
   })
 
   it("ghim vị trí điểm bán qua shouldPinCustomer, không tự viết luật", () => {
-    expect(CAP).toContain("shouldPinCustomer(storeGps, fix)")
-    expect(CAP).toContain("if (pin.pin && fix) {")
+    // `store` = vị trí điểm bán đang hiện (theo `storeGps`, đổi ngay sau khi sửa / xoá — chủ nhà 12/10/2026).
+    expect(CAP).toContain("shouldPinCustomer(store, fix)")
+    expect(CAP).toContain("if ((pin.pin || followPhoto) && fix) {")
   })
 
   /** Nói trước điều sẽ xảy ra — ghim vị trí là thay đổi dữ liệu khách. */

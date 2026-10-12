@@ -10,6 +10,12 @@
 /** Tối đa 3 ảnh mỗi điểm bán. Trùng với CHECK ở migration 103. */
 export const MAX_PHOTOS = 3
 
+/** Kho file ảnh điểm bán (migration 103). */
+export const CUSTOMER_PHOTO_BUCKET = "customer-photos"
+
+/** Vai trò được chụp / thay / xoá ảnh và sửa vị trí điểm bán — trùng policy "Manage customer photos" (mig 103). */
+export const MANAGE_PHOTO_ROLES: readonly string[] = ["owner", "manager", "sales"]
+
 /** Bao nhiêu ngày mới nhắc lại một điểm bán. */
 export const REMINDER_COOLDOWN_DAYS = 7
 
@@ -88,6 +94,99 @@ export function farFromStore(
   if (!fix || store.lat == null || store.lng == null) return null
   const d = haversineMeters(fix.lat, fix.lng, store.lat, store.lng)
   return d > FAR_WARN_METERS ? Math.round(d) : null
+}
+
+/*
+ * SỬA / CẬP NHẬT LẠI / XOÁ ảnh + vị trí — chủ nhà 12/10/2026: "phần cập nhật ảnh kèm định vị cho điểm bán. chưa
+ * sửa, cập nhật lại, xoá ảnh + vị trí cũ". Trước đó chỉ chụp thêm và xoá được dòng ảnh: toạ độ điểm bán ghim sai
+ * (vd tạo khách ở nhà rồi bấm "Lấy vị trí") thì không cách nào dời / bỏ, và file ảnh đã xoá vẫn nằm trong kho.
+ */
+
+/**
+ * Người dùng BẤM "Cập nhật theo chỗ đang đứng" — được đè toạ độ cũ (khác `shouldPinCustomer`, luật tự ghim lúc
+ * chụp, chỉ ghim khi CHƯA có). Sai số quá lớn vẫn không nhận, cùng ngưỡng `MAX_PIN_ACCURACY_M`.
+ * `movedMeters`: cách vị trí cũ bao xa — hộp xác nhận nói ra; null = trước đó chưa có toạ độ.
+ */
+export function canRepinStore(
+  current: { lat: number | null; lng: number | null },
+  fix: Fix | null
+): { ok: boolean; reason: string; movedMeters: number | null } {
+  if (!fix) return { ok: false, reason: "Chưa lấy được vị trí của máy", movedMeters: null }
+  if (fix.accuracy != null && fix.accuracy > MAX_PIN_ACCURACY_M) {
+    return {
+      ok: false,
+      reason: `Sai số ±${Math.round(fix.accuracy)}m — quá lớn để ghim (tối đa ${MAX_PIN_ACCURACY_M}m). Ra chỗ thoáng rồi thử lại.`,
+      movedMeters: null,
+    }
+  }
+  const movedMeters =
+    current.lat != null && current.lng != null
+      ? Math.round(haversineMeters(current.lat, current.lng, fix.lat, fix.lng))
+      : null
+  return { ok: true, reason: "", movedMeters }
+}
+
+/** Khoảng cách để đọc: 850 → "850m", 12345 → "12,3 km". */
+export function distanceText(meters: number): string {
+  const m = Math.round(meters)
+  return m < 1000 ? `${m}m` : `${(m / 1000).toFixed(1).replace(".", ",")} km`
+}
+
+/** Câu hỏi trước khi ghim / dời vị trí điểm bán: toạ độ mới, sai số, và dời bao xa so với vị trí cũ. */
+export function repinQuestion(fix: Fix, movedMeters: number | null): string {
+  const acc = fix.accuracy != null ? ` (±${Math.round(fix.accuracy)}m)` : ""
+  const where = `${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}${acc}`
+  return movedMeters != null
+    ? `Dời điểm bán về chỗ bạn đang đứng: ${where} — cách vị trí cũ khoảng ${distanceText(movedMeters)}.`
+    : `Ghim điểm bán vào chỗ bạn đang đứng: ${where}.`
+}
+
+/** Lệch tới mức này vẫn coi là CÙNG một toạ độ (số đọc lại qua JSON / numeric có thể lệch ở chữ số cuối). */
+export const SAME_SPOT_METERS = 1
+
+/**
+ * Vị trí điểm bán có được ghim TỪ ảnh này không — tấm ảnh đầu tiên ghim điểm bán bằng chính toạ độ lúc chụp
+ * (`shouldPinCustomer`). Ảnh với vị trí là một cặp: chụp lại tấm này thì vị trí đi theo ảnh mới, xoá tấm này thì
+ * hỏi xoá luôn vị trí.
+ */
+export function isStorePinFromPhoto(
+  store: { lat: number | null; lng: number | null },
+  photo: { gps_lat: number | null; gps_lng: number | null }
+): boolean {
+  if (store.lat == null || store.lng == null || photo.gps_lat == null || photo.gps_lng == null) return false
+  return haversineMeters(Number(store.lat), Number(store.lng), Number(photo.gps_lat), Number(photo.gps_lng)) <= SAME_SPOT_METERS
+}
+
+/**
+ * Đường dẫn TRONG KHO của một URL ảnh công khai — để xoá file khi xoá / thay ảnh:
+ *   `…/storage/v1/object/public/customer-photos/<org>/<khách>/<ô>-<ms>.jpg` → `<org>/<khách>/<ô>-<ms>.jpg`.
+ * URL không đúng khuôn (kho khác, có `..`) → null: không đoán, không xoá nhầm.
+ */
+export function photoStoragePath(url: string | null | undefined): string | null {
+  if (!url) return null
+  const mark = `/storage/v1/object/public/${CUSTOMER_PHOTO_BUCKET}/`
+  const i = url.indexOf(mark)
+  if (i < 0) return null
+  let path = url.slice(i + mark.length).split(/[?#]/)[0]
+  try {
+    path = decodeURIComponent(path)
+  } catch {
+    return null
+  }
+  return path && !path.includes("..") && !path.startsWith("/") ? path : null
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+const ORG_PHOTO_PATH = new RegExp(`^(${UUID})/(${UUID})/[\\w-]+\\.jpg$`, "i")
+
+/**
+ * File ảnh điểm bán của ĐÚNG đơn vị — khuôn app tải lên: `<org>/<khách>/<ô>-<ms>.jpg`. Máy chủ chỉ xoá file khớp
+ * khuôn này (chặn `..`, thư mục lạ, file của đơn vị khác). Trả mã khách để tra xem file còn được dùng không.
+ */
+export function parseOrgPhotoPath(path: string, orgId: string): { customerId: string } | null {
+  const m = ORG_PHOTO_PATH.exec(path)
+  if (!m || m[1].toLowerCase() !== orgId.toLowerCase()) return null
+  return { customerId: m[2] }
 }
 
 /** Một điểm bán, rút gọn cho việc tính nhắc nhở. */

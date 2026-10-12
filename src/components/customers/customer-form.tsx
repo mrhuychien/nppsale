@@ -148,19 +148,29 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
       async (position) => {
         const lat = position.coords.latitude.toString()
         const lng = position.coords.longitude.toString()
-        setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
 
         // Save immediately if editing
         if (customer) {
+          /* ⚠ GHI XONG MỚI ĐẶT VÀO FORM. Vị trí đã duyệt (mig 244) thì database chặn NV dời — để toạ độ bị chặn nằm lại
+             trên form là bấm "Lưu" sau đó bị chặn cả form (gửi kèm toạ độ khác toạ độ đã duyệt). */
           const { error } = await supabase
             .from("customers")
             .update({ gps_lat: parseFloat(lat), gps_lng: parseFloat(lng) })
             .eq("id", customer.id)
           if (error) {
-            toast({ title: "Lỗi", description: "Không thể lưu tọa độ GPS", variant: "destructive" })
+            toast({
+              title: "Không lưu được tọa độ GPS",
+              description: /VI_TRI_DA_DUYET/.test(error.message)
+                ? "Vị trí điểm bán đã được duyệt — dời vị trí ở khối Ảnh điểm bán (gửi chủ NPP duyệt)."
+                : errorMessage(error),
+              variant: "destructive",
+            })
           } else {
+            setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
             toast({ title: "Đã lưu tọa độ GPS" })
           }
+        } else {
+          setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
         }
         setGpsLoading(false)
       },
@@ -240,8 +250,9 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
         payment_method_label: form.payment_method_label || "Chuyển khoản",
       }
 
-      // Include GPS if set
-      if (form.gps_lat && form.gps_lng) {
+      // Toạ độ chỉ gửi khi TẠO khách. Sửa khách thì nút "Định vị" đã ghi ngay; gửi lại toạ độ lúc mở form là đè vị trí
+      // vừa được duyệt dời trong lúc form đang mở (mig 244 — NVBH còn bị chặn cả form).
+      if (!customer && form.gps_lat && form.gps_lng) {
         payload.gps_lat = parseFloat(form.gps_lat)
         payload.gps_lng = parseFloat(form.gps_lng)
       }

@@ -8,6 +8,7 @@ import {
   parseOrgPhotoPath,
   photoStoragePath,
 } from "@/lib/customers/photos"
+import { chuaCoDuyetAnh } from "@/lib/customers/photo-approval"
 
 /** Một lần gọi xoá tối đa bấy nhiêu file — màn chỉ gửi 1–2 (ảnh vừa xoá / ảnh bị thay). */
 const MAX_PATHS = 10
@@ -22,7 +23,8 @@ const MAX_PATHS = 10
  *   chủ, nhưng chỉ xoá file:
  *     · người gọi đăng nhập, vai trò được quản lý ảnh (`MANAGE_PHOTO_ROLES`);
  *     · đúng khuôn `<org của người gọi>/<khách>/<tên>.jpg` (`parseOrgPhotoPath`) — không `..`, không đơn vị khác;
- *     · KHÔNG còn dòng `customer_photos` nào trỏ tới — file đang dùng thì bỏ qua (`skipped`).
+ *     · KHÔNG còn dòng `customer_photos` nào trỏ tới, cũng không phải ảnh mới của yêu cầu đang chờ duyệt (mig 244) —
+ *       file đang dùng thì bỏ qua (`skipped`).
  */
 export async function POST(req: Request) {
   try {
@@ -66,8 +68,21 @@ export async function POST(req: Request) {
       console.error("[api/customers/photo-cleanup] tra ảnh đang dùng lỗi:", refErr.message)
       return NextResponse.json({ error: "Lỗi tra ảnh đang dùng" }, { status: 500 })
     }
+    // Ảnh MỚI của yêu cầu đang chờ duyệt (mig 244) cũng là file đang dùng — chưa gắn vào điểm bán nhưng chưa được xoá.
+    // Máy chủ chưa chạy mig 244 thì chưa có bảng ấy → không có file nào kiểu đó.
+    const { data: cho, error: choErr } = await admin
+      .from("customer_photo_requests")
+      .select("photo_url")
+      .eq("org_id", orgId)
+      .eq("status", "pending")
+      .in("customer_id", customerIds)
+    if (choErr && !chuaCoDuyetAnh(choErr)) {
+      console.error("[api/customers/photo-cleanup] tra yêu cầu đang chờ lỗi:", choErr.message)
+      return NextResponse.json({ error: "Lỗi tra ảnh đang chờ duyệt" }, { status: 500 })
+    }
     const inUse = new Set(
-      ((rows as Array<{ photo_url: string | null }> | null) ?? []).map((r) => photoStoragePath(r.photo_url))
+      [...((rows as Array<{ photo_url: string | null }> | null) ?? []), ...((cho as Array<{ photo_url: string | null }> | null) ?? [])]
+        .map((r) => photoStoragePath(r.photo_url))
     )
     const removed = own.map((x) => x.path).filter((p) => !inUse.has(p))
     if (removed.length > 0) {

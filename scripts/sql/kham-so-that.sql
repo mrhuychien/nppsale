@@ -789,4 +789,20 @@ SELECT 82, 'Mig 243 (Bảng cân đối: Trả trước cho NCC)',
     || ' · tổng: '
     || (SELECT COALESCE(sum(-r), 0) FROM (SELECT sum(amount - COALESCE(paid, 0)) AS r FROM payables WHERE status <> 'paid'
                                           GROUP BY org_id, supplier_id) x WHERE r < 0)
+UNION ALL
+-- 83. Mig 244 — duyệt ảnh + vị trí điểm bán (chủ nhà 12/10/2026: "Chủ NPP đã phê duyệt thì khi thay đổi hoặc xoá
+--     ảnh+vị trí cần nhà phân phối phê duyệt"): đã duyệt thì NVBH đổi / xoá phải gửi yêu cầu.
+SELECT 83, 'Mig 244 (Duyệt ảnh + vị trí điểm bán)',
+  CASE WHEN to_regclass('public.customer_photo_requests') IS NULL
+         OR to_regprocedure('public.duyet_yeu_cau_anh_diem_ban(uuid[],boolean,text)') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_khoa_anh_diem_ban')
+         OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_khoa_vi_tri_diem_ban')
+       THEN 'CHƯA — chạy migration 244 (ảnh / vị trí điểm bán chưa có bước duyệt)'
+       ELSE 'OK — đã vá' END,
+  -- ⚠ Đếm qua query_to_xml: sổ chưa chạy 244 thì nhắc thẳng tên bảng / cột là cả tệp khám nổ ở bước phân tích.
+  CASE WHEN to_regclass('public.customer_photo_requests') IS NULL THEN 'Chưa có bảng yêu cầu đổi ảnh'
+       ELSE 'Điểm bán đã duyệt ảnh: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.customers WHERE photo_approved_at IS NOT NULL$q$, false, true, '')))[1]::text
+         || ' · yêu cầu đang chờ duyệt: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.customer_photo_requests WHERE status = 'pending'$q$, false, true, '')))[1]::text END
 ) t ORDER BY stt;

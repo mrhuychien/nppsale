@@ -475,6 +475,8 @@ export type NotificationType =
   | "visit_logged"
   | "customer_photo_missing"
   | "customer_route_missing"
+  /** Mig 244: yêu cầu duyệt ảnh + vị trí điểm bán / kết quả duyệt / ảnh đầu tiên chờ duyệt. */
+  | "customer_photo_review"
   | "info"
 
 export interface Notification {

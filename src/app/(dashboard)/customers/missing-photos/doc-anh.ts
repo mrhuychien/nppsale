@@ -73,3 +73,43 @@ export async function docPhuTrachChinh(sb: Client, orgId: string) {
   for (const a of res.rows) if (!repOf.has(a.customer_id)) repOf.set(a.customer_id, a.user_id)
   return { repOf, truncated: res.truncated }
 }
+
+/**
+ * Duyệt ảnh + vị trí (mig 244): điểm bán đang hoạt động ĐÃ duyệt, và số yêu cầu đổi đang chờ của từng điểm bán.
+ *
+ * ⚠ Máy chủ chưa chạy mig 244 (thiếu cột `photo_approved_at` / bảng `customer_photo_requests`) thì NÉM — nơi gọi
+ *   nhận ra bằng `chuaCoDuyetAnh` và ẩn tab "Chờ duyệt", không làm hỏng cả màn.
+ */
+export async function docDuyetAnh(sb: Client, orgId: string | null) {
+  const [kh, yc] = await Promise.all([
+    docDuHoacNem<{ id: string }>((from, to) => {
+      let q = sb.from("customers").select("id", { count: "exact" }).eq("status", "active").not("photo_approved_at", "is", null)
+      if (orgId) q = q.eq("org_id", orgId)
+      return q.order("id").range(from, to)
+    }, "Điểm bán đã duyệt ảnh"),
+    docDuHoacNem<{ customer_id: string }>((from, to) => {
+      let q = sb.from("customer_photo_requests").select("id, customer_id", { count: "exact" }).eq("status", "pending")
+      if (orgId) q = q.eq("org_id", orgId)
+      return q.order("id").range(from, to)
+    }, "Yêu cầu đổi ảnh điểm bán"),
+  ])
+  const approved = new Set(kh.rows.map((r) => r.id))
+  const pending = new Map<string, number>()
+  for (const r of yc.rows) pending.set(r.customer_id, (pending.get(r.customer_id) ?? 0) + 1)
+  return { approved, pending, truncated: kh.truncated || yc.truncated }
+}
+
+/**
+ * Điểm bán CHỜ DUYỆT: có yêu cầu đổi đang chờ, hoặc chưa duyệt mà đã có ảnh / vị trí để duyệt (chưa có gì thì
+ * thuộc "Còn thiếu", không phải "Chờ duyệt").
+ */
+export function canDuyet<R extends { id: string; photoCount: number; gps_lat: number | null; gps_lng: number | null }>(
+  rows: R[],
+  duyet: { approved: Set<string>; pending: Map<string, number> }
+): R[] {
+  return rows.filter(
+    (r) =>
+      (duyet.pending.get(r.id) ?? 0) > 0 ||
+      (!duyet.approved.has(r.id) && (r.photoCount > 0 || (r.gps_lat != null && r.gps_lng != null)))
+  )
+}

@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Camera, MapPin, AlertTriangle, Trash2, ExternalLink, Loader2, LocateFixed, RefreshCw } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Camera, MapPin, AlertTriangle, Trash2, ExternalLink, Loader2, LocateFixed, RefreshCw, ShieldCheck, Lock,
+} from "lucide-react"
 import { prepareImage } from "@/lib/images/prepare"
 import {
   CUSTOMER_PHOTO_BUCKET,
@@ -17,6 +20,7 @@ import {
   canRepinStore,
   distanceText,
   farFromStore,
+  haversineMeters,
   isStorePinFromPhoto,
   nextFreeSlot,
   photoStoragePath,
@@ -24,7 +28,22 @@ import {
   shouldPinCustomer,
   type Fix,
 } from "@/lib/customers/photos"
-import { formatDate } from "@/lib/utils"
+import {
+  PHOTO_REQUEST_COLUMNS,
+  canApprovePhotos,
+  chuaCoDuyetAnh,
+  duyetDiemBan,
+  duyetYeuCauAnh,
+  huyYeuCauAnh,
+  mustRequestChange,
+  pendingForPin,
+  pendingForSlot,
+  requestLabel,
+  slotsInUse,
+  xinDoiAnh,
+  type PhotoRequest,
+} from "@/lib/customers/photo-approval"
+import { formatDate, formatDateTime } from "@/lib/utils"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
@@ -39,6 +58,9 @@ export type CustomerPhoto = {
 }
 
 type StoreGps = { lat: number | null; lng: number | null }
+
+/** Trạng thái duyệt (mig 244). `null` = máy chủ chưa có bước duyệt (chưa chạy migration) → khối chạy như trước. */
+type Approval = { at: string | null; byName: string | null }
 
 /**
  * Nhờ máy chủ xoá file ảnh không còn dùng — trình duyệt tự xoá không được (xem đầu
@@ -74,6 +96,9 @@ function cleanupPhotoFiles(paths: Array<string | null>): void {
  * Sửa / cập nhật lại / xoá (chủ nhà 12/10/2026): "Chụp lại" thay tấm ảnh tại chỗ, file cũ xoá khỏi kho; tấm đã ghim
  * vị trí điểm bán thì vị trí đi theo ảnh mới, xoá tấm ấy thì hỏi xoá luôn vị trí. Vị trí điểm bán có nút riêng:
  * cập nhật theo chỗ đang đứng / xoá.
+ *
+ * DUYỆT (mig 244, chủ nhà 12/10/2026): người duyệt bấm "Duyệt ảnh + vị trí" là khoá; từ đó NV chụp lại / xoá / dời
+ * vị trí thành YÊU CẦU chờ duyệt (ảnh cũ giữ nguyên tới lúc duyệt). Người duyệt sửa thẳng, duyệt / từ chối yêu cầu.
  */
 export function CustomerPhotoCapture({
   customerId,
@@ -105,22 +130,56 @@ export function CustomerPhotoCapture({
   const [store, setStore] = useState<StoreGps>(storeGps)
   const [askPin, setAskPin] = useState<"update" | "clear" | null>(null)
   const [pinBusy, setPinBusy] = useState(false)
+  const [approval, setApproval] = useState<Approval | null>(null)
+  const [pending, setPending] = useState<PhotoRequest[]>([])
+  const [decideBusy, setDecideBusy] = useState(false)
+  /** Hộp "Từ chối" đang mở cho các yêu cầu này (kèm lý do). */
+  const [rejecting, setRejecting] = useState<PhotoRequest[] | null>(null)
+  const [rejectNote, setRejectNote] = useState("")
+  const [askUnapprove, setAskUnapprove] = useState(false)
 
   useEffect(() => {
     setStore({ lat: storeGps.lat, lng: storeGps.lng })
   }, [storeGps.lat, storeGps.lng])
 
   const canManage = !!user && MANAGE_PHOTO_ROLES.includes(user.role)
+  const canApprove = canApprovePhotos(user?.role)
+  /** Đã duyệt mà người này không có quyền duyệt → mọi thay đổi thành yêu cầu. */
+  const requestMode = mustRequestChange(approval?.at, canApprove)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from("customer_photos")
-      .select("id, slot, photo_url, taken_at, gps_lat, gps_lng, gps_accuracy")
-      .eq("customer_id", customerId)
-      .order("slot")
-    if (error) console.error("[customer-photos] truy vấn lỗi:", error.message)
-    setPhotos((data as CustomerPhoto[]) || [])
+    const [ph, kh, yc] = await Promise.all([
+      supabase
+        .from("customer_photos")
+        .select("id, slot, photo_url, taken_at, gps_lat, gps_lng, gps_accuracy")
+        .eq("customer_id", customerId)
+        .order("slot"),
+      supabase
+        .from("customers")
+        .select("photo_approved_at, approver:users!customers_photo_approved_by_fkey(full_name)")
+        .eq("id", customerId)
+        .maybeSingle(),
+      supabase
+        .from("customer_photo_requests")
+        .select(PHOTO_REQUEST_COLUMNS)
+        .eq("customer_id", customerId)
+        .eq("status", "pending")
+        .order("requested_at"),
+    ])
+    if (ph.error) console.error("[customer-photos] truy vấn lỗi:", ph.error.message)
+    setPhotos((ph.data as CustomerPhoto[]) || [])
+    const loiDuyet = kh.error ?? yc.error
+    if (loiDuyet) {
+      // Chưa chạy mig 244 → không có bước duyệt, khối chạy như cũ. Lỗi khác thì ghi log (DB vẫn tự chặn ghi thẳng).
+      if (!chuaCoDuyetAnh(loiDuyet)) console.error("[customer-photos] đọc trạng thái duyệt lỗi:", loiDuyet.message)
+      setApproval(null)
+      setPending([])
+    } else {
+      const k = kh.data as { photo_approved_at?: string | null; approver?: { full_name?: string | null } | null } | null
+      setApproval({ at: k?.photo_approved_at ?? null, byName: k?.approver?.full_name ?? null })
+      setPending((yc.data as unknown as PhotoRequest[]) || [])
+    }
     setLoading(false)
   }, [customerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -158,11 +217,12 @@ export function CustomerPhotoCapture({
 
   useEffect(() => { readFix() }, [readFix])
 
-  const slot = nextFreeSlot(photos.map((p) => p.slot))
+  const slot = nextFreeSlot(slotsInUse(photos, pending))
   const far = farFromStore(store, fix)
   const pin = shouldPinCustomer(store, fix)
   const repin = canRepinStore(store, fix)
   const hasStore = store.lat != null && store.lng != null
+  const pinReq = pendingForPin(pending)
 
   /** Ghi vị trí điểm bán (null = xoá). Database từ chối thì NÉM — nơi gọi báo. */
   const writeStoreGps = async (next: { lat: number; lng: number } | null) => {
@@ -214,6 +274,31 @@ export function CustomerPhotoCapture({
         gps_accuracy: fix?.accuracy ?? null,
         uploaded_by: user.id,
       }
+      // Vị trí điểm bán theo ảnh mới:
+      //   · điểm bán CHƯA có toạ độ → ghim (`shouldPinCustomer`, như cũ — không bao giờ tự đè toạ độ đã có);
+      //   · CHỤP LẠI đúng tấm đã ghim vị trí → vị trí đi theo ảnh mới (ảnh với vị trí là một cặp).
+      const pinFromOld = !!thay && isStorePinFromPhoto(store, thay)
+      const followPhoto = pinFromOld && repin.ok
+
+      if (requestMode) {
+        // Đã duyệt → GỬI YÊU CẦU, chưa đổi gì: ảnh mới nằm trong kho, gắn vào điểm bán khi người duyệt đồng ý.
+        const meta = { url, takenAt: anh.taken_at, lat: anh.gps_lat, lng: anh.gps_lng, accuracy: anh.gps_accuracy }
+        const pinMoi = (pin.pin || followPhoto) && fix ? { action: "set" as const, lat: fix.lat, lng: fix.lng } : undefined
+        const kq = await xinDoiAnh(supabase, {
+          customerId,
+          photo: thay ? { action: "replace", photoId: thay.id, ...meta } : { action: "add", slot: o, ...meta },
+          pin: pinMoi,
+        })
+        orphan = null
+        cleanupPhotoFiles(kq.fileBo.map(photoStoragePath))
+        toast({
+          title: `Đã gửi yêu cầu: ${requestLabel(thay ? "photo_replace" : "photo_add", o)}${pinMoi ? " · Dời vị trí" : ""}`,
+          description: "Chờ chủ NPP duyệt — ảnh và vị trí cũ giữ nguyên tới lúc ấy.",
+        })
+        await load()
+        return
+      }
+
       if (thay) {
         // ⚠ SỬA DÒNG TẠI CHỖ, không xoá-rồi-chèn: chèn hỏng sau khi đã xoá là mất cả ảnh cũ lẫn ảnh mới.
         await ghiPhaiTrungDong(supabase.from("customer_photos").update(anh).eq("id", thay.id))
@@ -229,11 +314,6 @@ export function CustomerPhotoCapture({
       // Ảnh cũ không còn dòng nào trỏ tới → xoá file khỏi kho.
       if (thay) cleanupPhotoFiles([photoStoragePath(thay.photo_url)])
 
-      // Vị trí điểm bán theo ảnh mới:
-      //   · điểm bán CHƯA có toạ độ → ghim (`shouldPinCustomer`, như cũ — không bao giờ tự đè toạ độ đã có);
-      //   · CHỤP LẠI đúng tấm đã ghim vị trí → vị trí đi theo ảnh mới (ảnh với vị trí là một cặp).
-      const pinFromOld = !!thay && isStorePinFromPhoto(store, thay)
-      const followPhoto = pinFromOld && repin.ok
       let note = ""
       if ((pin.pin || followPhoto) && fix) {
         try {
@@ -266,6 +346,21 @@ export function CustomerPhotoCapture({
     const clearPin = alsoClearPin && isStorePinFromPhoto(store, deleting)
     setDeleteBusy(true)
     try {
+      if (requestMode) {
+        const kq = await xinDoiAnh(supabase, {
+          customerId,
+          photo: { action: "delete", photoId: deleting.id },
+          pin: clearPin ? { action: "clear" } : undefined,
+        })
+        cleanupPhotoFiles(kq.fileBo.map(photoStoragePath))
+        toast({
+          title: `Đã gửi yêu cầu: ${requestLabel("photo_delete", deleting.slot)}${clearPin ? " · Xoá vị trí" : ""}`,
+          description: "Chờ chủ NPP duyệt — ảnh giữ nguyên tới lúc ấy.",
+        })
+        setDeleting(null)
+        await load()
+        return
+      }
       await ghiPhaiTrungDong(supabase.from("customer_photos").delete().eq("id", deleting.id))
       cleanupPhotoFiles([photoStoragePath(deleting.photo_url)])
       let note = ""
@@ -284,7 +379,7 @@ export function CustomerPhotoCapture({
       onChanged?.()
     } catch (e) {
       toast({
-        title: "Không xoá được",
+        title: requestMode ? "Không gửi được yêu cầu" : "Không xoá được",
         description: errorMessage(e, "Lỗi không xác định"),
         variant: "destructive",
       })
@@ -304,13 +399,20 @@ export function CustomerPhotoCapture({
   const savePin = async (next: { lat: number; lng: number } | null) => {
     setPinBusy(true)
     try {
+      if (requestMode) {
+        await xinDoiAnh(supabase, { customerId, pin: next ? { action: "set", lat: next.lat, lng: next.lng } : { action: "clear" } })
+        toast({ title: `Đã gửi yêu cầu: ${requestLabel(next ? "pin_set" : "pin_clear", null)}`, description: "Chờ chủ NPP duyệt." })
+        setAskPin(null)
+        await load()
+        return
+      }
       await writeStoreGps(next)
       toast({ title: next ? "Đã cập nhật vị trí điểm bán" : "Đã xoá vị trí điểm bán" })
       setAskPin(null)
       onChanged?.()
     } catch (e) {
       toast({
-        title: next ? "Không cập nhật được vị trí" : "Không xoá được vị trí",
+        title: requestMode ? "Không gửi được yêu cầu" : next ? "Không cập nhật được vị trí" : "Không xoá được vị trí",
         description: errorMessage(e, "Lỗi không xác định"),
         variant: "destructive",
       })
@@ -318,6 +420,60 @@ export function CustomerPhotoCapture({
       setPinBusy(false)
     }
   }
+
+  /** Người duyệt đồng ý / từ chối (một hay nhiều yêu cầu). */
+  const decide = async (reqs: PhotoRequest[], dongY: boolean, ghiChu?: string) => {
+    setDecideBusy(true)
+    try {
+      const kq = await duyetYeuCauAnh(supabase, reqs.map((r) => r.id), dongY, ghiChu)
+      cleanupPhotoFiles(kq.fileBo.map(photoStoragePath))
+      toast({
+        title: dongY ? `Đã duyệt ${kq.xong} yêu cầu` : `Đã từ chối ${kq.xong} yêu cầu`,
+        description: kq.boQua > 0 ? `${kq.boQua} yêu cầu không còn áp được (ảnh gốc đã đổi) — đã bỏ.` : undefined,
+      })
+      setRejecting(null)
+      setRejectNote("")
+      await load()
+      onChanged?.()
+    } catch (e) {
+      toast({ title: "Không duyệt được", description: errorMessage(e, "Lỗi không xác định"), variant: "destructive" })
+    } finally {
+      setDecideBusy(false)
+    }
+  }
+
+  const withdraw = async (r: PhotoRequest) => {
+    setDecideBusy(true)
+    try {
+      const kq = await huyYeuCauAnh(supabase, r.id)
+      cleanupPhotoFiles(kq.fileBo.map(photoStoragePath))
+      toast({ title: `Đã rút yêu cầu: ${requestLabel(r.kind, r.slot)}` })
+      await load()
+    } catch (e) {
+      toast({ title: "Không rút được yêu cầu", description: errorMessage(e, "Lỗi không xác định"), variant: "destructive" })
+    } finally {
+      setDecideBusy(false)
+    }
+  }
+
+  /** Duyệt (khoá) / bỏ duyệt bộ ảnh + vị trí. */
+  const setStoreApproval = async (duyet: boolean) => {
+    setDecideBusy(true)
+    try {
+      const kq = await duyetDiemBan(supabase, customerId, duyet)
+      cleanupPhotoFiles(kq.fileBo.map(photoStoragePath))
+      toast({ title: duyet ? "Đã duyệt ảnh + vị trí điểm bán" : "Đã bỏ duyệt — nhân viên sửa thẳng được" })
+      setAskUnapprove(false)
+      await load()
+      onChanged?.()
+    } catch (e) {
+      toast({ title: "Không đổi được trạng thái duyệt", description: errorMessage(e, "Lỗi không xác định"), variant: "destructive" })
+    } finally {
+      setDecideBusy(false)
+    }
+  }
+
+  const xinNhan = requestMode ? "Gửi yêu cầu" : null
 
   return (
     <div className="space-y-3">
@@ -342,6 +498,119 @@ export function CustomerPhotoCapture({
         )}
       </div>
 
+      {/* Trạng thái DUYỆT (mig 244) — máy chủ chưa có bước duyệt thì không hiện. */}
+      {approval && (
+        <div data-testid="trang-thai-duyet-anh" className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {approval.at ? (
+              <Badge variant="success">
+                <ShieldCheck className="mr-1 h-3 w-3" /> Đã duyệt
+              </Badge>
+            ) : (
+              <Badge variant="warning">Chưa duyệt</Badge>
+            )}
+            {approval.at && (
+              <span className="text-xs text-on-surface-variant">
+                {approval.byName ? `${approval.byName} · ` : ""}
+                {formatDate(approval.at)}
+              </span>
+            )}
+            {canApprove && !approval.at && (photos.length > 0 || hasStore) && (
+              <Button type="button" size="sm" disabled={decideBusy} onClick={() => setStoreApproval(true)}>
+                <ShieldCheck className="mr-1.5 h-4 w-4" /> Duyệt ảnh + vị trí
+              </Button>
+            )}
+            {canApprove && approval.at && (
+              <Button type="button" variant="ghost" size="sm" disabled={decideBusy} onClick={() => setAskUnapprove(true)}>
+                Bỏ duyệt
+              </Button>
+            )}
+          </div>
+          {requestMode && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-700">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Ảnh và vị trí đã được duyệt — chụp lại, xoá, dời vị trí sẽ gửi chủ NPP duyệt, chưa đổi ngay.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Yêu cầu CHỜ DUYỆT — người duyệt đồng ý / từ chối; người gửi rút được. */}
+      {pending.length > 0 && (
+        <div data-testid="yeu-cau-cho-duyet" className="space-y-2 rounded-xl border border-amber-300 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-amber-700">Chờ duyệt ({pending.length})</p>
+            {canApprove && pending.length > 1 && (
+              <Button type="button" size="sm" disabled={decideBusy} onClick={() => decide(pending, true)}>
+                Duyệt tất cả
+              </Button>
+            )}
+          </div>
+          {pending.map((r) => {
+            const ten = requestLabel(r.kind, r.slot)
+            const dich = r.kind === "pin_set" && r.pin_lat != null && r.pin_lng != null ? { lat: Number(r.pin_lat), lng: Number(r.pin_lng) } : null
+            return (
+              <div key={r.id} data-testid={`yeu-cau-${r.kind}-${r.slot ?? "vt"}`} className="flex items-start gap-2 rounded-lg border border-outline-variant/60 bg-card p-2">
+                {r.photo_url ? (
+                  <a href={r.photo_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={r.photo_url} alt={`Ảnh mới — ${ten}`} className="h-14 w-14 rounded-md object-cover" />
+                  </a>
+                ) : (
+                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-md bg-surface-container text-on-surface-variant">
+                    {r.kind.startsWith("pin_") ? <MapPin className="h-5 w-5" /> : <Trash2 className="h-5 w-5" />}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1 space-y-0.5 text-xs">
+                  <p className="font-semibold text-on-surface">{ten}</p>
+                  {dich && (
+                    <a
+                      href={`https://maps.google.com/?q=${dich.lat},${dich.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 font-semibold text-primary"
+                    >
+                      {dich.lat.toFixed(5)}, {dich.lng.toFixed(5)}
+                      {hasStore && ` · cách vị trí cũ ${distanceText(haversineMeters(Number(store.lat), Number(store.lng), dich.lat, dich.lng))}`}
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  <p className="text-on-surface-variant">
+                    {r.requester?.full_name || "Nhân viên"} · {formatDateTime(r.requested_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-1">
+                  {canApprove ? (
+                    <>
+                      <Button type="button" size="sm" disabled={decideBusy} onClick={() => decide([r], true)}>
+                        Duyệt
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-error"
+                        disabled={decideBusy}
+                        onClick={() => {
+                          setRejecting([r])
+                          setRejectNote("")
+                        }}
+                      >
+                        Từ chối
+                      </Button>
+                    </>
+                  ) : r.requested_by === user?.id ? (
+                    <Button type="button" variant="ghost" size="sm" disabled={decideBusy} onClick={() => withdraw(r)}>
+                      Rút
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* Vị trí ĐIỂM BÁN (khác vị trí máy ở dòng trên) — sửa được, xoá được. */}
       <div data-testid="vi-tri-diem-ban" className="space-y-2 rounded-xl border border-outline-variant/60 p-2.5">
         <p className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -359,6 +628,11 @@ export function CustomerPhotoCapture({
             </a>
           ) : (
             <span className="text-on-surface-variant">Chưa có</span>
+          )}
+          {pinReq && (
+            <span className="rounded-full border border-amber-300 px-1.5 text-[11px] font-semibold text-amber-700">
+              Chờ duyệt: {requestLabel(pinReq.kind, null)}
+            </span>
           )}
         </p>
         {canManage && (
@@ -414,70 +688,74 @@ export function CustomerPhotoCapture({
         <div className="h-28 animate-pulse rounded-xl bg-surface-container" />
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {photos.map((p) => (
-            <figure key={p.id} data-testid={`anh-diem-ban-${p.slot}`} className="overflow-hidden rounded-xl border border-outline-variant">
-              <a href={p.photo_url} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.photo_url} alt={`Ảnh ${p.slot}`} className="h-28 w-full object-cover" />
-              </a>
-              <figcaption className="space-y-0.5 p-1.5 text-[10px] text-on-surface-variant">
-                <div>{formatDate(p.taken_at)}</div>
-                {p.gps_lat != null && p.gps_lng != null ? (
-                  <a
-                    href={`https://maps.google.com/?q=${p.gps_lat},${p.gps_lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-0.5 font-semibold text-primary"
-                  >
-                    Bản đồ <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                ) : (
-                  <span>Không có vị trí</span>
-                )}
-                {isStorePinFromPhoto(store, p) && (
-                  <div className="flex items-center gap-0.5 font-semibold text-tertiary">
-                    <MapPin className="h-2.5 w-2.5 shrink-0" /> Ghim vị trí điểm bán
-                  </div>
-                )}
-                {canManage && (
-                  <div className="flex flex-wrap items-center gap-x-2">
-                    <label
-                      className={`tap inline-flex items-center gap-1 font-semibold text-primary ${
-                        uploading !== null ? "pointer-events-none opacity-50" : "cursor-pointer"
-                      }`}
+          {photos.map((p) => {
+            const cho = pendingForSlot(pending, p.slot)
+            return (
+              <figure key={p.id} data-testid={`anh-diem-ban-${p.slot}`} className="overflow-hidden rounded-xl border border-outline-variant">
+                <a href={p.photo_url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.photo_url} alt={`Ảnh ${p.slot}`} className="h-28 w-full object-cover" />
+                </a>
+                <figcaption className="space-y-0.5 p-1.5 text-[10px] text-on-surface-variant">
+                  <div>{formatDate(p.taken_at)}</div>
+                  {p.gps_lat != null && p.gps_lng != null ? (
+                    <a
+                      href={`https://maps.google.com/?q=${p.gps_lat},${p.gps_lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 font-semibold text-primary"
                     >
-                      <RefreshCw className="h-3 w-3" />
-                      {uploading === p.slot ? "Đang thay…" : "Chụp lại"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="sr-only"
-                        aria-label={`Chụp lại ảnh ${p.slot}`}
-                        disabled={uploading !== null}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0]
-                          e.target.value = ""
-                          if (f) handleFile(f, p)
+                      Bản đồ <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  ) : (
+                    <span>Không có vị trí</span>
+                  )}
+                  {isStorePinFromPhoto(store, p) && (
+                    <div className="flex items-center gap-0.5 font-semibold text-tertiary">
+                      <MapPin className="h-2.5 w-2.5 shrink-0" /> Ghim vị trí điểm bán
+                    </div>
+                  )}
+                  {cho && <div className="font-semibold text-amber-700">Chờ duyệt: {requestLabel(cho.kind, cho.slot)}</div>}
+                  {canManage && (
+                    <div className="flex flex-wrap items-center gap-x-2">
+                      <label
+                        className={`tap inline-flex items-center gap-1 font-semibold text-primary ${
+                          uploading !== null ? "pointer-events-none opacity-50" : "cursor-pointer"
+                        }`}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        {uploading === p.slot ? "Đang thay…" : "Chụp lại"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="sr-only"
+                          aria-label={`Chụp lại ảnh ${p.slot}`}
+                          disabled={uploading !== null}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            e.target.value = ""
+                            if (f) handleFile(f, p)
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlsoClearPin(true)
+                          setDeleting(p)
                         }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAlsoClearPin(true)
-                        setDeleting(p)
-                      }}
-                      disabled={uploading !== null}
-                      className="tap inline-flex items-center gap-1 text-error disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3 w-3" /> Xoá
-                    </button>
-                  </div>
-                )}
-              </figcaption>
-            </figure>
-          ))}
+                        disabled={uploading !== null}
+                        className="tap inline-flex items-center gap-1 text-error disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3 w-3" /> Xoá
+                      </button>
+                    </div>
+                  )}
+                </figcaption>
+              </figure>
+            )
+          })}
         </div>
       )}
 
@@ -492,7 +770,7 @@ export function CustomerPhotoCapture({
             ? "Đang tải lên…"
             : slot === null
               ? `Đã đủ ${MAX_PHOTOS} ảnh — bấm Chụp lại dưới tấm muốn thay`
-              : `Chụp ảnh ${slot}/${MAX_PHOTOS}`}
+              : `Chụp ảnh ${slot}/${MAX_PHOTOS}${requestMode ? " (gửi duyệt)" : ""}`}
           <input
             type="file"
             accept="image/*"
@@ -513,9 +791,13 @@ export function CustomerPhotoCapture({
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Xoá ảnh ${deleting?.slot ?? ""}?`}
-        description="Ảnh bị gỡ khỏi điểm bán và xoá hẳn khỏi kho ảnh. Chụp lại được bất cứ lúc nào."
+        description={
+          requestMode
+            ? "Ảnh đã được duyệt — gửi yêu cầu xoá để chủ NPP duyệt. Ảnh giữ nguyên tới lúc ấy."
+            : "Ảnh bị gỡ khỏi điểm bán và xoá hẳn khỏi kho ảnh. Chụp lại được bất cứ lúc nào."
+        }
         variant="destructive"
-        confirmLabel="Xoá ảnh"
+        confirmLabel={xinNhan ?? "Xoá ảnh"}
         loading={deleteBusy}
         onConfirm={handleDelete}
       >
@@ -538,8 +820,8 @@ export function CustomerPhotoCapture({
         open={askPin === "update"}
         onOpenChange={(o) => !o && setAskPin(null)}
         title={hasStore ? "Cập nhật vị trí điểm bán?" : "Ghim vị trí điểm bán?"}
-        description={fix ? repinQuestion(fix, repin.movedMeters) : ""}
-        confirmLabel="Cập nhật vị trí"
+        description={fix ? repinQuestion(fix, repin.movedMeters) + (requestMode ? " Gửi chủ NPP duyệt." : "") : ""}
+        confirmLabel={xinNhan ?? "Cập nhật vị trí"}
         loading={pinBusy}
         onConfirm={() => {
           if (fix && repin.ok) savePin({ lat: fix.lat, lng: fix.lng })
@@ -550,11 +832,44 @@ export function CustomerPhotoCapture({
         open={askPin === "clear"}
         onOpenChange={(o) => !o && setAskPin(null)}
         title="Xoá vị trí điểm bán?"
-        description="Toạ độ cũ bị gỡ, ảnh giữ nguyên. Tấm ảnh chụp tới tại điểm bán sẽ tự ghim lại vị trí — hoặc bấm “Ghim vị trí đang đứng”."
+        description={
+          requestMode
+            ? "Vị trí đã được duyệt — gửi yêu cầu xoá để chủ NPP duyệt. Vị trí giữ nguyên tới lúc ấy."
+            : "Toạ độ cũ bị gỡ, ảnh giữ nguyên. Tấm ảnh chụp tới tại điểm bán sẽ tự ghim lại vị trí — hoặc bấm “Ghim vị trí đang đứng”."
+        }
         variant="destructive"
-        confirmLabel="Xoá vị trí"
+        confirmLabel={xinNhan ?? "Xoá vị trí"}
         loading={pinBusy}
         onConfirm={() => savePin(null)}
+      />
+
+      <ConfirmDialog
+        open={!!rejecting}
+        onOpenChange={(o) => !o && setRejecting(null)}
+        title={`Từ chối: ${rejecting?.map((r) => requestLabel(r.kind, r.slot)).join(" · ") ?? ""}?`}
+        description="Ảnh và vị trí giữ nguyên; nhân viên nhận thông báo kèm lý do."
+        variant="destructive"
+        confirmLabel="Từ chối"
+        loading={decideBusy}
+        onConfirm={() => rejecting && decide(rejecting, false, rejectNote)}
+      >
+        <Textarea
+          rows={2}
+          value={rejectNote}
+          onChange={(e) => setRejectNote(e.target.value)}
+          placeholder="Lý do (không bắt buộc) — VD: ảnh mờ, sai cửa hàng"
+          aria-label="Lý do từ chối"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={askUnapprove}
+        onOpenChange={setAskUnapprove}
+        title="Bỏ duyệt ảnh + vị trí?"
+        description={`Nhân viên lại sửa thẳng được ảnh và vị trí, không cần duyệt.${pending.length > 0 ? ` ${pending.length} yêu cầu đang chờ sẽ bị huỷ.` : ""}`}
+        confirmLabel="Bỏ duyệt"
+        loading={decideBusy}
+        onConfirm={() => setStoreApproval(false)}
       />
     </div>
   )

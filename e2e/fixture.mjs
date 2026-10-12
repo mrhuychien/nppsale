@@ -253,6 +253,17 @@ function baoCaoTonKho({ p_tu, p_den }, { db }) {
   }
 }
 
+/** Lỗi RPC như Postgres ném: `MÃ: câu` + mã SQLSTATE. */
+const loiRpc = (ma, cau, sqlstate = "P0001") => Object.assign(new Error(`${ma}: ${cau}`), { code: sqlstate })
+const tenNguoi = (db, id) => (db.users || []).find((x) => x.id === id)?.full_name ?? null
+/** Quyền `customers.approve` (mig 244): chủ NPP luôn có; người khác khi được cấp riêng (bảng giả `user_permission_overrides`). */
+const duocDuyetAnh = (db, user) => {
+  const u = (db.users || []).find((x) => x.id === user?.id)
+  const ov = (db.user_permission_overrides || []).find((o) => o.user_id === user?.id && o.permission_key === "customers.approve")
+  if (ov) return !!ov.granted
+  return u?.role === "owner"
+}
+
 export const rpc = {
   /* Lượt soạn hàng (mig 225): tạo / gộp tiến độ (null = xoá khoá) / hoàn tất (đánh dấu HĐ đã soạn) / huỷ. */
   tao_luot_soan: ({ p_invoice_ids }, { db, newId }) => {
@@ -602,6 +613,127 @@ export const rpc = {
     if (sp.prepay_payable_id) db.payables = (db.payables || []).filter((x) => x.id !== sp.prepay_payable_id)
     Object.assign(sp, { status: "cancelled", cancelled_at: "2026-09-30T04:00:00Z", cancelled_by: user?.id ?? null, cancel_reason: p_reason ?? null, prepay_payable_id: null })
     return { id: p_id, code: sp.code, da_huy: true, so_tien_go: go }
+  },
+  /* ── Duyệt ảnh + vị trí điểm bán (mig 244) — rút gọn đúng các luật màn cần: quyền duyệt (chủ NPP / được cấp riêng),
+     đã duyệt mới gửi yêu cầu, yêu cầu mới thay yêu cầu cũ cùng ô / cùng vị trí, duyệt áp vào ảnh / toạ độ, ảnh gốc đã
+     đổi thì tự huỷ, từ chối bỏ; trả `file_bo` (URL ảnh không còn dùng) như hàm thật. ── */
+  duyet_anh_diem_ban: ({ p_customer_id, p_duyet }, { db, user }) => {
+    if (!duocDuyetAnh(db, user)) throw loiRpc("FORBIDDEN", "chỉ chủ NPP (hoặc người được cấp quyền Duyệt khách hàng) được duyệt ảnh điểm bán.", "42501")
+    const c = (db.customers || []).find((x) => x.id === p_customer_id)
+    if (!c) throw loiRpc("KHACH_KHONG_HOP_LE", "Điểm bán không thuộc đơn vị của bạn.")
+    if (p_duyet !== false) {
+      if (c.gps_lat == null && !(db.customer_photos || []).some((p) => p.customer_id === c.id)) {
+        throw loiRpc("CHUA_CO_GI_DE_DUYET", "Điểm bán chưa có ảnh hay vị trí để duyệt.")
+      }
+      Object.assign(c, { photo_approved_at: "2026-09-30T04:00:00Z", photo_approved_by: user.id, approver: { full_name: tenNguoi(db, user.id) } })
+      return { duyet: true, file_bo: [] }
+    }
+    const bo = (db.customer_photo_requests || []).filter((r) => r.customer_id === c.id && r.status === "pending")
+    for (const r of bo) Object.assign(r, { status: "cancelled", decided_by: user.id, decision_note: "Bỏ duyệt — nhân viên sửa thẳng được" })
+    Object.assign(c, { photo_approved_at: null, photo_approved_by: null, approver: null })
+    return { duyet: false, file_bo: bo.map((r) => r.photo_url).filter(Boolean) }
+  },
+  xin_doi_anh_diem_ban: (a, { db, newId, user }) => {
+    const u = (db.users || []).find((x) => x.id === user?.id)
+    if (!["owner", "manager", "sales"].includes(u?.role)) throw loiRpc("FORBIDDEN", "vai trò của bạn không được sửa ảnh điểm bán.", "42501")
+    const c = (db.customers || []).find((x) => x.id === a.p_customer_id)
+    if (!c) throw loiRpc("KHACH_KHONG_HOP_LE", "Điểm bán không thuộc đơn vị của bạn.")
+    if (!c.photo_approved_at) throw loiRpc("CHUA_DUYET", "Ảnh điểm bán chưa được duyệt — sửa thẳng được, không cần gửi yêu cầu.")
+    const anh = a.p_photo_action ?? "none"
+    const vt = a.p_pin_action ?? "keep"
+    if (anh === "none" && vt === "keep") throw loiRpc("YEU_CAU_RONG", "Không có gì để đổi.")
+    const photos = db.customer_photos || []
+    let slot = null
+    let photoId = null
+    if (anh === "replace" || anh === "delete") {
+      const p = photos.find((x) => x.id === a.p_photo_id && x.customer_id === c.id)
+      if (!p) throw loiRpc("ANH_KHONG_TON_TAI", "Ảnh này không còn — tải lại trang.")
+      slot = p.slot
+      photoId = p.id
+    } else if (anh === "add") {
+      slot = a.p_slot
+      if (photos.some((x) => x.customer_id === c.id && x.slot === slot)) throw loiRpc("O_DA_CO_ANH", `Ô ảnh ${slot} đã có ảnh — dùng Chụp lại.`)
+    }
+    if ((anh === "add" || anh === "replace") && !String(a.p_photo_url || "").includes(`/customer-photos/${c.org_id}/${c.id}/`)) {
+      throw loiRpc("FILE_SAI", "Ảnh mới không nằm trong kho ảnh của điểm bán này.")
+    }
+    db.customer_photo_requests = db.customer_photo_requests || []
+    const bo = db.customer_photo_requests.filter((r) => r.customer_id === c.id && r.status === "pending"
+      && ((anh !== "none" && r.kind.startsWith("photo_") && r.slot === slot) || (vt !== "keep" && r.kind.startsWith("pin_"))))
+    for (const r of bo) Object.assign(r, { status: "cancelled", decided_by: user.id, decision_note: "Thay bằng yêu cầu mới" })
+    const goc = {
+      org_id: c.org_id, customer_id: c.id, status: "pending", requested_by: user.id, requested_at: new Date().toISOString(),
+      requester: { full_name: tenNguoi(db, user.id) }, photo_id: null, slot: null, photo_url: null, taken_at: null,
+      gps_lat: null, gps_lng: null, gps_accuracy: null, pin_lat: null, pin_lng: null,
+    }
+    const ids = []
+    if (anh !== "none") {
+      const id = newId()
+      const moi = anh !== "delete"
+      db.customer_photo_requests.push({ ...goc, id, kind: `photo_${anh}`, photo_id: photoId, slot,
+        photo_url: moi ? a.p_photo_url : null, taken_at: moi ? a.p_taken_at : null,
+        gps_lat: moi ? a.p_gps_lat : null, gps_lng: moi ? a.p_gps_lng : null, gps_accuracy: moi ? a.p_gps_accuracy : null })
+      ids.push(id)
+    }
+    if (vt !== "keep") {
+      const id = newId()
+      db.customer_photo_requests.push({ ...goc, id, kind: `pin_${vt}`,
+        pin_lat: vt === "set" ? a.p_pin_lat : null, pin_lng: vt === "set" ? a.p_pin_lng : null })
+      ids.push(id)
+    }
+    return { ids, file_bo: bo.map((r) => r.photo_url).filter(Boolean) }
+  },
+  duyet_yeu_cau_anh_diem_ban: ({ p_request_ids, p_dong_y, p_ghi_chu }, { db, newId, user }) => {
+    if (!duocDuyetAnh(db, user)) throw loiRpc("FORBIDDEN", "chỉ chủ NPP (hoặc người được cấp quyền Duyệt khách hàng) được duyệt ảnh điểm bán.", "42501")
+    const ds = (db.customer_photo_requests || []).filter((r) => (p_request_ids || []).includes(r.id))
+    if (ds.length !== new Set(p_request_ids || []).size) throw loiRpc("YEU_CAU_KHONG_TON_TAI", "Có yêu cầu không còn — tải lại trang.")
+    let xong = 0
+    let boQua = 0
+    const fileBo = []
+    db.customer_photos = db.customer_photos || []
+    for (const r of ds) {
+      if (r.status !== "pending") throw loiRpc("DA_XU_LY", "Yêu cầu đã được xử lý rồi — tải lại trang.")
+      if (!p_dong_y) {
+        Object.assign(r, { status: "rejected", decided_by: user.id, decision_note: p_ghi_chu ?? null })
+        if (r.photo_url) fileBo.push(r.photo_url)
+        xong++
+        continue
+      }
+      const c = (db.customers || []).find((x) => x.id === r.customer_id)
+      let loiThoi = false
+      if (r.kind === "photo_add") {
+        if (db.customer_photos.some((p) => p.customer_id === r.customer_id && p.slot === r.slot)) loiThoi = true
+        else db.customer_photos.push({ id: newId(), org_id: r.org_id, customer_id: r.customer_id, slot: r.slot, photo_url: r.photo_url,
+          taken_at: r.taken_at, gps_lat: r.gps_lat, gps_lng: r.gps_lng, gps_accuracy: r.gps_accuracy, uploaded_by: r.requested_by })
+      } else if (r.kind === "photo_replace" || r.kind === "photo_delete") {
+        const p = db.customer_photos.find((x) => x.id === r.photo_id)
+        if (!p) loiThoi = true
+        else {
+          fileBo.push(p.photo_url)
+          if (r.kind === "photo_replace") Object.assign(p, { photo_url: r.photo_url, taken_at: r.taken_at, gps_lat: r.gps_lat, gps_lng: r.gps_lng, gps_accuracy: r.gps_accuracy, uploaded_by: r.requested_by })
+          else db.customer_photos = db.customer_photos.filter((x) => x.id !== p.id)
+        }
+      } else if (r.kind === "pin_set") Object.assign(c, { gps_lat: r.pin_lat, gps_lng: r.pin_lng })
+      else Object.assign(c, { gps_lat: null, gps_lng: null })
+      if (loiThoi) {
+        Object.assign(r, { status: "cancelled", decided_by: user.id, decision_note: "Ảnh gốc đã đổi — yêu cầu không còn áp được" })
+        if (r.photo_url) fileBo.push(r.photo_url)
+        boQua++
+      } else {
+        Object.assign(r, { status: "approved", decided_by: user.id, decision_note: p_ghi_chu ?? null })
+        Object.assign(c, { photo_approved_at: "2026-09-30T04:00:00Z", photo_approved_by: user.id, approver: { full_name: tenNguoi(db, user.id) } })
+        xong++
+      }
+    }
+    return { xong, bo_qua: boQua, file_bo: fileBo }
+  },
+  huy_yeu_cau_anh_diem_ban: ({ p_request_id }, { db, user }) => {
+    const r = (db.customer_photo_requests || []).find((x) => x.id === p_request_id)
+    if (!r) throw loiRpc("YEU_CAU_KHONG_TON_TAI", "Không tìm thấy yêu cầu này.")
+    if (r.requested_by !== user?.id && !duocDuyetAnh(db, user)) throw loiRpc("FORBIDDEN", "chỉ người gửi hoặc người duyệt được rút yêu cầu.", "42501")
+    if (r.status !== "pending") throw loiRpc("DA_XU_LY", "Yêu cầu đã được xử lý rồi — tải lại trang.")
+    Object.assign(r, { status: "cancelled", decided_by: user.id, decision_note: r.requested_by === user.id ? "Người gửi rút yêu cầu" : "Người duyệt bỏ yêu cầu" })
+    return { file_bo: r.photo_url ? [r.photo_url] : [] }
   },
   /* Huỷ hóa đơn (mig 217) — máy chủ huỷ luôn đơn, trả trạng thái đơn 'cancelled'. */
   cancel_invoice: () => [{ import_entry_id: null, order_status: "cancelled" }],

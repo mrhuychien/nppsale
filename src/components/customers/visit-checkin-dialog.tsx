@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { Camera, MapPin, RotateCcw, Loader2, Check, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { MapPin, Loader2, Check, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { errorMessage } from "@/lib/errors"
 
 interface VisitCheckinDialogProps {
@@ -56,6 +56,12 @@ const RESULT_OPTIONS: { value: VisitResult; label: string }[] = [
   { value: "not_visited", label: "Chưa ghé (ghi chú)" },
 ]
 
+/**
+ * Ghé thăm (check-in) khi đi tuyến: vị trí + kết quả + ghi chú.
+ *
+ * ⚠ KHÔNG CHỤP ẢNH — chủ nhà 12/10/2026: "Khi đi tuyến chỉ cần checkin ko cần chụp ảnh". Ảnh điểm bán là hồ sơ của
+ *   cửa hàng (khối "Ảnh điểm bán", có duyệt), không phải việc của mỗi lượt ghé. Lượt ghé cũ có ảnh vẫn hiện ở lịch sử.
+ */
 export function VisitCheckinDialog({
   open,
   onOpenChange,
@@ -67,8 +73,6 @@ export function VisitCheckinDialog({
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [gpsError, setGpsError] = useState<string | null>(null)
@@ -76,8 +80,6 @@ export function VisitCheckinDialog({
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null)
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load customer's stored GPS so we can compare with the check-in coordinates
   useEffect(() => {
@@ -105,8 +107,6 @@ export function VisitCheckinDialog({
   useEffect(() => {
     if (!open) {
       // Reset when closing
-      setPhotoBlob(null)
-      setPhotoPreview(null)
       setCoords(null)
       setGpsError(null)
       setResult("no_order")
@@ -137,20 +137,6 @@ export function VisitCheckinDialog({
       ? haversineMeters(coords.lat, coords.lng, customerCoords.lat, customerCoords.lng)
       : null
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setPhotoBlob(f)
-    setPhotoPreview(URL.createObjectURL(f))
-  }
-
-  const retakePhoto = () => {
-    setPhotoBlob(null)
-    if (photoPreview) URL.revokeObjectURL(photoPreview)
-    setPhotoPreview(null)
-    fileInputRef.current?.click()
-  }
-
   const handleSubmit = async () => {
     if (!user?.org_id || !user.id) {
       toast({ title: "Chưa đăng nhập", variant: "destructive" })
@@ -171,23 +157,7 @@ export function VisitCheckinDialog({
     }
     setSaving(true)
     try {
-      // 1. Upload photo if present
-      let photoUrl: string | null = null
-      if (photoBlob) {
-        const ext = photoBlob.type.includes("png") ? "png" : "jpg"
-        const path = `${user.org_id}/${customerId}/${Date.now()}-${user.id.slice(0, 8)}.${ext}`
-        const { error: uploadErr } = await supabase.storage
-          .from("visit-photos")
-          .upload(path, photoBlob, {
-            contentType: photoBlob.type || "image/jpeg",
-            upsert: false,
-          })
-        if (uploadErr) throw uploadErr
-        const { data: pub } = supabase.storage.from("visit-photos").getPublicUrl(path)
-        photoUrl = pub.publicUrl
-      }
-
-      // 2. Insert visit_log row
+      // 1. Insert visit_log row
       const now = new Date()
       const { error: insertErr } = await supabase.from("visit_logs").insert({
         org_id: user.org_id,
@@ -199,11 +169,10 @@ export function VisitCheckinDialog({
         check_in_lng: coords?.lng ?? null,
         result,
         notes: notes.trim() || null,
-        photo_url: photoUrl,
       })
       if (insertErr) throw insertErr
 
-      // 3. Notify the primary assignee (if different from the visiting user)
+      // 2. Notify the primary assignee (if different from the visiting user)
       //    This is useful for managers overseeing the rep's portfolio.
       const { data: primaryAssignment, error: primaryAssignmentErr } = await supabase
         .from("customer_assignments")
@@ -258,46 +227,6 @@ export function VisitCheckinDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Photo capture */}
-          <div>
-            <Label className="text-sm font-semibold">Ảnh cửa hàng</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileSelected}
-              className="hidden"
-            />
-            {photoPreview ? (
-              <div className="mt-1.5 relative rounded-xl overflow-hidden border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photoPreview}
-                  alt="Ảnh cửa hàng"
-                  className="w-full h-52 object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={retakePhoto}
-                  className="absolute top-2 right-2 rounded-lg bg-black/60 text-white text-xs font-semibold px-2 py-1 flex items-center gap-1"
-                >
-                  <RotateCcw className="h-3 w-3" /> Chụp lại
-                </button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-1.5 w-full h-28 border-dashed"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Camera className="h-5 w-5 mr-2" />
-                Bấm để chụp ảnh cửa hàng
-              </Button>
-            )}
-          </div>
-
           {/* GPS */}
           <div className="rounded-xl border p-3 bg-muted/20 space-y-2">
             <div className="flex items-center gap-2">

@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
-import { Camera, MapPin, Navigation, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Camera, MapPin, Navigation, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react"
 import { MAX_PHOTOS } from "@/lib/customers/photos"
 import { truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
-import { demAnhTheoKhach, docKhachDangBan } from "./doc-anh"
+import { canDuyet, demAnhTheoKhach, docDuyetAnh, docKhachDangBan } from "./doc-anh"
+import { canApprovePhotos, chuaCoDuyetAnh } from "@/lib/customers/photo-approval"
 
 type Row = {
   id: string
@@ -27,13 +28,17 @@ type Row = {
   photoCount: number
 }
 
-type Tab = "all" | "no_photo" | "no_gps"
+type Tab = "all" | "no_photo" | "no_gps" | "approval"
 
 const TAB_LABEL: Record<Tab, string> = {
   all: "Còn thiếu",
   no_photo: "Chưa có ảnh",
   no_gps: "Chưa có vị trí",
+  approval: "Chờ duyệt",
 }
+
+/** Trạng thái duyệt ảnh (mig 244); null = máy chủ chưa có bước duyệt / người xem không có quyền duyệt. */
+type Duyet = { approved: Set<string>; pending: Map<string, number> }
 
 /**
  * Danh sách điểm bán còn thiếu ảnh hoặc vị trí.
@@ -51,6 +56,10 @@ export default function MissingPhotosPage() {
   const supabase = createClient()
 
   const [rows, setRows] = useState<Row[]>([])
+  /** Mọi điểm bán đang hoạt động (kể cả đã đủ ảnh) — tab "Chờ duyệt" cần cả những điểm bán ấy. */
+  const [allRows, setAllRows] = useState<Row[]>([])
+  const [duyet, setDuyet] = useState<Duyet | null>(null)
+  const canApprove = canApprovePhotos(user?.role)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>("all")
   const [truncated, setTruncated] = useState(false)
@@ -84,21 +93,35 @@ export default function MissingPhotosPage() {
       setLoading(false)
       return
     }
-    setRows(
-      customers
-        .map((c) => ({ ...c, photoCount: counts.get(c.id) ?? 0 }))
-        .filter((c) => c.photoCount === 0 || c.gps_lat == null || c.gps_lng == null)
-    )
+    const all = customers.map((c) => ({ ...c, photoCount: counts.get(c.id) ?? 0 }))
+    setAllRows(all)
+    setRows(all.filter((c) => c.photoCount === 0 || c.gps_lat == null || c.gps_lng == null))
+    // Chờ duyệt (mig 244) — chỉ người duyệt. Máy chủ chưa chạy migration thì ẩn tab, không làm hỏng cả màn.
+    if (canApprove) {
+      try {
+        const d = await docDuyetAnh(supabase, null)
+        setDuyet({ approved: d.approved, pending: d.pending })
+        if (d.truncated) setTruncated(true)
+      } catch (err) {
+        setDuyet(null)
+        if (!chuaCoDuyetAnh(err)) setError(errorMessage(err))
+      }
+    }
     setLoading(false)
-  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
 
-  const shown = rows.filter((r) => {
-    if (tab === "no_photo") return r.photoCount === 0
-    if (tab === "no_gps") return r.gps_lat == null || r.gps_lng == null
-    return true
-  })
+  const choDuyet = duyet ? canDuyet(allRows, duyet) : []
+  const shown =
+    tab === "approval"
+      ? choDuyet
+      : rows.filter((r) => {
+          if (tab === "no_photo") return r.photoCount === 0
+          if (tab === "no_gps") return r.gps_lat == null || r.gps_lng == null
+          return true
+        })
+  const tabs: Tab[] = duyet ? ["all", "no_photo", "no_gps", "approval"] : ["all", "no_photo", "no_gps"]
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -111,10 +134,10 @@ export default function MissingPhotosPage() {
       />
 
       <SegmentedScroller
-        segments={(["all", "no_photo", "no_gps"] as Tab[]).map((t) => ({
+        segments={tabs.map((t) => ({
           key: t,
           label: TAB_LABEL[t],
-          count: rows.filter((r) =>
+          count: t === "approval" ? choDuyet.length : rows.filter((r) =>
             t === "no_photo" ? r.photoCount === 0
               : t === "no_gps" ? r.gps_lat == null || r.gps_lng == null
                 : true
@@ -142,9 +165,37 @@ export default function MissingPhotosPage() {
       ) : shown.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 className="h-8 w-8 text-tertiary" />}
-          title="Không còn điểm bán nào thiếu"
-          description="Mọi điểm bán đang hoạt động đều đã có ảnh và vị trí."
+          title={tab === "approval" ? "Không có điểm bán nào chờ duyệt" : "Không còn điểm bán nào thiếu"}
+          description={
+            tab === "approval"
+              ? "Ảnh + vị trí của mọi điểm bán đã được duyệt, không có yêu cầu đổi nào đang chờ."
+              : "Mọi điểm bán đang hoạt động đều đã có ảnh và vị trí."
+          }
         />
+      ) : tab === "approval" && duyet ? (
+        <div className="space-y-2" data-testid="ds-cho-duyet-anh">
+          {shown.map((r) => {
+            const soYeuCau = duyet.pending.get(r.id) ?? 0
+            const chuaDuyet = !duyet.approved.has(r.id)
+            return (
+              <div key={r.id} className="flex items-center justify-between gap-2 rounded-xl border border-outline-variant p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-bold">{r.store_name}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {chuaDuyet && <Badge variant="warning">Chưa duyệt ảnh + vị trí</Badge>}
+                    {soYeuCau > 0 && <Badge variant="warning">{soYeuCau} yêu cầu đổi chờ duyệt</Badge>}
+                    <Badge variant="secondary">{r.photoCount}/{MAX_PHOTOS} ảnh</Badge>
+                  </div>
+                </div>
+                <Button asChild className="h-11 shrink-0 text-[12px]">
+                  <Link href={`/customers/${r.id}`}>
+                    <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Mở để duyệt
+                  </Link>
+                </Button>
+              </div>
+            )
+          })}
+        </div>
       ) : (
         <div className="space-y-2">
           {shown.map((r) => {

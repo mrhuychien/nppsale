@@ -109,7 +109,15 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - Tự ghim lúc chụp vẫn **chỉ khi chưa có toạ độ** (`shouldPinCustomer`). Dời / xoá vị trí là nút riêng, đọc vị trí
   mới rồi hỏi (`canRepinStore`) — `src/components/customers/customer-photo-capture.tsx`.
 - File trong kho `customer-photos` xoá qua **`/api/customers/photo-cleanup`** (khoá máy chủ; chỉ file của đúng đơn vị,
-  không còn dòng nào trỏ tới). Trình duyệt gọi `storage.remove` thì im lặng không xoá gì — mig 207 đã bỏ policy SELECT.
+  không còn dòng nào trỏ tới, kể cả ảnh mới của yêu cầu đang chờ). Trình duyệt gọi `storage.remove` thì im lặng không xoá
+  gì — mig 207 đã bỏ policy SELECT.
+- **Duyệt** (chủ nhà 12/10/2026, mig 244: *"Chủ NPP đã phê duyệt thì khi thay đổi hoặc xoá ảnh+vị trí cần nhà phân phối
+  phê duyệt"*): người có quyền `customers.approve` (chủ NPP; ai khác do chủ cấp) bấm "Duyệt ảnh + vị trí" là khoá
+  (`customers.photo_approved_at`). Đã duyệt thì NV thêm / thay / xoá ảnh, dời / xoá vị trí → **yêu cầu**
+  (`customer_photo_requests`, `xin_doi_anh_diem_ban`), chưa đổi gì tới khi duyệt (`duyet_yeu_cau_anh_diem_ban`). Trigger
+  chặn ghi thẳng; người duyệt sửa thẳng được. Luật ở màn: `src/lib/customers/photo-approval.ts`. Form "Sửa thông tin"
+  **không gửi lại toạ độ** khi lưu (nút Định vị đã ghi ngay) — gửi kèm là đè vị trí vừa được duyệt dời.
+- **Đi tuyến chỉ check-in, không chụp ảnh** (chủ nhà 12/10/2026): hộp Ghé thăm chỉ ghi vị trí + kết quả + ghi chú.
 
 ## 2. Git / phát hành
 - Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ

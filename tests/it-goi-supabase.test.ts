@@ -93,10 +93,12 @@ describe("mig 207 — dọn cảnh báo bảo mật Supabase", () => {
   })
   it("bỏ policy SELECT rộng của kho ảnh; app không liệt kê / xoá file (chỉ tải lên + URL công khai)", () => {
     for (const p of ["customer_photos_select", "pod_photos_select", "visit_photos_select"]) expect(sql).toContain(`DROP POLICY IF EXISTS "${p}" ON storage.objects`)
-    for (const f of ["src/components/deliveries/pod-capture-sheet.tsx", "src/components/customers/visit-checkin-dialog.tsx", "src/components/customers/customer-photo-capture.tsx"]) {
+    for (const f of ["src/components/deliveries/pod-capture-sheet.tsx", "src/components/customers/customer-photo-capture.tsx"]) {
       const s = readFileSync(f, "utf8")
       expect(s, f).toContain("upsert: false")
       expect(s, f).not.toMatch(/\.list\(|\.download\(|\.remove\(\[/)
     }
+    // Check-in đi tuyến không còn chụp ảnh (chủ nhà 12/10/2026) — không đụng kho file nào.
+    expect(readFileSync("src/components/customers/visit-checkin-dialog.tsx", "utf8")).not.toMatch(/\.storage\b/)
   })
 })

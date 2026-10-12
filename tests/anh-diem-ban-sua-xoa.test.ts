@@ -115,6 +115,9 @@ const st = {
   me: { role: "sales", org_id: ORG } as { role: string; org_id: string | null } | null,
   rows: [] as Array<{ photo_url: string | null }>,
   refErr: null as { message: string } | null,
+  /** Ảnh mới của yêu cầu đang chờ duyệt (mig 244). */
+  choRows: [] as Array<{ photo_url: string | null }>,
+  choErr: null as { message: string; code?: string } | null,
   rmErr: null as { message: string } | null,
 }
 const goi = { from: [] as string[], eq: [] as unknown[][], in: [] as unknown[][], bucket: [] as string[] }
@@ -132,12 +135,12 @@ vi.mock("@/lib/supabase/admin", () => ({
       const q = {
         select: () => q,
         eq: (...a: unknown[]) => {
-          goi.eq.push(a)
+          goi.eq.push([t, ...a])
           return q
         },
         in: async (...a: unknown[]) => {
-          goi.in.push(a)
-          return { data: st.rows, error: st.refErr }
+          goi.in.push([t, ...a])
+          return t === "customer_photo_requests" ? { data: st.choRows, error: st.choErr } : { data: st.rows, error: st.refErr }
         },
       }
       return q
@@ -167,6 +170,8 @@ describe("POST /api/customers/photo-cleanup", () => {
     st.me = { role: "sales", org_id: ORG }
     st.rows = []
     st.refErr = null
+    st.choRows = []
+    st.choErr = null
     st.rmErr = null
     goi.from = []
     goi.eq = []
@@ -183,10 +188,26 @@ describe("POST /api/customers/photo-cleanup", () => {
     expect(remove).toHaveBeenCalledTimes(1)
     expect(remove).toHaveBeenCalledWith([A, E])
     expect(goi.bucket).toEqual([CUSTOMER_PHOTO_BUCKET])
-    // Tra dòng đang dùng: đúng bảng, đúng đơn vị, đúng các khách có trong đường dẫn.
-    expect(goi.from).toEqual(["customer_photos"])
-    expect(goi.eq).toEqual([["org_id", ORG]])
-    expect(goi.in).toEqual([["customer_id", [KHACH, KHACH_2]]])
+    // Tra dòng đang dùng: đúng bảng, đúng đơn vị, đúng các khách có trong đường dẫn — cả ảnh mới của yêu cầu đang chờ.
+    expect(goi.from).toEqual(["customer_photos", "customer_photo_requests"])
+    expect(goi.eq).toEqual([["customer_photos", "org_id", ORG], ["customer_photo_requests", "org_id", ORG], ["customer_photo_requests", "status", "pending"]])
+    expect(goi.in).toEqual([["customer_photos", "customer_id", [KHACH, KHACH_2]], ["customer_photo_requests", "customer_id", [KHACH, KHACH_2]]])
+  })
+
+  it("ảnh MỚI của yêu cầu đang chờ duyệt (mig 244) là file đang dùng — không xoá", async () => {
+    st.choRows = [{ photo_url: `${URL_GOC}${E}` }]
+    const res = await goiApi({ paths: [A, E] })
+    expect(await res.json()).toEqual({ removed: [A], skipped: [E] })
+    expect(remove).toHaveBeenCalledWith([A])
+  })
+
+  it("máy chủ chưa chạy mig 244 (chưa có bảng yêu cầu) → bỏ qua phần ấy, vẫn dọn được; lỗi khác → 500 không xoá", async () => {
+    st.choErr = { code: "PGRST205", message: "Could not find the table 'public.customer_photo_requests' in the schema cache" }
+    expect(await (await goiApi({ paths: [A] })).json()).toEqual({ removed: [A], skipped: [] })
+    remove.mockClear()
+    st.choErr = { message: "mất mạng" }
+    expect((await goiApi({ paths: [A] })).status).toBe(500)
+    expect(remove).not.toHaveBeenCalled()
   })
 
   it("không có file nào hợp lệ thì không đụng tới kho", async () => {

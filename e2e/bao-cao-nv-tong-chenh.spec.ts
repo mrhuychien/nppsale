@@ -2,9 +2,10 @@ import { test, expect } from "@playwright/test"
 import { dangNhap, FAKE } from "./helpers"
 
 /**
- * ⚠ CHỦ NHÀ 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn" (Báo cáo › Nhân viên › Hàng bán
- *   theo nhân viên). HD-TC-1 của "NV Tổng Chênh": 3 thùng × 460.000 (bảng giá thùng 450.000) → chênh bán +30.000;
- *   tiền hàng 1.380.000, hoá đơn còn 1.360.000 → giảm giá đơn 20.000. Không trả → chênh thuần +30.000, tổng +10.000.
+ * ⚠ CHỦ NHÀ 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn" và "chênh thuần = chênh bán +
+ *   chênh trả" (chênh trả âm là phần NPP đã trả cho nhân viên, giờ thu hồi). HD-TC-1 của "NV Tổng Chênh": 3 thùng ×
+ *   460.000 (bảng giá thùng 450.000) → chênh bán +30.000; tiền hàng 1.380.000, hoá đơn còn 1.360.000 → giảm giá đơn
+ *   20.000. Khách trả 1 thùng, phiếu trả ghi 440.000 → chênh trả −10.000 → chênh thuần +20.000, tổng chênh lệch 0.
  *   Dữ liệu RIÊNG của spec này. Logic: tests/tong-chenh-lech.test.ts.
  */
 const ORG = "00000000-0000-4000-8000-0000000000a1"
@@ -13,6 +14,7 @@ const KHACH = "00000000-0000-4000-8000-0000000000c1"
 const SP = "00000000-0000-4000-8000-0000000000d7"
 const NV = "00000000-0000-4000-8000-0000000000b6"
 const HD = "hd-tc-1"
+const TR = "tr-tc-1"
 
 const api = (p: string, method: string, body?: unknown) =>
   fetch(`${FAKE}/rest/v1/${p}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
@@ -33,15 +35,22 @@ test.beforeAll(async () => {
     id: "sil-tc-1", invoice_id: HD, product_id: SP, quantity: 3, unit_name: "thùng", conversion_factor: 24, unit_price: 460000,
     line_discount: 0, vat_rate: 0, line_total: 1380000, is_exchange: false, sort_order: 0, order_line_id: null,
   }])
+  await api("returns", "POST", [{
+    id: TR, org_id: ORG, customer_id: KHACH, invoice_id: HD, credit_note_amount: 440000, created_at: "2026-09-26T04:00:00Z",
+    revenue_date: "2026-09-26", sales_user_id: NV, requested_by: OWNER, reason: "damaged", credit_with_invoice: false, status: "completed",
+  }])
+  await api("return_lines", "POST", [{ id: "rl-tc-1", return_id: TR, product_id: SP, unit_name: "thùng", quantity: 1, unit_price: 440000, line_total: 440000, is_exchange: false }])
 })
 test.afterAll(async () => {
+  await api(`return_lines?return_id=eq.${TR}`, "DELETE")
+  await api(`returns?id=eq.${TR}`, "DELETE")
   await api(`sales_invoice_lines?invoice_id=eq.${HD}`, "DELETE")
   await api(`sales_invoices?id=eq.${HD}`, "DELETE")
   await api(`users?id=eq.${NV}`, "DELETE")
   await api(`products?id=eq.${SP}`, "DELETE")
 })
 
-test("Hàng bán theo nhân viên: Tổng chênh lệch = chênh thuần (+30.000) − giảm giá đơn (20.000) = +10.000", async ({ page }) => {
+test("Hàng bán theo nhân viên: chênh thuần = bán (+30.000) + trả (−10.000); tổng chênh lệch = thuần − giảm giá đơn (20.000) = 0", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/reports/employees")
   await page.getByRole("combobox", { name: "Mối quan tâm" }).click()
@@ -55,6 +64,7 @@ test("Hàng bán theo nhân viên: Tổng chênh lệch = chênh thuần (+30.00
   expect(tieuDe.indexOf("tổng chênh lệch")).toBe(tieuDe.indexOf("chênh lệch thuần") + 1)
   await expect(o("Chênh lệch bán")).toHaveText("+30.000đ")
   await expect(o("Giảm giá đơn")).toHaveText("-20.000đ")
-  await expect(o("Chênh lệch thuần")).toHaveText("+30.000đ")
-  await expect(o("Tổng chênh lệch")).toHaveText("+10.000đ")
+  await expect(o("Chênh lệch trả")).toHaveText("−10.000đ")
+  await expect(o("Chênh lệch thuần")).toHaveText("+20.000đ")
+  await expect(o("Tổng chênh lệch")).toHaveText("0")
 })

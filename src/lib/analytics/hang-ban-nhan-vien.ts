@@ -11,7 +11,7 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDong, giaBangCuaDong, tongChenhLech } from "./chenh-lech"
+import { chenhDong, chenhThuan, giaBangCuaDong, tongChenhLech } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
@@ -85,7 +85,7 @@ export interface HangBanSanPham {
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
-  /** Giá bảng của hàng trả · chênh trả · chênh thuần = diff − diffReturn (chủ nhà 30/09/2026). */
+  /** Giá bảng của hàng trả · chênh trả · chênh thuần = diff + diffReturn (`chenhThuan`, chủ nhà 12/10/2026). */
   returnListed: number
   diffReturn: number
   diffNet: number
@@ -251,11 +251,11 @@ export function congHangBanNhanVien(input: {
   const out: HangBanNhanVien[] = []
   for (const r of Array.from(m.values())) {
     r.netRevenue = r.revenue - r.returnValue
-    r.diffNet = r.diff - r.diffReturn
+    r.diffNet = chenhThuan(r.diff, r.diffReturn)
     r.tongChenh = tongChenhLech(r.diffNet, r.docDiscount)
     for (const p of r.products) {
       p.netRevenue = p.revenue - p.returnValue
-      p.diffNet = p.diff - p.diffReturn
+      p.diffNet = chenhThuan(p.diff, p.diffReturn)
       p.netQty = p.qty - p.returnQty
       p.donVi = Array.from(dvCua.get(p)!.values())
         .map(({ _tienBan, ...d }) => ({
@@ -263,7 +263,7 @@ export function congHangBanNhanVien(input: {
           netQty: d.qty - d.returnQty,
           giaBan: d.qty !== 0 ? _tienBan / d.qty : null,
           netRevenue: d.revenue - d.returnValue,
-          diffNet: d.diff - d.diffReturn,
+          diffNet: chenhThuan(d.diff, d.diffReturn),
         }))
         // Đơn vị lớn trước (thùng → hộp), cùng hệ số thì theo tên.
         .sort((a, b) => b.heSo - a.heSo || a.unit.localeCompare(b.unit, "vi"))

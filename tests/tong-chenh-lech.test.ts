@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { tongChenhLech } from "@/lib/analytics/chenh-lech"
+import { chenhThuan, tongChenhLech } from "@/lib/analytics/chenh-lech"
 import { chotTienChungTu, congHangBanNhanVien } from "@/lib/analytics/hang-ban-nhan-vien"
 
 const doc = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
@@ -25,14 +25,16 @@ describe("tongChenhLech = chênh thuần − giảm giá đơn", () => {
     expect(tongChenhLech(1_200, undefined)).toBe(1_200)
   })
 
-  it("congHangBanNhanVien: bán 3 thùng × 2.400 (+300), trả 1 thùng × 2.400 (+100), giảm giá đơn 120 → tổng +80", () => {
+  it("congHangBanNhanVien: bán 3 thùng × 2.400 (+300), trả 1 thùng ghi 2.200 (−100, thu hồi), giảm giá đơn 120 → thuần +200, tổng +80", () => {
     const [r] = congHangBanNhanVien({
       ban: [{ uid: "nv", line: { product_id: "p", unit_name: "thùng", conversion_factor: 24, quantity: 3, unit_price: 2400, line_total: 7200 } }],
-      tra: [{ uid: "nv", line: { product_id: "p", unit_name: "thùng", quantity: 1, unit_price: 2400, line_total: 2400 } }],
+      tra: [{ uid: "nv", line: { product_id: "p", unit_name: "thùng", quantity: 1, unit_price: 2200, line_total: 2200 } }],
       sanPham: new Map([["p", SP]]),
       giamDon: [{ uid: "nv", tien: 120 }],
     })
-    expect([r.diff, r.diffReturn, r.diffNet, r.docDiscount, r.tongChenh]).toEqual([300, 100, 200, 120, 80])
+    expect([r.diff, r.diffReturn, r.diffNet, r.docDiscount, r.tongChenh]).toEqual([300, -100, 200, 120, 80])
+    // Cùng luật ở cấp mặt hàng / đơn vị tính.
+    expect([r.products[0].diffNet, r.products[0].donVi[0].diffNet]).toEqual([200, 200])
   })
 
   it("nhân viên không có giảm giá đơn: tổng chênh = chênh thuần; chốt tiền chứng từ giữ nguyên tổng chênh", () => {
@@ -49,6 +51,24 @@ describe("tongChenhLech = chênh thuần − giảm giá đơn", () => {
   })
 })
 
+describe("chenhThuan = chênh bán + chênh trả (chủ nhà 12/10/2026: chênh trả âm là phần thu hồi)", () => {
+  it("cộng, không trừ: chênh trả âm làm chênh thuần NHỎ đi", () => {
+    expect(chenhThuan(300, -100)).toBe(200)
+    expect(chenhThuan(-800, -50)).toBe(-850)
+    expect(chenhThuan(10_000, 0)).toBe(10_000)
+  })
+  it("mọi chỗ dùng chung `chenhThuan` — không còn 'bán − trả'", () => {
+    const lib = doc("src/lib/analytics/hang-ban-nhan-vien.ts")
+    expect(lib).toContain("r.diffNet = chenhThuan(r.diff, r.diffReturn)")
+    expect(lib).toContain("p.diffNet = chenhThuan(p.diff, p.diffReturn)")
+    expect(lib).toContain("diffNet: chenhThuan(d.diff, d.diffReturn),")
+    expect(lib).not.toMatch(/diff - \w*\.?diffReturn/)
+    const bc = doc("src/components/bao-cao/man-ban-hang.tsx")
+    expect(bc).toContain('{ k: "diffNet", label: "Chênh lệch thuần", f: "money", v: (x) => chenhThuan((x.revTT || 0) - (x.listed || 0), (x.retTT || 0) - (x.rlisted || 0)) },')
+    expect(doc("CLAUDE.md")).toContain("**Chênh thuần = chênh bán + chênh trả**")
+  })
+})
+
 describe("màn hình: cột Tổng chênh lệch", () => {
   it("Hàng bán theo nhân viên: cột sau Chênh lệch thuần, dòng tổng, tệp Excel", () => {
     const s = doc("src/app/(dashboard)/reports/employees/page.tsx")
@@ -60,7 +80,7 @@ describe("màn hình: cột Tổng chênh lệch", () => {
 
   it("Báo cáo tổng hợp › Theo nhân viên: cùng luật tongChenhLech, trừ giảm giá đơn", () => {
     const s = doc("src/components/bao-cao/man-ban-hang.tsx")
-    expect(s).toContain('{ k: "tongChenh", label: "Tổng chênh lệch", f: "money", v: (x) => tongChenhLech((x.revTT || 0) - (x.listed || 0) - ((x.retTT || 0) - (x.rlisted || 0)), x.giamDon) },')
+    expect(s).toContain('{ k: "tongChenh", label: "Tổng chênh lệch", f: "money", v: (x) => tongChenhLech(chenhThuan((x.revTT || 0) - (x.listed || 0), (x.retTT || 0) - (x.rlisted || 0)), x.giamDon) },')
     expect(s.indexOf('k: "diffNet"')).toBeLessThan(s.indexOf('k: "tongChenh"'))
   })
 })

@@ -8,7 +8,7 @@
  *
  *     chênh bán   = Σ SL × (đơn giá trên hoá đơn − giá bảng của ĐÚNG đơn vị dòng)
  *     chênh trả   = Σ SL × (đơn giá trên phiếu trả − giá bảng của đúng đơn vị dòng)   (cùng luật)
- *     chênh thuần = chênh bán − chênh trả
+ *     chênh thuần = chênh bán + chênh trả            (chủ nhà 12/10/2026 — `chenhThuan`)
  *     tổng chênh  = chênh thuần − giảm giá cả đơn   (chủ nhà 12/10/2026 — `tongChenhLech`)
  *
  * - Đơn giá TRƯỚC thuế (`unit_price`) — không lấy tiền gồm VAT (`return_lines.line_total` có VAT).
@@ -53,8 +53,18 @@ export function giaBangCuaDong(l: DongChenh, sp: SanPhamQuyDoi | null | undefine
  * TỔNG CHÊNH LỆCH — chủ nhà 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn". `giamDon` là SỐ
  * TIỀN giảm giá cả đơn (dương) — trừ đi. Một luật cho hai báo cáo, như `chenhDong`.
  */
-export function tongChenhLech(chenhThuan: number, giamDon: number | null | undefined): number {
-  return chenhThuan - (Number(giamDon) || 0)
+export function tongChenhLech(thuan: number, giamDon: number | null | undefined): number {
+  return thuan - (Number(giamDon) || 0)
+}
+
+/**
+ * CHÊNH LỆCH THUẦN = chênh bán + chênh trả — chủ nhà 12/10/2026 (thay "bán − trả" của 01/10/2026): "trả mày đang tính là
+ * âm, nên chênh trả ra giá trị âm. Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi, nên chênh thuần = chênh
+ * bán + chênh trả". Chênh trả giữ nguyên cách tính (`chenhDong` trên dòng phiếu trả); trừ "bán − trả" là thu hồi ngược
+ * dấu — chênh thuần đội lên.
+ */
+export function chenhThuan(chenhBan: number, chenhTra: number): number {
+  return chenhBan + chenhTra
 }
 
 /** Chênh của MỘT dòng (bán hay trả cùng một phép): SL × (đơn giá chứng từ − giá bảng cùng đơn vị). */

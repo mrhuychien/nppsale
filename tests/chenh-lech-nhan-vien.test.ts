@@ -40,7 +40,7 @@ describe("chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị)", () 
   it("hàng trả: tiền trước thuế (line_total có VAT không dùng)", () => {
     expect(chenhDong({ unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, SP)).toEqual({ tien: 450, niemYet: 500, chenh: -50 })
   })
-  it("congHangBanNhanVien: chênh thuần = chênh bán − chênh trả; giảm giá đơn cột riêng", () => {
+  it("congHangBanNhanVien: chênh thuần = chênh bán + chênh trả (chủ nhà 12/10/2026); giảm giá đơn cột riêng", () => {
     const [r] = congHangBanNhanVien({
       ban: [{ uid: "nv", line: HD80 }],
       tra: [{ uid: "nv", line: { product_id: "p", unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 } }],
@@ -51,7 +51,8 @@ describe("chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị)", () 
     expect(r.diff).toBe(-800)
     expect(r.returnListed).toBe(500)
     expect(r.diffReturn).toBe(-50)
-    expect(r.diffNet).toBe(-750)
+    // Trả 5 lon giá 90 (dưới bảng giá 100) → chênh trả −50 là phần thu hồi: −800 + (−50).
+    expect(r.diffNet).toBe(-850)
     expect(r.docDiscount, "giảm giá đơn cột riêng").toBe(720)
   })
 })

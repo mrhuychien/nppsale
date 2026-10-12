@@ -43,7 +43,8 @@ tính chênh lệch: Hàng đi: lấy số liệu trên hóa đơn. Giá trên h
 cùng đơn vị tính) x số lượng"*.
 - Chênh = SL × (đơn giá trên HĐ − giá bảng của **đúng đơn vị dòng**), **trước thuế**. Bán thùng so với giá
   thùng (`giaNiemYetDonVi`), không lấy giá lon × hệ số khi thùng có giá riêng.
-- Hàng trả cùng luật (đơn giá phiếu trả − giá bảng cùng đơn vị); chênh thuần = chênh bán − chênh trả.
+- Hàng trả cùng luật (đơn giá phiếu trả − giá bảng cùng đơn vị). **Chênh thuần = chênh bán + chênh trả** (chủ nhà
+  12/10/2026, thay "bán − trả": *"Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi"*) — `chenhThuan`.
 - Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `chenhDong` trong `src/lib/analytics/chenh-lech.ts`.
 - **Tổng chênh lệch = chênh thuần − giảm giá đơn** (chủ nhà 12/10/2026), chỉ ở cấp nhân viên — `tongChenhLech`.
 

@@ -10,7 +10,7 @@ import { chotTienChungTu, type HangBanNhanVien } from "@/lib/analytics/hang-ban-
  */
 const dong = (id: string, over: Partial<HangBanNhanVien> = {}): HangBanNhanVien => ({
   id, qty: 0, qtyTheoDv: {}, listed: 100_000, revenue: 95_000, diff: -5_000,
-  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, returnListed: 0, diffReturn: 0, diffNet: -5_000, docDiscount: 0, products: [], ...over,
+  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, returnListed: 0, diffReturn: 0, diffNet: -5_000, docDiscount: 0, tongChenh: -5_000, products: [], ...over,
 })
 
 describe("báo cáo nhân viên khớp công nợ", () => {

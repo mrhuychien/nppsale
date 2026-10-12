@@ -9,6 +9,7 @@
  *     chênh bán   = Σ SL × (đơn giá trên hoá đơn − giá bảng của ĐÚNG đơn vị dòng)
  *     chênh trả   = Σ SL × (đơn giá trên phiếu trả − giá bảng của đúng đơn vị dòng)   (cùng luật)
  *     chênh thuần = chênh bán − chênh trả
+ *     tổng chênh  = chênh thuần − giảm giá cả đơn   (chủ nhà 12/10/2026 — `tongChenhLech`)
  *
  * - Đơn giá TRƯỚC thuế (`unit_price`) — không lấy tiền gồm VAT (`return_lines.line_total` có VAT).
  * - Giá bảng của đơn vị dòng: `giaNiemYetDonVi` (bảng giá đơn vị đó → giá cơ sở × hệ số, như
@@ -46,6 +47,14 @@ export interface ChenhDong {
 export function giaBangCuaDong(l: DongChenh, sp: SanPhamQuyDoi | null | undefined): number {
   const dv = l.unit_name || sp?.base_unit || ""
   return giaNiemYetDonVi(sp, dv, heSoQuyDoi(sp, dv, l.conversion_factor))
+}
+
+/**
+ * TỔNG CHÊNH LỆCH — chủ nhà 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn". `giamDon` là SỐ
+ * TIỀN giảm giá cả đơn (dương) — trừ đi. Một luật cho hai báo cáo, như `chenhDong`.
+ */
+export function tongChenhLech(chenhThuan: number, giamDon: number | null | undefined): number {
+  return chenhThuan - (Number(giamDon) || 0)
 }
 
 /** Chênh của MỘT dòng (bán hay trả cùng một phép): SL × (đơn giá chứng từ − giá bảng cùng đơn vị). */

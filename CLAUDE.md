@@ -45,6 +45,7 @@ cùng đơn vị tính) x số lượng"*.
   thùng (`giaNiemYetDonVi`), không lấy giá lon × hệ số khi thùng có giá riêng.
 - Hàng trả cùng luật (đơn giá phiếu trả − giá bảng cùng đơn vị); chênh thuần = chênh bán − chênh trả.
 - Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `chenhDong` trong `src/lib/analytics/chenh-lech.ts`.
+- **Tổng chênh lệch = chênh thuần − giảm giá đơn** (chủ nhà 12/10/2026), chỉ ở cấp nhân viên — `tongChenhLech`.
 
 ### Quy đổi đơn vị trong báo cáo
 Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).

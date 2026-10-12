@@ -11,7 +11,7 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDong, giaBangCuaDong } from "./chenh-lech"
+import { chenhDong, giaBangCuaDong, tongChenhLech } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
@@ -113,6 +113,9 @@ export interface HangBanNhanVien {
   diffNet: number
   /** Giảm giá cả đơn — cột RIÊNG theo hoá đơn, không trộn vào chênh (chủ nhà 30/09/2026). */
   docDiscount: number
+  /** Tổng chênh lệch = chênh thuần − giảm giá đơn (chủ nhà 12/10/2026, `tongChenhLech`). Chỉ có ở cấp nhân viên —
+   *  giảm giá cả đơn không chia được theo mặt hàng. */
+  tongChenh: number
   products: HangBanSanPham[]
 }
 
@@ -147,7 +150,7 @@ export function congHangBanNhanVien(input: {
       r = {
         id: uid, qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
         returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, returnListed: 0, diffReturn: 0, diffNet: 0,
-        docDiscount: 0, products: [], _sp: new Map(),
+        docDiscount: 0, tongChenh: 0, products: [], _sp: new Map(),
       }
       m.set(uid, r)
     }
@@ -249,6 +252,7 @@ export function congHangBanNhanVien(input: {
   for (const r of Array.from(m.values())) {
     r.netRevenue = r.revenue - r.returnValue
     r.diffNet = r.diff - r.diffReturn
+    r.tongChenh = tongChenhLech(r.diffNet, r.docDiscount)
     for (const p of r.products) {
       p.netRevenue = p.revenue - p.returnValue
       p.diffNet = p.diff - p.diffReturn

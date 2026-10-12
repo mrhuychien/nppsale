@@ -884,6 +884,7 @@ export default function EmployeesReportPage() {
           "SL thực bán",
           "Doanh thu thuần",
           "Chênh lệch thuần",
+          "Tổng chênh lệch",
         ],
       ]
       for (const r of employeeSummaryRows) {
@@ -907,6 +908,7 @@ export default function EmployeesReportPage() {
           hienSLTheoDonVi(truSL(r.qtyTheoDv, r.returnQtyTheoDv)),
           r.netRevenue,
           Math.round(r.diffNet),
+          Math.round(r.tongChenh),
         ])
         // Mỗi mặt hàng × ĐƠN VỊ TÍNH một dòng — giá bảng / giá bán của đúng đơn vị ấy (chủ nhà 09/10/2026).
         for (const p of r.products) {
@@ -929,6 +931,7 @@ export default function EmployeesReportPage() {
               d.netQty,
               d.netRevenue,
               Math.round(d.diffNet),
+              "",
             ])
           }
         }
@@ -1338,6 +1341,13 @@ export default function EmployeesReportPage() {
               align: "right",
               render: (r) => <span className="font-semibold">{hienChenh(r.diffNet)}</span>,
             },
+            {
+              /* Chủ nhà 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn" (`tongChenhLech`). */
+              key: "tongChenh",
+              label: "Tổng chênh lệch",
+              align: "right",
+              render: (r) => <span className="font-semibold">{hienChenh(r.tongChenh)}</span>,
+            },
           ]}
           totalsRow={
             <TotalsRow
@@ -1384,6 +1394,7 @@ export default function EmployeesReportPage() {
                   className: "text-primary",
                 },
                 { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.diffNet, 0)), align: "right" },
+                { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.tongChenh, 0)), align: "right" },
               ]}
             />
           }

@@ -1669,7 +1669,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
 
           {/* ⚠ Hóa đơn và phiếu trả của đơn này — chủ nhà 23/09/2026. Hàng trả
               đã có khối riêng ở trên nên tắt bảng hàng đổi trả của khối này. */}
-          {orderId && <RelatedDocs orderId={orderId} pos hienHangTra={false} />}
+          {/* Có trần + tự cuộn — đơn nhiều chứng từ không được đẩy mất bảng hàng bán (chủ nhà 13/10/2026). */}
+          {orderId && (
+            <div data-testid="cuon-lien-quan" className="max-h-[24vh] min-h-0 shrink-0 overflow-y-auto rounded-xl">
+              <RelatedDocs orderId={orderId} pos hienHangTra={false} />
+            </div>
+          )}
 
         </div>
 

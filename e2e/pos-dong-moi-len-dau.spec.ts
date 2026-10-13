@@ -76,7 +76,8 @@ const chen = (bang: string, rows: unknown[]) =>
   fetch(`${FAKE}/rest/v1/${bang}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rows) })
 const xoa = (duong: string) => fetch(`${FAKE}/rest/v1/${duong}`, { method: "DELETE" })
 
-test("sửa hoá đơn: phần đổi trả DÀI thì cuộn trong khối, bảng hàng đi vẫn thấy; dòng trả mới thêm lên đầu khối", async ({ page }) => {
+/** Đơn gốc + phiếu trả kèm HD-E2E-1 có `soDong` dòng (máy giả không tự ghép bảng con — dòng đi kèm như PostgREST trả). */
+async function dungPhieuTraDai(soDong = 15) {
   await chen("sales_orders", [{
     id: DON_HD, org_id: "00000000-0000-4000-8000-0000000000a1", order_code: "DH-0009",
     customer_id: "00000000-0000-4000-8000-0000000000c1", sales_user_id: "00000000-0000-4000-8000-0000000000b1",
@@ -90,11 +91,20 @@ test("sửa hoá đơn: phần đổi trả DÀI thì cuộn trong khối, bản
   await chen("returns", [{
     id: "r-hd-dai", org_id: "khong-hien-trong-danh-sach", order_id: DON_HD, invoice_id: HOA_DON,
     customer_id: "00000000-0000-4000-8000-0000000000c1", status: "submitted", credit_note_amount: 300000,
-    lines: Array.from({ length: 15 }, (_, i) => ({
+    lines: Array.from({ length: soDong }, (_, i) => ({
       id: `rl-dai-${i}`, product_id: "00000000-0000-4000-8000-0000000000d1", unit_name: "hộp", quantity: 1,
       unit_price: 20000, vat_rate: 0, is_exchange: false, product: { name: "Sữa hộp", sku: "SUA1" },
     })),
   }])
+}
+async function goPhieuTraDai() {
+  await xoa("returns?id=eq.r-hd-dai")
+  await xoa("sales_order_lines?id=eq.sol9")
+  await xoa(`sales_orders?id=eq.${DON_HD}`)
+}
+
+test("sửa hoá đơn: phần đổi trả DÀI thì cuộn trong khối, bảng hàng đi vẫn thấy; dòng trả mới thêm lên đầu khối", async ({ page }) => {
+  await dungPhieuTraDai()
   try {
     await dangNhap(page)
     await page.goto(`/pos/hoa-don/${HOA_DON}/sua`)
@@ -131,9 +141,56 @@ test("sửa hoá đơn: phần đổi trả DÀI thì cuộn trong khối, bản
     await expect(moi.nth(1)).toContainText("Mì tôm")
     await expect(moi.first()).toBeInViewport()
   } finally {
-    await xoa("returns?id=eq.r-hd-dai")
-    await xoa("sales_order_lines?id=eq.sol9")
-    await xoa(`sales_orders?id=eq.${DON_HD}`)
+    await goPhieuTraDai()
+  }
+})
+
+test("xem hoá đơn: hàng đổi trả DÀI cuộn trong khối chứng từ liên quan, bảng hàng vẫn thấy", async ({ page }) => {
+  // 30 dòng: không có trần thì khối này cao hơn cả cột — bảng hàng đi co về 0, đúng ca chủ nhà báo.
+  await dungPhieuTraDai(30)
+  try {
+    await dangNhap(page)
+    await page.goto(`/pos/hoa-don/${HOA_DON}`)
+    const tra = page.getByTestId("hang-doi-tra")
+    await expect(tra.locator(":scope > div.grid > div")).toHaveCount(30)
+    const bang = page.getByTestId("cuon-dong-hang")
+    await expect(bang.locator(":scope > div").first()).toBeInViewport()
+    const vung = page.getByTestId("cuon-lien-quan")
+    expect((await vung.boundingBox())!.height, "khối liên quan phải có trần (42% chiều cao màn)").toBeLessThanOrEqual(900 * 0.42 + 1)
+    // Lăn chuột như người dùng: tới tận dòng hàng trả cuối, bảng hàng vẫn đứng đó.
+    await vung.hover()
+    await page.mouse.wheel(0, 4000)
+    await expect.poll(() => vung.evaluate((el) => el.scrollTop), { message: "lăn chuột mà khối không cuộn" }).toBeGreaterThan(0)
+    await expect(tra.locator(":scope > div.grid > div").last()).toBeInViewport()
+    await expect(bang.locator(":scope > div").first()).toBeInViewport()
+  } finally {
+    await goPhieuTraDai()
+  }
+})
+
+test("đơn hàng: nhiều chứng từ liên quan thì khối liên quan cuộn trong trần, bảng hàng bán vẫn thấy", async ({ page }) => {
+  // Đơn DH-0001 có 20 phiếu trả (đã hoàn thành, không giữ lại sửa) — khối "Chứng từ liên quan" dài 20 dòng liên kết.
+  const ids = Array.from({ length: 20 }, (_, i) => `r-don-lq-${i}`)
+  await chen("returns", ids.map((id, i) => ({
+    id, org_id: "khong-hien-trong-danh-sach", order_id: "o-e2e-1", invoice_id: null,
+    customer_id: "00000000-0000-4000-8000-0000000000c1", status: "completed", credit_note_amount: 10000 * (i + 1),
+    created_at: `2026-10-01T08:${String(i).padStart(2, "0")}:00Z`, lines: [],
+  })))
+  try {
+    await dangNhap(page)
+    await page.goto("/pos/don-hang/o-e2e-1")
+    const vung = page.getByTestId("cuon-lien-quan")
+    const lienKet = vung.locator('a[href^="/pos/tra-hang/r-don-lq-"]')
+    await expect(lienKet).toHaveCount(20)
+    await expect(page.getByTestId("dong-don").first()).toBeInViewport()
+    expect((await vung.boundingBox())!.height, "khối liên quan phải có trần (24% chiều cao màn)").toBeLessThanOrEqual(900 * 0.24 + 1)
+    await vung.hover()
+    await page.mouse.wheel(0, 4000)
+    await expect.poll(() => vung.evaluate((el) => el.scrollTop), { message: "lăn chuột mà khối không cuộn" }).toBeGreaterThan(0)
+    await expect(lienKet.last()).toBeInViewport()
+    await expect(page.getByTestId("dong-don").first()).toBeInViewport()
+  } finally {
+    for (const id of ids) await xoa(`returns?id=eq.${id}`)
   }
 })
 

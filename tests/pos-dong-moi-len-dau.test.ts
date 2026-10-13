@@ -1,7 +1,8 @@
 /**
  * POS: DÒNG MỚI LÊN ĐẦU + KHỐI ĐỔI TRẢ CUỘN — chủ nhà 13/10/2026: "xử lý phần pos : thêm sản phẩm thì sản phẩm xuất hiện
  * đầu danh sách luôn" · "kiểm tra lại phần sửa hóa đơn, khi phần đổi trả dài quá ko có scroll luôn ? kẹt cứng chỉ hiện
- * hàng đổi trả không hiện phiếu đi". Bấm thật: e2e/pos-dong-moi-len-dau.spec.ts.
+ * hàng đổi trả không hiện phiếu đi" — màn sửa hoá đơn, màn đơn và cả màn XEM hoá đơn (khối chứng từ liên quan kèm hàng
+ * đổi trả). Bấm thật: e2e/pos-dong-moi-len-dau.spec.ts.
  */
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
@@ -69,5 +70,17 @@ describe("khối hàng đổi trả không đè bảng hàng đi", () => {
     // Hoá đơn: dòng trả MỚI vẽ trước dòng trả cũ.
     expect(hd.indexOf("{traMoi.map((a, i) => {")).toBeLessThan(hd.indexOf("{traCu.map((l, i) => {"))
     expect(hd).toContain("{traMoi.length + i + 1}.</span>{l.name}")
+  })
+  it("xem hoá đơn + đơn: khối chứng từ liên quan (kèm hàng đổi trả) có trần, tự cuộn", () => {
+    const xem = read("src/app/pos/hoa-don/[id]/page.tsx")
+    const don = read("src/components/pos/order-screen.tsx")
+    expect(xem).toMatch(
+      /data-testid="cuon-lien-quan" className="max-h-\[42vh\] min-h-0 shrink-0 overflow-y-auto rounded-xl">\s*<RelatedDocs orderId=\{head\.order_id\} invoiceId=\{id\} pos \/>/
+    )
+    expect(don).toMatch(
+      /data-testid="cuon-lien-quan" className="max-h-\[24vh\] min-h-0 shrink-0 overflow-y-auto rounded-xl">\s*<RelatedDocs orderId=\{orderId\} pos hienHangTra=\{false\} \/>/
+    )
+    // Không còn chỗ nào vẽ RelatedDocs trần ngay dưới bảng hàng ở POS.
+    for (const s of [xem, don]) expect(s.match(/<RelatedDocs /g)).toHaveLength(1)
   })
 })

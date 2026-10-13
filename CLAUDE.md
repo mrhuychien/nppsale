@@ -107,6 +107,7 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Dòng mới lên **đầu** danh sách ở mọi màn POS (`themLenDau` / `donLenDau`, `src/lib/pos/them-dong.ts`); gộp dòng trùng
   thì dòng được cộng cũng lên đầu. Thứ tự lưu = thứ tự trên màn. Bảng cuộn tới dòng vừa thêm (`dongMoi`, `data-dong`).
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
+  Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.

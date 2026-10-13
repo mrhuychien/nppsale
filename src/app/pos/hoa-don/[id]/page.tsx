@@ -231,8 +231,14 @@ function XemHoaDon({ id }: { id: string }) {
             ))}
           </LineTableFrame>
 
-          {/* ⚠ Đơn gốc, phiếu trả, hàng đổi trả của tờ này — chủ nhà 23/09/2026. */}
-          {head && <RelatedDocs orderId={head.order_id} invoiceId={id} pos />}
+          {/* ⚠ Đơn gốc, phiếu trả, hàng đổi trả của tờ này — chủ nhà 23/09/2026. Có trần + tự cuộn: hàng đổi trả dài
+              không được đẩy mất bảng hàng (chủ nhà 13/10/2026: "phần đổi trả dài quá ko có scroll … chỉ hiện hàng đổi
+              trả không hiện phiếu đi"). */}
+          {head && (
+            <div data-testid="cuon-lien-quan" className="max-h-[42vh] min-h-0 shrink-0 overflow-y-auto rounded-xl">
+              <RelatedDocs orderId={head.order_id} invoiceId={id} pos />
+            </div>
+          )}
         </div>
 
         <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">

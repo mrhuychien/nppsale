@@ -45,12 +45,14 @@ test("đơn hàng: giảm giá trong chi tiết dòng, đơn vị bấm-nhảy, 
   await chonDonVi(page, "dòng 1", "thùng")
   await page.getByLabel("Ghi chú dòng 1", { exact: true }).fill("e2e-chi-tiet-dong")
 
-  // Dòng thứ hai để thử thùng rác: xoá một cú bấm, dòng kia còn nguyên.
+  // Dòng thứ hai để thử thùng rác: xoá một cú bấm, dòng kia còn nguyên. Dòng vừa thêm lên ĐẦU (chủ nhà 13/10/2026).
   await oTim(page).fill("Mì")
   await oTim(page).press("Enter")
   await expect(dong).toHaveCount(2)
-  await page.getByRole("button", { name: "Xoá dòng 2" }).click()
+  await expect(dong.first()).toContainText("Mì tôm")
+  await page.getByRole("button", { name: "Xoá dòng 1" }).click()
   await expect(dong).toHaveCount(1)
+  await expect(dong.first()).toContainText("Sữa hộp")
 
   await page.getByRole("button", { name: /Lưu nháp/ }).click()
   const cuaToi = async () =>

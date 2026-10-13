@@ -57,6 +57,7 @@ import {
   usePosSearchTerm,
 } from "@/store/pos/product-search"
 import { SourceInvoiceModal } from "@/components/pos/source-invoice-modal"
+import { themLenDau } from "@/lib/pos/them-dong"
 import {
   DeltaPreviewStrip, DeltaStock, DeltaMoney, type DeltaCell,
 } from "@/components/pos/delta-preview-strip"
@@ -109,6 +110,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
 
   const [traLines, setTraLines] = useState<PosLine[]>([])
   const [doiLines, setDoiLines] = useState<PosLine[]>([])
+  /** Key dòng vừa thêm — bảng cuộn tới nó (`LineTableFrame.dongMoi`). */
+  const [dongMoi, setDongMoi] = useState<string | null>(null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
   /** Người lập phiếu (`requested_by`) · người đứng tên (`sales_user_id`). */
   const [nguoi, setNguoi] = useState<{ taoId: string | null; ganId: string | null }>({ taoId: null, ganId: null })
@@ -223,8 +226,10 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         isExchange: doi,
         stock: stockByProduct[p.id] ?? null,
       }
-      if (doi) setDoiLines((c) => [...c, moi])
-      else setTraLines((c) => [...c, moi])
+      /* Dòng mới lên ĐẦU danh sách (chủ nhà 13/10/2026) — `them-dong`; bảng cuộn tới nó (mục trả hay mục đổi). */
+      if (doi) setDoiLines((c) => themLenDau(c, moi))
+      else setTraLines((c) => themLenDau(c, moi))
+      setDongMoi(moi.key)
     },
     [products, stockByProduct, groupId]
   )
@@ -651,6 +656,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             <div
               key={l.key}
               data-testid={doi ? "dong-doi" : "dong-tra"}
+              data-dong={l.key}
               className="grid min-h-[70px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2"
               style={{ gridTemplateColumns: g, gap: 8 }}
             >
@@ -797,6 +803,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           )}
 
           <LineTableFrame
+            dongMoi={dongMoi}
             header={
               <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-[var(--pos-line)] bg-white px-4">
                 <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--pos-warn)]">

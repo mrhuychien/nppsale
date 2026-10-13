@@ -40,6 +40,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { loadSupplierDebt } from "@/lib/pos/load"
 import { donViNapLai, donViCuaSanPham, doiDonViTheoHeSo } from "@/lib/pos/units"
+import { themLenDau } from "@/lib/pos/them-dong"
 import { savePosPurchase } from "@/lib/pos/save"
 import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
 import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
@@ -194,9 +195,9 @@ export function PurchaseScreen({
       const p = products.find((x) => x.id === productId)
       if (!p) return
       const units = donViCuaSanPham(p)
-      setLines((cu) => [
-        ...cu,
-        {
+      /* Dòng mới lên ĐẦU danh sách (chủ nhà 13/10/2026) — `them-dong`. */
+      setLines((cu) =>
+        themLenDau(cu, {
           key: newKey(),
           productId: p.id,
           sku: p.sku ?? "",
@@ -211,8 +212,8 @@ export function PurchaseScreen({
              người nhập gõ theo hóa đơn NCC. */
           price: giaNhapGoiY(p.id, p.base_unit, units, p.base_unit),
           discount: { value: 0, unit: "vnd" },
-        },
-      ])
+        })
+      )
     },
     [products, giaNhapGoiY]
   )
@@ -522,6 +523,7 @@ export function PurchaseScreen({
           )}
 
           <LineTableFrame
+            dongMoi={lines[0]?.key}
             header={
               <LineTableHeader
                 grid="purchase"
@@ -567,6 +569,7 @@ export function PurchaseScreen({
               return (
                 <div
                   key={l.key}
+                  data-dong={l.key}
                   className="grid min-h-[54px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
                   style={{ gridTemplateColumns: g.cols, gap: g.gap }}
                 >

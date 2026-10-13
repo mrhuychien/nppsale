@@ -55,7 +55,7 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
 import { DocBanner, SubHeaderDate, homNay } from "@/components/pos/doc-sub-header"
-import { LineTableFrame, LineTableHeader, QtyStepper, DiscountCell, VatChip, TrashButton, UnitCycleButton, LineDetailToggle, LineDetailPanel, LineDetailField, tomTatChiTiet } from "@/components/pos/line-table"
+import { LineTableFrame, LineTableHeader, QtyStepper, DiscountCell, VatChip, TrashButton, UnitCycleButton, LineDetailToggle, LineDetailPanel, LineDetailField, tomTatChiTiet, useCuonToiDong } from "@/components/pos/line-table"
 import { usePosSettings } from "@/store/pos/settings"
 import { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { discountAmount, lineGross, switchUnit, type DiscountInput } from "@/lib/pos/discount"
@@ -69,6 +69,7 @@ import {
 import { DocPeople } from "@/components/pos/doc-people"
 import { inTaiCho, trangInHoaDon } from "@/lib/pos/print-window"
 import { tachPhaiTra } from "@/lib/pos/totals"
+import { themLenDau } from "@/lib/pos/them-dong"
 import { assignDocSeller } from "@/lib/pos/save"
 import { useAuth } from "@/hooks/use-auth"
 import { hasPermission } from "@/lib/permissions"
@@ -178,6 +179,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     [hangDoiCuGoc, doiDaNhap, cheDoTra]
   )
   const [traMoi, setTraMoi] = useState<DongTraMoi[]>([])
+  /** Khối hàng đổi trả tự cuộn tới dòng trả vừa thêm (lên đầu khối). */
+  const cuonTra = useCuonToiDong<HTMLDivElement>(traMoi[0]?.key)
   /** Ghi chú / lý do đã sửa của dòng trả CÓ SẴN — theo `id` dòng (mig 183). */
   const [traGhi, setTraGhi] = useState<Record<string, { note?: string; reason?: string }>>({})
   /**
@@ -599,7 +602,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         /* ⚠ THUẾ LÀ CỦA CẢ TỜ (bỏ VAT từng dòng, 24/09/2026) — dòng thêm tay theo thuế các dòng đang có. */
         const chung = c.length > 0 ? vatChungCuaDong(c) : null
         const r2 = chung === null ? row : { ...row, vatRate: chung }
-        return [...c, ton == null ? r2 : { ...r2, availableBase: ton, stockKnown: true }]
+        /* Dòng mới lên ĐẦU danh sách (chủ nhà 13/10/2026) — `them-dong`. */
+        return themLenDau(c, ton == null ? r2 : { ...r2, availableBase: ton, stockKnown: true })
       })
     },
     [productById, groupId, stockByProduct]
@@ -610,14 +614,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       const p = productById(productId)
       if (!p) return
       const u = sellableUnits(p)[0]
-      setTraMoi((c) => [
-        ...c,
-        {
+      setTraMoi((c) =>
+        themLenDau(c, {
           key: keyMoi(), productId: p.id, name: p.name, sku: p.sku ?? "", unit: u, qty: 1,
           price: unitPriceFor(p, u, groupId), vatRate: Number(p.vat_rate ?? 0), isExchange: false,
           note: "", reason: RETURN_REASONS[0]?.value ?? "damaged",
-        },
-      ])
+        })
+      )
     },
     [productById, groupId]
   )
@@ -830,6 +833,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
 
         <LineTableFrame
+          dongMoi={rows[0]?.key}
           header={
             <LineTableHeader
               grid="order"
@@ -877,6 +881,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
               <Fragment key={r.key}>
               <div
                 data-testid="dong-hoa-don"
+                data-dong={r.key}
                 className={`grid min-h-[64px] items-center border-b border-[var(--pos-line-soft)] px-4 py-2 ${
                   r.qty <= 0 ? "opacity-55" : ""
                 }`}
@@ -1007,11 +1012,11 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         {/* ---------------- HÀNG ĐỔI TRẢ ---------------- */}
         <div
           data-testid="khoi-hang-tra"
-          className={`shrink-0 overflow-hidden rounded-[14px] border bg-white ${
+          className={`flex max-h-[42vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-[14px] border bg-white ${
             traCu.length + traMoi.length > 0 ? "border-[var(--pos-warn-border)]" : "border-[var(--pos-line)]"
           }`}
         >
-          <div className="flex min-w-0 items-center gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 shrink-0 items-center gap-3 px-3.5 py-3">
             <span className="min-w-0 flex-1">
               <span className="block text-[14px] font-extrabold text-[var(--pos-ink)]">Hàng đổi trả kèm hóa đơn</span>
               <span className="mt-0.5 block truncate text-[12px] font-semibold text-[var(--pos-muted)]">
@@ -1034,14 +1039,14 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             </button>
           </div>
           {loiTra && (
-            <p className="border-t border-[var(--pos-line-soft)] px-3.5 py-2 text-[12px] font-semibold text-[var(--pos-danger)]">
+            <p className="shrink-0 border-t border-[var(--pos-line-soft)] px-3.5 py-2 text-[12px] font-semibold text-[var(--pos-danger)]">
               Không đọc được hàng trả kèm đơn — {loiTra}. Phần này sẽ KHÔNG bị thay đổi khi lưu.
             </p>
           )}
           {traCu.length + traMoi.length > 0 && (
-            <div className="border-t border-[var(--pos-line-soft)]">
+            <div className="flex min-h-0 flex-col border-t border-[var(--pos-line-soft)]">
               <div
-                className="grid h-[34px] items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
+                className="grid h-[34px] shrink-0 items-center border-b border-[var(--pos-line-soft)] bg-[var(--pos-head)] px-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[var(--pos-muted)]"
                 style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
               >
                 <span /><span>Sản phẩm</span><span className="text-center">Xử lý</span>
@@ -1049,173 +1054,179 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 <span className="text-center">Số lượng</span><span className="text-right">Đơn giá</span>
                 <span className="text-right">Trừ đơn</span>
               </div>
-              {traCu.map((l, i) => {
-                const sl = soTraCu(l)
-                return (
-                  <div
-                    key={l.id}
-                    data-testid="dong-tra-cu"
-                    className={`grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] px-3.5 py-2 ${sl <= 0 ? "opacity-55" : ""}`}
-                    style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
-                  >
-                    {l.suaDuoc ? (
-                      <TrashButton label={`Bỏ dòng trả ${i + 1}`} onClick={() => setTraSua((s) => ({ ...s, [l.id]: 0 }))} />
-                    ) : <span />}
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
-                        {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
-                        <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{i + 1}.</span>{l.name}
-                      </span>
-                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
-                          {l.sku}
-                          {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
+              {/* Dòng trả MỚI THÊM lên đầu (chủ nhà 13/10/2026: "thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách
+                  luôn"); dòng cuộn trong khối — khối dài không che bảng hàng đi (13/10/2026: "phần đổi trả dài quá ko có
+                  scroll … chỉ hiện hàng đổi trả không hiện phiếu đi"). */}
+              <div ref={cuonTra} data-testid="cuon-hang-tra" className="min-h-0 overflow-y-auto">
+                {traMoi.map((a, i) => {
+                  const doiA = (p: Partial<DongTraMoi>) =>
+                    setTraMoi((c) => c.map((x) => (x.key === a.key ? { ...x, ...p } : x)))
+                  return (
+                    <div
+                      key={a.key}
+                      data-testid="dong-tra-moi"
+                      data-dong={a.key}
+                      className="grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] bg-[var(--pos-warn-soft)]/40 px-3.5 py-2"
+                      style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
+                    >
+                      <TrashButton label={`Xoá dòng trả mới ${i + 1}`} onClick={() => setTraMoi((c) => c.filter((x) => x.key !== a.key))} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
+                          <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{i + 1}.</span>{a.name}
                         </span>
-                      </span>
-                      {/* ⚠ Lý do + ghi chú TỪNG DÒNG của phiếu trả đi đủ (24/09/2026). */}
-                      {l.suaDuoc ? (
+                        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
+                            {a.sku} · mới thêm
+                          </span>
+                        </span>
                         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                          {!l.isExchange && (
+                          {!a.isExchange && (
                             <CompactSelect
-                              ariaLabel={`Lý do trả dòng ${i + 1}`}
-                              value={traGhi[l.id]?.reason ?? l.reason ?? ""}
-                              onChange={(v) => setTraGhi((g) => ({ ...g, [l.id]: { ...g[l.id], reason: v } }))}
-                              emptyLabel="theo phiếu"
+                              ariaLabel={`Lý do trả mới ${i + 1}`}
+                              value={a.reason}
+                              onChange={(v) => doiA({ reason: v })}
                               options={RETURN_REASONS}
                               className="h-[26px] w-[128px] shrink-0 border-[var(--pos-edge)] bg-white text-[11.5px]"
                             />
                           )}
                           <input
-                            aria-label={`Ghi chú dòng trả ${i + 1}`}
-                            value={traGhi[l.id]?.note ?? l.note}
-                            onChange={(e) => setTraGhi((g) => ({ ...g, [l.id]: { ...g[l.id], note: e.target.value } }))}
+                            aria-label={`Ghi chú dòng trả mới ${i + 1}`}
+                            value={a.note}
+                            onChange={(e) => doiA({ note: e.target.value })}
                             placeholder="Ghi chú dòng trả…"
                             className="h-[26px] min-w-0 flex-1 border-0 border-b border-dashed border-[var(--pos-edge)] bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none"
                           />
                         </span>
-                      ) : (l.note || l.reason) ? (
-                        <span className="mt-0.5 block truncate text-[11.5px] text-[var(--pos-muted)]">
-                          {[RETURN_REASONS.find((x) => x.value === l.reason)?.label, l.note].filter(Boolean).join(" · ")}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="justify-self-center text-[12px] font-extrabold text-[var(--pos-muted)]">
-                      {l.isExchange ? "Đổi" : "Trả"}
-                    </span>
-                    {/* ⚠ Quy cách dòng trả CÓ SẴN: máy chủ tự quy giá theo hệ số (mig 181) — ở đây chỉ gửi đơn vị. */}
-                    <div className="justify-self-center">
-                      {l.suaDuoc ? (
+                      </span>
+                      <span className="flex justify-self-center gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
+                        {[{ doi: false, nhan: "Trả" }, { doi: true, nhan: "Đổi" }].map((o) => (
+                          <button
+                            key={o.nhan}
+                            type="button"
+                            aria-pressed={a.isExchange === o.doi}
+                            onClick={() => doiA({ isExchange: o.doi })}
+                            className={`h-[26px] min-w-[30px] rounded-[7px] px-1.5 text-[11.5px] font-extrabold ${
+                              a.isExchange === o.doi ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
+                            }`}
+                          >
+                            {o.nhan}
+                          </button>
+                        ))}
+                      </span>
+                      <div className="justify-self-center">
                         <UnitCycleButton
-                          units={(() => { const p = productById(l.productId); return p ? sellableUnits(p) : [l.unit] })()}
-                          value={dvTraCu(l)}
-                          label={`trả dòng ${i + 1}`}
-                          onChange={(u) => setTraDv((d) => ({ ...d, [l.id]: u }))}
+                          units={(() => { const p = productById(a.productId); return p ? sellableUnits(p) : [a.unit] })()}
+                          value={a.unit}
+                          label={`trả mới ${i + 1}`}
+                          onChange={(u) => {
+                            /* Dòng MỚI: giá tra bảng giá theo nhóm khách, như lúc thêm. */
+                            const p = productById(a.productId)
+                            doiA({ unit: u, price: p ? unitPriceFor(p, u, groupId) : a.price })
+                          }}
                         />
-                      ) : (
-                        <span className="n text-[12.5px] font-bold text-[var(--pos-muted)]">{l.unit}</span>
-                      )}
-                    </div>
-                    <div className="justify-self-center">
-                      {l.suaDuoc ? (
-                        <QtyStepper
-                          label={`số lượng trả dòng ${i + 1}`}
-                          value={sl}
-                          min={0}
-                          onChange={(v) => setTraSua((s) => ({ ...s, [l.id]: Math.max(0, v) }))}
-                        />
-                      ) : (
-                        <span className="n text-[14px] font-bold text-[var(--pos-ink)]">{sl}</span>
-                      )}
-                    </div>
-                    <span className="n text-right text-[13px] text-[var(--pos-ink)]" aria-label={`Đơn giá trả dòng ${i + 1}`}>{formatCurrency(giaTraCu(l))}</span>
-                    <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
-                      {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, giaTraCu(l), l.vatRate, false))}`}
-                    </span>
-                  </div>
-                )
-              })}
-              {traMoi.map((a, i) => {
-                const doiA = (p: Partial<DongTraMoi>) =>
-                  setTraMoi((c) => c.map((x) => (x.key === a.key ? { ...x, ...p } : x)))
-                return (
-                  <div
-                    key={a.key}
-                    data-testid="dong-tra-moi"
-                    className="grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] bg-[var(--pos-warn-soft)]/40 px-3.5 py-2"
-                    style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
-                  >
-                    <TrashButton label={`Xoá dòng trả mới ${i + 1}`} onClick={() => setTraMoi((c) => c.filter((x) => x.key !== a.key))} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
-                        <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{traCu.length + i + 1}.</span>{a.name}
-                      </span>
-                      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
-                          {a.sku} · mới thêm
-                        </span>
-                      </span>
-                      <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                        {!a.isExchange && (
-                          <CompactSelect
-                            ariaLabel={`Lý do trả mới ${i + 1}`}
-                            value={a.reason}
-                            onChange={(v) => doiA({ reason: v })}
-                            options={RETURN_REASONS}
-                            className="h-[26px] w-[128px] shrink-0 border-[var(--pos-edge)] bg-white text-[11.5px]"
-                          />
-                        )}
-                        <input
-                          aria-label={`Ghi chú dòng trả mới ${i + 1}`}
-                          value={a.note}
-                          onChange={(e) => doiA({ note: e.target.value })}
-                          placeholder="Ghi chú dòng trả…"
-                          className="h-[26px] min-w-0 flex-1 border-0 border-b border-dashed border-[var(--pos-edge)] bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none"
-                        />
-                      </span>
-                    </span>
-                    <span className="flex justify-self-center gap-0.5 rounded-[9px] bg-[var(--pos-line-soft)] p-[3px]">
-                      {[{ doi: false, nhan: "Trả" }, { doi: true, nhan: "Đổi" }].map((o) => (
-                        <button
-                          key={o.nhan}
-                          type="button"
-                          aria-pressed={a.isExchange === o.doi}
-                          onClick={() => doiA({ isExchange: o.doi })}
-                          className={`h-[26px] min-w-[30px] rounded-[7px] px-1.5 text-[11.5px] font-extrabold ${
-                            a.isExchange === o.doi ? "bg-white text-[var(--pos-ink)] shadow-[0_1px_2px_rgba(24,28,30,.12)]" : "text-[var(--pos-muted)]"
-                          }`}
-                        >
-                          {o.nhan}
-                        </button>
-                      ))}
-                    </span>
-                    <div className="justify-self-center">
-                      <UnitCycleButton
-                        units={(() => { const p = productById(a.productId); return p ? sellableUnits(p) : [a.unit] })()}
-                        value={a.unit}
-                        label={`trả mới ${i + 1}`}
-                        onChange={(u) => {
-                          /* Dòng MỚI: giá tra bảng giá theo nhóm khách, như lúc thêm. */
-                          const p = productById(a.productId)
-                          doiA({ unit: u, price: p ? unitPriceFor(p, u, groupId) : a.price })
-                        }}
+                      </div>
+                      <div className="justify-self-center">
+                        <QtyStepper label={`số lượng trả mới ${i + 1}`} value={a.qty} min={1} onChange={(v) => doiA({ qty: Math.max(1, v) })} />
+                      </div>
+                      <MoneyInput
+                        showSuffix={false}
+                        inputClassName="n h-[30px] w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[13px] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0"
+                        aria-label={`Đơn giá trả mới ${i + 1}`}
+                        value={a.price}
+                        onChange={(v) => doiA({ price: Math.max(0, v) })}
                       />
+                      <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
+                        {a.isExchange ? "—" : `− ${formatCurrency(tienTru(a.qty, a.price, a.vatRate, false))}`}
+                      </span>
                     </div>
-                    <div className="justify-self-center">
-                      <QtyStepper label={`số lượng trả mới ${i + 1}`} value={a.qty} min={1} onChange={(v) => doiA({ qty: Math.max(1, v) })} />
+                  )
+                })}
+                {traCu.map((l, i) => {
+                  const sl = soTraCu(l)
+                  return (
+                    <div
+                      key={l.id}
+                      data-testid="dong-tra-cu"
+                      className={`grid min-h-[54px] items-center border-b border-[var(--pos-line-faint)] px-3.5 py-2 ${sl <= 0 ? "opacity-55" : ""}`}
+                      style={{ gridTemplateColumns: COT_TRA, gap: "0 10px" }}
+                    >
+                      {l.suaDuoc ? (
+                        <TrashButton label={`Bỏ dòng trả ${i + 1}`} onClick={() => setTraSua((s) => ({ ...s, [l.id]: 0 }))} />
+                      ) : <span />}
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13.5px] font-bold text-[var(--pos-ink)]">
+                          {/* Số thứ tự đầu dòng (chủ nhà 02/10/2026). */}
+                          <span data-testid="stt-dong" className="n mr-1.5 text-[var(--pos-dim)]">{traMoi.length + i + 1}.</span>{l.name}
+                        </span>
+                        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="n truncate text-[11.5px] font-semibold text-[var(--pos-muted)]">
+                            {l.sku}
+                            {!l.suaDuoc && " · phiếu đã xử lý hoặc thuộc tờ khác — chỉ xem"}
+                          </span>
+                        </span>
+                        {/* ⚠ Lý do + ghi chú TỪNG DÒNG của phiếu trả đi đủ (24/09/2026). */}
+                        {l.suaDuoc ? (
+                          <span className="mt-1 flex min-w-0 items-center gap-1.5">
+                            {!l.isExchange && (
+                              <CompactSelect
+                                ariaLabel={`Lý do trả dòng ${i + 1}`}
+                                value={traGhi[l.id]?.reason ?? l.reason ?? ""}
+                                onChange={(v) => setTraGhi((g) => ({ ...g, [l.id]: { ...g[l.id], reason: v } }))}
+                                emptyLabel="theo phiếu"
+                                options={RETURN_REASONS}
+                                className="h-[26px] w-[128px] shrink-0 border-[var(--pos-edge)] bg-white text-[11.5px]"
+                              />
+                            )}
+                            <input
+                              aria-label={`Ghi chú dòng trả ${i + 1}`}
+                              value={traGhi[l.id]?.note ?? l.note}
+                              onChange={(e) => setTraGhi((g) => ({ ...g, [l.id]: { ...g[l.id], note: e.target.value } }))}
+                              placeholder="Ghi chú dòng trả…"
+                              className="h-[26px] min-w-0 flex-1 border-0 border-b border-dashed border-[var(--pos-edge)] bg-transparent px-0.5 text-[12px] font-semibold text-[var(--pos-ink)] outline-none"
+                            />
+                          </span>
+                        ) : (l.note || l.reason) ? (
+                          <span className="mt-0.5 block truncate text-[11.5px] text-[var(--pos-muted)]">
+                            {[RETURN_REASONS.find((x) => x.value === l.reason)?.label, l.note].filter(Boolean).join(" · ")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="justify-self-center text-[12px] font-extrabold text-[var(--pos-muted)]">
+                        {l.isExchange ? "Đổi" : "Trả"}
+                      </span>
+                      {/* ⚠ Quy cách dòng trả CÓ SẴN: máy chủ tự quy giá theo hệ số (mig 181) — ở đây chỉ gửi đơn vị. */}
+                      <div className="justify-self-center">
+                        {l.suaDuoc ? (
+                          <UnitCycleButton
+                            units={(() => { const p = productById(l.productId); return p ? sellableUnits(p) : [l.unit] })()}
+                            value={dvTraCu(l)}
+                            label={`trả dòng ${i + 1}`}
+                            onChange={(u) => setTraDv((d) => ({ ...d, [l.id]: u }))}
+                          />
+                        ) : (
+                          <span className="n text-[12.5px] font-bold text-[var(--pos-muted)]">{l.unit}</span>
+                        )}
+                      </div>
+                      <div className="justify-self-center">
+                        {l.suaDuoc ? (
+                          <QtyStepper
+                            label={`số lượng trả dòng ${i + 1}`}
+                            value={sl}
+                            min={0}
+                            onChange={(v) => setTraSua((s) => ({ ...s, [l.id]: Math.max(0, v) }))}
+                          />
+                        ) : (
+                          <span className="n text-[14px] font-bold text-[var(--pos-ink)]">{sl}</span>
+                        )}
+                      </div>
+                      <span className="n text-right text-[13px] text-[var(--pos-ink)]" aria-label={`Đơn giá trả dòng ${i + 1}`}>{formatCurrency(giaTraCu(l))}</span>
+                      <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
+                        {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, giaTraCu(l), l.vatRate, false))}`}
+                      </span>
                     </div>
-                    <MoneyInput
-                      showSuffix={false}
-                      inputClassName="n h-[30px] w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[13px] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0"
-                      aria-label={`Đơn giá trả mới ${i + 1}`}
-                      value={a.price}
-                      onChange={(v) => doiA({ price: Math.max(0, v) })}
-                    />
-                    <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
-                      {a.isExchange ? "—" : `− ${formatCurrency(tienTru(a.qty, a.price, a.vatRate, false))}`}
-                    </span>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>

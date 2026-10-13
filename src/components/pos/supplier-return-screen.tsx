@@ -48,6 +48,7 @@ import {
 } from "@/lib/pos/load"
 import { donViNapLai, donViCuaSanPham } from "@/lib/pos/units"
 import { savePosSupplierReturn } from "@/lib/pos/save"
+import { themLenDau } from "@/lib/pos/them-dong"
 import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
 import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
@@ -224,9 +225,9 @@ export function SupplierReturnScreen({
       const p = products.find((x) => x.id === productId)
       if (!p) return
       const units = donViCuaSanPham(p)
-      setLines((cu) => [
-        ...cu,
-        {
+      /* Dòng mới lên ĐẦU danh sách (chủ nhà 13/10/2026) — `them-dong`. */
+      setLines((cu) =>
+        themLenDau(cu, {
           key: newKey(),
           productId: p.id,
           sku: p.sku ?? "",
@@ -245,8 +246,8 @@ export function SupplierReturnScreen({
           /* ⚠ `ordered` ở màn này mang nghĩa SỐ ĐÃ NHẬP theo phiếu gốc —
              `null` là chưa biết, và khi đó không chặn. */
           ordered: null,
-        },
-      ])
+        })
+      )
     },
     [products, bangGiaNhap]
   )
@@ -575,6 +576,7 @@ export function SupplierReturnScreen({
           )}
 
           <LineTableFrame
+            dongMoi={lines[0]?.key}
             header={
               <LineTableHeader
                 grid="supplierReturn"
@@ -630,6 +632,7 @@ export function SupplierReturnScreen({
               return (
                 <div
                   key={l.key}
+                  data-dong={l.key}
                   className="grid min-h-[54px] items-center border-b border-[var(--pos-line-soft)] px-4 py-1.5"
                   style={{ gridTemplateColumns: g.cols, gap: g.gap }}
                 >

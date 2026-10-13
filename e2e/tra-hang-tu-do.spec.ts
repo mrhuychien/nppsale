@@ -20,5 +20,7 @@ test("trả hàng gắn hóa đơn: tìm được và thêm được hàng KHÔN
   await oTim.fill("Mì")
   await oTim.press("Enter")
   await expect(dong).toHaveCount(2)
-  await expect(dong.nth(1)).toContainText("Mì tôm")
+  // Dòng vừa thêm lên ĐẦU danh sách (chủ nhà 13/10/2026).
+  await expect(dong.first()).toContainText("Mì tôm")
+  await expect(dong.nth(1)).toContainText("Sữa hộp")
 })

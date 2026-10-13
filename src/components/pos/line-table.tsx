@@ -14,7 +14,7 @@
  * tự co giãn cột theo nội dung và mọi chứng từ lệch nhau một ít.
  */
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { discountAmount, lineGross, switchUnit, unitAriaLabel, unitLabel } from "@/lib/pos/discount"
 import type { PosLine } from "@/lib/pos/types"
 import { formatCurrency } from "@/lib/utils"
@@ -46,21 +46,41 @@ export const POS_GRID = {
 
 export type PosGridKey = keyof typeof POS_GRID
 
+/**
+ * Cuộn tới dòng mang `data-dong={key}` mỗi khi `key` đổi. Truyền key dòng VỪA THÊM: thêm hàng là dòng mới lên đầu danh
+ * sách (chủ nhà 13/10/2026: "thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách luôn") — đang cuộn xuống dưới cũng
+ * thấy ngay.
+ */
+export function useCuonToiDong<T extends HTMLElement>(key: string | null | undefined) {
+  const ref = useRef<T>(null)
+  useEffect(() => {
+    const vung = ref.current
+    if (!key || !vung) return
+    const dong = Array.from(vung.querySelectorAll<HTMLElement>("[data-dong]")).find((x) => x.dataset.dong === key)
+    dong?.scrollIntoView({ block: "nearest" })
+  }, [key])
+  return ref
+}
+
 export function LineTableFrame({
   header,
   children,
   footer,
+  dongMoi,
 }: {
   header: ReactNode
   children: ReactNode
   footer?: ReactNode
+  /** Key dòng vừa thêm (dòng mang `data-dong`) — đổi thì bảng cuộn tới dòng ấy. */
+  dongMoi?: string | null
 }) {
+  const cuon = useCuonToiDong<HTMLDivElement>(dongMoi)
   return (
     /* ⚠ `min-h-0` — xem `PosShell`. Thiếu nó thì bảng phình theo nội
        dung và đẩy hàng nút ra ngoài màn thay vì tự cuộn. */
     <div className="flex min-h-0 flex-grow flex-col overflow-hidden rounded-[14px] border border-[var(--pos-line)] bg-white">
       {header}
-      <div className="min-h-0 flex-grow overflow-y-auto">{children}</div>
+      <div ref={cuon} data-testid="cuon-dong-hang" className="min-h-0 flex-grow overflow-y-auto">{children}</div>
       {footer}
     </div>
   )

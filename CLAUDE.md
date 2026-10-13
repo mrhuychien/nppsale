@@ -101,6 +101,13 @@ Chủ nhà 13/10/2026: *"Sao sửa phiếu nháp -> ra màn post lại hiện tr
   nút "Sửa" của phiếu nháp cũng đi đường ấy. Nháp: NHÁP + Lưu nháp / Lưu tạm. Đã ghi nhận: **không** có nút lưu nháp
   (trả NCC: lưu nháp = huỷ phiếu, rút hàng về kho). Sửa phiếu trả NCC đã xuất giữ nguyên số phiếu (huỷ rồi xuất lại).
 
+### Thêm hàng ở POS
+Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách luôn"* · *"phần đổi trả dài quá ko có scroll
+… chỉ hiện hàng đổi trả không hiện phiếu đi"*.
+- Dòng mới lên **đầu** danh sách ở mọi màn POS (`themLenDau` / `donLenDau`, `src/lib/pos/them-dong.ts`); gộp dòng trùng
+  thì dòng được cộng cũng lên đầu. Thứ tự lưu = thứ tự trên màn. Bảng cuộn tới dòng vừa thêm (`dongMoi`, `data-dong`).
+- Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

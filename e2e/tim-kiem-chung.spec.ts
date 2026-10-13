@@ -63,5 +63,6 @@ test("POS: ô chọn hàng tìm không dấu, đảo thứ tự từ; ô chọn 
   await oHang.fill("mi1")
   await oHang.press("Enter")
   await expect(dong).toHaveCount(2)
-  await expect(dong.nth(1)).toContainText("Mì tôm")
+  // Dòng vừa thêm lên ĐẦU danh sách (chủ nhà 13/10/2026).
+  await expect(dong.first()).toContainText("Mì tôm")
 })

@@ -103,6 +103,25 @@ INSERT INTO kq SELECT 7, 'Có chỉ mục số duy nhất theo NPP; trigger đan
   to_regclass('public.uq_supplier_returns_org_seq') IS NOT NULL
   AND (SELECT tgenabled FROM pg_trigger WHERE tgname = 'trg_danh_so_tra_ncc') = 'O', NULL;
 
+-- 8. Sửa phiếu ĐÃ XUẤT đúng như màn POS (`savePosSupplierReturn`; chủ nhà 13/10/2026 "Xem lại phiếu trả NCC…" — lời nhắc
+--    trên màn nói "giữ nguyên số phiếu"): huỷ → về nháp (ghi thẳng như trình duyệt) → đổi dòng → xuất lại trên CÙNG phiếu.
+CREATE TEMP TABLE ma_truoc_sua ON COMMIT DROP AS
+  SELECT id, return_code FROM supplier_returns WHERE id = 'b2400000-0000-0000-0000-0000000000a2';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', 'e0000000-0000-0000-0000-000000000005', true);
+SELECT public.cancel_supplier_return('b2400000-0000-0000-0000-0000000000a2', 'Sửa phiếu từ POS — lập lại') IS NOT NULL AS huy_r2;
+UPDATE supplier_returns SET status = 'draft', cancel_reason = NULL WHERE id = 'b2400000-0000-0000-0000-0000000000a2';
+UPDATE supplier_return_lines SET quantity = 2, line_total = 10000 WHERE return_id = 'b2400000-0000-0000-0000-0000000000a2';
+SELECT public.complete_supplier_return('b2400000-0000-0000-0000-0000000000a2') IS NOT NULL AS xuat_lai_r2;
+RESET ROLE;
+INSERT INTO kq SELECT 8, 'Sửa phiếu đã xuất (huỷ → nháp → xuất lại, như POS): giữ nguyên số PTNCC-, không thêm phiếu, nợ NCC theo số mới',
+  s.status = 'completed' AND s.return_code = t.return_code
+  AND (SELECT count(*) FROM supplier_returns WHERE supplier_id = '5f000000-0000-0000-0000-0000000240a1') = 4
+  AND p.invoice_number = t.return_code AND p.amount = -10000,
+  s.return_code || ' · nợ ' || p.amount
+FROM supplier_returns s JOIN ma_truoc_sua t ON t.id = s.id JOIN payables p ON p.id = s.payable_credit_id
+WHERE s.id = 'b2400000-0000-0000-0000-0000000000a2';
+
 \echo
 SELECT buoc, CASE WHEN ok THEN 'ĐẠT' ELSE 'SAI' END AS kq, ten, ghi FROM kq ORDER BY buoc;
 SELECT count(*) AS tong, count(*) FILTER (WHERE ok) AS dat, count(*) FILTER (WHERE NOT ok) AS loi FROM kq;

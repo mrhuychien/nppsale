@@ -20,10 +20,13 @@
  *      phiếu đã lưu là mất đường về gốc và cột ấy hiện `—`. KHÔNG CÓ
  *      chốt chặn phía máy chủ cho trần này.
  *
- *   3. Artboard 12 mượn câu của màn 8 — "giữ nguyên số phiếu". Phía bán
- *      có `reissue_invoice` nên giữ được số; phía mua chỉ có
- *      `cancel_supplier_return` + `complete_supplier_return` RỜI NHAU,
- *      nên huỷ rồi lập lại là một phiếu MỚI mang số MỚI.
+ *   3. Sửa phiếu ĐÃ XUẤT: phía bán có `reissue_invoice` (một giao dịch);
+ *      phía mua chỉ có `cancel_supplier_return` + `complete_supplier_return`
+ *      RỜI NHAU. `savePosSupplierReturn` gọi lần lượt trên CÙNG phiếu nên
+ *      số phiếu giữ nguyên, nhưng xuất lại hỏng thì phiếu nằm lại ở Nháp.
+ *
+ * ⚠ NHÃN / NÚT THEO TRẠNG THÁI THẬT CỦA PHIẾU (`manPhieuNcc`), không theo
+ * đường dẫn: nút "Sửa" của phiếu NHÁP cũng mở `/pos/tra-ncc/<id>/sua`.
  *
  * ⚠ VÙNG KHO LÀ Ô BẮT BUỘC, KHÔNG PHẢI TUỲ CHỌN. `complete_supplier_return`
  * xuất hàng TỪ vùng kho ghi trên phiếu; chọn nhầm là câu
@@ -50,7 +53,7 @@ import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
-  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock, vatNapLai, MUC_VAT_POS, doiDonViDongTraNcc,
+  supplierReturnTotals, supplierReturnMax, supplierReturnCancelLock, vatNapLai, MUC_VAT_POS, doiDonViDongTraNcc, manPhieuNcc,
 } from "@/lib/pos/purchase"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -151,6 +154,8 @@ export function SupplierReturnScreen({
   const [thoiDiem, setThoiDiem] = useState(homNay)
   const [kho, setKho] = useState("date")
   const [daNap, setDaNap] = useState(!returnId)
+  /** `status` của phiếu — `null` khi chưa nạp xong; phiếu mới là nháp. */
+  const [trangThai, setTrangThai] = useState<string | null>(returnId ? null : "draft")
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   const [moTimNcc, setMoTimNcc] = useState(false)
 
@@ -169,7 +174,10 @@ export function SupplierReturnScreen({
     [lines, phi, vatRate, vatCoDinh]
   )
 
-  const khoa = mode === "sua" ? supplierReturnCancelLock({ creditOffset, lotClosed }) : null
+  const man = manPhieuNcc("tra", trangThai)
+  /* Nút trái: phiếu nháp → Lưu nháp; đã xuất / đã huỷ → Huỷ (quay lại). Chưa nạp xong thì đoán theo đường dẫn. */
+  const nutLuuNhap = man.dangNap ? mode === "lap" : man.luuNhap
+  const khoa = man.daGhiNhan ? supplierReturnCancelLock({ creditOffset, lotClosed }) : null
   /* Không kẹp 0 (mig 231): trả NCC nhiều hơn nợ thì NCC còn nợ lại mình — hiện số âm. */
   const noConLai = ncc?.debt == null ? null : ncc.debt - t.dueFromSupplier
 
@@ -322,7 +330,7 @@ export function SupplierReturnScreen({
         const r = (data as unknown) as {
           return_code: string | null; supplier_id: string; return_date: string
           warehouse_zone: string | null; reason: string | null; discount: number | null; notes: string | null
-          vat?: number | null; vat_override?: number | null
+          vat?: number | null; vat_override?: number | null; status?: string | null
           supplier?: { name?: string | null; code?: string | null } | null
           lines?: Array<{
             product_id: string; unit_name: string; quantity: number; unit_price: number
@@ -331,6 +339,7 @@ export function SupplierReturnScreen({
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu trả NCC này."); return }
+        setTrangThai(r.status ?? null)
         setSlipCode(r.return_code)
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
         setThoiDiem(r.return_date || homNay())
@@ -467,10 +476,16 @@ export function SupplierReturnScreen({
           total: t.dueFromSupplier,
         })
         setMocChuaLuu(chuKy)
+        setTrangThai(complete ? "completed" : "draft")
         toast({ title: complete ? "Đã ghi nhận — xuất kho và giảm công nợ NCC" : "Đã lưu phiếu nháp" })
         if (!returnId) router.replace(`/pos/tra-ncc/${r.returnId}`)
       } catch (e) {
         toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
+        /* Sửa phiếu đã xuất là huỷ rồi xuất lại (hai bước) — xuất lại hỏng thì phiếu đã về Nháp: đọc lại trạng thái. */
+        if (returnId) {
+          const { data, error } = await createClient().from("supplier_returns").select("status").eq("id", returnId).maybeSingle()
+          if (!error && data) setTrangThai((data as { status?: string | null }).status ?? null)
+        }
       } finally {
         setDangLuu(false)
       }
@@ -509,7 +524,7 @@ export function SupplierReturnScreen({
       <DocSubHeader
         title={mode === "sua" ? "Sửa phiếu trả NCC" : "Phiếu trả NCC"}
         code={slipCode}
-        badge={badge ?? (mode === "lap" ? { label: "NHÁP", tone: "tam" } : { label: "ĐÃ XUẤT KHO", tone: "da-kho" })}
+        badge={badge ?? man.nhan}
         right={
           <>
             {/* ⚠ VÙNG KHO QUYẾT ĐỊNH HÀNG LẤY TỪ ĐÂU — xem đầu tệp. */}
@@ -535,17 +550,18 @@ export function SupplierReturnScreen({
             <DocBanner key={w} tone="warn">{w}</DocBanner>
           ))}
 
-          {/*
-            ⚠ KHÔNG HỨA "GIỮ NGUYÊN SỐ PHIẾU". Phía bán có
-              `reissue_invoice` nên giữ được số; phía mua chỉ có
-              `cancel_supplier_return` + `complete_supplier_return` rời
-              nhau. Xem đầu tệp.
-          */}
-          {mode === "sua" && (
+          {/* ⚠ Nói đúng cơ chế: huỷ rồi xuất lại trên CÙNG phiếu, hai bước rời — xem đầu tệp, mục 3. */}
+          {man.daGhiNhan && (
             <DocBanner tone="warn">
-              Phiếu đã xuất kho. Bên mua <strong>không có lệnh lập lại một bước</strong>: sửa
-              phiếu là <strong>huỷ phiếu này rồi lập một phiếu mới</strong> — hai thao tác
-              riêng, và phiếu mới mang số mới. Phiếu cũ giữ trong sổ để truy vết.
+              Phiếu đã xuất kho. Bấm <strong>Ghi nhận &amp; xuất kho</strong> là huỷ bút toán cũ (hàng
+              về lại kho, công nợ NCC hoàn lại) rồi xuất lại theo số mới —{" "}
+              <strong>giữ nguyên số phiếu</strong>. Xuất lại không được (vd thiếu hàng) thì phiếu
+              nằm lại ở Nháp.
+            </DocBanner>
+          )}
+          {man.daHuy && (
+            <DocBanner tone="warn">
+              Phiếu đã huỷ — muốn sửa thì bấm <strong>Khôi phục</strong> ở màn chi tiết phiếu trước.
             </DocBanner>
           )}
 
@@ -696,8 +712,8 @@ export function SupplierReturnScreen({
             )}
           </LineTableFrame>
 
-          {mode === "sua" && (
-            <DeltaPreviewStrip subtitle="Huỷ phiếu rồi lập phiếu mới" cells={deltaCells} />
+          {man.daGhiNhan && (
+            <DeltaPreviewStrip subtitle="Huỷ bút toán cũ rồi xuất lại" cells={deltaCells} />
           )}
         </div>
 
@@ -886,16 +902,24 @@ export function SupplierReturnScreen({
             <PanelButton width={54} disabled title="Chưa có mẫu in phiếu trả NCC">In</PanelButton>
             <PanelButton
               width={96}
-              disabled={dangLuu}
-              onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
+              disabled={nutLuuNhap && (dangLuu || man.dangNap)}
+              onClick={() => (nutLuuNhap ? luuPhieu(false) : router.back())}
             >
-              {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
+              {nutLuuNhap ? (dangLuu ? "Đang lưu…" : "Lưu nháp") : "Huỷ"}
             </PanelButton>
             <PanelButton
               variant="primary"
               onClick={() => luuPhieu(true)}
-              disabled={!!khoa || lines.length === 0 || dangLuu}
-              title={khoa ? khoa.message : lines.length === 0 ? "Chưa có dòng hàng nào trong phiếu" : undefined}
+              disabled={!!khoa || lines.length === 0 || dangLuu || man.dangNap || man.daHuy}
+              title={
+                khoa
+                  ? khoa.message
+                  : man.daHuy
+                    ? "Phiếu đã huỷ — khôi phục ở màn chi tiết trước"
+                    : lines.length === 0
+                      ? "Chưa có dòng hàng nào trong phiếu"
+                      : undefined
+              }
             >
               {dangLuu ? "Đang ghi…" : "Ghi nhận & xuất kho"}
             </PanelButton>

@@ -109,7 +109,7 @@ export interface PosLine {
 }
 
 /** Trạng thái hiển thị trên sub-header. */
-export type PosBadgeTone = "tam" | "mot-phan" | "xong" | "dang-sua" | "da-kho"
+export type PosBadgeTone = "tam" | "mot-phan" | "xong" | "dang-sua" | "da-kho" | "huy"
 
 export interface PosBadge {
   label: string
@@ -132,6 +132,7 @@ export const POS_BADGE_STYLE: Record<PosBadgeTone, { bg: string; fg: string }> =
   xong: { bg: "var(--pos-ok-soft)", fg: "var(--pos-ok)" },
   "dang-sua": { bg: "var(--pos-warn-soft)", fg: "var(--pos-warn)" },
   "da-kho": { bg: "var(--pos-warn-soft)", fg: "var(--pos-warn)" },
+  huy: { bg: "var(--pos-danger-soft)", fg: "var(--pos-danger)" },
 }
 
 /** Phương thức thanh toán trên panel — spec §6 và §9. */

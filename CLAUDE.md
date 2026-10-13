@@ -95,6 +95,12 @@ Chủ nhà chốt 25/09/2026 (mig 191).
   dư có đã dùng: nợ tự tăng lại. Không cấn trừ phiếu trả ở phiếu thu nữa (trừ hai lần).
 - Luật ở giao diện: `hanhDongPhieuTra` (`src/lib/returns/loai-phieu.ts`). Quét sổ: `scripts/sql/kiem-phieu-tra.sql`.
 
+### Màn POS phiếu nhập / phiếu trả NCC
+Chủ nhà 13/10/2026: *"Sao sửa phiếu nháp -> ra màn post lại hiện trạng thái đã xuất kho và ko có nút lưu nháp tiếp"*.
+- Nhãn + nút theo **trạng thái thật** của phiếu (`manPhieuNcc`, `src/lib/pos/purchase.ts`), không theo đường dẫn `/sua` —
+  nút "Sửa" của phiếu nháp cũng đi đường ấy. Nháp: NHÁP + Lưu nháp / Lưu tạm. Đã ghi nhận: **không** có nút lưu nháp
+  (trả NCC: lưu nháp = huỷ phiếu, rút hàng về kho). Sửa phiếu trả NCC đã xuất giữ nguyên số phiếu (huỷ rồi xuất lại).
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

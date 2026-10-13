@@ -8,9 +8,11 @@
  * ⚠ BẢN THIẾT KẾ NÓI SAI HAI CHỖ, VÀ SPEC §7.2 CHO PHÉP CHỈNH:
  *
  *   1. Artboard 10 mượn câu của màn 7 — "huỷ và lập lại trong cùng một
- *      giao dịch". Bên MUA không có hàm lập lại: chỉ có
- *      `cancel_purchase_invoice` và `complete_purchase_invoice` RỜI
- *      NHAU. Huỷ rồi lập lại là HAI bước, và phiếu mới mang số mới.
+ *      giao dịch". Bên MUA sửa phiếu đã hoàn thành TẠI CHỖ
+ *      (`sua_phieu_nhap`, mig 235): một giao dịch, giữ số phiếu, giữ lô.
+ *
+ * ⚠ NHÃN / NÚT THEO TRẠNG THÁI THẬT CỦA PHIẾU (`manPhieuNcc`), không theo
+ * đường dẫn: nút "Sửa" của phiếu NHÁP cũng mở `/pos/nhap-hang/<id>/sua`.
  *
  *   2. "Giá vốn bình quân được tính lại" — hệ này không có số bình
  *      quân nào. `complete_purchase_invoice` ghi `batches.unit_cost`
@@ -44,7 +46,7 @@ import { giaNhapDonVi } from "@/lib/purchasing/bang-gia-nhap"
 import { formatCurrency } from "@/lib/utils"
 import { switchUnit, type DiscountInput } from "@/lib/pos/discount"
 import {
-  purchaseTotals, generatedLotCode, purchaseCancelLock, vatNapLai, MUC_VAT_POS,
+  purchaseTotals, generatedLotCode, purchaseCancelLock, vatNapLai, MUC_VAT_POS, manPhieuNcc,
 } from "@/lib/pos/purchase"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
@@ -288,8 +290,13 @@ export function PurchaseScreen({
     [suppliers]
   )
 
-  /** Phiếu đang sửa đã hoàn thành — lưu là sửa tại chỗ kho + công nợ (mig 235). */
-  const [daHoanThanh, setDaHoanThanh] = useState(false)
+  /** `status` của phiếu — `null` khi chưa nạp xong; phiếu mới là nháp. */
+  const [trangThai, setTrangThai] = useState<string | null>(receiptId ? null : "draft")
+  const man = manPhieuNcc("nhap", trangThai)
+  /** Phiếu đã hoàn thành — lưu là sửa tại chỗ kho + công nợ (mig 235). */
+  const daHoanThanh = man.daGhiNhan
+  /* Nút trái: phiếu nháp → Lưu tạm; đã hoàn thành / đã huỷ → Huỷ (quay lại). Chưa nạp xong thì đoán theo đường dẫn. */
+  const nutLuuTam = man.dangNap ? mode === "lap" : man.luuNhap
 
   /** Nạp phiếu nhập đã lưu. */
   useEffect(() => {
@@ -317,7 +324,7 @@ export function PurchaseScreen({
           }> | null
         } | null
         if (!r) { setLoiNap("Không tìm thấy phiếu nhập này."); return }
-        setDaHoanThanh((data as { status?: string } | null)?.status === "completed")
+        setTrangThai((data as { status?: string | null } | null)?.status ?? null)
         setSlipCode(r.receipt_code)
         setNcc({ id: r.supplier_id, name: r.supplier?.name || "—", meta: r.supplier?.code ?? "" })
         setSoHdDauVao(r.invoice_number || "")
@@ -401,6 +408,8 @@ export function PurchaseScreen({
           total: t.dueToSupplier,
         })
         setMocChuaLuu(chuKy)
+        /* Phiếu đã hoàn thành lưu lại vẫn là hoàn thành (sửa tại chỗ). */
+        setTrangThai((cu) => (complete || cu === "completed" ? "completed" : "draft"))
         toast({ title: complete ? "Đã hoàn thành — nhập kho và ghi công nợ NCC" : "Đã lưu phiếu tạm" })
         if (!receiptId) router.replace(`/pos/nhap-hang/${r.receiptId}`)
       } catch (e) {
@@ -457,7 +466,7 @@ export function PurchaseScreen({
       <DocSubHeader
         title={mode === "sua" ? "Sửa phiếu nhập" : "Phiếu nhập hàng"}
         code={slipCode}
-        badge={badge ?? (mode === "lap" ? { label: "NHÁP", tone: "tam" } : { label: "ĐANG SỬA", tone: "dang-sua" })}
+        badge={badge ?? man.nhan}
         subtitle={mode === "sua" ? "NPP toàn quyền · mọi trường mở" : undefined}
         right={
           <>
@@ -488,7 +497,12 @@ export function PurchaseScreen({
               màn 7 ("cùng một giao dịch", "giá vốn bình quân"); bên MUA
               không có cả hai thứ đó. Xem đầu tệp.
           */}
-          {mode === "sua" && daHoanThanh && (
+          {man.daHuy && (
+            <DocBanner tone="warn">
+              Phiếu đã huỷ — muốn sửa thì bấm <strong>Khôi phục</strong> ở màn chi tiết phiếu trước.
+            </DocBanner>
+          )}
+          {daHoanThanh && (
             /* Mig 235 (chủ nhà 06/10/2026: "phiếu nhập hàng từ NCC đã bán hàng ra không sửa được, tao muốn sửa
                được"): phiếu đã hoàn thành sửa TẠI CHỖ — `sua_phieu_nhap`. */
             <DocBanner tone="warn">
@@ -745,21 +759,23 @@ export function PurchaseScreen({
             <PanelButton width={54} disabled title="Chưa có mẫu in phiếu nhập hàng">In</PanelButton>
             <PanelButton
               width={96}
-              disabled={dangLuu}
-              onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
+              disabled={nutLuuTam && (dangLuu || man.dangNap)}
+              onClick={() => (nutLuuTam ? luuPhieu(false) : router.back())}
             >
-              {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu tạm"}
+              {nutLuuTam ? (dangLuu ? "Đang lưu…" : "Lưu tạm") : "Huỷ"}
             </PanelButton>
             <PanelButton
               variant="primary"
               onClick={() => luuPhieu(true)}
-              disabled={!!khoa || lines.length === 0 || dangLuu}
+              disabled={!!khoa || lines.length === 0 || dangLuu || man.dangNap || man.daHuy}
               title={
                 khoa
                   ? khoa.message
-                  : lines.length === 0
-                    ? "Chưa có mặt hàng nào trong phiếu"
-                    : undefined
+                  : man.daHuy
+                    ? "Phiếu đã huỷ — khôi phục ở màn chi tiết trước"
+                    : lines.length === 0
+                      ? "Chưa có mặt hàng nào trong phiếu"
+                      : undefined
               }
             >
               {dangLuu ? "Đang ghi…" : daHoanThanh ? "Lưu sửa" : "Hoàn thành & nhập kho"}

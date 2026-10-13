@@ -7,8 +7,9 @@ import { docMaCuTraNcc } from "@/lib/purchasing/ma-tra-ncc"
 
 /**
  * PHIẾU TRẢ HÀNG NCC ĐÁNH SỐ PTNCC-xxxx (mig 240) — chủ nhà 08/10/2026: "Đổi đầu PTNCC", chọn "Đánh lại cả phiếu cũ".
- * Bộ thử chạy thật: scripts/sql/thu-240-ma-tra-ncc-ptncc.sql (7/7 dưới safeupdate; đã thử phá: bỏ phần sửa chỗ chép
- * mã cũ → đỏ, đánh số theo id thay vì thứ tự lập → đỏ).
+ * Bộ thử chạy thật: scripts/sql/thu-240-ma-tra-ncc-ptncc.sql (8/8 dưới safeupdate; đã thử phá: bỏ phần sửa chỗ chép
+ * mã cũ → đỏ, đánh số theo id thay vì thứ tự lập → đỏ; bước 8 — sửa phiếu đã xuất như POS giữ nguyên số — cấp số mới
+ * khi phiếu về nháp → đỏ).
  */
 const GOC = resolve(__dirname, "..")
 const MIG = readFileSync(resolve(GOC, "supabase/migrations/240_ma_tra_ncc_ptncc.sql"), "utf-8")

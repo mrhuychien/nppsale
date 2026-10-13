@@ -430,9 +430,11 @@ describe("§8.5 — mở lại phiếu đã lưu thì 'đã nhập' là chưa bi
 
 /**
  * ⚠ CÂU CHỮ MÀN 10 VÀ 12 PHẢI KHỚP CƠ CHẾ THẬT. Bên mua KHÔNG có hàm
- * "lập lại" — chỉ có `cancel_purchase_invoice` / `cancel_supplier_return`
- * rời với `complete_*`. Nên không được hứa "trong cùng một giao dịch"
- * hay "giữ nguyên số phiếu".
+ * "lập lại" một giao dịch — chỉ có `cancel_supplier_return` rời với
+ * `complete_supplier_return`. Nên không được hứa "trong cùng một giao dịch".
+ * Còn SỐ PHIẾU thì GIỮ NGUYÊN: số PTNCC cấp lúc lập (mig 240), và sửa phiếu
+ * đã xuất là huỷ rồi xuất lại trên CÙNG phiếu — đo trên Postgres:
+ * scripts/sql/thu-240-ma-tra-ncc-ptncc.sql bước 8 (13/10/2026).
  */
 describe("câu chữ màn sửa mua hàng không hứa điều phần mềm không làm", () => {
   const files = ["src/components/pos/purchase-screen.tsx", "src/components/pos/supplier-return-screen.tsx"]
@@ -447,12 +449,10 @@ describe("câu chữ màn sửa mua hàng không hứa điều phần mềm khô
     }
   })
 
-  it("không hứa giữ nguyên số phiếu", () => {
+  it("nói đúng số phiếu: sửa phiếu trả NCC đã xuất GIỮ NGUYÊN số (không hứa phiếu mới số mới)", () => {
     const s = code(read("src/components/pos/supplier-return-screen.tsx"))
-    expect(
-      /giữ nguyên số phiếu/i.test(s),
-      "huỷ rồi lập lại là một phiếu MỚI, mang số mới"
-    ).toBe(false)
+    expect(/giữ nguyên số phiếu/i.test(s), "huỷ rồi xuất lại trên CÙNG phiếu — số PTNCC không đổi").toBe(true)
+    expect(/phiếu mới mang số mới|lập một phiếu mới/i.test(s)).toBe(false)
   })
 
   /** ⚠ Và không được gọi thứ không có là "giá vốn bình quân". */

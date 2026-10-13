@@ -29,6 +29,52 @@
 
 import { discountAmount, lineGross, type DiscountInput } from "@/lib/pos/discount"
 import { posTotals, type PosTotalLine } from "@/lib/pos/totals"
+import type { PosBadge } from "@/lib/pos/types"
+
+/* ==================================================================
+ * MÀN THEO TRẠNG THÁI THẬT CỦA PHIẾU
+ * ================================================================== */
+
+export interface ManPhieuNcc {
+  /** `null` = chưa nạp xong — chưa nói gì. */
+  nhan: PosBadge | null
+  /** Nút trái là LƯU NHÁP (phiếu nháp); không thì là "Huỷ" — quay lại, không lưu. */
+  luuNhap: boolean
+  /** Phiếu đã ghi nhận vào kho + công nợ NCC. */
+  daGhiNhan: boolean
+  /** Phiếu đã huỷ — không lưu được (máy chủ cũng chặn); khôi phục ở màn chi tiết trước. */
+  daHuy: boolean
+  /** Chưa đọc được trạng thái — nút lưu chờ. */
+  dangNap: boolean
+}
+
+/**
+ * Nhãn + nút của màn phiếu nhập / phiếu trả NCC theo TRẠNG THÁI THẬT của phiếu, không theo đường dẫn.
+ *
+ * ⚠ CHỦ NHÀ 13/10/2026: "Sao sửa phiếu nháp -> ra màn post lại hiện trạng thái đã xuất kho và ko có nút lưu nháp
+ *   tiếp". Nút "Sửa" của phiếu NHÁP và "Sửa phiếu" của phiếu đã ghi nhận cùng đi `/…/edit` → `/pos/…/<id>/sua`, và
+ *   màn từng đoán "đường /sua = phiếu đã ghi nhận".
+ * - Nháp (cả phiếu mới): nhãn NHÁP, có nút lưu nháp.
+ * - Đã ghi nhận: không có nút lưu nháp — với phiếu trả NCC, lưu nháp lúc này là huỷ phiếu (hàng về lại kho, công nợ
+ *   NCC hoàn lại), không đặt một nút như thế cạnh tay.
+ * - Đã huỷ / chưa nạp xong: không lưu.
+ */
+export function manPhieuNcc(loai: "nhap" | "tra", trangThai: string | null): ManPhieuNcc {
+  if (trangThai == null) return { nhan: null, luuNhap: false, daGhiNhan: false, daHuy: false, dangNap: true }
+  if (trangThai === "draft") {
+    return { nhan: { label: "NHÁP", tone: "tam" }, luuNhap: true, daGhiNhan: false, daHuy: false, dangNap: false }
+  }
+  if (trangThai === "cancelled") {
+    return { nhan: { label: "ĐÃ HUỶ", tone: "huy" }, luuNhap: false, daGhiNhan: false, daHuy: true, dangNap: false }
+  }
+  return {
+    nhan: { label: loai === "nhap" ? "ĐÃ NHẬP KHO" : "ĐÃ XUẤT KHO", tone: "da-kho" },
+    luuNhap: false,
+    daGhiNhan: true,
+    daHuy: false,
+    dangNap: false,
+  }
+}
 
 /* ==================================================================
  * §8.1 — LÔ & HSD KHI NHẬP: MÁY CHỦ TỰ SINH

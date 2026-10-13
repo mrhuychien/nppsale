@@ -109,6 +109,14 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
   Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
+### Tờ in hoá đơn: hàng đổi / hàng trả
+Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.
+- Tờ in hoá đơn (POS `/in/hoa-don`, màn quản lý, Excel "như mẫu in") in **mọi dòng đổi / trả của phiếu đã trừ vào tờ**
+  (`creditCounted`) — kể cả hoá đơn chỉ có hàng đổi (trừ 0đ) và hoá đơn **đã phát hành HĐĐT**. Một luật:
+  `hangDoiTraTrenBanIn` (`src/lib/orders/invoice-credit.ts`). Phiếu nháp / đã huỷ không in.
+- "Tổng cộng" giữ tiền hoá đơn; "Trừ hàng trả" / "Còn phải thu" là dòng thêm khi có trừ. Dòng đổi xuất đi (0đ) vẫn bỏ
+  khỏi bảng hàng — món đổi hiện ở dòng "(Hàng đổi) … không trừ".
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

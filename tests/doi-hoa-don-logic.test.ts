@@ -17,7 +17,7 @@ import {
   seedForNew, seedForReissue, toDraft, toDraftCoGiam, rowsOverOrdered, patchRowFromCart, rowToCartLine, withStock,
   type EditorRow,
 } from "@/lib/orders/invoice-editor"
-import { creditCounted, creditOnInvoice, netDueOnInvoice, showCreditOnPrint } from "@/lib/orders/invoice-credit"
+import { creditCounted, creditOnInvoice, hangDoiTraTrenBanIn, netDueOnInvoice } from "@/lib/orders/invoice-credit"
 import { gopCongNoCuaDon, gopCongNoTheoDon } from "@/lib/orders/receivable-sum"
 import { duocDanhDauSoan } from "@/lib/orders/soan-hang-loc"
 import { duocSoanHang, loiLuotSoan } from "@/lib/orders/luot-soan"
@@ -282,10 +282,11 @@ describe("invoice-credit — bản sao luật _wf2b_recompute_receivable", () =>
     expect(c).toBe(25000)
     expect(netDueOnInvoice(10000, c)).toBe(-15000)
   })
-  it("in khoản trừ chỉ khi > 0 và chưa phát hành HĐ điện tử", () => {
-    expect(showCreditOnPrint({ credit: 15000, eInvoiceIssued: false })).toBe(true)
-    expect(showCreditOnPrint({ credit: 15000, eInvoiceIssued: true })).toBe(false)
-    expect(showCreditOnPrint({ credit: 0, eInvoiceIssued: false })).toBe(false)
+  it("tờ in: khoản trừ = khoản trừ của sổ; phiếu chỉ có hàng đổi (trừ 0) vẫn in dòng đổi (chủ nhà 13/10/2026)", () => {
+    const doi = { id: "l1", unit_name: "gói", quantity: 1, unit_price: 5000, line_total: 5000, is_exchange: true, product: { name: "Mì" } }
+    const r = hangDoiTraTrenBanIn([{ id: "r1", status: "submitted", credit_with_invoice: true, credit_note_amount: 0, lines: [doi] }])
+    expect(r.credit).toBe(0)
+    expect(r.lines).toEqual([{ id: "l1", name: "Mì", unitName: "gói", quantity: 1, unitPrice: 5000, credit: 0, isExchange: true }])
   })
   it("luật trừ hai nhánh trong SQL hiện hành vẫn đúng như bản sao TS", () => {
     const mig = readFileSync(join(__dirname, "../supabase/migrations/200_phieu_tra_hoan_thanh_gan_hd.sql"), "utf8")

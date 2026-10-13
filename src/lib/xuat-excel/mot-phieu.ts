@@ -14,7 +14,7 @@ import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import { loadOrgHeader } from "@/lib/org/header"
 import { invoiceAddressOf, type CustomerAddressParts } from "@/lib/customers/address"
 import { docGioSuaCuoi, gioSuaCuoi, mocInPhieuTra, ngayChungTu } from "@/lib/printing/doc-stamp"
-import { creditCounted, creditOnInvoice, showCreditOnPrint, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
+import { hangDoiTraTrenBanIn, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { RECEIPT_ZONES } from "@/lib/purchasing/receipt-form"
@@ -152,7 +152,6 @@ const dongBan = (l: R): SalesInvoiceLine => ({
   note: (l.note as string | null) ?? null,
 })
 
-type PhieuTraCuaDon = InvoiceReturnRow & { credit_note_amount?: number | null; credit_with_invoice?: boolean | null }
 const dongTraIn = (r: { lines?: R[] | null }): SalesInvoiceReturnLine[] =>
   (r.lines ?? []).map((l) => ({
     id: chu(l.id),
@@ -169,18 +168,13 @@ async function mauCua(sb: SupabaseClient, loai: LoaiPhieuXuat, id: string, p: R,
   switch (loai) {
     /* ---------------------------------------------------------------- Hóa đơn bán — như /sales-invoices/[id]/print */
     case "hoa-don": {
-      const [lines, ret, eInv] = await Promise.all([
+      const [lines, ret] = await Promise.all([
         napDongMot<R>(sb, "hoa-don", id),
         sb.from("returns").select(CHON_TRA_KEM).eq("invoice_id", id),
-        sb.from("invoices").select("misa_inv_no").eq("sales_invoice_id", id)
-          .order("misa_inv_no", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ])
       if (ret.error) throw new Error(`Không đọc được phiếu trả của hóa đơn: ${ret.error.message}`)
-      /* Như màn in: không đọc được tờ điện tử thì coi như chưa phát hành (bảng / cột cũ có thể chưa có). */
-      const daPhatHanh = !eInv.error && !!(eInv.data as { misa_inv_no?: string | null } | null)?.misa_inv_no
-      const tra = (ret.data ?? []) as unknown as PhieuTraCuaDon[]
-      const credit = creditOnInvoice(tra)
-      const inTru = showCreditOnPrint({ credit, eInvoiceIssued: daPhatHanh }) ? credit : 0
+      /* Như màn in — luật chung `hangDoiTraTrenBanIn` (in cả hàng đổi trừ 0đ, cả hóa đơn đã phát hành HĐĐT). */
+      const doiTra = hangDoiTraTrenBanIn((ret.data ?? []) as unknown as InvoiceReturnRow[])
       const kh = (p.customer ?? {}) as CustomerAddressParts & { store_name?: string | null; billing_name?: string | null; phone?: string | null }
       const nv = p.sales_user as Ten
       const ma = chu(p.invoice_code)
@@ -202,8 +196,8 @@ async function mauCua(sb: SupabaseClient, loai: LoaiPhieuXuat, id: string, p: R,
           lines: lines.filter((l) => !l.is_exchange).map(dongBan),
           total: so(p.total),
           giamDon: p.subtotal == null ? 0 : giamCuaHoaDon(lines as never, p.subtotal as number),
-          traHang: inTru,
-          dongTra: inTru ? tra.filter(creditCounted).flatMap((r) => dongTraIn(r as unknown as { lines?: R[] })) : [],
+          traHang: doiTra.credit,
+          dongTra: doiTra.lines,
           ghiChu: [{ label: "Ghi chú hóa đơn", text: p.notes as string | null }],
           chanTrai:
             p.status === "posted"

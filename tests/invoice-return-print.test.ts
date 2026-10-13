@@ -80,12 +80,13 @@ describe("mẫu in ghi rõ hàng đổi / hàng trả", () => {
   })
 
   /**
-   * ⚠ CÙNG MỘT CÁI CỔNG VỚI KHOẢN TRỪ. Hóa đơn đã phát hành điện tử thì
-   * tờ in phải khớp từng dòng với tờ đã gửi cơ quan thuế.
+   * ⚠ CHỦ NHÀ 13/10/2026: "mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn" — dòng đổi / trả không còn
+   *   đi sau cổng "tiền trừ > 0" hay "chưa phát hành HĐĐT"; một luật `hangDoiTraTrenBanIn` (lọc `creditCounted`).
    */
-  it("hóa đơn điện tử đã phát hành thì không in thêm dòng nào", () => {
-    expect(PRINT_PAGE).toContain("const printReturnLines: SalesInvoiceReturnLine[] = printCredit")
-    expect(PRINT_PAGE).toContain("invReturns.filter(creditCounted)")
+  it("dòng đổi / trả in theo luật chung, không qua cổng tiền trừ / HĐĐT", () => {
+    expect(PRINT_PAGE).toContain("const doiTra = hangDoiTraTrenBanIn(invReturns)")
+    expect(PRINT_PAGE).toContain("returnLines={doiTra.lines}")
+    expect(PRINT_PAGE).not.toContain("printCredit")
   })
 })
 

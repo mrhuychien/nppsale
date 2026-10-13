@@ -21,13 +21,9 @@ import { PageHeader } from "@/components/ui/page-header"
 import { PrintButton, moHopThoaiIn } from "@/components/ui/print-button"
 import { useLeaveAfterPrint } from "@/hooks/use-leave-after-print"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
-import {
-  creditOnInvoice, creditCounted, showCreditOnPrint, type InvoiceReturnRow,
-} from "@/lib/orders/invoice-credit"
+import { hangDoiTraTrenBanIn, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  SalesInvoice, type SalesInvoiceLine, type SalesInvoiceReturnLine,
-} from "@/components/printing/sales-invoice"
+import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
 import { ngayChungTu } from "@/lib/printing/doc-stamp"
 
@@ -87,18 +83,12 @@ export default function SalesInvoicePrintPage() {
   const [inv, setInv] = useState<InvoiceRow | null>(null)
   const [lines, setLines] = useState<LineRow[]>([])
   const [invReturns, setInvReturns] = useState<InvoiceReturnRow[]>([])
-  /**
-   * ⚠ ĐÃ PHÁT HÀNH HÓA ĐƠN ĐIỆN TỬ THÌ TỜ IN KHÔNG ĐƯỢC ĐỔI SỐ. Nó phải
-   *   khớp từng con số với tờ đã gửi cơ quan thuế; thêm dòng trừ là hai
-   *   tờ cùng một số hóa đơn mang hai con số khác nhau.
-   */
-  const [eInvoiceIssued, setEInvoiceIssued] = useState(false)
   const [org, setOrg] = useState<OrgHeader>(EMPTY_ORG_HEADER)
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [invRes, lineRes, retRes, eRes] = await Promise.all([
+    const [invRes, lineRes, retRes] = await Promise.all([
       supabase
         .from("sales_invoices")
         .select(
@@ -118,18 +108,6 @@ export default function SalesInvoicePrintPage() {
             "lines:return_lines(id, unit_name, quantity, unit_price, line_total, is_exchange, product:products(name))"
         )
         .eq("invoice_id", id),
-      supabase
-        .from("invoices")
-        .select("misa_inv_no")
-        .eq("sales_invoice_id", id)
-        /* ⚠ `sales_invoice_id` KHÔNG UNIQUE — hai lượt phát hành chạy đua
-           sinh hai dòng, và `.maybeSingle()` trên hai dòng là PGRST116 →
-           màn báo "chưa có hoá đơn điện tử". Lấy tờ ĐÃ CÓ SỐ trước, rồi
-           tờ mới nhất. */
-        .order("misa_inv_no", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
     ])
     if (invRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", invRes.error.message)
     if (lineRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", lineRes.error.message)
@@ -139,7 +117,6 @@ export default function SalesInvoicePrintPage() {
     setLines(((lineRes.data as unknown) as LineRow[]) || [])
     if (retRes.error) console.error("[sales-invoices/print] truy vấn lỗi:", retRes.error.message)
     setInvReturns(((retRes.data as unknown) as InvoiceReturnRow[]) || [])
-    setEInvoiceIssued(!!(eRes.data as { misa_inv_no?: string | null } | null)?.misa_inv_no)
 
     if (row?.org_id) {
       /**
@@ -200,42 +177,13 @@ export default function SalesInvoicePrintPage() {
   }
 
   /**
-   * ⚠ CHỦ NHÀ CHỐT HIỆN TRÊN BẢN IN, nhưng chốt đó dừng ở hóa đơn ĐÃ
-   *   PHÁT HÀNH ĐIỆN TỬ: tờ in khi đó phải khớp từng con số với tờ đã
-   *   gửi cơ quan thuế.
-   */
-  const printCredit = showCreditOnPrint({
-    credit: creditOnInvoice(invReturns),
-    eInvoiceIssued,
-  })
-    ? creditOnInvoice(invReturns)
-    : 0
-
-  /**
-   * Dòng hàng đổi / trả in kèm.
+   * Hàng đổi / trả in kèm + khoản trừ — luật chung `hangDoiTraTrenBanIn` (cùng tệp Excel "như mẫu in").
    *
-   * ⚠ CÙNG MỘT CÁI CỔNG VỚI KHOẢN TRỪ (`showCreditOnPrint`). Hóa đơn đã
-   *   phát hành điện tử thì tờ in phải khớp từng dòng với tờ đã gửi cơ
-   *   quan thuế — in thêm mấy dòng hàng trả là hai tờ cùng một số hóa đơn
-   *   mà nội dung khác nhau.
-   *
-   * ⚠ CHỈ PHIẾU ĐÃ TRỪ VÀO CÔNG NỢ. `creditCounted` là luật chung với sổ;
-   *   in dòng trừ của một phiếu chưa trừ là tờ giấy nói khách phải trả ít
-   *   hơn số đang ghi nợ.
+   * ⚠ CHỦ NHÀ 13/10/2026: "mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn". In MỌI dòng của phiếu
+   *   đã trừ vào tờ này — kể cả hoá đơn chỉ có hàng đổi (trừ 0đ) và hoá đơn đã phát hành HĐĐT. Phiếu nháp / đã huỷ
+   *   không in (`creditCounted` — luật chung với sổ).
    */
-  const printReturnLines: SalesInvoiceReturnLine[] = printCredit
-    ? invReturns.filter(creditCounted).flatMap((r) =>
-        (r.lines ?? []).map((l) => ({
-          id: l.id,
-          name: l.product?.name || "Sản phẩm đã xoá",
-          unitName: l.unit_name,
-          quantity: Number(l.quantity) || 0,
-          unitPrice: Number(l.unit_price) || 0,
-          credit: l.is_exchange ? 0 : Math.max(0, Number(l.line_total || 0)),
-          isExchange: l.is_exchange === true,
-        }))
-      )
-    : []
+  const doiTra = hangDoiTraTrenBanIn(invReturns)
 
   /**
    * ⚠ BỎ DÒNG HÀNG ĐỔI XUẤT ĐI (chủ nhà chốt). `get_invoiceable_lines`
@@ -307,8 +255,8 @@ export default function SalesInvoicePrintPage() {
           total={Number(inv.total) || 0}
           /* ⚠ GIẢM GIÁ CẢ ĐƠN (mig 183) — in đúng dòng "Chiết khấu hóa đơn". */
           invoiceDiscount={inv.subtotal == null ? 0 : giamCuaHoaDon(lines, inv.subtotal)}
-          returnCredit={printCredit}
-          returnLines={printReturnLines}
+          returnCredit={doiTra.credit}
+          returnLines={doiTra.lines}
           footerNote={
             inv.status === "posted"
               ? inv.order?.order_code

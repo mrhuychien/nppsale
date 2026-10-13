@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import {
-  creditOnInvoice, creditCounted, netDueOnInvoice, showCreditOnPrint,
+  creditOnInvoice, creditCounted, hangDoiTraTrenBanIn, netDueOnInvoice,
   type InvoiceReturnRow,
 } from "../src/lib/orders/invoice-credit"
 
@@ -117,19 +117,44 @@ describe("còn phải thu", () => {
 
 describe("bản in", () => {
   /**
-   * ⚠ ĐÃ PHÁT HÀNH HÓA ĐƠN ĐIỆN TỬ THÌ KHÔNG IN DÒNG TRỪ. Tờ in phải
-   * khớp từng con số với tờ đã gửi cơ quan thuế; thêm một dòng là hai tờ
-   * cùng một số hóa đơn mang hai con số khác nhau. Chủ nhà chốt hiện
-   * trên bản in, nhưng chốt đó dừng lại ở đây.
+   * ⚠ CHỦ NHÀ 13/10/2026: "mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn". Tờ in hóa đơn in MỌI dòng
+   *   đổi / trả của phiếu đã trừ vào tờ — luật `creditCounted` của sổ. Bỏ hai cổng cũ: "tiền trừ > 0" (hóa đơn chỉ có
+   *   hàng đổi mất sạch món đổi) và "đã phát hành HĐĐT thì không in" (không phải chủ nhà chốt).
    */
-  it("hóa đơn đã phát hành điện tử thì không in dòng trừ", () => {
-    expect(showCreditOnPrint({ credit: 800_000, eInvoiceIssued: true })).toBe(false)
-    expect(showCreditOnPrint({ credit: 800_000, eInvoiceIssued: false })).toBe(true)
+  const dong = (id: string, isExchange: boolean, lineTotal: number) => ({
+    id, unit_name: "hộp", quantity: 1, unit_price: lineTotal, line_total: lineTotal, is_exchange: isExchange,
+    product: { name: `Hàng ${id}` },
+  })
+  const phieu = (o: Partial<InvoiceReturnRow>): InvoiceReturnRow =>
+    ({ id: "r", status: "submitted", credit_with_invoice: true, credit_note_amount: 0, lines: [], ...o })
+
+  it("phiếu chỉ có hàng ĐỔI (trừ 0đ) vẫn in dòng đổi, khoản trừ 0", () => {
+    const r = hangDoiTraTrenBanIn([phieu({ lines: [dong("d1", true, 5_000)] })])
+    expect(r.credit).toBe(0)
+    expect(r.lines).toEqual([{ id: "d1", name: "Hàng d1", unitName: "hộp", quantity: 1, unitPrice: 5_000, credit: 0, isExchange: true }])
   })
 
-  /** ⚠ In "Trừ hàng trả: 0" là thêm một dòng không nói gì vào tờ giấy đã chật. */
-  it("không có khoản trừ thì không in", () => {
-    expect(showCreditOnPrint({ credit: 0, eInvoiceIssued: false })).toBe(false)
+  it("khoản trừ = khoản trừ của sổ (credit_note_amount); dòng trả mang tiền trừ, dòng đổi 0", () => {
+    const r = hangDoiTraTrenBanIn([phieu({ credit_note_amount: 40_000, lines: [dong("t1", false, 40_000), dong("d1", true, 5_000)] })])
+    expect(r.credit).toBe(40_000)
+    expect(r.lines.map((l) => [l.id, l.credit, l.isExchange])).toEqual([["t1", 40_000, false], ["d1", 0, true]])
+  })
+
+  it("chỉ phiếu ĐÃ trừ vào hóa đơn: tự lập còn Nháp, phiếu đã huỷ không in; tự lập hoàn thành thì in", () => {
+    const r = hangDoiTraTrenBanIn([
+      phieu({ id: "nhap", status: "draft", credit_with_invoice: false, credit_note_amount: 20_000, lines: [dong("n1", false, 20_000)] }),
+      phieu({ id: "huy", status: "cancelled", lines: [dong("h1", true, 5_000)] }),
+      phieu({ id: "cho-tu-lap", status: "submitted", credit_with_invoice: false, credit_note_amount: 7_000, lines: [dong("c1", false, 7_000)] }),
+      phieu({ id: "xong", status: "completed", credit_with_invoice: false, credit_note_amount: 20_000, lines: [dong("x1", false, 20_000)] }),
+    ])
+    expect(r.lines.map((l) => l.id)).toEqual(["x1"])
+    expect(r.credit).toBe(20_000)
+  })
+
+  it("sản phẩm đã xoá vẫn có tên trên giấy; dòng trả âm không thành tiền cộng", () => {
+    const r = hangDoiTraTrenBanIn([phieu({ lines: [{ ...dong("x", false, -3_000), product: null }] })])
+    expect(r.lines[0].name).toBe("Sản phẩm đã xoá")
+    expect(r.lines[0].credit).toBe(0)
   })
 })
 
@@ -173,8 +198,10 @@ describe("mẫu in và màn chi tiết", () => {
     expect(/creditOnInvoice\s*\(/.test(DETAIL), "tự cộng lần thứ hai").toBe(false)
   })
 
-  it("màn in đi qua showCreditOnPrint, không tự quyết", () => {
-    expect(PRINT_PAGE).toContain("showCreditOnPrint({")
-    expect(PRINT_PAGE).toContain("eInvoiceIssued,")
+  it("màn in đi qua hangDoiTraTrenBanIn, không tự quyết; không còn cổng HĐĐT", () => {
+    expect(PRINT_PAGE).toContain("const doiTra = hangDoiTraTrenBanIn(invReturns)")
+    expect(PRINT_PAGE).toContain("returnCredit={doiTra.credit}")
+    expect(PRINT_PAGE).toContain("returnLines={doiTra.lines}")
+    expect(PRINT_PAGE).not.toMatch(/eInvoiceIssued|misa_inv_no/)
   })
 })

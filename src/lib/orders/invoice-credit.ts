@@ -97,20 +97,44 @@ export function netDueOnInvoice(total: number, credit: number): number {
   return Number(total || 0) - Number(credit || 0)
 }
 
-/**
- * Bản IN có được hiện khoản trừ không.
- *
- * ⚠ ĐÃ PHÁT HÀNH HÓA ĐƠN ĐIỆN TỬ THÌ KHÔNG. Tờ in khi đó phải khớp từng
- * con số với tờ đã gửi cơ quan thuế; thêm một dòng trừ là hai tờ cùng
- * một số hóa đơn mang hai con số khác nhau. Chủ nhà đã chốt hiện trên
- * bản in, nhưng chốt đó dừng lại ở đây.
- *
- * ⚠ KHÔNG CÓ KHOẢN TRỪ THÌ CŨNG KHÔNG. In "Trừ hàng trả: 0" là thêm một
- * dòng không nói gì vào một tờ giấy vốn đã chật.
- */
-export function showCreditOnPrint(opts: {
+/** Một dòng hàng đổi / trả trên tờ in hóa đơn (cùng hình `SalesInvoiceReturnLine` của khuôn in). */
+export interface DongDoiTraIn {
+  id: string
+  name: string
+  unitName: string
+  quantity: number
+  unitPrice: number
+  /** Tiền trừ vào hóa đơn — dòng ĐỔI luôn 0 (đổi hàng không trừ tiền). */
   credit: number
-  eInvoiceIssued: boolean
-}): boolean {
-  return opts.credit > 0 && !opts.eInvoiceIssued
+  isExchange: boolean
+}
+
+/**
+ * KHỐI HÀNG ĐỔI / TRẢ CỦA TỜ IN HÓA ĐƠN — một luật cho tờ in (POS `/in/hoa-don` lẫn màn quản lý) và tệp Excel
+ * "như mẫu in" (`lib/xuat-excel/mot-phieu.ts`).
+ *
+ * ⚠ CHỦ NHÀ 13/10/2026: "Kiểm tra cho tao mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn".
+ *   - In MỌI dòng của phiếu ĐÃ trừ vào tờ này (`creditCounted`), kể cả phiếu chỉ có hàng ĐỔI (trừ 0đ). Bản cũ chỉ
+ *     in khi tiền trừ > 0, mà dòng đổi xuất đi (0đ) lại bị bỏ khỏi bảng hàng — món đổi biến mất khỏi tờ giấy.
+ *   - KHÔNG còn cổng "đã phát hành HĐĐT thì không in". "Tổng cộng" vẫn là tiền hóa đơn (khớp HĐĐT); hàng đổi / trả,
+ *     "Trừ hàng trả", "Còn phải thu" là các dòng THÊM ở dưới — đúng như sổ công nợ tính.
+ *   - Phiếu chưa trừ (tự lập còn Nháp) / đã huỷ: không in — tờ giấy không hứa trừ một khoản sổ không trừ.
+ *
+ * `credit` = khoản trừ của sổ (`creditOnInvoice`); 0 thì khuôn in tự bỏ hai dòng "Trừ hàng trả" / "Còn phải thu".
+ */
+export function hangDoiTraTrenBanIn(returns: readonly InvoiceReturnRow[]): { credit: number; lines: DongDoiTraIn[] } {
+  return {
+    credit: creditOnInvoice(returns),
+    lines: returns.filter(creditCounted).flatMap((r) =>
+      (r.lines ?? []).map((l) => ({
+        id: l.id,
+        name: l.product?.name || "Sản phẩm đã xoá",
+        unitName: l.unit_name,
+        quantity: Number(l.quantity) || 0,
+        unitPrice: Number(l.unit_price) || 0,
+        credit: l.is_exchange ? 0 : Math.max(0, Number(l.line_total || 0)),
+        isExchange: l.is_exchange === true,
+      }))
+    ),
+  }
 }

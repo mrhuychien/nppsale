@@ -176,15 +176,36 @@ describe("xuatMotPhieu — đọc đúng một phiếu, ra tờ như mẫu in", 
     expect(coChu(g, /^Theo đơn DH-9$/)).toBe(true)
   })
 
-  it("Hóa đơn đã phát hành điện tử: tờ không đổi số — không in trừ hàng trả", async () => {
-    const { sb } = soGia({
+  /* Chủ nhà 13/10/2026: "mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn" — tệp Excel như tờ in. */
+  it("Hóa đơn đã phát hành HĐĐT vẫn in hàng trả, Trừ hàng trả, Còn phải thu; Tổng cộng giữ tiền hoá đơn", async () => {
+    const { sb, goi } = soGia({
       sales_invoices: [{ id: "hd", invoice_code: "HD-2", invoice_date: "2026-10-02", status: "posted", total: 900000 }],
       sales_invoice_lines: [{ id: "x1", invoice_id: "hd", unit_name: "thùng", quantity: 2, unit_price: 450000, line_total: 900000, product: SUA }],
-      returns: [{ id: "t1", invoice_id: "hd", status: "completed", credit_with_invoice: true, credit_note_amount: 200000, lines: [] }],
+      returns: [{ id: "t1", invoice_id: "hd", status: "completed", credit_with_invoice: true, credit_note_amount: 200000, lines: [{ id: "rl", unit_name: "hộp", quantity: 5, unit_price: 40000, line_total: 200000, product: { name: "Sữa hộp" } }] }],
       invoices: [{ sales_invoice_id: "hd", misa_inv_no: "0000123" }],
     })
     const g = luoi((await xuatMotPhieu(sb, "hoa-don", "hd")).sheets[0])
-    expect(dongCo(g, "Còn phải thu")).toEqual([])
+    expect(coChu(g, /^\(Hàng trả\) Sữa hộp$/)).toBe(true)
+    expect(dongCo(g, "Tổng cộng").slice(-1)).toEqual([900000])
+    expect(dongCo(g, "Trừ hàng trả").slice(-1)).toEqual([-200000])
+    expect(dongCo(g, "Còn phải thu").slice(-1)).toEqual([700000])
+    expect(coChu(g, /^Bằng chữ: Bảy trăm nghìn đồng$/)).toBe(true)
+    expect(goi.map((x) => x.bang), "không còn hỏi bảng HĐĐT để chặn in").not.toContain("invoices")
+  })
+
+  it("Hóa đơn chỉ có hàng ĐỔI (trừ 0đ): vẫn có dòng (Hàng đổi) … không trừ, không có dòng trừ tiền", async () => {
+    const { sb } = soGia({
+      sales_invoices: [{ id: "hd", invoice_code: "HD-4", invoice_date: "2026-10-02", status: "posted", total: 900000 }],
+      sales_invoice_lines: [
+        { id: "x1", invoice_id: "hd", unit_name: "thùng", quantity: 2, unit_price: 450000, line_total: 900000, product: SUA },
+        { id: "x2", invoice_id: "hd", unit_name: "gói", quantity: 1, unit_price: 0, line_total: 0, is_exchange: true, product: { sku: "MI1", name: "Mì tôm" } },
+      ],
+      returns: [{ id: "t1", invoice_id: "hd", status: "submitted", credit_with_invoice: true, credit_note_amount: 0, lines: [{ id: "rl", unit_name: "gói", quantity: 1, unit_price: 5000, line_total: 5000, is_exchange: true, product: { name: "Mì tôm" } }] }],
+    })
+    const g = luoi((await xuatMotPhieu(sb, "hoa-don", "hd")).sheets[0])
+    const doi = g.find((r) => r.some((x) => x === "(Hàng đổi) Mì tôm")) ?? []
+    expect(doi, "mất dòng hàng đổi").toEqual([2, "(Hàng đổi) Mì tôm", "gói", 1, 5000, "", "không trừ"])
+    expect(dongCo(g, "Trừ hàng trả")).toEqual([])
     expect(coChu(g, /^Bằng chữ: Chín trăm nghìn đồng$/)).toBe(true)
   })
 

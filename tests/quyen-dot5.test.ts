@@ -144,9 +144,10 @@ describe("đọc một dòng từ cột không unique", () => {
    *   `invoices.sales_invoice_id` và phân công chính của khách đều có thể
    *   nhiều dòng; phải thu về đúng một dòng trước khi `.maybeSingle()`.
    */
+  /* Trang in hoá đơn không còn đọc HĐĐT (chủ nhà 13/10/2026: in hàng đổi / trả cả khi đã phát hành) — xem
+     tests/invoice-credit.test.ts "không còn cổng HĐĐT". */
   it.each([
     "src/app/(dashboard)/sales-invoices/[id]/page.tsx",
-    "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx",
     "src/components/pos/invoice-screen.tsx",
   ])("%s: hoá đơn điện tử lấy đúng một tờ", (p) => {
     const s = doc(p)

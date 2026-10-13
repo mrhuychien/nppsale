@@ -132,9 +132,8 @@ export interface SalesInvoiceProps {
    * giao — đó là thứ tờ hóa đơn chứng nhận. Khoản trừ và số còn phải thu
    * là HAI DÒNG THÊM ở dưới, đúng như sổ công nợ tính.
    *
-   * ⚠ NƠI GỌI TỰ QUYẾT CÓ TRUYỀN HAY KHÔNG (`showCreditOnPrint`): hóa
-   * đơn đã phát hành điện tử thì tờ in phải khớp từng con số với tờ đã
-   * gửi cơ quan thuế.
+   * Hóa đơn: nơi gọi lấy từ `hangDoiTraTrenBanIn` (luật chung với sổ). 0 thì
+   * không in hai dòng "Trừ hàng trả" / "Còn phải thu".
    */
   returnCredit?: number
   /**
@@ -145,8 +144,8 @@ export interface SalesInvoiceProps {
    * lại. Chúng đứng riêng và giải thích đúng con số ở dòng "Trừ hàng
    * trả" bên dưới — nhờ vậy mọi số trên giấy đều cộng ra được.
    *
-   * ⚠ NƠI GỌI TỰ QUYẾT CÓ TRUYỀN HAY KHÔNG. Hóa đơn đã phát hành điện tử
-   * thì tờ in phải khớp từng dòng với tờ đã gửi cơ quan thuế.
+   * ⚠ IN CẢ KHI KHÔNG TRỪ ĐỒNG NÀO (chủ nhà 13/10/2026: "không in ra hàng đổi và
+   * hàng trả hóa đơn") — hóa đơn chỉ có hàng đổi vẫn phải thấy món đổi trên giấy.
    */
   returnLines?: SalesInvoiceReturnLine[]
   /**

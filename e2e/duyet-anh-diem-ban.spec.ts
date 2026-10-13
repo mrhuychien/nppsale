@@ -241,10 +241,12 @@ test("màn Điểm bán cần cập nhật: tab Chờ duyệt cho người duy�
   await page.goto("/customers/missing-photos")
   await page.getByRole("button", { name: /Chờ duyệt/ }).click()
   const ds = page.getByTestId("ds-cho-duyet-anh")
-  await expect(ds).toContainText("Tạp hoá Cô Ba")
-  await expect(ds).toContainText("Chưa duyệt ảnh + vị trí")
-  await expect(ds).toContainText("Đại lý Minh")
-  await expect(ds).toContainText("1 yêu cầu đổi chờ duyệt")
+  // Nhãn đúng DÒNG: Cô Ba chưa duyệt; Minh đã duyệt, chỉ có yêu cầu đổi đang chờ.
+  const dong = (ten: string) => ds.locator(":scope > div").filter({ hasText: ten })
+  await expect(dong("Tạp hoá Cô Ba")).toContainText("Chưa duyệt ảnh + vị trí")
+  await expect(dong("Tạp hoá Cô Ba")).not.toContainText("yêu cầu đổi chờ duyệt")
+  await expect(dong("Đại lý Minh")).toContainText("1 yêu cầu đổi chờ duyệt")
+  await expect(dong("Đại lý Minh"), "đã duyệt — không gắn nhãn Chưa duyệt").not.toContainText("Chưa duyệt")
   await expect(ds.getByRole("link", { name: "Mở để duyệt" }).first()).toHaveAttribute("href", `/customers/${KHACH}`)
 
   await doiVai("sales")

@@ -103,11 +103,24 @@ export const LUA_CHON_PHUONG_XA = WARDS_HAI_PHONG.map((w) => ({
   keywords: w.replace(/^(Phường|Xã|Đặc khu)\s+/, ""),
 }))
 
+/** Một khách dò trùng ra (`search_customer_dupes` — thấy cả khách nhân viên khác phụ trách). */
+export interface KhachTrung {
+  id: string
+  store_name: string
+  owner_name?: string | null
+  phone?: string | null
+  address?: string | null
+  ward?: string | null
+  primary_user_name?: string | null
+  /** Người đang dùng đã được phân công khách này chưa (chưa → NVBH không mở được, phải nhận trước). */
+  has_my_assignment?: boolean | null
+}
+
 /** Khách đã có số này — báo lỗi tại chỗ, KHÔNG chuyển trang. */
 export class KhachDaCo extends Error {
   constructor(
     public readonly sdt: string,
-    public readonly khach: { id: string; store_name: string } | null
+    public readonly khach: KhachTrung | null
   ) {
     super(
       khach
@@ -125,13 +138,41 @@ export class KhachDaCo extends Error {
 export async function timKhachTrungSdt(
   sb: SupabaseClient,
   sdt: string
-): Promise<{ id: string; store_name: string } | null> {
+): Promise<KhachTrung | null> {
   const d = chuanHoaSdt(sdt)
   if (!laSdtHopLe(d)) return null
   const { data, error } = await sb.rpc("search_customer_dupes", { p_q: d })
   if (error) return null
-  const rows = (data as Array<{ id: string; store_name: string; phone: string | null }> | null) ?? []
+  const rows = (data as KhachTrung[] | null) ?? []
   return rows.find((r) => chuanHoaSdt(r.phone ?? "") === d) ?? null
+}
+
+/**
+ * NHÂN VIÊN NHẬN KHÁCH ĐÃ CÓ VÀO DANH SÁCH CỦA MÌNH — chủ nhà 06/06/2026: "Nếu KH đã tồn tại — kể cả do NV khác phụ
+ * trách — cho phép sale 'thêm vào danh sách của tôi' thay vì tạo trùng". Qua `claim_customer_for_me` (chỉ vai sales;
+ * chưa ai phụ trách chính → chính, có rồi → phụ). Xong thì làm cũ danh mục khách của /sell để khách hiện ngay.
+ */
+export async function nhanKhachVeDanhSach(
+  sb: SupabaseClient,
+  customerId: string
+): Promise<{ daCoSan: boolean; vaiTro: "primary" | "secondary" }> {
+  const { data, error } = await sb.rpc("claim_customer_for_me", { p_customer_id: customerId })
+  if (error) throw error
+  const b = (data ?? {}) as { status?: string; role?: string }
+  lamCuDanhMucBan()
+  xoaNhoNen("nen:khach")
+  return { daCoSan: b.status === "already_assigned", vaiTro: b.role === "secondary" ? "secondary" : "primary" }
+}
+
+/** Câu báo sau khi nhận khách. */
+export function cauNhanKhach(k: { daCoSan: boolean; vaiTro: "primary" | "secondary" }): string {
+  if (k.daCoSan) return "Khách đã trong danh sách của bạn"
+  return `Đã thêm vào danh sách của bạn (${k.vaiTro === "primary" ? "phụ trách chính" : "phụ trách phụ"})`
+}
+
+/** Khách dò trùng → khách cho ô chọn của phiếu (tạo nhanh: nhận xong chọn luôn vào phiếu đang làm). */
+export function khachChoPhieu(k: KhachTrung): KhachVuaTao {
+  return { id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? null, phone: k.phone ?? null, address: k.address ?? null, channel: null }
 }
 
 const laLoiTrung = (e: unknown) => {

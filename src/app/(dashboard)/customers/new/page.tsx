@@ -9,8 +9,9 @@ import { PageHeader } from "@/components/ui/page-header"
 import { CustomerForm } from "@/components/customers/customer-form"
 import { CustomerDupeFinder } from "@/components/customers/customer-dupe-finder"
 import { TaoKhachDienThoai } from "@/components/customers/tao-khach-dien-thoai"
+import { TimKhachTruocKhiTao } from "@/components/customers/tim-khach-truoc-khi-tao"
 import { Skeleton } from "@/components/ui/skeleton"
-import { sdtTuTimKiem } from "@/lib/customers/tao-khach"
+import { chuBanDauKhach, sdtTuTimKiem } from "@/lib/customers/tao-khach"
 import { Camera } from "lucide-react"
 
 /**
@@ -35,13 +36,48 @@ export default function NewCustomerPage() {
   const sdtTim = sdtTuTimKiem(params.get("sdt"))
   const [showForm, setShowForm] = useState(false)
   const [sdtDaTim, setSdtDaTim] = useState(sdtTim)
+  /** Điện thoại: chữ ở bước tìm khách đã có + chữ mang sang form (null = còn ở bước tìm). */
+  const [chuTim, setChuTim] = useState("")
+  const [mangSang, setMangSang] = useState<{ store_name: string; phone: string } | null>(null)
+  /** Tới bằng `?sdt=` thì vào thẳng form — cho tới khi bấm "Thêm khách khác". */
+  const [vaoThangForm, setVaoThangForm] = useState(!!sdtTim)
 
   const next = safeNext(params.get("next"))
 
   if (authLoading || loading || laMay === null) return <Skeleton className="h-96" />
 
-  /* Điện thoại: màn theo bản thiết kế 01/10/2026 — có kiểm trùng SĐT ngay khi gõ, nên đi thẳng vào form. */
-  if (laMay === false) return <TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} />
+  /*
+   * Điện thoại — như máy tính: TÌM KHÁCH ĐÃ CÓ trước rồi mới tạo (chủ nhà 14/10/2026: "mất phần tìm khách hàng đã có
+   * trước khi tạo rồi"). Tới bằng `?sdt=` (đã tìm số không ra, chủ nhà 01/10/2026) thì vào thẳng form, gán sẵn số —
+   * form vẫn dò trùng SĐT toàn đơn vị ngay khi có số. Lùi / Huỷ ở form thì về bước tìm, chữ đã gõ còn nguyên.
+   */
+  if (laMay === false) {
+    /* "Thêm khách khác" sau khi lưu: khách tiếp theo cũng tìm trước rồi mới tạo. */
+    const veBuocTim = () => { setVaoThangForm(false); setMangSang(null); setChuTim("") }
+    if (vaoThangForm) {
+      return <TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} onThemKhachKhac={veBuocTim} />
+    }
+    if (mangSang) {
+      return (
+        <TaoKhachDienThoai
+          groups={groups}
+          nextHref={next}
+          sdtBanDau={mangSang.phone}
+          tenBanDau={mangSang.store_name}
+          onHuy={() => setMangSang(null)}
+          onThemKhachKhac={veBuocTim}
+        />
+      )
+    }
+    return (
+      <TimKhachTruocKhiTao
+        chu={chuTim}
+        onChu={setChuTim}
+        onTaoMoi={(q) => setMangSang(chuBanDauKhach(q))}
+        backHref={next ?? "/customers"}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">

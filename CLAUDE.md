@@ -117,6 +117,16 @@ Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi
 - "Tổng cộng" giữ tiền hoá đơn; "Trừ hàng trả" / "Còn phải thu" là dòng thêm khi có trừ. Dòng đổi xuất đi (0đ) vẫn bỏ
   khỏi bảng hàng — món đổi hiện ở dòng "(Hàng đổi) … không trừ".
 
+### Thêm khách hàng: TÌM khách đã có trước khi tạo
+Chủ nhà 06/06/2026: *"trước khi NV sale thêm KH mới, cần check trùng (theo SĐT, địa chỉ, tên). Nếu KH đã tồn tại — kể
+cả do NV khác phụ trách — cho phép sale 'thêm vào danh sách của tôi' thay vì tạo trùng"*; 14/10/2026: *"…trên điện thoại
+của nhân viên mất phần tìm khách hàng đã có trước khi tạo rồi"*.
+- `/customers/new` máy tính **và điện thoại**: bước "Tìm khách hàng đã có" trước (`CustomerDupeFinder` /
+  `TimKhachTruocKhiTao`, một đường tìm `useDoTrungKhach` → `search_customer_dupes`, thấy cả khách NV khác). Tới bằng
+  `?sdt=` (đã tìm số không ra, chủ nhà 01/10/2026) thì vào thẳng form gán sẵn số. "Thêm khách khác" về bước tìm.
+- Nhận khách: `nhanKhachVeDanhSach` (`claim_customer_for_me`, chỉ vai sales). NVBH chưa nhận thì **không** đưa link
+  mở khách (RLS — trang trống). Form điện thoại trùng SĐT → nút "Thêm vào DS của tôi" (tạo nhanh: nhận xong chọn luôn).
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

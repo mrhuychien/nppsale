@@ -1,90 +1,44 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
+import { useDoTrungKhach } from "@/hooks/use-do-trung-khach"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Search, UserPlus, CheckCircle2, MapPin, Phone, User as UserIcon } from "lucide-react"
 import Link from "@/components/ui/link"
 import { errorMessage } from "@/lib/errors"
-
-interface DupeRow {
-  id: string
-  store_name: string
-  owner_name: string
-  phone: string
-  address: string | null
-  ward: string | null
-  primary_user_name: string | null
-  has_my_assignment: boolean
-}
+import { cauNhanKhach, nhanKhachVeDanhSach, type KhachTrung } from "@/lib/customers/tao-khach"
 
 interface CustomerDupeFinderProps {
   /** Gọi khi user khẳng định không trùng — tiếp tục tạo mới. */
   onConfirmCreateNew: (initialQuery: string) => void
 }
 
+/** Máy tính: tìm khách đã có trước khi tạo. Điện thoại: `TimKhachTruocKhiTao` — cùng `useDoTrungKhach`. */
 export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderProps) {
   const { user } = useAuth()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const { toast } = useToast()
 
   const [query, setQuery] = useState("")
-  const [debounced, setDebounced] = useState("")
-  const [searching, setSearching] = useState(false)
-  const [results, setResults] = useState<DupeRow[]>([])
+  const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan } = useDoTrungKhach(query)
   const [claimingId, setClaimingId] = useState<string | null>(null)
 
   const isSales = user?.role === "sales"
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 300)
-    return () => clearTimeout(t)
-  }, [query])
+    if (loi) toast({ title: "Lỗi tìm kiếm", description: loi, variant: "destructive" })
+  }, [loi]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    let cancelled = false
-    async function run() {
-      if (debounced.length < 2) {
-        setResults([])
-        return
-      }
-      setSearching(true)
-      const { data, error } = await supabase.rpc("search_customer_dupes", { p_q: debounced })
-      if (cancelled) return
-      if (error) {
-        toast({ title: "Lỗi tìm kiếm", description: error.message, variant: "destructive" })
-        setResults([])
-      } else {
-        setResults((data as DupeRow[]) || [])
-      }
-      setSearching(false)
-    }
-    run()
-    return () => { cancelled = true }
-  }, [debounced]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleClaim = async (row: DupeRow) => {
+  const handleClaim = async (row: KhachTrung) => {
     setClaimingId(row.id)
     try {
-      const { data, error } = await supabase.rpc("claim_customer_for_me", { p_customer_id: row.id })
-      if (error) throw error
-      const status = (data as { status?: string; role?: string } | null)?.status
-      const role = (data as { status?: string; role?: string } | null)?.role
-      if (status === "already_assigned") {
-        toast({ title: "Khách đã trong danh sách của bạn" })
-      } else if (status === "claimed") {
-        toast({
-          title: `Đã thêm vào danh sách (${role === "primary" ? "phụ trách chính" : "phụ trách phụ"})`,
-        })
-      }
-      // Refresh row state
-      setResults((prev) =>
-        prev.map((r) => (r.id === row.id ? { ...r, has_my_assignment: true } : r))
-      )
+      toast({ title: cauNhanKhach(await nhanKhachVeDanhSach(supabase, row.id)) })
+      daNhan(row.id)
     } catch (err) {
       toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {

@@ -124,7 +124,8 @@ describe("nối dây", () => {
   it("điện thoại vào màn mới, SĐT từ ?sdt=; máy tính gán SĐT vào form", () => {
     const s = read("src/app/(dashboard)/customers/new/page.tsx")
     expect(s).toContain('sdtTuTimKiem(params.get("sdt"))')
-    expect(s).toContain("<TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} />")
+    // ?sdt= vào thẳng form gán sẵn số; không có thì bước tìm khách đã có trước (chủ nhà 14/10/2026).
+    expect(s).toContain("<TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} onThemKhachKhac={veBuocTim} />")
     expect(s).toContain("initialPhone={sdtDaTim}")
   })
   it("tìm không ra → nút tạo khách mới kèm số (danh sách khách + chọn khách /sell)", () => {

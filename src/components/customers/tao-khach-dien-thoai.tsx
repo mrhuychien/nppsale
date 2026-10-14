@@ -23,8 +23,8 @@ import { useToast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 import { cn, formatCurrency } from "@/lib/utils"
 import {
-  KhachDaCo, LUA_CHON_PHUONG_XA, chuanHoaSdt, coLoi, dinhDangSdt, laSdtHopLe, loiKhachMoi, taoKhach,
-  timKhachTrungSdt, type KhachVuaTao, type LoiKhachMoi,
+  KhachDaCo, LUA_CHON_PHUONG_XA, cauNhanKhach, chuanHoaSdt, coLoi, dinhDangSdt, khachChoPhieu, laSdtHopLe, loiKhachMoi,
+  nhanKhachVeDanhSach, taoKhach, timKhachTrungSdt, type KhachVuaTao, type LoiKhachMoi,
 } from "@/lib/customers/tao-khach"
 import { TaoNhanhTuyen } from "@/components/tao-nhanh/tao-nhanh-tuyen"
 import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
@@ -56,7 +56,7 @@ function Phan({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-function O({ nhan, batBuoc, loi, children, phai }: { nhan: string; batBuoc?: boolean; loi?: string; children: React.ReactNode; phai?: React.ReactNode }) {
+function O({ nhan, batBuoc, loi, children, phai, sauLoi }: { nhan: string; batBuoc?: boolean; loi?: string; children: React.ReactNode; phai?: React.ReactNode; sauLoi?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <span className="flex items-center justify-between">
@@ -67,6 +67,7 @@ function O({ nhan, batBuoc, loi, children, phai }: { nhan: string; batBuoc?: boo
       </span>
       {children}
       {loi && <span className="text-xs text-destructive">{loi}</span>}
+      {sauLoi}
     </div>
   )
 }
@@ -102,6 +103,7 @@ export function TaoKhachDienThoai({
   tenBanDau,
   onDaTao,
   onHuy,
+  onThemKhachKhac,
 }: {
   groups: { id: string; name: string }[]
   /** Tạo xong quay về đây kèm `?picked=` (luồng bán hàng). */
@@ -112,8 +114,10 @@ export function TaoKhachDienThoai({
   tenBanDau?: string
   /** Tạo nhanh tại chỗ: tạo xong trả khách cho nơi gọi, KHÔNG chuyển trang / không hiện màn "Đã thêm". */
   onDaTao?: (khach: KhachVuaTao) => void
-  /** Nút Huỷ / lùi khi nằm trong khung tạo nhanh. */
+  /** Nút Huỷ / lùi khi nằm trong khung tạo nhanh — hoặc về bước tìm khách đã có (/customers/new). */
   onHuy?: () => void
+  /** "Thêm khách khác" sau khi lưu: về bước tìm khách đã có (chủ nhà 14/10/2026). Vắng = xoá form tại chỗ. */
+  onThemKhachKhac?: () => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -130,6 +134,7 @@ export function TaoKhachDienThoai({
   /** Khoá chống bấm 2 lần — state chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt qua `disabled`. */
   const khoa = useRef(false)
   const [trung, setTrung] = useState<KhachDaCo | null>(null)
+  const [dangNhan, setDangNhan] = useState(false)
   const [xong, setXong] = useState<{ id: string | null; ten: string; meta: string } | null>(null)
   const [tuyen, setTuyen] = useState<Array<{ code: string; name: string }>>([])
   /** Khung tạo nhanh tuyến đang mở (kèm chữ đã gõ ở ô tìm tuyến). */
@@ -162,6 +167,27 @@ export function TaoKhachDienThoai({
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((s) => ({ ...s, [k]: v }))
   const loi: LoiKhachMoi = daThu ? loiKhachMoi(f) : {}
   const loiSdt = trung?.message ?? loi.phone
+  /**
+   * Trùng số với khách NV khác phụ trách: NVBH không mở được khách ấy (RLS) — link "Mở khách" là ngõ cụt. Cho nhận
+   * vào danh sách (chủ nhà 06/06/2026: "thêm vào danh sách của tôi thay vì tạo trùng"); đang tạo nhanh trong phiếu
+   * thì nhận xong chọn luôn khách ấy vào phiếu.
+   */
+  const phaiNhan = !!trung?.khach && user?.role === "sales" && !trung.khach.has_my_assignment
+  const nhanKhachTrung = async () => {
+    const t = trung
+    const k = t?.khach
+    if (!t || !k || dangNhan) return
+    setDangNhan(true)
+    try {
+      toast({ title: cauNhanKhach(await nhanKhachVeDanhSach(supabase, k.id)) })
+      if (onDaTao) onDaTao(khachChoPhieu(k))
+      else setTrung(new KhachDaCo(t.sdt, { ...k, has_my_assignment: true }))
+    } catch (e) {
+      toast({ title: "Không thêm được vào danh sách", description: errorMessage(e), variant: "destructive" })
+    } finally {
+      setDangNhan(false)
+    }
+  }
 
   const dinhVi = () => {
     if (!navigator.geolocation) {
@@ -266,7 +292,10 @@ export function TaoKhachDienThoai({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => { setF({ ...RONG }); setVat(false); setMoBan(false); setDaThu(false); setGps(null); setXong(null) }}
+              onClick={() => {
+                if (onThemKhachKhac) return onThemKhachKhac()
+                setF({ ...RONG }); setVat(false); setMoBan(false); setDaThu(false); setGps(null); setXong(null)
+              }}
               className="h-12 rounded-[14px] border border-outline-variant/60 bg-card text-sm font-semibold"
             >
               Thêm khách khác
@@ -295,7 +324,34 @@ export function TaoKhachDienThoai({
           <O nhan="Tên chủ cửa hàng" batBuoc loi={loi.owner_name}>
             <input data-testid="tk-owner" value={f.owner_name} onChange={(e) => set("owner_name", e.target.value)} placeholder="VD: Nguyễn Thị Hai" className={oNhap(loi.owner_name)} />
           </O>
-          <O nhan="Số điện thoại" batBuoc loi={loiSdt}>
+          <O
+            nhan="Số điện thoại"
+            batBuoc
+            loi={loiSdt}
+            sauLoi={
+              trung?.khach &&
+              (phaiNhan ? (
+                <div className="flex flex-col gap-1.5">
+                  {trung.khach.primary_user_name && (
+                    <span className="text-xs text-muted-foreground">Phụ trách chính: {trung.khach.primary_user_name}</span>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="tk-nhan-khach-trung"
+                    onClick={nhanKhachTrung}
+                    disabled={dangNhan}
+                    className="h-10 rounded-xl bg-primary/10 text-sm font-semibold text-primary disabled:opacity-60"
+                  >
+                    {dangNhan ? "Đang thêm…" : onDaTao ? "Thêm vào DS của tôi và chọn khách này" : "Thêm vào DS của tôi"}
+                  </button>
+                </div>
+              ) : (
+                <Link href={`/customers/${trung.khach.id}`} className="text-xs font-semibold text-primary" data-testid="tk-mo-khach-trung">
+                  Mở khách {trung.khach.store_name} ›
+                </Link>
+              ))
+            }
+          >
             <input
               data-testid="tk-phone"
               inputMode="tel"
@@ -304,11 +360,6 @@ export function TaoKhachDienThoai({
               placeholder="0901 000 001"
               className={oNhap(loiSdt)}
             />
-            {trung?.khach && (
-              <Link href={`/customers/${trung.khach.id}`} className="text-xs font-semibold text-primary" data-testid="tk-mo-khach-trung">
-                Mở khách {trung.khach.store_name} ›
-              </Link>
-            )}
           </O>
         </Phan>
 

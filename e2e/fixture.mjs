@@ -439,14 +439,37 @@ export const rpc = {
     db.suppliers = db.suppliers.filter((x) => x.id !== p_id)
     return { ten: s.name, ma: s.code ?? null, mat_hang_da_xoa: xoa, mat_hang_ngung_ban: ngung, mat_hang_go: go }
   },
-  /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số) hoặc tên — màn thêm khách chặn tạo trùng số. */
-  search_customer_dupes: ({ p_q }, { db }) => {
+  /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số), địa chỉ hoặc tên — thấy cả khách NV khác phụ trách.
+     `has_my_assignment` / `primary_user_name` đọc từ `customer_assignments` như hàm thật. */
+  search_customer_dupes: ({ p_q }, { db, user }) => {
     const so = String(p_q ?? "").replace(/\D/g, "")
     const q = String(p_q ?? "").toLowerCase().trim()
     if (q.length < 2) return []
+    const pc = (cid) => (db.customer_assignments || []).filter((a) => a.customer_id === cid && (a.status ?? "active") === "active")
     return (db.customers || [])
-      .filter((c) => (so.length >= 3 && String(c.phone ?? "").replace(/\D/g, "").includes(so)) || String(c.store_name ?? "").toLowerCase().includes(q))
-      .map((c) => ({ id: c.id, store_name: c.store_name, owner_name: c.owner_name, phone: c.phone, address: c.address ?? null, ward: c.ward ?? null, primary_user_name: null, has_my_assignment: true }))
+      .filter((c) => (so.length >= 3 && String(c.phone ?? "").replace(/\D/g, "").includes(so)) ||
+        String(c.store_name ?? "").toLowerCase().includes(q) || String(c.address ?? "").toLowerCase().includes(q))
+      .map((c) => {
+        const chinh = pc(c.id).find((a) => a.role === "primary")
+        return {
+          id: c.id, store_name: c.store_name, owner_name: c.owner_name, phone: c.phone, address: c.address ?? null, ward: c.ward ?? null,
+          primary_user_name: chinh ? ((db.users || []).find((u) => u.id === chinh.user_id)?.full_name ?? null) : null,
+          has_my_assignment: !!user && pc(c.id).some((a) => a.user_id === user.id),
+        }
+      })
+  },
+  /* NVBH nhận khách đã có vào danh sách (mig 083): chỉ vai sales; chưa có phụ trách chính → chính, có rồi → phụ. */
+  claim_customer_for_me: ({ p_customer_id }, { db, newId, user }) => {
+    /* Vai đọc ở bảng users (e2e đổi vai bằng PATCH users), không ở tài khoản đăng nhập giả. */
+    const toi = (db.users || []).find((u) => u.id === user?.id)
+    if (toi?.role !== "sales") throw Object.assign(new Error("ONLY_SALES_CAN_CLAIM"), { code: "P0001" })
+    const ds = db.customer_assignments ?? (db.customer_assignments = [])
+    const cua = ds.filter((a) => a.customer_id === p_customer_id && (a.status ?? "active") === "active")
+    const daCo = cua.find((a) => a.user_id === toi.id)
+    if (daCo) return { status: "already_assigned", role: daCo.role }
+    const role = cua.some((a) => a.role === "primary") ? "secondary" : "primary"
+    ds.push({ id: newId(), customer_id: p_customer_id, user_id: toi.id, role, status: "active", org_id: toi.org_id })
+    return { status: "claimed", role }
   },
   bao_cao_so_ban: baoCaoSoBan,
   bao_cao_cong_no: baoCaoCongNo,

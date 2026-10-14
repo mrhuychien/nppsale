@@ -56,6 +56,11 @@ test("tìm SĐT không ra → tạo khách gán sẵn số; tuyến bắt buộc
   const ghi = await (await api(`customers?phone=eq.${SDT}&select=*`)).json()
   expect(ghi).toHaveLength(1)
   expect(ghi[0]).toMatchObject({ channel: "T2", ward: "Phường Hồng Bàng", store_name: "Tạp hoá Bà Hai" })
+
+  // "Thêm khách khác" → khách tiếp theo cũng TÌM trước rồi mới tạo (chủ nhà 14/10/2026).
+  await page.getByRole("button", { name: "Thêm khách khác" }).click()
+  await expect(page.getByTestId("tk-tim")).toHaveValue("")
+  await expect(page.getByTestId("tk-shop")).toHaveCount(0)
 })
 
 test("SĐT đã có khách → báo 'đã có khách hàng' tại chỗ, không ghi, không chuyển trang", async ({ page }) => {

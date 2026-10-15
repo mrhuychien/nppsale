@@ -814,4 +814,22 @@ SELECT 84, 'Mig 245 (Tìm khách đã có: chỉ đúng số điện thoại)',
        THEN 'CHƯA — chạy migration 245 (gõ tên / địa chỉ / số dở vẫn ra khách của nhân viên khác)'
        ELSE 'OK — đã vá' END,
   'Khách có SĐT: ' || (SELECT count(*) FROM customers WHERE coalesce(phone, '') <> '')
+UNION ALL
+-- 85. Mig 246 — bàn giao khách giữa nhân viên + hàng khách đã lấy (chủ nhà 15/10/2026: "Gán cho toàn bộ khách hàng của nv
+--     A cho nv B … dskh tuyến đó, đã lấy hàng gì, số lượng, hàng cty nào mà nv đó làm"). Thiếu dấu bàn giao thì nợ đã chuyển
+--     cho NV nhận quay về NV cũ ở lần sửa hoá đơn / trả hàng kế tiếp.
+SELECT 85, 'Mig 246 (Bàn giao khách + hàng khách đã lấy)',
+  CASE WHEN to_regprocedure('public.ban_giao_khach(uuid, text, text, uuid, text[], uuid[], date, uuid[], boolean, boolean)') IS NULL
+         OR to_regprocedure('public.hang_khach_da_lay(uuid, uuid[], date, text[])') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_schema = 'public' AND table_name = 'receivables' AND column_name = 'giao_tu_nv')
+         OR position('(mig 246)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 246 (chưa bàn giao khách hàng loạt; NV chưa xem được hàng khách đã lấy)'
+       ELSE 'OK — đã vá' END,
+  -- ⚠ Đếm qua query_to_xml: sổ chưa chạy 246 thì nhắc thẳng tên bảng / cột là cả tệp khám nổ ở bước phân tích.
+  CASE WHEN to_regclass('public.ban_giao_khach_log') IS NULL THEN 'Chưa có nhật ký bàn giao'
+       ELSE 'Lượt bàn giao: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.ban_giao_khach_log$q$, false, true, '')))[1]::text
+         || ' · khoản nợ mang dấu bàn giao: '
+         || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.receivables WHERE giao_tu_nv IS NOT NULL$q$, false, true, '')))[1]::text END
 ) t ORDER BY stt;

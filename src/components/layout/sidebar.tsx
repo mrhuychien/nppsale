@@ -15,7 +15,7 @@ import {
   Plus, HelpCircle, LogOut, LayoutDashboard, Home, Factory,
   ChevronRight, UserCog, ClipboardList, PackageCheck, Navigation, Wallet, Receipt,
   TrendingUp, FileBarChart2, ShieldCheck, FileSpreadsheet, Camera, Route, Store,
-  Tags,
+  Tags, ArrowRightLeft,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useAuth } from "@/hooks/use-auth"
@@ -57,6 +57,9 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Khách hàng", href: "/customers", icon: Users },
       { label: "Tuyến bán hàng", href: "/customers/routes", icon: Route },
       { label: "Điểm bán cần cập nhật", href: "/customers/missing-photos", icon: Camera },
+      /* Chủ nhà 15/10/2026 (mig 246): bàn giao khách giữa NV + "dskh tuyến đó, đã lấy hàng gì, số lượng". */
+      { label: "Bàn giao khách", href: "/customers/ban-giao", icon: ArrowRightLeft },
+      { label: "Hàng khách đã lấy", href: "/customers/hang-da-lay", icon: PackageSearch },
       { label: "Lịch sử đi tuyến", href: "/sales/visits", icon: Navigation },
       { label: "Khuyến mãi", href: "/promotions", icon: Tag },
     ],

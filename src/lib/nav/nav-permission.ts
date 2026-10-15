@@ -60,6 +60,10 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   "/customers": { module: "customers", feature: "customers" },
   "/customers/routes": { module: "customers", feature: "customers" },
   "/customers/missing-photos": { module: "customers", feature: "customers" },
+  /* Mig 246 — bàn giao khách (chủ / quản lý) + danh sách hàng khách đã lấy (ai xem khách cũng vào; máy chủ tự
+     giới hạn NVBH về khách + công ty của mình). */
+  "/customers/ban-giao": { module: "customers", feature: "customers.handover", action: "update" },
+  "/customers/hang-da-lay": { module: "customers", feature: "customers" },
   "/sales/visits": { module: "customers", feature: "customers.visits" },
   "/promotions": { module: "promotions", feature: "promotions" },
 

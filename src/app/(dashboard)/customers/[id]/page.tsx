@@ -47,6 +47,7 @@ import type { Customer, CustomerAssignment } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { traCuaKhach, traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { HangDaLayKhach } from "@/components/customers/hang-da-lay-khach"
 
 interface OrderRow {
   id: string
@@ -840,44 +841,52 @@ export default function CustomerDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-base">Sản phẩm hay lấy</CardTitle>
-                  <span className="text-xs font-semibold text-on-surface-variant">
-                    {/* ⚠ NÓI RÕ PHẠM VI. "Hay lấy" tính trên bấy nhiêu đơn
-                        gần nhất, không phải trên toàn bộ lịch sử. */}
-                    {allOrders.length > LINE_SCAN_ORDERS
-                      ? `Theo ${LINE_SCAN_ORDERS} đơn gần nhất`
-                      : `Theo ${allOrders.length} đơn`}
-                  </span>
-                </CardHeader>
-                <CardContent>
-                  {frequent.length === 0 ? (
-                    <p className="py-3 text-center text-sm text-muted-foreground">
-                      Chưa đủ đơn hàng để biết khách hay lấy gì
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {frequent.map((f) => (
-                        <div key={f.productId} className="flex items-center gap-3">
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-                            {f.name}
-                          </span>
-                          <span className="hidden h-2 w-32 shrink-0 overflow-hidden rounded-full bg-surface-container sm:block">
-                            <span
-                              className="block h-2 rounded-full bg-primary"
-                              style={{ width: `${f.pct}%` }}
-                            />
-                          </span>
-                          <span className="w-16 shrink-0 text-right text-xs font-bold text-on-surface-variant tabular-data">
-                            {f.orders} đơn
-                          </span>
+              {/* Chủ nhà 15/10/2026: "Khi họ muốn kiểm tra điểm bán sẽ có luôn … đã lấy hàng gì, số lượng, hàng cty nào
+                  mà nv đó làm" — theo hoá đơn (mig 246). Sổ chưa chạy 246 → khối "Sản phẩm hay lấy" cũ. */}
+              <HangDaLayKhach
+                customerId={customer.id}
+                laNv={laNvbh}
+                fallback={
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between gap-2">
+                      <CardTitle className="text-base">Sản phẩm hay lấy</CardTitle>
+                      <span className="text-xs font-semibold text-on-surface-variant">
+                        {/* ⚠ NÓI RÕ PHẠM VI. "Hay lấy" tính trên bấy nhiêu đơn
+                            gần nhất, không phải trên toàn bộ lịch sử. */}
+                        {allOrders.length > LINE_SCAN_ORDERS
+                          ? `Theo ${LINE_SCAN_ORDERS} đơn gần nhất`
+                          : `Theo ${allOrders.length} đơn`}
+                      </span>
+                    </CardHeader>
+                    <CardContent>
+                      {frequent.length === 0 ? (
+                        <p className="py-3 text-center text-sm text-muted-foreground">
+                          Chưa đủ đơn hàng để biết khách hay lấy gì
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {frequent.map((f) => (
+                            <div key={f.productId} className="flex items-center gap-3">
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                                {f.name}
+                              </span>
+                              <span className="hidden h-2 w-32 shrink-0 overflow-hidden rounded-full bg-surface-container sm:block">
+                                <span
+                                  className="block h-2 rounded-full bg-primary"
+                                  style={{ width: `${f.pct}%` }}
+                                />
+                              </span>
+                              <span className="w-16 shrink-0 text-right text-xs font-bold text-on-surface-variant tabular-data">
+                                {f.orders} đơn
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      )}
+                    </CardContent>
+                  </Card>
+                }
+              />
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">

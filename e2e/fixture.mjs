@@ -191,6 +191,155 @@ function invoiceableLines({ p_order_id }, { db }) {
     })
 }
 
+/* ---- Bàn giao khách + hàng khách đã lấy (mig 246) — cùng luật hàm thật ở mức màn cần. ---- */
+const loiP = (m) => Object.assign(new Error(m), { code: "P0001" })
+const pcCon = (db, cid) => (db.customer_assignments || []).filter((a) => a.customer_id === cid && (a.status ?? "active") === "active")
+const nvConLam = (db, uid) => { const u = (db.users || []).find((x) => x.id === uid); return !!u && u.is_active !== false && !u.left_at }
+const tuyenCua = (c) => (c.channel || "").trim() || "__chua_co_tuyen"
+/** Hệ số về đơn vị cơ sở như heSoQuyDoi: số chụp trên dòng trước, rồi danh mục `product_units`. */
+const heSoE2e = (db, pid, unit, chup) => {
+  if (Number(chup) > 0) return Number(chup)
+  const sp = (db.products || []).find((p) => p.id === pid)
+  if (!unit || unit === sp?.base_unit) return 1
+  const u = (db.product_units || []).find((x) => x.product_id === pid && x.unit_name === unit)
+  return Number(u?.conversion) > 0 ? Number(u.conversion) : 1
+}
+function banGiaoKhach(p, { db, newId, user }) {
+  const toi = (db.users || []).find((u) => u.id === user?.id)
+  if (!["owner", "manager"].includes(toi?.role)) throw loiP("KHONG_DU_QUYEN: chỉ Chủ NPP / Quản lý được bàn giao khách")
+  if (p.p_kieu === "chuyen" && p.p_nguon !== "nv") throw loiP("CHUYEN_CAN_NV_GIAO: chuyển hẳn chỉ làm được với khách của một nhân viên")
+  if (p.p_nguon === "nv" && !p.p_tu_nv) throw loiP("CHON_NV_GIAO: chọn nhân viên giao khách")
+  if (p.p_nguon === "nv" && p.p_tu_nv === p.p_den_nv) throw loiP("CUNG_MOT_NV: nhân viên giao và nhân viên nhận là một người")
+  const nhan = (db.users || []).find((u) => u.id === p.p_den_nv && u.role === "sales" && nvConLam(db, u.id))
+  if (!nhan) throw loiP("NV_NHAN_KHONG_HOP_LE: người nhận phải là nhân viên bán hàng đang làm")
+  const tuyen = p.p_tuyen || [], ncc = p.p_ncc || []
+  const daLayNcc = (cid) => (db.sales_invoices || []).some((i) => i.customer_id === cid && i.status === "posted"
+    && (!p.p_tu_ngay || i.invoice_date >= p.p_tu_ngay)
+    && (db.sales_invoice_lines || []).some((l) => l.invoice_id === i.id && !l.is_exchange
+      && ncc.includes((db.products || []).find((x) => x.id === l.product_id)?.primary_supplier_id)))
+  const khach = (db.customers || []).filter((c) => {
+    if (p.p_khach && !p.p_khach.includes(c.id)) return false
+    if (tuyen.length && !tuyen.includes(tuyenCua(c))) return false
+    if (ncc.length && !daLayNcc(c.id)) return false
+    if (p.p_nguon === "nv") return pcCon(db, c.id).some((a) => a.user_id === p.p_tu_nv)
+    if (p.p_nguon === "chua_ai") return !pcCon(db, c.id).some((a) => nvConLam(db, a.user_id))
+    return true
+  }).sort((a, b) => String(a.store_name).localeCompare(String(b.store_name)))
+  const tienNo = (ds) => ({ so: ds.length, tien: ds.reduce((t, r) => t + (Number(r.amount) || 0) - (Number(r.paid) || 0), 0) })
+  const rows = khach.map((c) => {
+    const pc = pcCon(db, c.id)
+    const vai_giao = pc.find((a) => a.user_id === p.p_tu_nv)?.role ?? null
+    const vai_nhan = pc.find((a) => a.user_id === p.p_den_nv)?.role ?? null
+    const coChinh = pc.some((a) => a.role === "primary" && a.user_id !== p.p_den_nv && nvConLam(db, a.user_id))
+    const se_la = p.p_kieu === "chuyen"
+      ? (vai_giao === "primary" || vai_nhan === "primary" ? "primary" : "secondary")
+      : vai_nhan ?? (coChinh ? "secondary" : "primary")
+    const no = db.receivables || []
+    return {
+      id: c.id, store_name: c.store_name, owner_name: c.owner_name ?? null, phone: c.phone ?? null, address: c.address ?? null,
+      ward: c.ward ?? null, channel: c.channel ?? null, status: c.status ?? null, vai_giao, vai_nhan, se_la,
+      nv_chinh: pc.filter((a) => a.role === "primary").map((a) => (db.users || []).find((u) => u.id === a.user_id)?.full_name).filter(Boolean).join(", ") || null,
+      no_chuyen: p.p_kieu === "chuyen" ? tienNo(no.filter((r) => r.customer_id === c.id && r.sales_user_id === p.p_tu_nv && r.status !== "paid")) : null,
+      no_npp: p.p_giao_no_npp !== false && se_la === "primary" ? tienNo(no.filter((r) => r.customer_id === c.id && r.ve_npp_luc && r.status !== "paid")) : null,
+      lich: p.p_nguon === "nv" && !vai_nhan
+        ? [...new Set((db.pjp_routes || []).filter((r) => r.sales_user_id === p.p_tu_nv && r.customer_id === c.id).map((r) => r.day_of_week))].sort()
+        : null,
+    }
+  })
+  const cong = (f) => rows.reduce((t, r) => ({ so: t.so + (f(r)?.so ?? 0), tien: t.tien + (f(r)?.tien ?? 0) }), { so: 0, tien: 0 })
+  const tong = {
+    so_khach: rows.length, them_moi: rows.filter((r) => !r.vai_nhan).length, da_co: rows.filter((r) => r.vai_nhan).length,
+    len_chinh: rows.filter((r) => r.se_la === "primary" && r.vai_nhan !== "primary").length,
+    no_chuyen: cong((r) => r.no_chuyen), no_npp: cong((r) => r.no_npp),
+    lich: rows.reduce((t, r) => t + (r.lich?.length ?? 0), 0),
+    bo_qua: p.p_khach ? new Set(p.p_khach).size - rows.length : 0,
+  }
+  if (!p.p_thuc_hien) return { khach: rows, tong }
+  if (rows.length === 0) throw loiP("KHONG_CO_KHACH: không còn khách nào khớp để bàn giao")
+  const ds = db.customer_assignments ?? (db.customer_assignments = [])
+  for (const r of rows) {
+    if (r.vai_nhan === r.se_la) continue
+    const co = ds.find((a) => a.customer_id === r.id && a.user_id === p.p_den_nv)
+    if (co) Object.assign(co, { role: r.se_la, status: "active" })
+    else ds.push({ id: newId(), customer_id: r.id, user_id: p.p_den_nv, role: r.se_la, status: "active", assigned_at: "2026-09-30" })
+  }
+  const ids = new Set(rows.map((r) => r.id))
+  let bo = 0, noSo = 0, noTien = 0, nppSo = 0, nppTien = 0
+  if (p.p_kieu === "chuyen") {
+    bo = ds.filter((a) => a.user_id === p.p_tu_nv && ids.has(a.customer_id)).length
+    db.customer_assignments = ds.filter((a) => !(a.user_id === p.p_tu_nv && ids.has(a.customer_id)))
+    for (const r of db.receivables || []) {
+      if (!ids.has(r.customer_id) || r.sales_user_id !== p.p_tu_nv || r.status === "paid") continue
+      r.giao_tu_nv = (r.giao_tu_nv ?? p.p_tu_nv) === p.p_den_nv ? null : (r.giao_tu_nv ?? p.p_tu_nv)
+      r.sales_user_id = p.p_den_nv
+      noSo++; noTien += (Number(r.amount) || 0) - (Number(r.paid) || 0)
+    }
+  }
+  if (p.p_giao_no_npp !== false) {
+    const chinh = new Set(rows.filter((r) => r.se_la === "primary").map((r) => r.id))
+    for (const r of db.receivables || []) {
+      if (!chinh.has(r.customer_id) || !r.ve_npp_luc || r.status === "paid") continue
+      r.sales_user_id = p.p_den_nv; r.ve_npp_luc = null
+      nppSo++; nppTien += (Number(r.amount) || 0) - (Number(r.paid) || 0)
+    }
+  }
+  const log = { id: newId(), org_id: toi.org_id, nguon: p.p_nguon, tu_nv: p.p_nguon === "nv" ? p.p_tu_nv : null, den_nv: p.p_den_nv,
+    kieu: p.p_kieu, bo_loc: { tuyen, ncc, tu_ngay: p.p_tu_ngay ?? null }, khach: [...ids], tao_boi: toi.id, tao_luc: new Date().toISOString() }
+  const ket = { so_khach: rows.length, them_moi: tong.them_moi, da_co: tong.da_co, len_chinh: tong.len_chinh, bo_khoi_nv_giao: bo,
+    lich: tong.lich, no_chuyen: { so: noSo, tien: noTien }, no_npp: { so: nppSo, tien: nppTien }, bo_qua: tong.bo_qua }
+  ;(db.ban_giao_khach_log ?? (db.ban_giao_khach_log = [])).push({ ...log, ket_qua: ket })
+  return { ...ket, log_id: log.id }
+}
+function hangKhachDaLay(p, { db, user }) {
+  const toi = (db.users || []).find((u) => u.id === user?.id)
+  let nv = null
+  if (toi?.role === "sales") nv = toi.id
+  else if (["owner", "manager", "accountant"].includes(toi?.role)) nv = p.p_nv ?? null
+  else throw loiP("KHONG_DU_QUYEN: vai này không xem hàng khách đã lấy")
+  const rong = { nv, khach: [], hang: [], sp: [], ncc: [] }
+  if (!nv && !p.p_khach) return rong
+  const tuyen = p.p_tuyen || []
+  const kh = (db.customers || []).filter((c) => (!p.p_khach || p.p_khach.includes(c.id))
+    && (!nv || pcCon(db, c.id).some((a) => a.user_id === nv))
+    && (!tuyen.length || tuyen.includes(tuyenCua(c))))
+    .sort((a, b) => String(a.store_name).localeCompare(String(b.store_name)))
+  const nccNv = new Set((db.user_suppliers || []).filter((r) => r.user_id === nv).map((r) => r.supplier_id))
+  const sp = (db.products || []).filter((x) => !nv || !x.primary_supplier_id || nccNv.has(x.primary_supplier_id))
+  const spId = new Set(sp.map((x) => x.id)), khId = new Set(kh.map((c) => c.id))
+  const hang = new Map()
+  const lay = (k, pid) => hang.get(`${k}|${pid}`) ?? hang.set(`${k}|${pid}`, { k, p: pid, di: 0, tra: 0, hd: new Set(), cuoi: null }).get(`${k}|${pid}`)
+  for (const i of db.sales_invoices || []) {
+    if (i.status !== "posted" || !khId.has(i.customer_id) || (p.p_tu && i.invoice_date < p.p_tu)) continue
+    for (const l of (db.sales_invoice_lines || []).filter((x) => x.invoice_id === i.id && !x.is_exchange && spId.has(x.product_id))) {
+      const h = lay(i.customer_id, l.product_id)
+      h.di += (Number(l.quantity) || 0) * heSoE2e(db, l.product_id, l.unit_name, l.conversion_factor)
+      h.hd.add(i.id)
+      if (!h.cuoi || i.invoice_date > h.cuoi) h.cuoi = i.invoice_date
+    }
+  }
+  for (const r of db.returns || []) {
+    if (!r.revenue_date || !khId.has(r.customer_id) || (p.p_tu && r.revenue_date < p.p_tu)) continue
+    for (const l of (db.return_lines || []).filter((x) => x.return_id === r.id && !x.is_exchange && spId.has(x.product_id))) {
+      lay(r.customer_id, l.product_id).tra += (Number(l.quantity) || 0) * heSoE2e(db, l.product_id, l.unit_name, null)
+    }
+  }
+  const dong = [...hang.values()].map((h) => ({ k: h.k, p: h.p, di: h.di, tra: h.tra, sl: h.di - h.tra, lan: h.hd.size, cuoi: h.cuoi }))
+  const coHang = new Set(dong.map((h) => h.p))
+  const spRa = sp.filter((x) => coHang.has(x.id)).map((x) => ({ id: x.id, sku: x.sku ?? null, name: x.name, base_unit: x.base_unit, ncc: x.primary_supplier_id ?? null }))
+  const nccId = new Set([...spRa.map((x) => x.ncc).filter(Boolean), ...nccNv])
+  return {
+    nv,
+    khach: kh.map((c) => ({
+      id: c.id, store_name: c.store_name, owner_name: c.owner_name ?? null, phone: c.phone ?? null, address: c.address ?? null,
+      ward: c.ward ?? null, channel: c.channel ?? null, status: c.status ?? null,
+      nv_chinh: pcCon(db, c.id).filter((a) => a.role === "primary").map((a) => (db.users || []).find((u) => u.id === a.user_id)?.full_name).filter(Boolean).join(", ") || null,
+    })),
+    hang: dong,
+    sp: spRa,
+    ncc: (db.suppliers || []).filter((s) => nccId.has(s.id)).map((s) => ({ id: s.id, name: s.name })),
+  }
+}
+
 /* ---- Báo cáo đọc một lượt (mig 204) — làm y như ba hàm SQL, để e2e chạy ĐƯỜNG MỚI. ---- */
 const vnMoc = (d, cuoi) => Date.parse(`${d}T${cuoi ? "23:59:59.999" : "00:00:00"}+07:00`)
 const trongNgay = (v, a, b) => typeof v === "string" && v.slice(0, 10) >= a && v.slice(0, 10) <= b
@@ -471,6 +620,8 @@ export const rpc = {
     ds.push({ id: newId(), customer_id: p_customer_id, user_id: toi.id, role, status: "active", org_id: toi.org_id })
     return { status: "claimed", role }
   },
+  ban_giao_khach: banGiaoKhach,
+  hang_khach_da_lay: hangKhachDaLay,
   bao_cao_so_ban: baoCaoSoBan,
   bao_cao_cong_no: baoCaoCongNo,
   bao_cao_ton_kho: baoCaoTonKho,

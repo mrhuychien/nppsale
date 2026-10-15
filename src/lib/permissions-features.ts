@@ -73,6 +73,10 @@ export const FEATURES: FeatureDef[] = [
   { key: "orders", label: "Đơn hàng", module: "orders", group: "Bán hàng" },
   { key: "customers", label: "Khách hàng", module: "customers", group: "Bán hàng" },
   { key: "customers.visits", label: "Lịch sử đi tuyến", module: "customers", group: "Bán hàng", inherits: true },
+  /* Chủ nhà 15/10/2026 (mig 246): "Gán cho toàn bộ khách hàng của nv A cho nv B" — chủ NPP / quản lý (cùng RLS
+     phân công khách). NVBH có `customers.update` nhưng không được bàn giao: ô riêng, không thừa hưởng. */
+  { key: "customers.handover", label: "Bàn giao khách giữa nhân viên", module: "customers", group: "Bán hàng", inherits: true,
+    defaultRoles: ["owner", "manager"] },
   { key: "promotions", label: "Khuyến mãi", module: "promotions", group: "Bán hàng" },
   { key: "commissions", label: "Hoa hồng", module: "commissions", group: "Bán hàng" },
 

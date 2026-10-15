@@ -130,6 +130,24 @@ của nhân viên mất phần tìm khách hàng đã có trước khi tạo r�
 - Nhận khách: `nhanKhachVeDanhSach` (`claim_customer_for_me`, chỉ vai sales). NVBH chưa nhận thì **không** đưa link
   mở khách (RLS — trang trống). Form điện thoại trùng SĐT → nút "Thêm vào DS của tôi" (tạo nhanh: nhận xong chọn luôn).
 
+### Bàn giao khách giữa nhân viên + hàng khách đã lấy
+Chủ nhà 15/10/2026 (mig 246): *"Gán cho toàn bộ khách hàng của nv A cho nv B (làm chung khách hàng) Hoặc là như kiểu bàn
+giao lại khách hàng … dskh tuyến đó, đã lấy hàng gì, số lượng, hàng cty nào mà nv đó làm … thể hiện luôn trên máy của nv"*.
+Chốt: cả hai kiểu; toàn bộ / theo tuyến / theo công ty; mốc 3 / 6 / 12 tháng / tất cả; chuyển hẳn → nợ theo NV nhận.
+- `/customers/ban-giao` (chủ NPP / quản lý — khoá `customers.handover`, cùng RLS phân công): một RPC `ban_giao_khach`
+  (xem trước rồi mới thực hiện; nguồn: khách của một NV · chưa ai phụ trách · mọi khách; lọc tuyến, công ty + mốc).
+- **Làm chung**: thêm NV nhận (phụ nếu khách đã có NV chính còn làm); NV đang phụ trách và công nợ giữ nguyên.
+  **Chuyển hẳn** (chỉ từ một NV): NV nhận thay đúng vai NV giao, NV giao gỡ khỏi khách; **nợ chưa thu xong** sang NV nhận
+  (đã thu xong giữ tên cũ); **doanh số / `sales_invoices.sales_user_id` không đổi**. Lịch đi tuyến chỉ chép / chuyển cho
+  khách MỚI với NV nhận. NV nhận làm chính → nhận luôn nợ NPP đang giữ (NV cũ nghỉ việc).
+- Nợ đã giao mang dấu `receivables.giao_tu_nv`: tính lại theo chứng từ (`_wf2b_recompute_receivable`, `_cong_no_phieu_tra`)
+  vẫn ghi NV giao → trigger `_cong_no_giu_ve_npp` giữ NV nhận; chứng từ đổi sang người khác → theo chứng từ. Dấu chỉ RPC
+  đổi được; sửa HĐ (`reissue_invoice`) chép dấu sang tờ mới. Đừng bỏ dấu — nợ chuyển tay sẽ quay về NV cũ.
+- **Hàng khách đã lấy** (`hang_khach_da_lay`): SL **đơn vị cơ sở**, HĐ ghi sổ − hàng trả đã trừ (`revenue_date`), bỏ hàng
+  đổi; **chỉ số lượng, không tiền**. NVBH: chỉ khách mình đang phụ trách + hàng công ty mình làm (`user_suppliers`, như RLS
+  sản phẩm). Màn `/customers/hang-da-lay` (NVBH; chủ / QL / KT chọn NV, xuất Excel) + khối "Hàng đã lấy" ở chi tiết khách.
+  Luật hiển thị: `src/lib/customers/ban-giao.ts`.
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế

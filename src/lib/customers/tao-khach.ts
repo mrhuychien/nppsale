@@ -32,6 +32,18 @@ export function sdtTuTimKiem(q: string | null | undefined): string {
 }
 
 /**
+ * Số để TÌM KHÁCH ĐÃ CÓ — chủ nhà 15/10/2026: "chỉ cho tìm kiếm chính xác, nghĩa là nhập đúng số điện thoại của khách
+ * thì khách mới hiện ra". Chỉ số ĐỦ (10–11 chữ số, đầu 0; "+84…" quy về "0…") mới tìm; có chữ / số dở → "" (không tìm,
+ * không lộ khách nào). Cùng luật `search_customer_dupes` (mig 245).
+ */
+export function sdtTimChinhXac(q: string | null | undefined): string {
+  const t = String(q ?? "").trim()
+  if (!t || !/^[\d\s.+()-]+$/.test(t)) return ""
+  const d = chuanHoaSdt(t)
+  return /^0\d{9,10}$/.test(d) ? d : ""
+}
+
+/**
  * Chữ đang gõ ở ô tìm khách → ô nào của khách mới được gán sẵn (chủ nhà 03/10/2026: "sang tạo mới có trường
  * đang search đó luôn"). Trông như SĐT (`sdtTuTimKiem`) → ô SĐT; còn lại → tên cửa hàng.
  */

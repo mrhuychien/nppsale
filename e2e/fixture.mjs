@@ -439,16 +439,16 @@ export const rpc = {
     db.suppliers = db.suppliers.filter((x) => x.id !== p_id)
     return { ten: s.name, ma: s.code ?? null, mat_hang_da_xoa: xoa, mat_hang_ngung_ban: ngung, mat_hang_go: go }
   },
-  /* Tra trùng khách (mig 082/205): khớp SĐT (chỉ chữ số), địa chỉ hoặc tên — thấy cả khách NV khác phụ trách.
-     `has_my_assignment` / `primary_user_name` đọc từ `customer_assignments` như hàm thật. */
+  /* Tra trùng khách — mig 245 (chủ nhà 15/10/2026: "nhập đúng số điện thoại của khách thì khách mới hiện ra"): CHỈ
+     khớp ĐÚNG số (chữ số, "84…" → "0…"; số chưa đủ 10–11 chữ số → không trả gì). `has_my_assignment` / phụ trách
+     chính đọc từ `customer_assignments` như hàm thật. */
   search_customer_dupes: ({ p_q }, { db, user }) => {
-    const so = String(p_q ?? "").replace(/\D/g, "")
-    const q = String(p_q ?? "").toLowerCase().trim()
-    if (q.length < 2) return []
+    const chuan = (x) => { const d = String(x ?? "").replace(/\D/g, ""); return /^84\d{9}$/.test(d) ? "0" + d.slice(2) : d }
+    const so = chuan(p_q)
+    if (!/^0\d{9,10}$/.test(so)) return []
     const pc = (cid) => (db.customer_assignments || []).filter((a) => a.customer_id === cid && (a.status ?? "active") === "active")
     return (db.customers || [])
-      .filter((c) => (so.length >= 3 && String(c.phone ?? "").replace(/\D/g, "").includes(so)) ||
-        String(c.store_name ?? "").toLowerCase().includes(q) || String(c.address ?? "").toLowerCase().includes(q))
+      .filter((c) => chuan(c.phone) === so)
       .map((c) => {
         const chinh = pc(c.id).find((a) => a.role === "primary")
         return {

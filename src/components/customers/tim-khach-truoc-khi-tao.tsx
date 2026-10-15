@@ -4,13 +4,13 @@
  * THÊM KHÁCH TRÊN ĐIỆN THOẠI — BƯỚC 1: TÌM KHÁCH ĐÃ CÓ.
  *
  * ⚠ CHỦ NHÀ 14/10/2026: "phần tạo khách hàng mới trên điện thoại của nhân viên mất phần tìm khách hàng đã có trước
- *   khi tạo rồi". Bản điện thoại 01/10/2026 đi thẳng vào form, chỉ còn kiểm trùng SĐT — mất luật chủ nhà 06/06/2026:
- *   "trước khi NV sale thêm KH mới, cần check trùng (theo SĐT, địa chỉ, tên). Nếu KH đã tồn tại — kể cả do NV khác phụ
- *   trách — cho phép sale 'thêm vào danh sách của tôi' thay vì tạo trùng". Ô tìm ở danh sách khách KHÔNG thay được
- *   bước này: RLS chỉ cho NVBH thấy khách của mình.
+ *   khi tạo rồi" — bản 01/10/2026 đi thẳng vào form. Luật gốc 06/06/2026: khách đã có (kể cả NV khác phụ trách) thì NV
+ *   "thêm vào danh sách của tôi" thay vì tạo trùng. Ô tìm ở danh sách khách không thay được: RLS chỉ cho NVBH thấy
+ *   khách của mình.
+ * ⚠ CHỦ NHÀ 15/10/2026: "chỉ cho tìm kiếm chính xác, nghĩa là nhập đúng số điện thoại của khách thì khách mới hiện ra"
+ *   — gõ tên / địa chỉ / số dở không ra gì (`useDoTrungKhach`, mig 245), như bản máy tính.
  *
- * Tìm toàn đơn vị (`useDoTrungKhach`, như bản máy tính) → thẻ khách (Thêm vào DS của tôi / Xem khách) → nút đáy
- * "Tạo khách hàng mới" mang chữ đang gõ sang form (`chuBanDauKhach`: SĐT → ô SĐT, còn lại → tên cửa hàng).
+ * Nhập đủ số → thẻ khách (Thêm vào DS của tôi / Xem khách) → nút đáy "Tạo khách hàng mới" mang số sang form.
  */
 import { useMemo, useState } from "react"
 import { Search, UserPlus, CheckCircle2 } from "lucide-react"
@@ -40,7 +40,7 @@ export function TimKhachTruocKhiTao({
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = useMemo(() => createClient(), [])
-  const { tim, ketQua, dangTim, loi, daNhan } = useDoTrungKhach(chu)
+  const { tim, ketQua, dangTim, loi, daNhan, chuaDuSo } = useDoTrungKhach(chu)
   const [dangNhan, setDangNhan] = useState<string | null>(null)
   const laNv = user?.role === "sales"
 
@@ -63,26 +63,31 @@ export function TimKhachTruocKhiTao({
         <section className="flex flex-col gap-2.5 rounded-2xl border border-outline-variant/60 bg-card p-3.5">
           <h2 className="text-[15px] font-bold text-on-surface">Tìm khách hàng đã có</h2>
           <p className="text-[13px] leading-relaxed text-muted-foreground">
-            Gõ <span className="font-semibold text-on-surface">SĐT, địa chỉ hoặc tên</span> để xem khách đã có trong hệ thống
-            chưa — kể cả khách nhân viên khác đang phụ trách.
+            Nhập <span className="font-semibold text-on-surface">đúng số điện thoại</span> của khách để xem khách đã có trong
+            hệ thống chưa — kể cả khách nhân viên khác đang phụ trách.
           </p>
           <label className="flex h-11 items-center gap-2 rounded-xl border border-outline-variant/60 bg-card px-3 focus-within:border-primary">
             <Search className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
             <input
               data-testid="tk-tim"
-              type="search"
-              inputMode="search"
+              type="tel"
+              inputMode="tel"
               autoFocus
               value={chu}
               onChange={(e) => onChu(e.target.value)}
-              placeholder="VD: 0901…, Hồng Bàng, Tạp hoá Hai"
-              aria-label="Tìm khách hàng đã có"
-              className="min-w-0 flex-1 bg-transparent text-[15px] text-on-surface outline-none [&::-webkit-search-cancel-button]:hidden"
+              placeholder="VD: 0901 234 567"
+              aria-label="Số điện thoại khách"
+              className="min-w-0 flex-1 bg-transparent text-[15px] text-on-surface outline-none"
             />
           </label>
+          {chuaDuSo && (
+            <p className="text-xs text-muted-foreground" data-testid="tk-chua-du-so">
+              Nhập đủ số điện thoại (10 số) — tên, địa chỉ hay số chưa đủ sẽ không tìm.
+            </p>
+          )}
         </section>
 
-        {tim.length >= 2 &&
+        {!!tim &&
           (dangTim ? (
             <p className="px-1 text-[13px] italic text-muted-foreground">Đang tìm…</p>
           ) : loi ? (
@@ -91,13 +96,13 @@ export function TimKhachTruocKhiTao({
             </p>
           ) : ketQua.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-outline-variant bg-card p-3.5 text-[13px]" data-testid="tk-khong-trung">
-              <p className="font-semibold text-on-surface">Chưa có khách nào khớp “{tim}”.</p>
+              <p className="font-semibold text-on-surface">Chưa có khách nào dùng số {dinhDangSdt(tim)}.</p>
               <p className="mt-0.5 text-muted-foreground">Bấm Tạo khách hàng mới ở dưới.</p>
             </div>
           ) : (
             <section className="flex flex-col gap-2.5">
               <h2 className="px-1 text-[13px] text-muted-foreground">
-                Có <span className="font-semibold text-on-surface">{ketQua.length}</span> khách có thể trùng
+                Đã có <span className="font-semibold text-on-surface">{ketQua.length}</span> khách dùng số này
               </h2>
               {ketQua.map((k) => {
                 const cuaToi = !!k.has_my_assignment

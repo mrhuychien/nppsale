@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Search, UserPlus, CheckCircle2, MapPin, Phone, User as UserIcon } from "lucide-react"
 import Link from "@/components/ui/link"
 import { errorMessage } from "@/lib/errors"
-import { cauNhanKhach, nhanKhachVeDanhSach, type KhachTrung } from "@/lib/customers/tao-khach"
+import { cauNhanKhach, dinhDangSdt, nhanKhachVeDanhSach, type KhachTrung } from "@/lib/customers/tao-khach"
 
 interface CustomerDupeFinderProps {
   /** Gọi khi user khẳng định không trùng — tiếp tục tạo mới. */
@@ -25,7 +25,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
   const { toast } = useToast()
 
   const [query, setQuery] = useState("")
-  const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan } = useDoTrungKhach(query)
+  const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan, chuaDuSo } = useDoTrungKhach(query)
   const [claimingId, setClaimingId] = useState<string | null>(null)
 
   const isSales = user?.role === "sales"
@@ -50,9 +50,10 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
     <div className="rounded-2xl border bg-card p-5 space-y-4">
       <div>
         <h2 className="text-lg font-bold">Tìm khách hàng đã có</h2>
+        {/* Chủ nhà 15/10/2026: "chỉ cho tìm kiếm chính xác, nghĩa là nhập đúng số điện thoại của khách thì khách mới hiện ra". */}
         <p className="text-sm text-muted-foreground mt-1">
-          Trước khi thêm mới, hãy kiểm tra xem khách hàng đã tồn tại trong hệ thống chưa. Gõ
-          <span className="font-semibold"> SĐT, địa chỉ hoặc tên</span> để tìm.
+          Trước khi thêm mới, hãy kiểm tra xem khách hàng đã tồn tại trong hệ thống chưa. Nhập
+          <span className="font-semibold"> đúng số điện thoại</span> của khách để tìm.
         </p>
       </div>
 
@@ -60,21 +61,29 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
-          placeholder="VD: 0901xxx, Hồng Bàng, Tạp hóa Hai..."
+          type="tel"
+          inputMode="tel"
+          placeholder="VD: 0901 234 567"
+          aria-label="Số điện thoại khách"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
         />
       </div>
+      {chuaDuSo && (
+        <p className="text-xs text-muted-foreground" data-testid="dupe-chua-du-so">
+          Nhập đủ số điện thoại (10 số) — tên, địa chỉ hay số chưa đủ sẽ không tìm.
+        </p>
+      )}
 
       {/* Kết quả */}
-      {debounced.length >= 2 && (
+      {!!debounced && (
         <div className="space-y-2">
           {searching ? (
             <p className="text-xs text-muted-foreground italic">Đang tìm...</p>
           ) : results.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-3 text-sm">
-              <p className="font-medium">Không tìm thấy khách hàng nào trùng.</p>
+              <p className="font-medium">Chưa có khách hàng nào dùng số {dinhDangSdt(debounced)}.</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Bạn có thể tạo khách hàng mới với thông tin đầy đủ ở bên dưới.
               </p>
@@ -82,7 +91,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
-                Tìm thấy <span className="font-semibold text-foreground">{results.length}</span> khách hàng có thể trùng:
+                Đã có <span className="font-semibold text-foreground">{results.length}</span> khách hàng dùng số này:
               </p>
               <div className="grid gap-2 max-h-96 overflow-y-auto">
                 {results.map((r) => (

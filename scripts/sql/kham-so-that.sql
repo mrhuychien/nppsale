@@ -805,4 +805,13 @@ SELECT 83, 'Mig 244 (Duyệt ảnh + vị trí điểm bán)',
          || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.customers WHERE photo_approved_at IS NOT NULL$q$, false, true, '')))[1]::text
          || ' · yêu cầu đang chờ duyệt: '
          || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.customer_photo_requests WHERE status = 'pending'$q$, false, true, '')))[1]::text END
+UNION ALL
+-- 84. Mig 245 — tìm khách đã có trước khi tạo CHỈ khớp ĐÚNG số (chủ nhà 15/10/2026: "nhập đúng số điện thoại của khách
+--     thì khách mới hiện ra"). Bản cũ khớp từng phần tên / địa chỉ / số → NVBH thấy khách NV khác phụ trách.
+SELECT 84, 'Mig 245 (Tìm khách đã có: chỉ đúng số điện thoại)',
+  CASE WHEN (SELECT position('tim_kd' IN prosrc) > 0 OR position('^0[0-9]{9,10}$' IN prosrc) = 0
+             FROM pg_proc WHERE proname = 'search_customer_dupes' AND pronamespace = 'public'::regnamespace)
+       THEN 'CHƯA — chạy migration 245 (gõ tên / địa chỉ / số dở vẫn ra khách của nhân viên khác)'
+       ELSE 'OK — đã vá' END,
+  'Khách có SĐT: ' || (SELECT count(*) FROM customers WHERE coalesce(phone, '') <> '')
 ) t ORDER BY stt;

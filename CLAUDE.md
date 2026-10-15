@@ -124,6 +124,9 @@ của nhân viên mất phần tìm khách hàng đã có trước khi tạo r�
 - `/customers/new` máy tính **và điện thoại**: bước "Tìm khách hàng đã có" trước (`CustomerDupeFinder` /
   `TimKhachTruocKhiTao`, một đường tìm `useDoTrungKhach` → `search_customer_dupes`, thấy cả khách NV khác). Tới bằng
   `?sdt=` (đã tìm số không ra, chủ nhà 01/10/2026) thì vào thẳng form gán sẵn số. "Thêm khách khác" về bước tìm.
+- **Chỉ tìm CHÍNH XÁC theo số điện thoại** (chủ nhà 15/10/2026: *"nhập đúng số điện thoại của khách thì khách mới hiện
+  ra"*): tên / địa chỉ / số dở không tìm, không gửi đi (`sdtTimChinhXac`); máy chủ cũng chỉ khớp đúng số (mig 245).
+  Đừng nới lại thành tìm từng phần — hàm SECURITY DEFINER, tìm từng phần là lộ khách của nhân viên khác.
 - Nhận khách: `nhanKhachVeDanhSach` (`claim_customer_for_me`, chỉ vai sales). NVBH chưa nhận thì **không** đưa link
   mở khách (RLS — trang trống). Form điện thoại trùng SĐT → nút "Thêm vào DS của tôi" (tạo nhanh: nhận xong chọn luôn).
 

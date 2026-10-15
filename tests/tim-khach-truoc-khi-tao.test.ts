@@ -2,13 +2,17 @@
  * TÌM KHÁCH ĐÃ CÓ TRƯỚC KHI TẠO — trên điện thoại (chủ nhà 14/10/2026: "phần tạo khách hàng mới trên điện thoại của
  * nhân viên mất phần tìm khách hàng đã có trước khi tạo rồi"). Luật gốc 06/06/2026: check trùng theo SĐT, địa chỉ, tên;
  * khách đã có (kể cả NV khác phụ trách) thì NV "thêm vào danh sách của tôi" thay vì tạo trùng.
- * Bấm thật: e2e/tim-khach-truoc-khi-tao.spec.ts, e2e/tao-khach-dien-thoai.spec.ts.
+ * Chủ nhà 15/10/2026: "ở máy tính tao chỉ cho tìm kiếm chính xác, nghĩa là nhập đúng số điện thoại của khách thì khách
+ * mới hiện ra" — mig 245 + `sdtTimChinhXac`: tên / địa chỉ / số dở không tìm gì.
+ * Bấm thật: e2e/tim-khach-truoc-khi-tao.spec.ts, e2e/tao-khach-dien-thoai.spec.ts. SQL thật: scripts/sql/thu-245-*.sql.
  */
 import { describe, it, expect, vi } from "vitest"
 import { readFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
+import { hamDangChay } from "./helpers/sql-ham-dang-chay"
 import {
-  KhachDaCo, cauNhanKhach, khachChoPhieu, nhanKhachVeDanhSach, timKhachTrungSdt,
+  KhachDaCo, cauNhanKhach, khachChoPhieu, nhanKhachVeDanhSach, sdtTimChinhXac, timKhachTrungSdt,
 } from "@/lib/customers/tao-khach"
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
@@ -17,6 +21,22 @@ const sbRpc = (tra: (ham: string, args: unknown) => { data: unknown; error: unkn
   const rpc = vi.fn(async (ham: string, args: unknown) => tra(ham, args))
   return { sb: { rpc } as unknown as Sb, rpc }
 }
+
+describe("chỉ tìm khi nhập ĐÚNG số điện thoại (chủ nhà 15/10/2026)", () => {
+  it("số đủ (10–11 chữ số, đầu 0; có cách / chấm / +84) → số đã chuẩn hoá", () => {
+    expect(sdtTimChinhXac("0911111111")).toBe("0911111111")
+    expect(sdtTimChinhXac(" 0911 111 111 ")).toBe("0911111111")
+    expect(sdtTimChinhXac("0911.111.111")).toBe("0911111111")
+    expect(sdtTimChinhXac("+84 911 111 111")).toBe("0911111111")
+    expect(sdtTimChinhXac("84911111111")).toBe("0911111111")
+    expect(sdtTimChinhXac("02253 123 456")).toBe("02253123456")
+  })
+  it("tên, địa chỉ, số dở, số không đầu 0, quá dài → không tìm", () => {
+    for (const q of ["", "   ", "Lê Lợi", "Tạp hoá Cô Ba", "0911", "091111111", "911111111", "1911111111", "091111111122", "0911 111 111 Cô Ba"]) {
+      expect(sdtTimChinhXac(q), q).toBe("")
+    }
+  })
+})
 
 describe("nhận khách đã có vào danh sách (claim_customer_for_me)", () => {
   it("gọi đúng RPC; chưa ai phụ trách chính → chính, có rồi → phụ; đã có sẵn → báo đã trong DS", async () => {
@@ -66,13 +86,21 @@ describe("nối dây", () => {
     expect(PAGE).toContain("const [vaoThangForm, setVaoThangForm] = useState(!!sdtTim)")
     expect(PAGE).not.toContain("if (laMay === false) return <TaoKhachDienThoai")
   })
-  it("máy tính và điện thoại cùng một đường tìm + một đường nhận khách", () => {
+  it("máy tính và điện thoại cùng một đường tìm + một đường nhận khách; ô nhập kiểu số điện thoại; nhắc nhập đủ số", () => {
     for (const s of [TIM, MAY]) {
       expect(s).toContain("useDoTrungKhach(")
       expect(s).toContain("nhanKhachVeDanhSach(supabase,")
       expect(s).not.toContain('rpc("search_customer_dupes"')
+      expect(s).toContain('inputMode="tel"')
+      expect(s).toContain("{chuaDuSo && (")
+      expect(s).toContain("đúng số điện thoại")
+      expect(s).not.toMatch(/địa chỉ hoặc tên/)
     }
-    expect(read("src/hooks/use-do-trung-khach.ts")).toContain('supabase.rpc("search_customer_dupes", { p_q: tim })')
+    const HOOK = read("src/hooks/use-do-trung-khach.ts")
+    // Chỉ gửi đi số ĐỦ, và lọc lại đúng số (sổ chưa chạy mig 245 thì hàm còn khớp từng phần).
+    expect(HOOK).toContain("setTim(sdtTimChinhXac(chu))")
+    expect(HOOK).toContain('supabase.rpc("search_customer_dupes", { p_q: tim })')
+    expect(HOOK).toContain('.filter((k) => chuanHoaSdt(k.phone ?? "") === tim)')
   })
   it("bước tìm: NVBH chưa nhận thì có nút nhận, không có link Xem (RLS — trang trống)", () => {
     expect(TIM).toContain("{laNv && !cuaToi && (")
@@ -83,5 +111,44 @@ describe("nối dây", () => {
     expect(FORM).toContain("if (onDaTao) onDaTao(khachChoPhieu(k))")
     expect(FORM).toContain("else setTrung(new KhachDaCo(t.sdt, { ...k, has_my_assignment: true }))")
     expect(FORM).toContain("if (onThemKhachKhac) return onThemKhachKhac()")
+  })
+})
+
+describe("mig 245: search_customer_dupes chỉ khớp ĐÚNG số", () => {
+  const h = hamDangChay().get("public.search_customer_dupes(TEXT)")
+  const MIG = read("supabase/migrations/245_tim_khach_trung_dung_so.sql")
+  it("bản đang chạy là mig 245: số chưa đủ → không trả gì; so bằng chữ số, 84 → 0; không còn khớp từng phần tim_kd", () => {
+    expect(h?.file).toBe("245_tim_khach_trung_dung_so.sql")
+    expect(h!.than).toContain("IF v_org IS NULL OR v_so !~ '^0[0-9]{9,10}$' THEN")
+    expect(h!.than).toContain("(CASE WHEN s.d ~ '^84[0-9]{9}$' THEN '0' || substr(s.d, 3) ELSE s.d END) = v_so")
+    expect(h!.than).not.toContain("tim_kd")
+  })
+  it("đúng khuôn migration: VÌ SAO trích lời chủ nhà, chặn anon, NOTIFY", () => {
+    expect(MIG).toContain("chủ nhà 15/10/2026: \"Tìm kiếm như vậy là sai. ở máy tính tao chỉ cho tìm kiếm chính xác")
+    expect(MIG).toContain("REVOKE EXECUTE ON FUNCTION public.search_customer_dupes(text) FROM PUBLIC, anon;")
+    expect(MIG).toContain("GRANT EXECUTE ON FUNCTION public.search_customer_dupes(text) TO authenticated;")
+    expect(MIG).toContain("NOTIFY pgrst, 'reload schema';")
+  })
+})
+
+/** Bộ thử SQL chạy thật trên Postgres thử (dưới safeupdate) nếu có — máy CI không có thì bỏ qua. */
+function chayBoThu(tep: string): string | null {
+  try {
+    return execFileSync(
+      "psql",
+      ["-h", process.env.PG_THU_HOST || "/tmp/pgtest", "-p", process.env.PG_THU_PORT || "55432", "-U", "postgres",
+        "-d", process.env.PG_THU_DB || "npp_tong", "-q", "-At", "-f", resolve(__dirname, "..", tep)],
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000, env: { ...process.env, PGOPTIONS: "-c session_preload_libraries=safeupdate" } }
+    )
+  } catch {
+    return null
+  }
+}
+const BO_THU = chayBoThu("scripts/sql/thu-245-tim-khach-dung-so.sql")
+describe.skipIf(!BO_THU)("mig 245 trên Postgres thử", () => {
+  it("10/10 bước đạt (đúng số ra khách; tên / địa chỉ / số dở / đơn vị khác không ra; anon không gọi được)", () => {
+    const dong = BO_THU!.trim().split("\n")
+    expect(dong.filter((d) => d.includes("|SAI|")), BO_THU!).toEqual([])
+    expect(dong.at(-1)).toBe("10|10|0")
   })
 })

@@ -29,11 +29,13 @@ const gio = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem(
 test("chọn khách: tìm tên chưa có → tạo tại chỗ → về đơn với khách vừa tạo", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/sell")
-  // Bấm trước lúc màn kịp nạp xong thì nút chưa có sự kiện — bấm lại tới khi sang màn chọn khách.
+  // Bấm trước lúc màn kịp nạp xong thì nút chưa có sự kiện — bấm lại tới khi sang màn chọn khách. Đã sang thì thôi bấm:
+  // lần đầu `next dev` dịch màn chọn khách chậm (URL đổi trễ cả chục giây), màn mới không còn nút ấy — bấm không hẹn giờ
+  // là đứng chờ tới hết giờ bài.
   await expect(async () => {
-    await page.getByRole("button", { name: /Chọn khách hàng/ }).click()
+    if (!/\/sell\/customer$/.test(page.url())) await page.getByRole("button", { name: /Chọn khách hàng/ }).click({ timeout: 2000 })
     await expect(page).toHaveURL(/\/sell\/customer$/, { timeout: 2000 })
-  }).toPass()
+  }).toPass({ timeout: 60_000 })
   await page.getByLabel("Tìm khách hàng").fill(KHACH)
   // Tìm không ra → nút tạo mang đúng chữ đang tìm.
   const tao = page.getByTestId("tao-khach-voi-sdt")

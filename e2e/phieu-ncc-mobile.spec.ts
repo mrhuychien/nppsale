@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import { dangNhap, nhatKy } from "./helpers"
+import { dangNhap, nhatKy, mocDonDep } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 30/09/2026: "Làm màn nhập hàng, trả hàng NCC (vẫn giữ 2 màn riêng nhé) trên di động
@@ -7,6 +7,11 @@ import { dangNhap, nhatKy } from "./helpers"
  *   màn phiếu có NCC / dòng hàng / tổng tiền dưới đáy / Lưu tạm + Hoàn thành.
  */
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+// Phiếu trả NCC lập qua màn (bản giả của complete_supplier_return không làm gì → phiếu nằm lại Nháp) — dọn sau mỗi bài.
+let donDep: () => Promise<void>
+test.beforeEach(async () => { donDep = await mocDonDep("supplier_returns", "supplier_return_lines") })
+test.afterEach(async () => { await donDep() })
 
 const goiCuoi = async (duong: string, method = "POST") =>
   (await nhatKy()).filter((r) => r.method === method && r.path.includes(duong)).at(-1)

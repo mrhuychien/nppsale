@@ -23,6 +23,23 @@ export async function nhatKy(): Promise<Array<{ method: string; path: string; bo
   return (await fetch(`${FAKE}/__log`)).json()
 }
 
+/**
+ * Bài lập chứng từ QUA MÀN HÌNH (không biết trước id) phải dọn sau mình: máy chủ giả dùng chung cả lượt chạy, phiếu
+ * bỏ lại làm lệch bài đếm chạy sau (xuat-excel-phieu từng thấy 27 phiếu trả NCC thay vì 25). Ghi nhớ id đang có của
+ * các bảng, trả về hàm xoá mọi dòng sinh ra sau mốc ấy.
+ */
+export async function mocDonDep(...bangs: string[]): Promise<() => Promise<void>> {
+  const ids = async (bang: string) =>
+    ((await (await fetch(`${FAKE}/rest/v1/${bang}?select=id`)).json()) as Array<{ id: string }>).map((r) => r.id)
+  const truoc = new Map<string, Set<string>>()
+  for (const b of bangs) truoc.set(b, new Set(await ids(b)))
+  return async () => {
+    for (const b of bangs) {
+      for (const id of await ids(b)) if (!truoc.get(b)!.has(id)) await fetch(`${FAKE}/rest/v1/${b}?id=eq.${id}`, { method: "DELETE" })
+    }
+  }
+}
+
 export async function chonKhach(page: Page, ten: string) {
   await page.getByRole("button", { name: /Chọn khách hàng/ }).click()
   await page.getByPlaceholder("Tên cửa hàng, SĐT, địa chỉ…").fill(ten)

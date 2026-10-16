@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap, nhatKy } from "./helpers"
+import { dangNhap, nhatKy, mocDonDep } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 07/10/2026: "Phiếu trả hàng NCC cả ở pos và mobile chưa chọn được đơn vị tính".
@@ -9,6 +9,11 @@ import { dangNhap, nhatKy } from "./helpers"
 /* ⚠ Nhật ký CHUNG cả lượt chạy — đếm trước khi bấm, chờ lần ghi MỚI (không đọc nhầm lần ghi của spec trước). */
 const cacLan = async (duong: string, method = "POST") =>
   (await nhatKy()).filter((r) => r.method === method && r.path.includes(duong))
+
+// "Lưu nháp" để lại phiếu trả NCC trong máy chủ giả — dọn sau mỗi bài (bài đếm phiếu chạy sau không thấy rác).
+let donDep: () => Promise<void>
+test.beforeEach(async () => { donDep = await mocDonDep("supplier_returns", "supplier_return_lines") })
+test.afterEach(async () => { await donDep() })
 
 test("POS trả NCC: có cột ĐVT, đổi thùng / hộp thì giá quy theo hệ số", async ({ page }) => {
   await dangNhap(page)

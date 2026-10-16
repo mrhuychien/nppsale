@@ -131,11 +131,16 @@ async function chonTab(page: Page, ten: string) {
   await page.getByRole("combobox", { name: "Mối quan tâm" }).click()
   await page.getByRole("option", { name: ten, exact: true }).click()
 }
+// Đóng ô chọn bằng cú bấm ra ngoài: tiêu đề ở thanh trên. KHÔNG bấm `h1` đầu trang — đó là logo "npp.sale" ở thanh bên,
+// nằm trong link về /home: /home dịch sẵn (bài chạy trước đã mở) là trang bị chuyển đi giữa chừng.
+async function bamRaNgoai(page: Page) {
+  await page.keyboard.press("Escape")
+  await page.getByRole("banner").locator("h1").click()
+}
 async function chonNhieu(page: Page, nut: string, muc: RegExp) {
   await page.getByRole("button", { name: nut }).first().click()
   await page.getByRole("button", { name: muc }).first().click()
-  await page.keyboard.press("Escape")
-  await page.locator("h1").first().click()
+  await bamRaNgoai(page)
 }
 const dongCo = (page: Page, chu: string | RegExp) => page.locator("tr", { hasText: chu })
 
@@ -200,8 +205,7 @@ test("Cuối ngày (cũ): lọc khách → LN gộp trừ giá vốn của đún
   await page.goto("/reports/end-of-day")
   await page.getByRole("button", { name: "Theo mã, tên, số điện thoại" }).click()
   await page.getByRole("button", { name: /Khách Lọc Cũ/ }).first().click()
-  await page.keyboard.press("Escape")
-  await page.locator("h1").first().click()
+  await bamRaNgoai(page)
   // Thuần 990.000 − 220.000 = 770.000; giá vốn HD-LC-1 = 8 × 50.000 + 2 × 30.000 = 460.000 → LN gộp 310.000.
   const ln = page.locator("div", { has: page.getByText("LN gộp", { exact: true }) }).last()
   await expect(ln).toContainText("310.000")

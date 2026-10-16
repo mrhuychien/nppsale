@@ -59,12 +59,14 @@ test.describe("Xuất Excel danh sách chứng từ", () => {
     const tep = await xuat(page)
     expect(tep.ten).toBe("tra-hang-ncc_2026-09-30.xlsx")
     expect(tep.sheets).toEqual(["Phiếu", "Chi tiết dòng"])
-    const phieu = tep.bang("Phiếu")
+    // Đếm phiếu CỦA BÀI NÀY (TRN-…): máy chủ giả dùng chung cả lượt chạy, phiếu bài khác bỏ lại không phải lỗi xuất.
+    const cuaBai = (r: Record<string, string | number>) => /^TRN-\d{3}$/.test(String(r["Mã phiếu"]))
+    const phieu = tep.bang("Phiếu").filter(cuaBai)
     expect(phieu).toHaveLength(25)
     expect(phieu.find((r) => r["Mã phiếu"] === "TRN-003")).toMatchObject({
       Ngày: "29/09/2026", "Nhà cung cấp": "Vinamilk", "Trạng thái": "Đã gửi", "Tổng tiền": 110000, "Người lập": "Chủ NPP",
     })
-    expect(tep.bang("Chi tiết dòng")).toEqual([
+    expect(tep.bang("Chi tiết dòng").filter(cuaBai)).toEqual([
       expect.objectContaining({ "Mã phiếu": "TRN-003", "Tên hàng": "Sữa hộp", ĐVT: "thùng", SL: 2, "SL quy đổi": 48, "Đơn giá": 450000, "VAT %": 10, "Thành tiền": 990000, "Ghi chú dòng": "móp" }),
       expect.objectContaining({ "Mã phiếu": "TRN-003", ĐVT: "hộp", SL: 5, "SL quy đổi": 5 }),
     ])
@@ -74,7 +76,8 @@ test.describe("Xuất Excel danh sách chứng từ", () => {
     await page.locator('[data-status-chip="draft"]').first().click()
     await expect(page.getByText("TRN-003", { exact: true })).toHaveCount(0)
     const nhap = await xuat(page)
-    expect(nhap.bang("Phiếu").map((r) => r["Mã phiếu"])).toEqual(["TRN-024"])
+    expect(nhap.bang("Phiếu").every((r) => r["Trạng thái"] === "Nháp")).toBe(true)
+    expect(nhap.bang("Phiếu").filter(cuaBai).map((r) => r["Mã phiếu"])).toEqual(["TRN-024"])
   })
 
   test("Hóa đơn bán: tiền là SỐ CÒN LẠI sau hàng trả (CLAUDE.md); có sheet chi tiết dòng", async ({ page }) => {

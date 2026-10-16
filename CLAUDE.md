@@ -55,6 +55,10 @@ Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL
 - Tiền = SL × giá thì giá phải là giá **của đúng đơn vị đó** (`giaNiemYetDonVi`).
 - `unit_cost` (kho) là giá **mỗi đơn vị cơ sở**.
 - Doanh số theo hóa đơn; báo cáo Đặt hàng theo đơn hàng.
+- **Sửa HĐ giữ hệ số của tờ cũ** (chủ nhà 16/10/2026, mig 247: *"đổi hệ số quy đổi trong danh mục … rồi Sửa một hoá đơn
+  cũ, thì tờ mới lấy hệ số mới chứ không giữ số cũ"*): dòng cùng mặt hàng + đơn vị với tờ cũ lấy hệ số **chụp trên tờ cũ**;
+  đơn vị / hàng mới tra danh mục; HĐ mới tra danh mục (mig 174). Máy chủ không tin hệ số trình duyệt gửi — tờ cũ đi qua
+  cờ phiên `npp.he_so_tu_hd` do `reissue_invoice` đặt (`_chuan_he_so_dong_hoa_don(lines, hd_cu)`).
 
 ### Một đơn một hóa đơn; huỷ HĐ = huỷ đơn
 Chủ nhà chốt 30/09/2026 (mig 217): *"Khi hủy hóa đơn -> coi như đóng đơn hàng -> Chuyển luôn đơn hàng về

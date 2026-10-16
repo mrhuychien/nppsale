@@ -832,4 +832,20 @@ SELECT 85, 'Mig 246 (Bàn giao khách + hàng khách đã lấy)',
          || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.ban_giao_khach_log$q$, false, true, '')))[1]::text
          || ' · khoản nợ mang dấu bàn giao: '
          || (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM public.receivables WHERE giao_tu_nv IS NOT NULL$q$, false, true, '')))[1]::text END
+UNION ALL
+-- 86. Mig 247 — Sửa HĐ giữ hệ số quy đổi của tờ cũ (chủ nhà 16/10/2026: "đổi hệ số quy đổi trong danh mục (vd thùng 24 → 20)
+--     rồi Sửa một hoá đơn cũ, thì tờ mới lấy hệ số mới chứ không giữ số cũ"). Chưa vá thì Sửa HĐ làm lệch kho.
+SELECT 86, 'Mig 247 (Sửa HĐ giữ hệ số quy đổi của tờ cũ)',
+  CASE WHEN position('(mig 247)' IN pg_get_functiondef('public.post_invoice(jsonb)'::regprocedure)) = 0
+         OR position('(mig 247)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+         OR to_regprocedure('public._chuan_he_so_dong_hoa_don(jsonb, uuid)') IS NULL
+       THEN 'CHƯA — chạy migration 247 (Sửa HĐ lấy hệ số danh mục hiện tại, kho lệch khi danh mục đã đổi)'
+       ELSE 'OK — đã vá' END,
+  -- Dòng của các tờ ĐÃ sửa trước đây có hệ số khác tờ cũ cùng mặt hàng + đơn vị (bị lỗi cũ — chỉ đếm, không tự sửa).
+  'Dòng Sửa HĐ lệch hệ số tờ cũ (từ trước): ' || (SELECT count(*)
+     FROM sales_invoices sn
+     JOIN sales_invoice_lines ln ON ln.invoice_id = sn.id
+     JOIN sales_invoice_lines lo ON lo.invoice_id = sn.replaced_from
+                                AND lo.product_id = ln.product_id AND lo.unit_name = ln.unit_name
+    WHERE sn.replaced_from IS NOT NULL AND lo.conversion_factor > 0 AND ln.conversion_factor <> lo.conversion_factor)
 ) t ORDER BY stt;

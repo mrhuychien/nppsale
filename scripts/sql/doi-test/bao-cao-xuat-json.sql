@@ -3,6 +3,11 @@
 -- để tests/doi-bao-cao-cheo.test.ts kiểm chéo: số SQL == số TypeScript tính trên cùng dòng thô == số theo luật.
 -- Chạy: psql -h /tmp/pgtest -p 55432 -U postgres -d npp_bao_cao -At -v ON_ERROR_STOP=1 -f scripts/sql/doi-test/bao-cao-xuat-json.sql
 \set ON_ERROR_STOP on
+-- ⚠ XẾP HÀNG: vitest chạy các bộ thử song song trên CÙNG một sổ thử — mig 250 giữ khoá mọi bảng ~13 giây, câu GRANT
+--   chạy cùng lúc thì "tuple concurrently updated". Khoá tư vấn giữ tới hết phiên: bộ nào tới sau thì chờ.
+\o /dev/null
+SELECT pg_advisory_lock(hashtext('npp-thu-sql'));
+\o
 \set QUIET on
 SET client_min_messages = warning;
 SET TIME ZONE 'UTC';

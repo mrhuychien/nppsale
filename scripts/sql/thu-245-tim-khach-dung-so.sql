@@ -5,6 +5,11 @@
 --     -f scripts/sql/thu-245-tim-khach-dung-so.sql
 -- Người: chủ NPP e..01 · NVBH e..04 (phụ trách K2). K1 do quản lý e..02 phụ trách chính. Gọi dưới vai `authenticated`.
 \set ON_ERROR_STOP on
+-- ⚠ XẾP HÀNG: vitest chạy các bộ thử song song trên CÙNG một sổ thử — mig 250 giữ khoá mọi bảng ~13 giây, câu GRANT
+--   chạy cùng lúc thì "tuple concurrently updated". Khoá tư vấn giữ tới hết phiên: bộ nào tới sau thì chờ.
+\o /dev/null
+SELECT pg_advisory_lock(hashtext('npp-thu-sql'));
+\o
 GRANT USAGE ON SCHEMA public, auth TO authenticated;
 BEGIN;
 CREATE TEMP TABLE kq (buoc int, ten text, ok boolean, ghi text) ON COMMIT DROP;

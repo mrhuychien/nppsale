@@ -4,6 +4,11 @@
 --   PGOPTIONS="-c session_preload_libraries=safeupdate" psql -h /tmp/pgtest -p 55432 -U postgres -d npp_tong \
 --     -f scripts/sql/thu-248-ban-giao-khach-tra-quyen.sql
 \set ON_ERROR_STOP on
+-- ⚠ XẾP HÀNG: vitest chạy các bộ thử song song trên CÙNG một sổ thử — mig 250 giữ khoá mọi bảng ~13 giây, câu GRANT
+--   chạy cùng lúc thì "tuple concurrently updated". Khoá tư vấn giữ tới hết phiên: bộ nào tới sau thì chờ.
+\o /dev/null
+SELECT pg_advisory_lock(hashtext('npp-thu-sql'));
+\o
 BEGIN;
 CREATE TEMP TABLE kq (buoc int, ten text, ok boolean, ghi text) ON COMMIT DROP;
 CREATE TEMP TABLE ctx (k text PRIMARY KEY, v uuid) ON COMMIT DROP;

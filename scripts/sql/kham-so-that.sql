@@ -17,7 +17,9 @@ SELECT 1 AS stt,
   'Đơn nháp của NVBH có kín với NPP không' AS hang_muc,
   CASE
     WHEN qual IS NULL THEN 'KHÔNG CÓ chính sách đọc đơn — bất thường'
+    -- ⚠ Mig 250 bọc auth.uid() thành "( SELECT auth.uid() AS uid)" (tính một lần mỗi câu) — cùng nghĩa, nhận cả hai.
     WHEN position('status <> ''draft''::text) OR (sales_user_id = auth.uid())' in qual) > 0
+      OR position('status <> ''draft''::text) OR (sales_user_id = ( SELECT auth.uid() AS uid)))' in qual) > 0
       THEN 'OK — đúng luật mig 119 (nháp là sổ tay riêng của NVBH)'
     WHEN position('draft' in qual) = 0
       THEN 'LỆCH — chính sách không còn nhắc tới nháp, NPP nhiều khả năng thấy hết'
@@ -887,4 +889,31 @@ SELECT 88, 'Mig 249 (Khoá tìm chứng từ lưu sẵn — tìm số HĐ / đơ
        + (SELECT count(*) FROM (SELECT order_code, tim_kd FROM public.sales_orders ORDER BY created_at DESC LIMIT 500) x
            WHERE tim_kd IS DISTINCT FROM public.khoa_tim_ds(VARIADIC ARRAY[order_code::text])) AS n$q$,
          false, true, '')))[1]::text END
+UNION ALL
+-- 89. Mig 250 — soát quyền tính một lần mỗi câu (chủ nhà 20/10/2026: "làm tương tự cho tìm kiếm các danh sách khác").
+--     Chưa vá: chính sách RLS gọi user_org_id() / user_role() / auth.uid() lại cho TỪNG dòng — mọi danh sách chậm.
+--     Có rồi mà vẫn còn chính sách gọi thẳng: một migration sau đã thêm chính sách quên bọc → chạy
+--     `SELECT public._rls_tinh_mot_lan_ap();` là xong.
+SELECT 89, 'Mig 250 (Soát quyền tính một lần mỗi câu — mọi danh sách nhanh hơn)',
+  CASE WHEN to_regprocedure('public._rls_tinh_mot_lan(text)') IS NULL
+       THEN 'CHƯA — chạy migration 250 (soát quyền tính lại từng dòng — danh sách chậm)'
+       WHEN (xpath('/row/n/text()', query_to_xml($q$SELECT count(*) AS n FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+              WHERE c.relnamespace = 'public'::regnamespace
+                AND (public._rls_tinh_mot_lan(pg_get_expr(p.polqual, p.polrelid)) IS DISTINCT FROM pg_get_expr(p.polqual, p.polrelid)
+                     OR public._rls_tinh_mot_lan(pg_get_expr(p.polwithcheck, p.polrelid)) IS DISTINCT FROM pg_get_expr(p.polwithcheck, p.polrelid))$q$,
+              false, true, '')))[1]::text <> '0'
+       THEN 'LỆCH — còn chính sách gọi thẳng hàm quyền: chạy SELECT public._rls_tinh_mot_lan_ap();'
+       ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 90. Mig 251 — tắt JIT cho câu hỏi của app (chủ nhà 20/10/2026: "làm tương tự cho tìm kiếm các danh sách khác").
+--     Chưa vá mà sổ đang bật JIT: mỗi câu danh sách mất ~0,9 giây để Postgres biên dịch, trang chủ có lúc 4,9 giây.
+--     Cột cuối cho biết sổ có bật JIT không (bản Postgres cũ mặc định bật).
+SELECT 90, 'Mig 251 (Tắt JIT cho app — danh sách / trang chủ không mất ~1 giây biên dịch)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole, unnest(s.setconfig) c
+                     WHERE r.rolname = 'authenticated' AND c = 'jit=off')
+       THEN 'OK — đã vá'
+       WHEN current_setting('jit') = 'off'
+       THEN 'OK — sổ vốn tắt JIT (mig 251 chỉ để chắc)'
+       ELSE 'CHƯA — chạy migration 251 (JIT đang bật cho app: mỗi câu danh sách mất ~0,9 giây biên dịch)' END,
+  'jit mặc định của sổ: ' || current_setting('jit')
 ) t ORDER BY stt;

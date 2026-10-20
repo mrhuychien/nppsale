@@ -215,6 +215,12 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   hóa đơn chậm thế ?"*). Đừng làm khoá tìm thành hàm tính từng dòng (cột tính PostgREST) hay cột generated: dưới RLS `ilike`
   không đi chỉ mục, máy chủ tính lại khoá cho MỌI dòng ở mọi câu (40.000 HĐ ≈ 43 giây một câu); generated thì từ chối câu
   ghi lại nguyên dòng (mig 177). Trigger `trg_zzzz_tim_kd` phải chạy SAU mọi trigger BEFORE khác (trigger đặt mã).
+- **Chính sách RLS: bọc hàm quyền trong `(SELECT …)`** (chủ nhà 20/10/2026, mig 250: *"làm tương tự cho tìm kiếm các danh
+  sách khác"*): viết `org_id = (SELECT user_org_id())`, `(SELECT user_role()) = …`, `x = (SELECT auth.uid())` — gọi thẳng thì
+  Postgres gọi lại cho TỪNG dòng (NVBH đếm công nợ 1,4 giây thay vì 8 ms). Hoặc cuối migration gọi
+  `SELECT public._rls_tinh_mot_lan_ap();`. Hàm theo dòng (`customer_org_id(customer_id)`) để nguyên.
+- **JIT tắt cho vai `authenticated`** (mig 251): bật thì mỗi câu danh sách mất ~0,9 giây biên dịch, trang chủ 4,9 giây.
+  Đừng bật lại; câu nào thật sự cần thì `ALTER FUNCTION … SET jit = on` riêng hàm ấy.
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

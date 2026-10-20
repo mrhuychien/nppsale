@@ -30,6 +30,11 @@
 -- tests/doi-lien-module-cheo.test.ts kiểm chéo với hàm TypeScript.
 -- ====================================================================================================
 \set ON_ERROR_STOP on
+-- ⚠ XẾP HÀNG: vitest chạy các bộ thử song song trên CÙNG một sổ thử — mig 250 giữ khoá mọi bảng ~13 giây, câu GRANT
+--   chạy cùng lúc thì "tuple concurrently updated". Khoá tư vấn giữ tới hết phiên: bộ nào tới sau thì chờ.
+\o /dev/null
+SELECT pg_advisory_lock(hashtext('npp-thu-sql'));
+\o
 \set QUIET on
 \pset pager off
 SET client_min_messages = warning;

@@ -9,6 +9,11 @@
 -- Hàng: P1 Coca (lon; "Thung 24") công ty X · P2 Mì (goi; "Thung 30") công ty Y · P3 Dầu (chai) chưa gán công ty.
 -- NV A làm X + Y; NV B chỉ làm X.
 \set ON_ERROR_STOP on
+-- ⚠ XẾP HÀNG: vitest chạy các bộ thử song song trên CÙNG một sổ thử — mig 250 giữ khoá mọi bảng ~13 giây, câu GRANT
+--   chạy cùng lúc thì "tuple concurrently updated". Khoá tư vấn giữ tới hết phiên: bộ nào tới sau thì chờ.
+\o /dev/null
+SELECT pg_advisory_lock(hashtext('npp-thu-sql'));
+\o
 GRANT USAGE ON SCHEMA public, auth TO authenticated;
 BEGIN;
 CREATE TEMP TABLE kq (buoc int, ten text, ok boolean, ghi text) ON COMMIT DROP;

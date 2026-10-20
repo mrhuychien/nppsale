@@ -12,6 +12,8 @@ import {
   farFromStore,
   planReminders,
   reminderText,
+  NEO_ANH_DIEM_BAN,
+  linkAnhDiemBan,
   type ReminderCandidate,
 } from "../src/lib/customers/photos"
 import { stampLines, MAX_EDGE } from "../src/lib/images/prepare"
@@ -459,5 +461,23 @@ describe("Loại thông báo mới hiện được", () => {
     expect(read("src/components/layout/notification-bell.tsx")).toContain("customer_photo_missing:")
     expect(read("src/app/(dashboard)/notifications/page.tsx")).toContain("customer_photo_missing:")
     expect(read("src/types/index.ts")).toContain('| "customer_photo_missing"')
+  })
+})
+
+/* Chủ nhà 20/10/2026: "Màn điểm bán cần cập nhật, khi bấm vào mở để chụp -> mở ra chi tiết khách hàng ở phần chụp ảnh
+   luôn (hiện tại đang phải cuộn chuột xuống mới thấy)". Bấm thật: e2e/mo-de-chup.spec.ts. */
+describe("Mở để chụp → thẳng khối ảnh điểm bán", () => {
+  it("link mang neo khối ảnh; màn Điểm bán cần cập nhật dùng nó cho cả Mở để chụp lẫn Mở để duyệt", () => {
+    expect(linkAnhDiemBan("kh-1")).toBe(`/customers/kh-1#${NEO_ANH_DIEM_BAN}`)
+    const ds = read("src/app/(dashboard)/customers/missing-photos/page.tsx")
+    expect(ds.match(/<Link href=\{linkAnhDiemBan\(r\.id\)\}>/g)).toHaveLength(2)
+    expect(ds).not.toContain("<Link href={`/customers/${r.id}`}>")
+  })
+  it("chi tiết khách: khối ảnh gắn neo; tới bằng neo thì cuộn một lần sau khi khối đã vẽ", () => {
+    const ct = read("src/app/(dashboard)/customers/[id]/page.tsx")
+    expect(ct).toContain('<Card id={NEO_ANH_DIEM_BAN} className="scroll-mt-20">')
+    expect(ct).toContain("if (daCuonAnh.current || authLoading || loading || !customer) return")
+    expect(ct).toContain("if (window.location.hash !== `#${NEO_ANH_DIEM_BAN}`) return")
+    expect(ct).toContain('khoi.scrollIntoView({ block: "start" })')
   })
 })

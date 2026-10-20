@@ -44,6 +44,18 @@ export function sdtTimChinhXac(q: string | null | undefined): string {
 }
 
 /**
+ * NÚT "TẠO KHÁCH HÀNG MỚI" Ở BƯỚC TÌM KHOÁ KHI ĐÃ CÓ KHÁCH — chủ nhà 20/10/2026: "khi tìm kiếm ở màn tạo khách hàng
+ * này đã có kết quả thì nút tạo khách hàng mới không bấm được để ngăn tạo trùng khi đã có, khi không có kết quả tìm
+ * kiếm mới bấm được". Gõ đủ số mà kết quả chưa về (đang chờ 300ms / đang tìm) cũng khoá — chưa biết có trùng không.
+ * Chưa gõ / số chưa đủ thì không tìm gì → bấm được (form vẫn chặn trùng số: `taoKhach`, UNIQUE(org_id, phone)).
+ */
+export function khoaTaoKhachMoi(o: { chu: string; tim: string; dangTim: boolean; soKetQua: number }): boolean {
+  if (o.soKetQua > 0) return true
+  const so = sdtTimChinhXac(o.chu)
+  return !!so && (o.tim !== so || o.dangTim)
+}
+
+/**
  * Chữ đang gõ ở ô tìm khách → ô nào của khách mới được gán sẵn (chủ nhà 03/10/2026: "sang tạo mới có trường
  * đang search đó luôn"). Trông như SĐT (`sdtTuTimKiem`) → ô SĐT; còn lại → tên cửa hàng.
  */

@@ -2,7 +2,7 @@
 
 import { vnDateKey } from "@/lib/orders/status-tone"
 import { anDonHuy } from "@/lib/orders/an-don-huy"
-import { useEffect, useMemo, useState, useCallback } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
@@ -48,6 +48,7 @@ import { errorMessage } from "@/lib/errors"
 import { traCuaKhach, traTheoHoaDon } from "@/lib/analytics/net-revenue"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 import { HangDaLayKhach } from "@/components/customers/hang-da-lay-khach"
+import { NEO_ANH_DIEM_BAN } from "@/lib/customers/photos"
 
 interface OrderRow {
   id: string
@@ -596,6 +597,21 @@ export default function CustomerDetailPage() {
     }
   }
 
+  /*
+   * Tới bằng `#anh-diem-ban` ("Mở để chụp" / "Mở để duyệt" ở Điểm bán cần cập nhật — chủ nhà 20/10/2026: "mở ra chi tiết
+   * khách hàng ở phần chụp ảnh luôn"): trang vẽ sau khi tải xong nên trình duyệt không tự cuộn tới neo — cuộn MỘT lần khi
+   * khối ảnh đã có (tải lại ngầm sau khi chụp không kéo người dùng về nữa).
+   */
+  const daCuonAnh = useRef(false)
+  useEffect(() => {
+    if (daCuonAnh.current || authLoading || loading || !customer) return
+    if (window.location.hash !== `#${NEO_ANH_DIEM_BAN}`) return
+    const khoi = document.getElementById(NEO_ANH_DIEM_BAN)
+    if (!khoi) return
+    daCuonAnh.current = true
+    khoi.scrollIntoView({ block: "start" })
+  }, [authLoading, loading, customer])
+
   if (authLoading || loading) return <Skeleton className="h-96" />
   if (!customer) return <div>Không tìm thấy khách hàng</div>
 
@@ -811,7 +827,8 @@ export default function CustomerDetailPage() {
                 }
               />
 
-              <Card>
+              {/* Neo `#anh-diem-ban` — "Mở để chụp" ở Điểm bán cần cập nhật mở thẳng tới đây (chủ nhà 20/10/2026). */}
+              <Card id={NEO_ANH_DIEM_BAN} className="scroll-mt-20">
                 <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-base">Ảnh điểm bán</CardTitle>

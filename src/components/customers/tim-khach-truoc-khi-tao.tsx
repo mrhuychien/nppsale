@@ -11,6 +11,8 @@
  *   — gõ tên / địa chỉ / số dở không ra gì (`useDoTrungKhach`, mig 245), như bản máy tính.
  *
  * Nhập đủ số → thẻ khách (Thêm vào DS của tôi / Xem khách) → nút đáy "Tạo khách hàng mới" mang số sang form.
+ * ⚠ CHỦ NHÀ 20/10/2026: "khi tìm kiếm … đã có kết quả thì nút tạo khách hàng mới không bấm được để ngăn tạo trùng khi
+ *   đã có, khi không có kết quả tìm kiếm mới bấm được" — `khoaTaoMoi` (số đủ mà kết quả chưa về cũng khoá).
  */
 import { useMemo, useState } from "react"
 import { Search, UserPlus, CheckCircle2 } from "lucide-react"
@@ -40,7 +42,7 @@ export function TimKhachTruocKhiTao({
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = useMemo(() => createClient(), [])
-  const { tim, ketQua, dangTim, loi, daNhan, chuaDuSo } = useDoTrungKhach(chu)
+  const { tim, ketQua, dangTim, loi, daNhan, chuaDuSo, khoaTaoMoi } = useDoTrungKhach(chu)
   const [dangNhan, setDangNhan] = useState<string | null>(null)
   const laNv = user?.role === "sales"
 
@@ -158,12 +160,19 @@ export function TimKhachTruocKhiTao({
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-outline-variant/60 bg-card px-3.5 pb-[max(20px,env(safe-area-inset-bottom))] pt-2.5">
-        <p className="pb-2 text-center text-xs text-muted-foreground">Không thấy khách phù hợp?</p>
+        <p className="pb-2 text-center text-xs text-muted-foreground" data-testid="tk-goi-y-tao">
+          {ketQua.length > 0
+            ? "Số này đã có khách hàng — không tạo trùng được."
+            : khoaTaoMoi
+              ? "Đang kiểm tra số điện thoại…"
+              : "Không thấy khách phù hợp?"}
+        </p>
         <button
           type="button"
           data-testid="tk-tao-moi"
-          onClick={() => onTaoMoi(chu)}
-          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-primary text-[15px] font-semibold text-primary-foreground"
+          disabled={khoaTaoMoi}
+          onClick={() => { if (!khoaTaoMoi) onTaoMoi(chu) }}
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-primary text-[15px] font-semibold text-primary-foreground disabled:opacity-50"
         >
           <UserPlus className="h-[18px] w-[18px]" /> Tạo khách hàng mới
         </button>

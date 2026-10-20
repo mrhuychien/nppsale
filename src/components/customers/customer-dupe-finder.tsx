@@ -25,7 +25,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
   const { toast } = useToast()
 
   const [query, setQuery] = useState("")
-  const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan, chuaDuSo } = useDoTrungKhach(query)
+  const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan, chuaDuSo, khoaTaoMoi } = useDoTrungKhach(query)
   const [claimingId, setClaimingId] = useState<string | null>(null)
 
   const isSales = user?.role === "sales"
@@ -157,11 +157,21 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
         </div>
       )}
 
+      {/* Chủ nhà 20/10/2026: tìm đã có kết quả thì nút tạo mới không bấm được (chống tạo trùng) — `khoaTaoMoi`. */}
       <div className="border-t border-border/40 pt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">
-          Không thấy khách hàng phù hợp? Bấm bên phải để tạo mới.
+        <p className="text-xs text-muted-foreground" data-testid="dupe-goi-y-tao">
+          {results.length > 0
+            ? "Số này đã có khách hàng — không tạo trùng được."
+            : khoaTaoMoi
+              ? "Đang kiểm tra số điện thoại…"
+              : "Không thấy khách hàng phù hợp? Bấm bên phải để tạo mới."}
         </p>
-        <Button onClick={() => onConfirmCreateNew(query)} size="sm">
+        <Button
+          onClick={() => { if (!khoaTaoMoi) onConfirmCreateNew(query) }}
+          size="sm"
+          disabled={khoaTaoMoi}
+          title={khoaTaoMoi ? (results.length > 0 ? "Số này đã có khách hàng — không tạo trùng" : "Đang kiểm tra số điện thoại") : undefined}
+        >
           <UserPlus className="h-3.5 w-3.5 mr-1.5" /> Tạo khách hàng mới
         </Button>
       </div>

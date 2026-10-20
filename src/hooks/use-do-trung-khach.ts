@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
-import { chuanHoaSdt, sdtTimChinhXac, type KhachTrung } from "@/lib/customers/tao-khach"
+import { chuanHoaSdt, khoaTaoKhachMoi, sdtTimChinhXac, type KhachTrung } from "@/lib/customers/tao-khach"
 
 /**
  * DÒ KHÁCH ĐÃ CÓ trước khi tạo mới — CHỈ theo ĐÚNG số điện thoại (chủ nhà 15/10/2026: "ở máy tính tao chỉ cho tìm kiếm
@@ -49,5 +49,8 @@ export function useDoTrungKhach(chu: string) {
   /** Đã gõ gì đó nhưng chưa phải một số đủ — màn nhắc "nhập đủ số", không tìm. */
   const chuaDuSo = chu.trim() !== "" && !sdtTimChinhXac(chu)
 
-  return { tim, ketQua, dangTim, loi, daNhan, chuaDuSo }
+  /** Tìm ra khách (hoặc số đủ mà kết quả chưa về) → khoá nút "Tạo khách hàng mới" (chủ nhà 20/10/2026). */
+  const khoaTaoMoi = khoaTaoKhachMoi({ chu, tim, dangTim, soKetQua: ketQua.length })
+
+  return { tim, ketQua, dangTim, loi, daNhan, chuaDuSo, khoaTaoMoi }
 }

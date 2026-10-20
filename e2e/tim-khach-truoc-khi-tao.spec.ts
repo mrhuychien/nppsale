@@ -8,6 +8,8 @@ import { dangNhap, FAKE, nhatKy } from "./helpers"
  * ⚠ CHỦ NHÀ 15/10/2026: "Tìm kiếm như vậy là sai. ở máy tính tao chỉ cho tìm kiếm chính xác, nghĩa là nhập đúng số điện
  *   thoại của khách thì khách mới hiện ra." — gõ tên / địa chỉ / số dở KHÔNG ra khách nào (và không gửi đi tìm).
  *   Dữ liệu giả: "Tạp hoá Cô Ba" (0911111111, "1 Lê Lợi") do NV KHÁC phụ trách chính. Tài khoản e2e đổi vai bằng PATCH users.
+ * ⚠ CHỦ NHÀ 20/10/2026: "khi tìm kiếm ở màn tạo khách hàng này đã có kết quả thì nút tạo khách hàng mới không bấm được
+ *   để ngăn tạo trùng khi đã có, khi không có kết quả tìm kiếm mới bấm được".
  */
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
@@ -60,6 +62,12 @@ test("NVBH: bước TÌM trước; gõ địa chỉ / tên / số dở KHÔNG ra
   await expect(page.getByTestId("tk-chua-du-so")).toHaveCount(0)
   await expect(the).toContainText("Phụ trách chính: Nguyễn Văn Khác")
   await expect(the).toContainText("0911 111 111")
+  // Đã có khách → nút "Tạo khách hàng mới" KHOÁ, nói lý do; bấm cố cũng không sang form.
+  const taoMoi = page.getByTestId("tk-tao-moi")
+  await expect(taoMoi).toBeDisabled()
+  await expect(page.getByTestId("tk-goi-y-tao")).toHaveText("Số này đã có khách hàng — không tạo trùng được.")
+  await taoMoi.click({ force: true })
+  await expect(page.getByTestId("tk-shop")).toHaveCount(0)
   // NVBH chưa nhận: không đưa link "Xem khách" (RLS — trang trống), chỉ có nút nhận.
   await expect(the.getByTestId("tk-xem")).toHaveCount(0)
   await the.getByTestId("tk-nhan").click()
@@ -68,11 +76,15 @@ test("NVBH: bước TÌM trước; gõ địa chỉ / tên / số dở KHÔNG ra
   await expect(the.getByTestId("tk-xem")).toBeVisible()
   await expect(the.getByTestId("tk-nhan")).toHaveCount(0)
   expect((await phanCong()).filter((a) => a.user_id === OWNER)).toMatchObject([{ role: "secondary", status: "active" }])
+  // Nhận xong vẫn là số đã có khách → vẫn khoá.
+  await expect(taoMoi).toBeDisabled()
 
-  // Số chưa có khách → tạo mới, số mang sang ô SĐT. Lùi từ form → về bước tìm, số còn nguyên.
+  // Số chưa có khách → nút mở; tạo mới, số mang sang ô SĐT. Lùi từ form → về bước tìm, số còn nguyên.
   await page.getByTestId("tk-tim").fill("0912 345 678")
   await expect(page.getByTestId("tk-khong-trung")).toContainText("Chưa có khách nào dùng số 0912 345 678")
-  await page.getByTestId("tk-tao-moi").click()
+  await expect(taoMoi).toBeEnabled()
+  await expect(page.getByTestId("tk-goi-y-tao")).toHaveText("Không thấy khách phù hợp?")
+  await taoMoi.click()
   await expect(page.getByTestId("tk-phone")).toHaveValue("0912 345 678")
   await page.getByRole("button", { name: "Huỷ" }).click()
   await expect(page.getByTestId("tk-tim")).toHaveValue("0912 345 678")
@@ -108,6 +120,26 @@ test("Chủ NPP trên điện thoại: cũng chỉ tìm đúng số — số d�
   const the = page.getByTestId("tk-trung").filter({ hasText: "Tạp hoá Cô Ba" })
   await expect(the.getByTestId("tk-xem")).toHaveAttribute("href", `/customers/${KHACH}`)
   await expect(the.getByTestId("tk-nhan")).toHaveCount(0)
+  // Chủ NPP cũng không tạo trùng được khi đã có khách.
+  await expect(page.getByTestId("tk-tao-moi")).toBeDisabled()
+})
+
+test("số đủ mà kết quả chưa về → nút khoá ('Đang kiểm tra'); tìm xong không ra khách mới bấm được", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/customers/new")
+  const nut = page.getByTestId("tk-tao-moi")
+  // Chưa gõ gì: không tìm gì → bấm được (form vẫn chặn trùng số).
+  await expect(nut).toBeEnabled()
+  // Giữ lần tìm lại tới khi cho đi — để bấm vội lúc kết quả chưa về cũng không lọt.
+  let choDi: () => void = () => {}
+  const cong = new Promise<void>((ok) => { choDi = ok })
+  await page.route("**/rest/v1/rpc/search_customer_dupes", async (r) => { await cong; await r.continue() })
+  await page.getByTestId("tk-tim").fill("0912 345 678")
+  await expect(nut).toBeDisabled()
+  await expect(page.getByTestId("tk-goi-y-tao")).toHaveText("Đang kiểm tra số điện thoại…")
+  choDi()
+  await expect(page.getByTestId("tk-khong-trung")).toBeVisible()
+  await expect(nut).toBeEnabled()
 })
 
 test.describe("máy tính", () => {
@@ -124,9 +156,20 @@ test.describe("máy tính", () => {
     await expect(page.getByText("Phụ trách chính:")).toHaveCount(0)
     await o.fill("0911 111 111")
     await expect(page.getByText("Phụ trách chính:")).toBeVisible()
+    // Đã có khách → nút tạo mới KHOÁ, nói lý do (chủ nhà 20/10/2026).
+    const taoMoi = page.getByRole("button", { name: "Tạo khách hàng mới" })
+    await expect(taoMoi).toBeDisabled()
+    await expect(page.getByTestId("dupe-goi-y-tao")).toHaveText("Số này đã có khách hàng — không tạo trùng được.")
     await page.getByRole("button", { name: "Thêm vào DS của tôi" }).click()
     await expect(page.getByText("Trong DS của bạn")).toBeVisible()
     expect((await phanCong()).filter((a) => a.user_id === OWNER)).toMatchObject([{ role: "secondary" }])
+    await expect(taoMoi).toBeDisabled()
+    // Số chưa có khách → nút mở, sang form gán sẵn số.
+    await o.fill("0912 345 678")
+    await expect(page.getByText("Chưa có khách hàng nào dùng số 0912 345 678.")).toBeVisible()
+    await expect(taoMoi).toBeEnabled()
+    await taoMoi.click()
+    await expect(page.locator("#cf-phone")).toHaveValue("0912345678")
     const gui = await daGuiTim()
     expect(gui.every((q) => /^0\d{9,10}$/.test(q)), `đã gửi đi tìm: ${gui.join(" | ")}`).toBe(true)
   })

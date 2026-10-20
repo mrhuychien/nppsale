@@ -128,6 +128,10 @@ của nhân viên mất phần tìm khách hàng đã có trước khi tạo r�
 - `/customers/new` máy tính **và điện thoại**: bước "Tìm khách hàng đã có" trước (`CustomerDupeFinder` /
   `TimKhachTruocKhiTao`, một đường tìm `useDoTrungKhach` → `search_customer_dupes`, thấy cả khách NV khác). Tới bằng
   `?sdt=` (đã tìm số không ra, chủ nhà 01/10/2026) thì vào thẳng form gán sẵn số. "Thêm khách khác" về bước tìm.
+- **Tìm ra khách thì KHOÁ nút "Tạo khách hàng mới"** (chủ nhà 20/10/2026: *"khi tìm kiếm ở màn tạo khách hàng này đã có
+  kết quả thì nút tạo khách hàng mới không bấm được để ngăn tạo trùng khi đã có, khi không có kết quả tìm kiếm mới bấm
+  được"*): số đủ mà kết quả chưa về cũng khoá; chưa gõ / số chưa đủ thì bấm được (form vẫn chặn trùng số). Một luật cho
+  máy tính + điện thoại: `khoaTaoKhachMoi` qua `useDoTrungKhach`. Một số một khách là `UNIQUE(org_id, phone)` — đừng gỡ.
 - **Chỉ tìm CHÍNH XÁC theo số điện thoại** (chủ nhà 15/10/2026: *"nhập đúng số điện thoại của khách thì khách mới hiện
   ra"*): tên / địa chỉ / số dở không tìm, không gửi đi (`sdtTimChinhXac`); máy chủ cũng chỉ khớp đúng số (mig 245).
   Đừng nới lại thành tìm từng phần — hàm SECURITY DEFINER, tìm từng phần là lộ khách của nhân viên khác.
@@ -175,6 +179,9 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   chặn ghi thẳng; người duyệt sửa thẳng được. Luật ở màn: `src/lib/customers/photo-approval.ts`. Form "Sửa thông tin"
   **không gửi lại toạ độ** khi lưu (nút Định vị đã ghi ngay) — gửi kèm là đè vị trí vừa được duyệt dời.
 - **Đi tuyến chỉ check-in, không chụp ảnh** (chủ nhà 12/10/2026): hộp Ghé thăm chỉ ghi vị trí + kết quả + ghi chú.
+- **"Mở để chụp" / "Mở để duyệt" mở thẳng khối ảnh** (chủ nhà 20/10/2026: *"…mở ra chi tiết khách hàng ở phần chụp ảnh
+  luôn (hiện tại đang phải cuộn chuột xuống mới thấy)"*): `linkAnhDiemBan` → `/customers/<id>#anh-diem-ban`; chi tiết khách
+  vẽ sau khi tải nên tự cuộn MỘT lần khi khối đã có. Mở khách không kèm neo thì vẫn ở đầu trang.
 
 ## 2. Git / phát hành
 - Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ

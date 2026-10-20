@@ -247,7 +247,8 @@ test("màn Điểm bán cần cập nhật: tab Chờ duyệt cho người duy�
   await expect(dong("Tạp hoá Cô Ba")).not.toContainText("yêu cầu đổi chờ duyệt")
   await expect(dong("Đại lý Minh")).toContainText("1 yêu cầu đổi chờ duyệt")
   await expect(dong("Đại lý Minh"), "đã duyệt — không gắn nhãn Chưa duyệt").not.toContainText("Chưa duyệt")
-  await expect(ds.getByRole("link", { name: "Mở để duyệt" }).first()).toHaveAttribute("href", `/customers/${KHACH}`)
+  // Mở thẳng khối ảnh điểm bán — nút Duyệt nằm trong đó (chủ nhà 20/10/2026: "mở ra … ở phần chụp ảnh luôn").
+  await expect(ds.getByRole("link", { name: "Mở để duyệt" }).first()).toHaveAttribute("href", `/customers/${KHACH}#anh-diem-ban`)
 
   await doiVai("sales")
   await page.reload()

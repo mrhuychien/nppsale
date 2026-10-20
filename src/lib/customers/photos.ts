@@ -20,6 +20,13 @@ export const MANAGE_PHOTO_ROLES: readonly string[] = ["owner", "manager", "sales
 export const REMINDER_COOLDOWN_DAYS = 7
 
 /**
+ * Neo KHỐI ẢNH ĐIỂM BÁN ở chi tiết khách — chủ nhà 20/10/2026: "Màn điểm bán cần cập nhật, khi bấm vào mở để chụp ->
+ * mở ra chi tiết khách hàng ở phần chụp ảnh luôn (hiện tại đang phải cuộn chuột xuống mới thấy)".
+ */
+export const NEO_ANH_DIEM_BAN = "anh-diem-ban"
+export const linkAnhDiemBan = (customerId: string) => `/customers/${customerId}#${NEO_ANH_DIEM_BAN}`
+
+/**
  * Ô ảnh trống tiếp theo, hoặc null khi đã đủ 3.
  *
  * Lấp lại ô ĐÃ XOÁ chứ không lấy `max + 1`: xoá ảnh 2 rồi chụp lại phải

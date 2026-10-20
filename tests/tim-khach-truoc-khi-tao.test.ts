@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
 import { hamDangChay } from "./helpers/sql-ham-dang-chay"
 import {
-  KhachDaCo, cauNhanKhach, khachChoPhieu, nhanKhachVeDanhSach, sdtTimChinhXac, timKhachTrungSdt,
+  KhachDaCo, cauNhanKhach, khachChoPhieu, khoaTaoKhachMoi, nhanKhachVeDanhSach, sdtTimChinhXac, timKhachTrungSdt,
 } from "@/lib/customers/tao-khach"
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
@@ -34,6 +34,33 @@ describe("chỉ tìm khi nhập ĐÚNG số điện thoại (chủ nhà 15/10/20
   it("tên, địa chỉ, số dở, số không đầu 0, quá dài → không tìm", () => {
     for (const q of ["", "   ", "Lê Lợi", "Tạp hoá Cô Ba", "0911", "091111111", "911111111", "1911111111", "091111111122", "0911 111 111 Cô Ba"]) {
       expect(sdtTimChinhXac(q), q).toBe("")
+    }
+  })
+})
+
+/*
+ * Chủ nhà 20/10/2026: "khi tìm kiếm ở màn tạo khách hàng này đã có kết quả thì nút tạo khách hàng mới không bấm được để
+ * ngăn tạo trùng khi đã có, khi không có kết quả tìm kiếm mới bấm được".
+ */
+describe("bước tìm: tìm ra khách thì khoá nút Tạo khách hàng mới", () => {
+  const SO = "0911111111"
+  it("đã có kết quả → khoá (cả khi đang gõ lại / đã nhận khách vào DS)", () => {
+    expect(khoaTaoKhachMoi({ chu: "0911 111 111", tim: SO, dangTim: false, soKetQua: 1 })).toBe(true)
+    expect(khoaTaoKhachMoi({ chu: "0911 111 111", tim: SO, dangTim: false, soKetQua: 2 })).toBe(true)
+    expect(khoaTaoKhachMoi({ chu: "0911 11", tim: SO, dangTim: false, soKetQua: 1 })).toBe(true)
+  })
+  it("tìm xong KHÔNG ra khách → bấm được (kể cả gõ +84 / có cách)", () => {
+    expect(khoaTaoKhachMoi({ chu: "0912 345 678", tim: "0912345678", dangTim: false, soKetQua: 0 })).toBe(false)
+    expect(khoaTaoKhachMoi({ chu: "+84 912 345 678", tim: "0912345678", dangTim: false, soKetQua: 0 })).toBe(false)
+  })
+  it("số đủ mà kết quả chưa về (đang chờ 300ms / đang tìm) → khoá: chưa biết có trùng không", () => {
+    expect(khoaTaoKhachMoi({ chu: "0912 345 678", tim: "", dangTim: false, soKetQua: 0 })).toBe(true)
+    expect(khoaTaoKhachMoi({ chu: "0912 345 678", tim: "0911111111", dangTim: false, soKetQua: 0 })).toBe(true)
+    expect(khoaTaoKhachMoi({ chu: "0912 345 678", tim: "0912345678", dangTim: true, soKetQua: 0 })).toBe(true)
+  })
+  it("chưa gõ / số chưa đủ / gõ tên → không tìm gì, bấm được (form vẫn chặn trùng số)", () => {
+    for (const chu of ["", "0911", "Tạp hoá Cô Ba"]) {
+      expect(khoaTaoKhachMoi({ chu, tim: "", dangTim: false, soKetQua: 0 }), chu).toBe(false)
     }
   })
 })
@@ -101,6 +128,15 @@ describe("nối dây", () => {
     expect(HOOK).toContain("setTim(sdtTimChinhXac(chu))")
     expect(HOOK).toContain('supabase.rpc("search_customer_dupes", { p_q: tim })')
     expect(HOOK).toContain('.filter((k) => chuanHoaSdt(k.phone ?? "") === tim)')
+  })
+  it("máy tính và điện thoại: nút Tạo khách hàng mới khoá theo `khoaTaoMoi` của đường tìm chung, nói lý do", () => {
+    const HOOK = read("src/hooks/use-do-trung-khach.ts")
+    expect(HOOK).toContain("const khoaTaoMoi = khoaTaoKhachMoi({ chu, tim, dangTim, soKetQua: ketQua.length })")
+    expect(TIM).toContain("disabled={khoaTaoMoi}")
+    expect(TIM).toContain("onClick={() => { if (!khoaTaoMoi) onTaoMoi(chu) }}")
+    expect(MAY).toContain("disabled={khoaTaoMoi}")
+    expect(MAY).toContain("onClick={() => { if (!khoaTaoMoi) onConfirmCreateNew(query) }}")
+    for (const s of [TIM, MAY]) expect(s).toContain("Số này đã có khách hàng — không tạo trùng được.")
   })
   it("bước tìm: NVBH chưa nhận thì có nút nhận, không có link Xem (RLS — trang trống)", () => {
     expect(TIM).toContain("{laNv && !cuaToi && (")

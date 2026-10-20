@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
 import { Camera, MapPin, Navigation, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react"
-import { MAX_PHOTOS } from "@/lib/customers/photos"
+import { MAX_PHOTOS, linkAnhDiemBan } from "@/lib/customers/photos"
 import { truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { canDuyet, demAnhTheoKhach, docDuyetAnh, docKhachDangBan } from "./doc-anh"
@@ -188,7 +188,7 @@ export default function MissingPhotosPage() {
                   </div>
                 </div>
                 <Button asChild className="h-11 shrink-0 text-[12px]">
-                  <Link href={`/customers/${r.id}`}>
+                  <Link href={linkAnhDiemBan(r.id)}>
                     <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Mở để duyệt
                   </Link>
                 </Button>
@@ -246,8 +246,9 @@ export default function MissingPhotosPage() {
                       Không có địa chỉ
                     </span>
                   )}
+                  {/* Mở thẳng khối ảnh điểm bán, không phải cuộn xuống tìm (chủ nhà 20/10/2026). */}
                   <Button asChild className="h-11 text-[12px]">
-                    <Link href={`/customers/${r.id}`}>
+                    <Link href={linkAnhDiemBan(r.id)}>
                       <Camera className="mr-1 h-3.5 w-3.5" /> Mở để chụp
                     </Link>
                   </Button>

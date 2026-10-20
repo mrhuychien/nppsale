@@ -848,4 +848,15 @@ SELECT 86, 'Mig 247 (Sửa HĐ giữ hệ số quy đổi của tờ cũ)',
      JOIN sales_invoice_lines lo ON lo.invoice_id = sn.replaced_from
                                 AND lo.product_id = ln.product_id AND lo.unit_name = ln.unit_name
     WHERE sn.replaced_from IS NOT NULL AND lo.conversion_factor > 0 AND ln.conversion_factor <> lo.conversion_factor)
+UNION ALL
+-- 87. Mig 248 — "Bàn giao khách" chỉ chủ NPP / quản lý (chủ nhà 20/10/2026: "sao tk nhân viên bán hàng lại có bàn giao
+--     khách nhỉ"). Màn Phân quyền từng chép quyền mô-đun Khách hàng sang ô này; bấm Lưu là ghi thật cho NVBH.
+SELECT 87, 'Mig 248 (Bàn giao khách — trả quyền về mặc định)',
+  CASE WHEN EXISTS (SELECT 1 FROM public.role_permissions
+                     WHERE module = 'customers.handover' AND role NOT IN ('owner', 'manager') AND allowed)
+       THEN 'CHƯA — chạy migration 248 (vai ngoài chủ NPP / quản lý đang có Bàn giao khách)'
+       ELSE 'OK — đã vá' END,
+  'NV được cấp riêng Bàn giao khách: ' || (SELECT count(*) FROM public.user_permission_overrides o
+     JOIN public.users u ON u.id = o.user_id
+    WHERE o.permission_key LIKE 'customers.handover.%' AND o.granted AND u.role NOT IN ('owner', 'manager'))
 ) t ORDER BY stt;

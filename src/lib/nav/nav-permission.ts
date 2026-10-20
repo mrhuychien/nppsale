@@ -3,12 +3,14 @@ import {
   canAccessModule,
   hasFeaturePermission,
   hasPermission,
+  laORieng,
   overrideFor,
   ACTIONS,
   type Action,
   type Module,
   type Role,
 } from "@/lib/permissions"
+import { getFeature } from "@/lib/permissions-features"
 
 /**
  * MỘT chỗ duy nhất khai: mỗi đường dẫn trong menu cần quyền gì.
@@ -451,7 +453,14 @@ function kiemMuc(role: Role, p: NavPermission): boolean {
   // mất khỏi menu của nhân viên đó — trước đây bảng tuỳ chỉnh được ghi
   // xuống nhưng lúc chạy không ai đọc, nên thu hồi xong không đổi gì.
   const keys = p.feature ? [p.feature, p.module] : [p.module]
-  const ov = p.action ? overrideFor(keys, p.action) : viewOverride(keys)
+  let ov = p.action ? overrideFor(keys, p.action) : viewOverride(keys)
+  // ⚠ Ô RIÊNG (tính năng khai `defaultRoles`): quyền riêng ở mô-đun cha chỉ THU được, không CẤP được. Thu cả mô-đun thì
+  //   mất cả ô con; nhưng cấp riêng "Khách hàng · Sửa" cho một người không kéo theo "Bàn giao khách" (chủ nhà 20/10/2026),
+  //   như cấp đọc kho không kéo theo Hoá đơn mua — phải cấp đúng ô ấy.
+  if (ov === true && p.feature && laORieng(getFeature(p.feature))) {
+    const cuaO = p.action ? overrideFor([p.feature], p.action) : viewOverride([p.feature])
+    if (cuaO !== true) ov = null
+  }
   if (ov !== null) return ov
 
   if (p.action) {

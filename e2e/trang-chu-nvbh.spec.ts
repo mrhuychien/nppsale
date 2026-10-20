@@ -59,3 +59,35 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
     await api(`sales_invoices?id=eq.${HD}`, "DELETE")
   }
 })
+
+/* Chủ nhà 20/10/2026: "Thêm cho tao nút cập nhật ảnh điểm bán trên trang chủ của nhân viên bán hàng". */
+test("NVBH: nút Cập nhật ảnh điểm bán ngay dưới Đi tuyến / Thu công nợ → màn Điểm bán cần cập nhật; mất quyền xem khách thì ẩn", async ({ page }) => {
+  await dangNhap(page)
+  await api(`users?id=eq.${OWNER}`, "PATCH", { role: "sales" })
+  try {
+    await page.goto("/home")
+    const trang = page.getByTestId("trang-chu-nvbh")
+    const nut = trang.getByTestId("nut-anh-diem-ban")
+    await expect(nut).toContainText("Cập nhật ảnh điểm bán")
+    await expect(nut).toBeInViewport()
+    // Nằm ngay dưới hàng Đi tuyến / Thu công nợ, trên "Cần xử lý".
+    const y = async (l: ReturnType<typeof page.locator>) => (await l.boundingBox())!.y
+    expect(await y(nut)).toBeGreaterThan(await y(trang.getByRole("link", { name: /Đi tuyến/ })))
+    await expect(trang.getByRole("heading", { name: "Cần xử lý" })).toBeVisible()
+    expect(await y(nut)).toBeLessThan(await y(trang.getByRole("heading", { name: "Cần xử lý" })))
+    await nut.click()
+    await expect(page).toHaveURL(/\/customers\/missing-photos$/)
+    await expect(page.getByRole("link", { name: "Mở để chụp" }).first()).toBeVisible()
+
+    // Bị thu quyền xem khách (quyền riêng) → không vào được màn ấy → không hiện nút. Quyền NVBH nhớ suốt phiên — xoá bản nhớ
+    // như lần đăng nhập sau.
+    await api("user_permission_overrides", "POST", [{ id: "ov-anh-db", user_id: OWNER, org_id: ORG, permission_key: "customers.read", granted: false }])
+    await page.evaluate(() => sessionStorage.clear())
+    await page.goto("/home")
+    await expect(page.getByTestId("trang-chu-nvbh").getByRole("link", { name: /Đi tuyến/ })).toBeVisible()
+    await expect(page.getByTestId("nut-anh-diem-ban")).toHaveCount(0)
+  } finally {
+    await api(`users?id=eq.${OWNER}`, "PATCH", { role: "owner" })
+    await api("user_permission_overrides?id=eq.ov-anh-db", "DELETE")
+  }
+})

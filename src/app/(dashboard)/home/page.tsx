@@ -341,6 +341,7 @@ export default function HomeLauncherPage() {
           ...filterByPermission(role, TILES_NVBH).filter((t) => !visibleTiles.some((v) => v.href === t.href)),
         ])}
         xemKho={canSeeHref(role, "/products")}
+        anhDiemBan={canSeeHref(role, "/customers/missing-photos")}
         onSearch={() => {
           setTimKiem(true)
           requestAnimationFrame(() => inputRef.current?.focus())

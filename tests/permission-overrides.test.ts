@@ -292,8 +292,10 @@ describe("Màn phân quyền vẽ đúng thứ lúc chạy đang dùng", () => {
    * tìm xem "app hỏng ở đâu".
    */
   it("nền của bảng cũng tôn trọng defaultRoles", () => {
-    expect(PERM_PAGE).toContain(
-      "if (feature.defaultRoles && !feature.defaultRoles.includes(role)) return []"
+    // Một luật với lúc chạy (chủ nhà 20/10/2026 — "Bàn giao khách" lọt cho NVBH): nền lấy `macDinhTinhNang`.
+    expect(PERM_PAGE).toContain("return macDinhTinhNang(role, feature)")
+    expect(code(read("src/lib/permissions.ts"))).toContain(
+      "if (f.defaultRoles && !f.defaultRoles.includes(role)) return []"
     )
   })
 })

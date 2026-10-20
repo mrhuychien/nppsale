@@ -4,7 +4,7 @@ import { UserMenu } from "@/components/layout/user-menu"
 import { useEffect, useMemo, useState } from "react"
 import Link from "@/components/ui/link"
 import {
-  Plus, ChevronRight, MapPin, CreditCard, Pencil, Warehouse, Check, Search, type LucideIcon,
+  Plus, ChevronRight, MapPin, CreditCard, Pencil, Warehouse, Check, Search, Camera, type LucideIcon,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
@@ -56,7 +56,7 @@ const HUE_KENH = ["bg-primary", "bg-[#12b76a]", "bg-[#fdb022]", "bg-[#6941c6]", 
  * NVBH (RLS) và lọc `sales_user_id = mình`. Doanh số theo HÓA ĐƠN trừ hàng trả.
  */
 export function SalesHome({
-  userId, fullName, tiles, onSearch, xemKho = true,
+  userId, fullName, tiles, onSearch, xemKho = true, anhDiemBan = false,
 }: {
   userId: string
   fullName: string
@@ -65,6 +65,8 @@ export function SalesHome({
   /** Được vào màn Sản phẩm / Kho không — không thì bỏ việc "Tồn kho thấp" và dòng lô sắp hết
    *  hạn (chủ nhà 26/09/2026: NVBH chỉ còn module bán hàng). */
   xemKho?: boolean
+  /** Vào được màn Điểm bán cần cập nhật không — có thì hiện nút "Cập nhật ảnh điểm bán" (chủ nhà 20/10/2026). */
+  anhDiemBan?: boolean
 }) {
   const [ky, setKy] = useState<KyTrangChu>("month")
   const [homNay, setHomNay] = useState("")
@@ -325,6 +327,16 @@ export function SalesHome({
               <span className="block text-xs text-muted-foreground">{dl ? tienGon(dl.no.tong) : "…"}</span></span>
           </Link>
         </div>
+
+        {/* Chủ nhà 20/10/2026: "Thêm cho tao nút cập nhật ảnh điểm bán trên trang chủ của nhân viên bán hàng". */}
+        {anhDiemBan && (
+          <Link href="/customers/missing-photos" data-testid="nut-anh-diem-ban" className="flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><Camera className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Cập nhật ảnh điểm bán</span>
+              <span className="block text-xs text-muted-foreground">Chụp ảnh, ghim vị trí cho điểm bán còn thiếu</span></span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+        )}
 
         {/* Cần xử lý */}
         {dl && (

@@ -34,8 +34,9 @@ import {
 import {
   ACTIONS,
   ACTION_LABELS,
-  DEFAULT_PERMISSION_MAP,
   ROLE_LABELS,
+  laORieng,
+  macDinhTinhNang,
   type Action,
   type Role,
 } from "@/lib/permissions"
@@ -120,9 +121,13 @@ function effectiveValue(
   if (override !== undefined) return override
   const rpByFeature = rolePerms.get(`${feature.key}::${action}`)
   if (rpByFeature !== undefined) return rpByFeature
-  // ⚠ `?.` vì vai đã ngưng dùng không có hàng trong ma trận.
-  const moduleDefaults = DEFAULT_PERMISSION_MAP[role]?.[feature.module] ?? []
-  return moduleDefaults.includes(action)
+  // Như lúc chạy (`rowsToCache`): tính năng thừa hưởng thì theo dòng của mô-đun cha; Ô RIÊNG (khai `defaultRoles`) thì
+  // không — vẽ NVBH "có Bàn giao khách" theo quyền Khách hàng là sai (chủ nhà 20/10/2026).
+  if (!laORieng(feature)) {
+    const rpByModule = rolePerms.get(`${feature.module}::${action}`)
+    if (rpByModule !== undefined) return rpByModule
+  }
+  return macDinhTinhNang(role, feature).includes(action)
 }
 
 interface PermissionMatrixProps {

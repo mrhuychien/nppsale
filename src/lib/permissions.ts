@@ -1,4 +1,4 @@
-import { FEATURES } from "./permissions-features"
+import { FEATURES, type FeatureDef } from "./permissions-features"
 
 export type Role = "owner" | "manager" | "accountant" | "sales" | "warehouse" | "driver"
 export type Module =
@@ -193,6 +193,31 @@ export const DEFAULT_PERMISSION_MAP: Partial<Record<Role, Record<Module, Action[
  */
 export type PermissionsCache = Partial<Record<Role, Record<string, Set<Action>>>>
 
+/**
+ * Tính năng có Ô QUYỀN RIÊNG (khai `defaultRoles`): dòng `role_permissions` của mô-đun cha và quyền riêng từng người ở
+ * mô-đun cha KHÔNG chạm tới nó — chỉ dòng / quyền riêng của chính nó.
+ *
+ * ⚠ CHỦ NHÀ 20/10/2026: "Kiểm tra lại sao tk nhân viên bán hàng lại có bàn giao khách nhỉ". Màn Phân quyền lúc nạp chép
+ *   quyền mô-đun Khách hàng sang mọi tính năng con, kể cả "Bàn giao khách" (mig 246, chỉ chủ NPP / quản lý) — ô mới chưa
+ *   có dòng riêng nên bảng vẽ NVBH như đã cấp, bấm Lưu là ghi thật xuống. Một luật ở đây cho lúc chạy và cả hai màn.
+ */
+export const laORieng = (f: FeatureDef | undefined): boolean => !!f?.defaultRoles
+
+/**
+ * MẶC ĐỊNH của một tính năng cho một vai — MỘT luật cho lúc chạy (`buildCacheFromMap`) và hai màn phân quyền (theo vai,
+ * từng người). Ô riêng: vai ngoài `defaultRoles` → rỗng; vai trong → `macDinhVai` hoặc quyền mô-đun cha. Còn lại thừa
+ * hưởng mô-đun cha.
+ */
+export function macDinhTinhNang(
+  role: Role,
+  f: FeatureDef,
+  map: Partial<Record<Role, Record<Module, Action[]>>> = DEFAULT_PERMISSION_MAP
+): readonly Action[] {
+  if (f.defaultRoles && !f.defaultRoles.includes(role)) return []
+  // ⚠ `?.` vì vai đã ngưng dùng không có hàng trong ma trận — tra ra rỗng, không phải nổ.
+  return (f.defaultRoles ? f.macDinhVai?.[role] : undefined) ?? map[role]?.[f.module] ?? []
+}
+
 function buildCacheFromMap(
   map: Partial<Record<Role, Record<Module, Action[]>>>
 ): PermissionsCache {
@@ -207,10 +232,8 @@ function buildCacheFromMap(
     // đúng chỗ đó là chỗ "Hoá đơn mua" / "Công nợ NCC" lọt vào màn hình
     // của NVBH chỉ vì họ được đọc kho.
     for (const f of FEATURES) {
-      if (!f.defaultRoles) continue
-      m[f.key] = !f.defaultRoles.includes(role)
-        ? new Set<Action>()
-        : new Set(f.macDinhVai?.[role] ?? map[role]?.[f.module] ?? [])
+      if (!laORieng(f)) continue
+      m[f.key] = new Set(macDinhTinhNang(role, f, map))
     }
     out[role] = m
   }

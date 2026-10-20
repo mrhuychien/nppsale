@@ -14,7 +14,8 @@ import {
   ROLE_LABELS,
   ACTIONS,
   ACTION_LABELS,
-  DEFAULT_PERMISSION_MAP,
+  laORieng,
+  macDinhTinhNang,
   type Action,
   type Role,
   type AssignableRole,
@@ -76,17 +77,13 @@ const ACTION_DESC: Record<Action, string> = {
   export: "Xuất file CSV / In ra giấy",
 }
 
-function defaultActionsForFeature(role: Role, feature: FeatureDef): Action[] {
+function defaultActionsForFeature(role: Role, feature: FeatureDef): readonly Action[] {
   // ⚠ TÍNH NĂNG KHAI `defaultRoles` THÌ KHÔNG THỪA HƯỞNG MÔ-ĐUN CHA.
   // Thiếu vế này thì màn phân quyền vẽ ra một sự thật khác với sự thật lúc
   // chạy: bảng ở đây tick sẵn "Công nợ NCC" cho NVBH, còn menu của họ thì
   // không có mục đó. Người quản lý nhìn bảng, tưởng đã cấp rồi, và đi tìm
-  // xem "app hỏng ở đâu".
-  if (feature.defaultRoles && !feature.defaultRoles.includes(role)) return []
-  // Còn lại thừa hưởng mặc định của mô-đun cha — nền trước khi áp tuỳ chỉnh.
-  // ⚠ `?.` vì vai đã ngưng dùng không có hàng trong ma trận — tra ra
-  //   rỗng, không phải nổ.
-  return DEFAULT_PERMISSION_MAP[role]?.[feature.module] ?? []
+  // xem "app hỏng ở đâu". Cùng một luật với lúc chạy: `macDinhTinhNang`.
+  return macDinhTinhNang(role, feature)
 }
 
 function buildBaselineMatrix(): FeatureMatrix {
@@ -162,7 +159,9 @@ export default function PermissionsPage() {
       // Apply module overrides to all features inheriting from that module
       for (const role of ROLES) {
         for (const f of FEATURES) {
-          const modOverride = moduleOverrides[role][f.module]
+          /* ⚠ Ô RIÊNG (khai `defaultRoles`) KHÔNG nhận dòng của mô-đun cha — lúc chạy (`rowsToCache`) cũng thế. Áp vào là
+             bảng vẽ "đã cấp" một ô chưa ai cấp, và bấm Lưu là ghi thật (chủ nhà 20/10/2026: NVBH có "Bàn giao khách"). */
+          const modOverride = laORieng(f) ? undefined : moduleOverrides[role][f.module]
           if (modOverride) {
             for (const a of ACTIONS) {
               if (modOverride[a] !== undefined) baseline[role][f.key][a] = modOverride[a]

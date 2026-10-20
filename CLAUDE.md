@@ -158,6 +158,12 @@ Chốt: cả hai kiểu; toàn bộ / theo tuyến / theo công ty; mốc 3 / 6 
 
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
+- **Ô quyền riêng** (chủ nhà 20/10/2026: *"Kiểm tra lại sao tk nhân viên bán hàng lại có bàn giao khách nhỉ"*): tính năng
+  khai `defaultRoles` (Bàn giao khách, Công nợ NCC, Phiếu thu, `reports.*`…) **không** thừa hưởng mô-đun cha — dòng
+  `role_permissions` của mô-đun và quyền riêng từng người ở mô-đun **không mở** được nó (thu cả mô-đun của một người thì
+  vẫn mất cả ô con — `kiemMuc`). Lúc chạy và cả hai màn phân quyền dùng một
+  luật `laORieng` / `macDinhTinhNang` (`src/lib/permissions.ts`). Màn Phân quyền từng chép quyền mô-đun sang ô riêng nên
+  bấm Lưu là ghi thật cho NVBH (mig 248 trả "Bàn giao khách" về mặc định).
 - Giảm giá: nhân viên theo `users.allow_discount` + trần `discount_max_*` (mig 185); chủ NPP / kế
   toán toàn quyền.
 - In ở POS: trang in riêng `/in/*` nạp vào khung ẩn (`inTaiCho`); header phải là
@@ -182,6 +188,8 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - **"Mở để chụp" / "Mở để duyệt" mở thẳng khối ảnh** (chủ nhà 20/10/2026: *"…mở ra chi tiết khách hàng ở phần chụp ảnh
   luôn (hiện tại đang phải cuộn chuột xuống mới thấy)"*): `linkAnhDiemBan` → `/customers/<id>#anh-diem-ban`; chi tiết khách
   vẽ sau khi tải nên tự cuộn MỘT lần khi khối đã có. Mở khách không kèm neo thì vẫn ở đầu trang.
+- Trang chủ NVBH có nút **"Cập nhật ảnh điểm bán"** (chủ nhà 20/10/2026) ngay dưới Đi tuyến / Thu công nợ →
+  `/customers/missing-photos`; chỉ hiện khi vào được màn ấy (`anhDiemBan` của `SalesHome`).
 
 ## 2. Git / phát hành
 - Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ

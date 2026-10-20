@@ -378,8 +378,11 @@ UNION ALL
 SELECT 44, 'Mig 205 (Tìm kiếm chung: từng từ, không dấu, mã viết liền)',
   -- ⚠ Gọi hàm của mig 205 qua query_to_xml: sổ chưa chạy mig 205 thì gọi thẳng là cả
   --   phiếu khám báo lỗi "function does not exist" ngay lúc dịch câu.
+  -- ⚠ Mig 249 thay hàm cột tính + chỉ mục biểu thức bằng cột thật `tim_kd` — có cột thật cũng là đã vá.
   CASE WHEN to_regprocedure('public.khoa_tim(text)') IS NULL
-            OR to_regprocedure('public.tim_kd(public.sales_orders)') IS NULL
+            OR (to_regprocedure('public.tim_kd(public.sales_orders)') IS NULL
+                AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                 WHERE table_schema = 'public' AND table_name = 'sales_orders' AND column_name = 'tim_kd'))
        THEN 'CHƯA — gõ "dh0123" không ra DH-0123, tìm người lập không dấu không ra'
        WHEN (xpath('/row/k/text()', query_to_xml($q$SELECT public.khoa_tim('DH-0123') || '|' ||
               public.khoa_tim(U&'S\1eefa h\1ed9p \0110\00e0 N\1eb5ng') AS k$q$, false, true, '')))[1]::text
@@ -390,6 +393,8 @@ SELECT 44, 'Mig 205 (Tìm kiếm chung: từng từ, không dấu, mã viết li
               false, true, '')))[1]::text <> '0'
        THEN 'LỆCH — còn hàng có tim_kd kiểu cũ, chạy lại mig 205'
        WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_sales_orders_tim_kd_trgm')
+            AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                             WHERE table_schema = 'public' AND table_name = 'sales_orders' AND column_name = 'tim_kd')
        THEN 'CHƯA — thiếu chỉ mục trigram, ô tìm quét cả bảng'
        ELSE 'OK — đã vá' END, ''
 UNION ALL
@@ -859,4 +864,27 @@ SELECT 87, 'Mig 248 (Bàn giao khách — trả quyền về mặc định)',
   'NV được cấp riêng Bàn giao khách: ' || (SELECT count(*) FROM public.user_permission_overrides o
      JOIN public.users u ON u.id = o.user_id
     WHERE o.permission_key LIKE 'customers.handover.%' AND o.granted AND u.role NOT IN ('owner', 'manager'))
+UNION ALL
+-- 88. Mig 249 — khoá tìm của bảng chứng từ lưu sẵn (chủ nhà 20/10/2026: "Kiểm tra giúp tao sao tìm kiếm số hóa đơn trong
+--     danh sách hóa đơn chậm thế ?"). Chưa vá: mỗi lần gõ tìm, máy chủ tính lại khoá cho MỌI chứng từ của mọi câu
+--     (danh sách, đếm, cộng tiền…) — sổ 40.000 hoá đơn đo ra ~44 giây một câu.
+SELECT 88, 'Mig 249 (Khoá tìm chứng từ lưu sẵn — tìm số HĐ / đơn / phiếu nhanh)',
+  CASE WHEN (SELECT count(*) FROM pg_attribute a
+              WHERE a.attname = 'tim_kd' AND NOT a.attisdropped AND a.attgenerated = ''
+                AND a.attrelid IN (SELECT to_regclass('public.' || b) FROM unnest(ARRAY['sales_orders', 'sales_invoices',
+                      'returns', 'stock_entries', 'batches', 'payables', 'cash_receipts', 'users', 'invoices']) b)) < 9
+         OR (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_zzzz_tim_kd') < 9
+       THEN 'CHƯA — chạy migration 249 (tìm số hoá đơn / đơn / phiếu tính lại khoá từng dòng — chậm)'
+       WHEN EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'tim_kd' AND pronamespace = 'public'::regnamespace)
+       THEN 'LỆCH — còn hàm cột tính tim_kd(<bảng>), chạy lại migration 249'
+       ELSE 'OK — đã vá' END,
+  -- Trigger có giữ khoá đúng không: soát 500 HĐ + 500 đơn mới nhất. Qua query_to_xml — sổ chưa chạy mig 249 thì cột
+  -- chưa có, gọi thẳng là cả phiếu khám báo lỗi ngay lúc dịch câu.
+  CASE WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_zzzz_tim_kd') < 9 THEN ''
+       ELSE 'Khoá lệch (500 HĐ + 500 đơn mới nhất): ' || (xpath('/row/n/text()', query_to_xml($q$SELECT
+         (SELECT count(*) FROM (SELECT invoice_code, tim_kd FROM public.sales_invoices ORDER BY created_at DESC LIMIT 500) x
+           WHERE tim_kd IS DISTINCT FROM public.khoa_tim_ds(VARIADIC ARRAY[invoice_code::text]))
+       + (SELECT count(*) FROM (SELECT order_code, tim_kd FROM public.sales_orders ORDER BY created_at DESC LIMIT 500) x
+           WHERE tim_kd IS DISTINCT FROM public.khoa_tim_ds(VARIADIC ARRAY[order_code::text])) AS n$q$,
+         false, true, '')))[1]::text END
 ) t ORDER BY stt;

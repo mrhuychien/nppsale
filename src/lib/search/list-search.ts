@@ -86,9 +86,14 @@ export function ilikeDk(column: string, raw: string): string {
 export const BANG_TIM_KHONG_DAU: ReadonlySet<string> = new Set(["products", "customers", "suppliers"])
 
 /**
- * Bảng chứng từ có `tim_kd` là CỘT TÍNH (hàm `public.tim_kd(<bảng>)`, mig 205)
- * — mã chứng từ viết liền / bỏ số 0 đầu, tên người không dấu.
+ * Bảng chứng từ có khoá `tim_kd` — mã chứng từ viết liền / bỏ số 0 đầu, tên
+ * người không dấu. Mig 205 làm nó là CỘT TÍNH (hàm `public.tim_kd(<bảng>)`);
+ * mig 249 thay bằng CỘT THẬT do trigger ghi, cùng khoá.
  *
+ * ⚠ CỘT TÍNH LÀ CÁI LÀM TÌM SỐ HOÁ ĐƠN CHẬM (chủ nhà 20/10/2026: "sao tìm kiếm
+ *   số hóa đơn trong danh sách hóa đơn chậm thế ?"): dưới RLS máy chủ quét cả
+ *   bảng và tính lại khoá cho TỪNG dòng ở mọi câu (danh sách, đếm, cộng tiền) —
+ *   40.000 hoá đơn ~43 giây một câu. Cột thật: ~1 giây. Trình duyệt gửi y như cũ.
  * ⚠ PHẢI DÒ TRƯỚC KHI DÙNG (`coTimKd`). Sổ chưa chạy mig 205 mà gửi
  *   `tim_kd.ilike…` là PostgREST báo "cột không có" và CẢ danh sách trắng.
  */

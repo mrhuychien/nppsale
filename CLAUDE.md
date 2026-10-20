@@ -211,6 +211,10 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - Thêm một dòng kiểm vào `scripts/sql/kham-so-that.sql`, rồi chạy
   `bash scripts/build-combined-migration.sh`.
 - Nhắc chủ nhà các migration cần chạy trên Supabase sau mỗi đợt.
+- **Khoá tìm `tim_kd` là CỘT THẬT do trigger ghi** (chủ nhà 20/10/2026, mig 249: *"sao tìm kiếm số hóa đơn trong danh sách
+  hóa đơn chậm thế ?"*). Đừng làm khoá tìm thành hàm tính từng dòng (cột tính PostgREST) hay cột generated: dưới RLS `ilike`
+  không đi chỉ mục, máy chủ tính lại khoá cho MỌI dòng ở mọi câu (40.000 HĐ ≈ 43 giây một câu); generated thì từ chối câu
+  ghi lại nguyên dòng (mig 177). Trigger `trg_zzzz_tim_kd` phải chạy SAU mọi trigger BEFORE khác (trigger đặt mã).
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

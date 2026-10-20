@@ -35,8 +35,9 @@
 --      khỏi tính lại khoá. Ghi thẳng vào `tim_kd` thì vẫn bị tính đè.
 --
 -- Trình duyệt KHÔNG đổi: `tim_kd.ilike…` nay trúng cột thật; `coTimKd` vẫn dò ra có.
--- ⚠ ADD COLUMN viết lại bảng và KHOÁ bảng tới lúc chạy xong cả tệp (vài giây với cỡ sổ hiện tại) —
---   nên chạy lúc vắng. `users` làm sau cùng: mọi câu soát quyền đều đọc bảng này.
+-- ⚠ ADD COLUMN viết lại bảng và KHOÁ bảng tới lúc chạy xong cả tệp (đo: 40.000 hoá đơn ~21 giây cho
+--   riêng bảng hoá đơn; sổ nhỏ hơn thì nhanh hơn tương ứng) — màn chứng từ đứng chờ trong lúc ấy, nên
+--   chạy lúc vắng. `users` làm sau cùng: mọi câu soát quyền đều đọc bảng này.
 -- ⚠ Đổi luật `khoa_tim` sau này thì phải tính lại cột (như mig 205 đã làm với hàng / khách / NCC).
 -- ====================================================================
 

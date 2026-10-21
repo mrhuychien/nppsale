@@ -22,6 +22,7 @@ import { TaoNhanhTuyen } from "@/components/tao-nhanh/tao-nhanh-tuyen"
 import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import type { Customer, CustomerGroup } from "@/types"
 import { errorMessage } from "@/lib/errors"
+import { ghiPhaiTrungDong } from "@/lib/db/must-write"
 
 interface CustomerFormProps {
   customer?: Customer
@@ -46,7 +47,13 @@ interface CustomerFormProps {
    * đang làm) — chứng từ dở dang không mất. Form cũng bỏ khung thẻ (đã nằm trong hộp thoại).
    */
   onDaTao?: (khach: KhachVuaTao) => void
-  /** Nút Huỷ khi nằm trong khung tạo nhanh (mặc định: lùi trang). */
+  /**
+   * SỬA TRONG HỘP THOẠI (modal thông tin khách ở POS, chủ nhà 21/10/2026): có thì lưu xong KHÔNG chuyển trang mà trả
+   * bản đã ghi cho nơi gọi — chứng từ đang làm ở POS không mất. Form bỏ khung thẻ, bỏ link rời trang, bỏ nút Định vị
+   * (máy POS đặt ở văn phòng: định vị ra toạ độ văn phòng; vị trí điểm bán dời ở hồ sơ khách — khối Ảnh điểm bán).
+   */
+  onDaSua?: (khach: Customer) => void
+  /** Nút Huỷ khi nằm trong khung tạo nhanh / hộp thoại sửa (mặc định: lùi trang). */
   onHuy?: () => void
 }
 
@@ -66,7 +73,9 @@ const DAY_LABELS: Record<number, string> = {
   6: "Thứ 7",
 }
 
-export function CustomerForm({ customer, groups, nextHref, initialPhone, initialName, onDaTao, onHuy }: CustomerFormProps) {
+export function CustomerForm({ customer, groups, nextHref, initialPhone, initialName, onDaTao, onDaSua, onHuy }: CustomerFormProps) {
+  /** Nằm trong hộp thoại (tạo nhanh / sửa ở POS): không khung thẻ, không link rời trang. */
+  const trongHop = !!onDaTao || !!onDaSua
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   /** Chống bấm Lưu 2 lần — `loading` chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt (chủ nhà 01/10/2026). */
@@ -262,8 +271,8 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
       let newId: string | null = null
 
       if (customer) {
-        const { error } = await supabase.from("customers").update(payload).eq("id", customer.id)
-        if (error) throw error
+        // ⚠ RLS lọc ra 0 dòng vẫn là HTTP 200 — không ném thì báo "Đã cập nhật" cho một lần lưu không ghi gì.
+        await ghiPhaiTrungDong(supabase.from("customers").update(payload).eq("id", customer.id))
         toast({ title: "Đã cập nhật khách hàng" })
       } else {
         // Kiểm trùng số (cả khách người khác phụ trách) + ghi + phân công cho người tạo — `taoKhach`.
@@ -279,6 +288,12 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
       // Danh mục khách của /sell trên máy giờ đã cũ — lần mở sau tải lại (thấy khách mới / tên mới).
       lamCuDanhMucBan()
       xoaNhoNen("nen:khach") // ô lọc khách ở danh sách đơn / hoá đơn thấy khách mới ngay
+
+      // Sửa trong hộp thoại: trả bản đã ghi cho nơi gọi, ở lại trang đang làm (toạ độ không nằm trong payload sửa).
+      if (onDaSua && customer) {
+        onDaSua({ ...customer, ...payload } as Customer)
+        return
+      }
 
       // Tạo nhanh tại chỗ: trả khách cho nơi gọi, ở lại trang đang làm.
       if (onDaTao && !customer) {
@@ -347,8 +362,8 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="customer-route">Tuyến bán hàng *</Label>
-                {/* Trong khung tạo nhanh không có link rời trang — rời là mất chứng từ đang làm. */}
-                {!onDaTao && (
+                {/* Trong khung tạo nhanh / hộp thoại sửa không có link rời trang — rời là mất chứng từ đang làm. */}
+                {!trongHop && (
                   <Link
                     href="/customers/routes"
                     className="text-[10px] text-primary hover:underline"
@@ -360,7 +375,7 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
               {salesRoutes.length === 0 && !coQuyenTuyen ? (
                 <p className="text-xs text-muted-foreground">
                   Chưa có tuyến.{" "}
-                  {!onDaTao && <Link href="/customers/routes" className="text-primary font-semibold hover:underline">Thêm tuyến</Link>}
+                  {!trongHop && <Link href="/customers/routes" className="text-primary font-semibold hover:underline">Thêm tuyến</Link>}
                 </p>
               ) : (
                 /* Ô tìm + "+ Tạo tuyến mới" ở cuối (chủ nhà 03/10/2026) — tạo xong tự chọn, form không mất. */
@@ -381,17 +396,21 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
             <div className="space-y-2 sm:col-span-2">
               <div className="flex items-center justify-between">
                 <Label>Địa chỉ *</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGetGps}
-                  disabled={gpsLoading}
-                  className="h-7 text-xs gap-1"
-                >
-                  <Navigation className="h-3 w-3" />
-                  {gpsLoading ? "Đang định vị..." : "Định vị"}
-                </Button>
+                {onDaSua ? (
+                  <span className="text-[11px] text-muted-foreground">Vị trí điểm bán dời ở hồ sơ khách</span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGetGps}
+                    disabled={gpsLoading}
+                    className="h-7 text-xs gap-1"
+                  >
+                    <Navigation className="h-3 w-3" />
+                    {gpsLoading ? "Đang định vị..." : "Định vị"}
+                  </Button>
+                )}
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Input
@@ -563,8 +582,8 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
     />
   )
 
-  // Trong khung tạo nhanh: hộp thoại đã có tiêu đề — không lồng thêm một thẻ.
-  if (onDaTao) return <>{bieuMau}{khungTuyen}</>
+  // Trong hộp thoại (tạo nhanh / sửa ở POS): hộp thoại đã có tiêu đề — không lồng thêm một thẻ.
+  if (trongHop) return <>{bieuMau}{khungTuyen}</>
 
   return (
     <Card>

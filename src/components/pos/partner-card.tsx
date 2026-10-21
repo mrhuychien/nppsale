@@ -32,6 +32,7 @@ export function PartnerCard({
   hotkey = "F4",
   onPick,
   onClear,
+  onOpen,
   readOnly,
 }: {
   partner: PosPartner | null
@@ -40,6 +41,11 @@ export function PartnerCard({
   hotkey?: string
   onPick?: () => void
   onClear?: () => void
+  /**
+   * Bấm vào tên / dòng phụ → modal xem đủ + sửa hồ sơ đối tác (chủ nhà 21/10/2026, `partner-info-modal`). Có cả khi
+   * `readOnly`: chứng từ không đổi được khách không có nghĩa là không được xem / sửa hồ sơ khách.
+   */
+  onOpen?: () => void
   /**
    * ⚠ CHỨNG TỪ KHÔNG ĐỔI ĐƯỢC ĐỐI TÁC THÌ KHÔNG VẼ NÚT "ĐỔI". Hóa đơn
    * đã ghi sổ và `reissue_invoice` không nhận khách mới — một nút
@@ -65,40 +71,59 @@ export function PartnerCard({
     )
   }
 
+  const ruot = (
+    <>
+      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] bg-[var(--pos-primary-soft)] text-[12px] font-extrabold text-[var(--pos-primary-deep)]">
+        {viTat(partner.name)}
+      </div>
+      <div className="min-w-0 flex-grow">
+        <div className="truncate text-[14px] font-extrabold text-[var(--pos-ink)]">{partner.name}</div>
+        {partner.meta && <div className="n mt-0.5 truncate text-[11px] text-[var(--pos-muted)]">{partner.meta}</div>}
+        {/*
+          ⚠ `null` LÀ "CHƯA ĐỌC ĐƯỢC", KHÔNG PHẢI "KHÔNG NỢ". Vẽ badge
+            `Nợ 0` cho một lỗi mạng là nói với người đi đòi tiền rằng
+            khách này sạch nợ. Chưa đọc được thì không vẽ badge.
+        */}
+        {partner.debt != null && (
+          <div
+            className={`mt-1.5 inline-flex items-center gap-1.5 rounded-[5px] px-[7px] py-[3px] ${
+              partner.debt > 0 ? "bg-[var(--pos-danger-border)]" : "bg-[var(--pos-line-soft)]"
+            }`}
+          >
+            <span
+              className={`text-[10.5px] font-semibold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
+            >
+              {/* Nợ âm (hàng trả > hàng xuất, mig 186) là khách đang DƯ CÓ. */}
+              {partner.debt < 0 ? "Dư có" : "Nợ"}
+            </span>
+            <span
+              className={`n text-[11.5px] font-bold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
+            >
+              {formatCurrency(Math.abs(partner.debt))}
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  )
+
   return (
     <div className="shrink-0 rounded-[12px] border-[1.5px] border-[var(--pos-line)] bg-white px-3 py-2.5">
       <div className="flex items-start gap-2.5">
-        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] bg-[var(--pos-primary-soft)] text-[12px] font-extrabold text-[var(--pos-primary-deep)]">
-          {viTat(partner.name)}
-        </div>
-        <div className="min-w-0 flex-grow">
-          <div className="truncate text-[14px] font-extrabold text-[var(--pos-ink)]">{partner.name}</div>
-          {partner.meta && <div className="n mt-0.5 truncate text-[11px] text-[var(--pos-muted)]">{partner.meta}</div>}
-          {/*
-            ⚠ `null` LÀ "CHƯA ĐỌC ĐƯỢC", KHÔNG PHẢI "KHÔNG NỢ". Vẽ badge
-              `Nợ 0` cho một lỗi mạng là nói với người đi đòi tiền rằng
-              khách này sạch nợ. Chưa đọc được thì không vẽ badge.
-          */}
-          {partner.debt != null && (
-            <div
-              className={`mt-1.5 inline-flex items-center gap-1.5 rounded-[5px] px-[7px] py-[3px] ${
-                partner.debt > 0 ? "bg-[var(--pos-danger-border)]" : "bg-[var(--pos-line-soft)]"
-              }`}
-            >
-              <span
-                className={`text-[10.5px] font-semibold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
-              >
-                {/* Nợ âm (hàng trả > hàng xuất, mig 186) là khách đang DƯ CÓ. */}
-                {partner.debt < 0 ? "Dư có" : "Nợ"}
-              </span>
-              <span
-                className={`n text-[11.5px] font-bold ${partner.debt > 0 ? "text-[var(--pos-danger)]" : "text-[var(--pos-muted)]"}`}
-              >
-                {formatCurrency(Math.abs(partner.debt))}
-              </span>
-            </div>
-          )}
-        </div>
+        {/* Có `onOpen` thì tên + dòng phụ là MỘT nút (vùng bấm rộng); nút Đổi / × nằm ngoài — không lồng nút trong nút. */}
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`Xem thông tin ${label}: ${partner.name}`}
+            title={`Xem / sửa thông tin ${label}`}
+            className="-m-1 flex min-w-0 flex-grow items-start gap-2.5 rounded-[9px] p-1 text-left hover:bg-[var(--pos-line-soft)]"
+          >
+            {ruot}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-grow items-start gap-2.5">{ruot}</div>
+        )}
         {!readOnly && (
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           {onClear && (

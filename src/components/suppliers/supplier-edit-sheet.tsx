@@ -10,9 +10,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { SupplierFields } from "@/components/suppliers/supplier-fields"
-import { nccFormTu, nccPayload, type NccForm } from "@/lib/suppliers/form"
+import { nccFormTu, type NccForm } from "@/lib/suppliers/form"
 import type { NccHoSo, TruongSua } from "@/lib/suppliers/chi-tiet"
-import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { luuHoSoNcc, LoiNhapNcc } from "@/lib/suppliers/luu-ho-so"
 import { errorMessage } from "@/lib/errors"
 
 export function SupplierEditSheet({
@@ -50,19 +50,15 @@ export function SupplierEditSheet({
   }, [open, focus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const luu = async () => {
-    const { payload, loi } = nccPayload(form, goc.current)
-    if (loi) {
-      toast({ title: loi, variant: "destructive" })
-      return
-    }
     setSaving(true)
     try {
-      await ghiPhaiTrungDong(createClient().from("suppliers").update(payload).eq("id", supplier.id))
+      await luuHoSoNcc(createClient(), supplier.id, form, goc.current)
       toast({ title: "Đã cập nhật nhà cung cấp" })
       onOpenChange(false)
       onSaved()
     } catch (err) {
-      toast({ title: "Không lưu được", description: errorMessage(err), variant: "destructive" })
+      if (err instanceof LoiNhapNcc) toast({ title: err.message, variant: "destructive" })
+      else toast({ title: "Không lưu được", description: errorMessage(err), variant: "destructive" })
     } finally {
       setSaving(false)
     }

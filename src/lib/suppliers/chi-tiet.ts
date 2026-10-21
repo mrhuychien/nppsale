@@ -15,6 +15,14 @@ import { vnDateKey } from "@/lib/orders/status-tone"
 
 export const CHUA_CAP_NHAT = "Chưa cập nhật"
 
+/**
+ * Cột hồ sơ NCC mà màn chi tiết + modal thông tin NCC ở POS đọc. Đọc bằng `selectResilient(…, COT_NCC_MOI, COT_NCC_CU)`:
+ * DB chưa chạy mig 232 thì thiếu cột hồ sơ pháp lý — đọc lại bằng bộ cũ, không trắng màn.
+ */
+export const COT_NCC_CU =
+  "id, org_id, name, code, category, contact_name, phone, email, address, tax_code, bank_account, bank_name, payment_terms, rating, notes, is_verified, is_active, created_at"
+export const COT_NCC_MOI = `${COT_NCC_CU}, legal_name, business_type, representative, business_license_no, business_license_date, registered_address, credit_limit, created_by`
+
 /** Loại hình hay gặp — ô chọn ở biểu mẫu; giá trị lưu đúng chữ hiện ra. */
 export const LOAI_HINH_NCC = [
   "Hộ kinh doanh",

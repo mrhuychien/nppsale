@@ -48,6 +48,8 @@ import {
   MoneyRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
+import { KhachPosModal } from "@/components/pos/partner-info-modal"
+import { doiTacSauSua, metaKhach } from "@/lib/pos/doi-tac"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { timXepHang } from "@/lib/search"
@@ -103,7 +105,7 @@ let dem = 0
 const newKey = () => `r${++dem}`
 
 export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = null, sourceCustomerId = null }: ReturnScreenProps) {
-  const { products, customers, stockByProduct, loading, warnings, productById, customerById } = usePosRefData()
+  const { products, customers, stockByProduct, loading, warnings, productById, customerById, capNhatKhach } = usePosRefData()
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
@@ -153,6 +155,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
    */
   const [gioDich, setGioDich] = useState<"tra" | "doi">("tra")
   const [moTimKhach, setMoTimKhach] = useState(false)
+  /** Modal xem đủ + sửa hồ sơ khách (bấm vào thẻ khách — chủ nhà 21/10/2026). */
+  const [xemKhach, setXemKhach] = useState(false)
   const [moChonHD, setMoChonHD] = useState(false)
   const [slipCode, setSlipCode] = useState<string | null>(null)
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
@@ -858,6 +862,15 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
               partner={khach}
               onPick={() => setMoTimKhach(true)}
               onClear={() => setKhach(null)}
+              onOpen={() => setXemKhach(true)}
+            />
+            <KhachPosModal
+              customerId={xemKhach ? khach?.id ?? null : null}
+              onClose={() => setXemKhach(false)}
+              onDaLuu={(c) => {
+                setKhach((k) => doiTacSauSua(k, c.id, c.store_name, metaKhach(c)))
+                capNhatKhach(c)
+              }}
             />
             <SearchDropdown
               open={moTimKhach}

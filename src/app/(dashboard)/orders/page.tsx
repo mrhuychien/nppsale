@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission, duocXuatFile } from "@/lib/permissions"
 import { newOrderHref } from "@/lib/nav/new-order"
+import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 
 import { useToast } from "@/hooks/use-toast"
 import { PageHeader } from "@/components/ui/page-header"
@@ -1506,9 +1507,10 @@ export default function OrdersPage() {
             nút "Bán hàng" tròn xanh đi tới ĐÚNG cùng một chỗ
             (`NEW_ORDER_HREF`), lúc nào cũng thấy — hai nút cùng việc nằm
             cách nhau một gang tay chỉ tốn chỗ của danh sách. Máy tính
-            không có thanh dưới nên ở đó phải giữ. */}
+            không có thanh dưới nên ở đó phải giữ. Máy tính mở POS ở TAB MỚI
+            (`diHoacMoPos`) — `router.push` thì cả tab danh sách bị chuyển. */}
         {user && hasPermission(user.role, "orders", "create") && (
-          <Button className="hidden lg:inline-flex" onClick={() => router.push(newOrderHref())}>
+          <Button className="hidden lg:inline-flex" onClick={() => diHoacMoPos(router.push, newOrderHref())}>
             <Plus className="mr-2 h-4 w-4" /> Tạo đơn
           </Button>
         )}

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test"
-import { dangNhap } from "./helpers"
+import { dangNhap, FAKE, mocDonDep } from "./helpers"
+import { KHACH, OWNER, ORG } from "./fixture.mjs"
 
 /**
  * ⚠ CHỦ NHÀ 23/09/2026: "Xem nhanh Đơn hàng → Bấm sửa đơn ko ra pos" và "Mỗi
@@ -31,6 +32,62 @@ test("menu Bán hàng mở POS lập đơn ở tab mới", async ({ page, contex
   await tab.waitForLoadState()
   await expect(tab).toHaveURL(/\/pos\/don-hang\/moi/)
   await expect(page).toHaveURL(/\/orders/)
+})
+
+/**
+ * ⚠ CHỦ NHÀ 21/10/2026: "nút tạo đơn khoanh đỏ ở phần danh sách đơn hàng khi ấn vào chưa mở tab mới". Nút đi bằng
+ *   `router.push` (không phải thẻ `<a>`) nên bộ bắt `PosNewTab` không thấy — phải gọi `diHoacMoPos`. Cùng kiểu: nút
+ *   Tạo đơn ở chi tiết khách, nút Sửa đơn ở màn đơn nháp.
+ */
+test("danh sách đơn: nút Tạo đơn (góc phải) mở POS lập đơn ở tab mới, tab danh sách đứng yên", async ({ page, context }) => {
+  await dangNhap(page)
+  await page.goto("/orders")
+  const [tab] = await Promise.all([
+    context.waitForEvent("page"),
+    page.getByRole("button", { name: "Tạo đơn", exact: true }).click(),
+  ])
+  await tab.waitForLoadState()
+  await expect(tab).toHaveURL(/\/pos\/don-hang\/moi$/)
+  await expect(page, "tab danh sách bị chuyển trang").toHaveURL(/\/orders$/)
+})
+
+test("chi tiết khách: nút Tạo đơn mở POS lập đơn của đúng khách ở tab mới", async ({ page, context }) => {
+  await dangNhap(page)
+  await page.goto(`/customers/${KHACH}`)
+  const [tab] = await Promise.all([
+    context.waitForEvent("page"),
+    page.getByRole("button", { name: "Tạo đơn", exact: true }).click(),
+  ])
+  await tab.waitForLoadState()
+  await expect(tab).toHaveURL(new RegExp(`/pos/don-hang/moi\\?customerId=${KHACH}$`))
+  await expect(page, "tab chi tiết khách bị chuyển trang").toHaveURL(new RegExp(`/customers/${KHACH}$`))
+})
+
+test("đơn nháp: Sửa đơn mở POS sửa đơn ở tab mới", async ({ page, context }) => {
+  const donDep = await mocDonDep("sales_orders")
+  const id = "o-e2e-nhap-tab"
+  await fetch(`${FAKE}/rest/v1/sales_orders`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      id, org_id: ORG, order_code: "DH-NHAP-TAB", customer_id: KHACH, sales_user_id: OWNER, status: "draft",
+      subtotal: 100000, vat: 0, total: 100000, order_date: "2026-09-30", created_at: "2026-09-30T08:00:00Z",
+      approval_reason: null, customer: { store_name: "Tạp hoá Cô Ba", credit_limit: 0 },
+    }),
+  })
+  try {
+    await dangNhap(page)
+    await page.goto("/sell/drafts")
+    const [tab] = await Promise.all([
+      context.waitForEvent("page"),
+      page.getByRole("button", { name: "Sửa đơn", exact: true }).click(),
+    ])
+    await tab.waitForLoadState()
+    await expect(tab).toHaveURL(new RegExp(`/pos/don-hang/${id}/sua$`))
+    await expect(page, "tab đơn nháp bị chuyển trang").toHaveURL(/\/sell\/drafts$/)
+  } finally {
+    await donDep()
+  }
 })
 
 /** Điện thoại: không đụng — `/sell` như cũ, cùng tab. */

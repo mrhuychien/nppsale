@@ -62,6 +62,8 @@ import {
   MoneyRow, DocDiscountRow, TotalsHero, PanelActions, PanelButton,
 } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
+import { NccPosModal } from "@/components/pos/partner-info-modal"
+import { doiTacSauSua, metaNcc } from "@/lib/pos/doi-tac"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { timXepHang } from "@/lib/search"
@@ -95,7 +97,7 @@ export function PurchaseScreen({
   paidToSupplier = 0,
   stockIssued = false,
 }: PurchaseScreenProps) {
-  const { products, suppliers, loading, warnings } = usePosRefData()
+  const { products, suppliers, loading, warnings, capNhatNcc } = usePosRefData()
   /**
    * Đơn vị trong danh mục của một mặt hàng — để dòng NẠP LẠI vẫn đổi được
    * đơn vị. Đọc qua ref: phiếu có thể nạp xong TRƯỚC danh mục, và hệ số
@@ -129,6 +131,8 @@ export function PurchaseScreen({
   const [daNap, setDaNap] = useState(!receiptId)
   const [mocChuaLuu, setMocChuaLuu] = useState<string | null>(null)
   const [moTimNcc, setMoTimNcc] = useState(false)
+  /** Modal xem đủ + sửa hồ sơ NCC (bấm vào thẻ NCC — chủ nhà 21/10/2026). */
+  const [xemNcc, setXemNcc] = useState(false)
 
   const t = useMemo(
     () =>
@@ -647,6 +651,15 @@ export function PurchaseScreen({
               label="nhà cung cấp"
               onPick={() => setMoTimNcc(true)}
               onClear={() => setNcc(null)}
+              onOpen={() => setXemNcc(true)}
+            />
+            <NccPosModal
+              supplierId={xemNcc ? ncc?.id ?? null : null}
+              onClose={() => setXemNcc(false)}
+              onDaLuu={(s) => {
+                setNcc((k) => doiTacSauSua(k, s.id, s.name, metaNcc(s)))
+                capNhatNcc(s)
+              }}
             />
             <SearchDropdown
               open={moTimNcc}

@@ -17,6 +17,7 @@ import { toast } from "@/hooks/use-toast"
 import { loadApprovalContext } from "@/lib/sell/approval-context"
 import { sendOrder, grossFromSavedLines } from "@/lib/sell/send-order"
 import { evaluateApproval } from "@/lib/approval"
+import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 
 interface DraftOrder {
   id: string
@@ -251,10 +252,11 @@ export default function SellDraftsPage() {
                   {sendingId === o.id ? "Đang gửi…" : "Gửi đơn"}
                 </button>
                 {/* ⚠ "Sửa" mở lại ĐÚNG màn bán hàng đã dùng lúc tạo, không
-                    phải màn chi tiết đơn — một việc thì một cách làm. */}
+                    phải màn chi tiết đơn — một việc thì một cách làm. Máy
+                    tính: màn POS sửa đơn ở tab mới (`diHoacMoPos`). */}
                 <button
                   type="button"
-                  onClick={() => router.push(`/sell/edit/${o.id}`)}
+                  onClick={() => diHoacMoPos(router.push, `/sell/edit/${o.id}`)}
                   className="h-11 rounded-xl border-[1.5px] border-outline-variant px-3.5 text-sm font-extrabold text-on-surface"
                 >
                   Sửa đơn

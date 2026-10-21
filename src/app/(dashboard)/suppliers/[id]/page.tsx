@@ -41,7 +41,8 @@ import { selectResilient } from "@/lib/supabase/resilient"
 import { fetchAllForAggregate, docTheoLoId } from "@/lib/supabase/aggregate"
 import { docSoNoNcc, tongNoNcc, NHAN_LOAI_NO_NCC, type DongSoNoNcc } from "@/lib/payables/so-no-ncc"
 import {
-  bangGiaNhap, dongPhuNccChiTiet, duocGopNcc, duocQuyenXoaNcc, giaTriNhapThang, hoSoNcc, lichSuGiaoDich, phapLyNcc, viecCanHoanThien,
+  bangGiaNhap, COT_NCC_CU, COT_NCC_MOI, dongPhuNccChiTiet, duocGopNcc, duocQuyenXoaNcc, giaTriNhapThang, hoSoNcc, lichSuGiaoDich, phapLyNcc,
+  viecCanHoanThien,
   type DongBangGia, type DongPhieuNhapGia, type NccHoSo, type PhieuChiTom, type PhieuNhapTom, type PhieuTraTom,
   type SanPhamTom, type TruongHoSo, type TruongSua,
 } from "@/lib/suppliers/chi-tiet"
@@ -52,8 +53,6 @@ import { errorMessage } from "@/lib/errors"
 
 type Ncc = NccHoSo & { org_id: string; is_verified: boolean | null; rating: number | null }
 
-const COT_CU = "id, org_id, name, code, category, contact_name, phone, email, address, tax_code, bank_account, bank_name, payment_terms, rating, notes, is_verified, is_active, created_at"
-const COT_MOI = `${COT_CU}, legal_name, business_type, representative, business_license_no, business_license_date, registered_address, credit_limit, created_by`
 
 const TAB = ["history", "overview", "price_list", "debt", "legal"] as const
 type Tab = (typeof TAB)[number]
@@ -102,7 +101,7 @@ export default function SupplierDetailPage() {
     setLoading(true)
     const [supRes, noRes, nhapRes, traRes, spRes, phuTrachRes] = await Promise.all([
       /* DB chưa chạy mig 232 thì thiếu cột hồ sơ pháp lý — đọc lại bằng bộ cột cũ, không trắng màn. */
-      selectResilient<Ncc>((sel) => supabase.from("suppliers").select(sel).eq("id", id).limit(1), COT_MOI, COT_CU),
+      selectResilient<Ncc>((sel) => supabase.from("suppliers").select(sel).eq("id", id).limit(1), COT_NCC_MOI, COT_NCC_CU),
       docSoNoNcc(supabase, id),
       fetchAllForAggregate<PhieuNhapTom>((from, to) =>
         supabase

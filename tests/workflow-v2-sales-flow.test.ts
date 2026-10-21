@@ -164,7 +164,8 @@ describe("Màn đơn hàng: một viên cho mỗi trạng thái", () => {
     expect(DRAFTS).toContain('.eq("status", "draft")')
     expect(DRAFTS).toContain("Gửi đơn")
     expect(DRAFTS).toContain("Sửa đơn")
-    expect(DRAFTS).toContain("router.push(`/sell/edit/${o.id}`)")
+    // Máy tính: màn POS sửa đơn ở tab mới (`diHoacMoPos`, chủ nhà 21/10/2026); điện thoại vẫn `/sell/edit` cùng tab.
+    expect(DRAFTS).toContain("diHoacMoPos(router.push, `/sell/edit/${o.id}`)")
     expect(DRAFTS).toContain("deleteOrder(")
   })
 })

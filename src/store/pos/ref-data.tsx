@@ -16,11 +16,12 @@
  */
 
 import {
-  createContext, useContext, useEffect, useMemo, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
 } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
 import { loadSuppliers, loadSellers, type PosSupplier, type PosSeller } from "@/lib/pos/load"
+import { gopTheoId } from "@/lib/pos/doi-tac"
 import { useAuth } from "@/hooks/use-auth"
 import type { Customer } from "@/types"
 
@@ -49,6 +50,12 @@ interface Value {
   productById: (id: string) => SellProduct | undefined
   customerById: (id: string | null | undefined) => Customer | undefined
   supplierById: (id: string | null | undefined) => PosSupplier | undefined
+  /**
+   * Hồ sơ vừa sửa ở modal thông tin đối tác → gộp vào danh mục (`gopTheoId`). Không gộp là ô tìm còn tên cũ, và
+   * nhóm khách mới không vào bảng giá (`customerById(...).group_id`) cho tới khi tải lại trang.
+   */
+  capNhatKhach: (c: Partial<Customer> & { id: string }) => void
+  capNhatNcc: (s: Partial<PosSupplier> & { id: string }) => void
 }
 
 const Ctx = createContext<Value | null>(null)
@@ -98,6 +105,9 @@ export function PosRefDataProvider({ children }: { children: ReactNode }) {
     return () => { huy = true }
   }, [user?.org_id])
 
+  const capNhatKhach = useCallback((c: Partial<Customer> & { id: string }) => setCustomers((ds) => gopTheoId(ds, c)), [])
+  const capNhatNcc = useCallback((s: Partial<PosSupplier> & { id: string }) => setSuppliers((ds) => gopTheoId(ds, s)), [])
+
   const pIndex = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
   const cIndex = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers])
   const sIndex = useMemo(() => new Map(suppliers.map((x) => [x.id, x])), [suppliers])
@@ -114,8 +124,10 @@ export function PosRefDataProvider({ children }: { children: ReactNode }) {
       productById: (id) => pIndex.get(id),
       customerById: (id) => (id ? cIndex.get(id) : undefined),
       supplierById: (id) => (id ? sIndex.get(id) : undefined),
+      capNhatKhach,
+      capNhatNcc,
     }),
-    [products, customers, suppliers, sellers, stockByProduct, loading, warnings, pIndex, cIndex, sIndex]
+    [products, customers, suppliers, sellers, stockByProduct, loading, warnings, pIndex, cIndex, sIndex, capNhatKhach, capNhatNcc]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

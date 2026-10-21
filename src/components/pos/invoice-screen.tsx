@@ -62,6 +62,8 @@ import { discountAmount, lineGross, switchUnit, type DiscountInput } from "@/lib
 import type { PosLine } from "@/lib/pos/types"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton, DocDiscountRow } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
+import { KhachPosModal } from "@/components/pos/partner-info-modal"
+import { doiTacSauSua, metaKhach } from "@/lib/pos/doi-tac"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import {
   focusPosPicker, useRegisterPosProductSearch, usePosSearchTerm,
@@ -139,7 +141,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const sua = !!invoiceId
   const router = useRouter()
   const { toast } = useToast()
-  const { products, stockByProduct, warnings, productById, customerById } = usePosRefData()
+  const { products, stockByProduct, warnings, productById, customerById, capNhatKhach } = usePosRefData()
   const { user } = useAuth()
   const { settings } = usePosSettings()
 
@@ -147,6 +149,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [orderCode, setOrderCode] = useState<string | null>(null)
   const [invoiceCode, setInvoiceCode] = useState<string | null>(null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
+  /** Modal xem đủ + sửa hồ sơ khách (bấm vào thẻ khách — chủ nhà 21/10/2026). */
+  const [xemKhach, setXemKhach] = useState(false)
   const [nguoi, setNguoi] = useState<{ taoId: string | null; ganId: string | null }>({ taoId: null, ganId: null })
   const [dieuKhoan, setDieuKhoan] = useState<string | null>(null)
   const [ghiChu, setGhiChu] = useState("")
@@ -1234,8 +1238,16 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
       {/* ---------------- cột phải ---------------- */}
       <div className="flex min-h-0 w-[400px] shrink-0 flex-col gap-3">
-        {/* ⚠ Khách của đơn đi theo hóa đơn — RPC không nhận khách khác. */}
-        <PartnerCard partner={khach} readOnly />
+        {/* ⚠ Khách của đơn đi theo hóa đơn — RPC không nhận khách khác. Hồ sơ khách thì vẫn xem / sửa được. */}
+        <PartnerCard partner={khach} readOnly onOpen={() => setXemKhach(true)} />
+        <KhachPosModal
+          customerId={xemKhach ? khach?.id ?? null : null}
+          onClose={() => setXemKhach(false)}
+          onDaLuu={(c) => {
+            setKhach((k) => doiTacSauSua(k, c.id, c.store_name, metaKhach(c)))
+            capNhatKhach(c)
+          }}
+        />
         {/*
           ⚠ XUẤT HÀNG: NGƯỜI TẠO LÀ NGƯỜI ĐANG XUẤT (`posted_by` = phiên này),
             NGƯỜI ĐƯỢC GÁN mặc định là người của đơn và đổi được — ghi xuống

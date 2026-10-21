@@ -118,11 +118,12 @@ describe("Không còn nút nào trỏ về màn tạo đơn cũ", () => {
     ["trang chủ", "src/app/(dashboard)/home/page.tsx", "href={newOrderHref()}"],
     ["menu bên trái", "src/components/layout/sidebar.tsx", "href={NEW_ORDER_HREF}"],
     ["thanh nav dưới", "src/components/layout/mobile-nav.tsx", "href: NEW_ORDER_HREF"],
-    ["danh sách đơn", "src/app/(dashboard)/orders/page.tsx", "router.push(newOrderHref())"],
+    // Nút đi bằng router.push → máy tính mở POS ở tab mới (`diHoacMoPos`, chủ nhà 21/10/2026).
+    ["danh sách đơn", "src/app/(dashboard)/orders/page.tsx", "diHoacMoPos(router.push, newOrderHref())"],
     [
       "hồ sơ khách",
       "src/app/(dashboard)/customers/[id]/page.tsx",
-      "router.push(newOrderHref(customer.id))",
+      "diHoacMoPos(router.push, newOrderHref(customer.id))",
     ],
     // Danh sách khách nay là dòng gọn, không có nút con nào — nút "Tạo
     // đơn" chuyển vào thanh dính đáy của MÀN CHI TIẾT (một chạm từ dòng

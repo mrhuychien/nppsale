@@ -41,6 +41,8 @@ import { DocSubHeader } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, LineTableHeader, POS_GRID } from "@/components/pos/line-table"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton } from "@/components/pos/money-panel"
 import { PartnerCard } from "@/components/pos/partner-card"
+import { KhachPosModal } from "@/components/pos/partner-info-modal"
+import { usePosRefData } from "@/store/pos/ref-data"
 import { InvoiceScreen } from "@/components/pos/invoice-screen"
 import { DocPeople } from "@/components/pos/doc-people"
 import { RelatedDocs } from "@/components/orders/related-docs"
@@ -104,6 +106,9 @@ function XemHoaDon({ id }: { id: string }) {
   const { toast } = useToast()
   const [dangGan, setDangGan] = useState(false)
   const [head, setHead] = useState<Head | null>(null)
+  /** Modal xem đủ + sửa hồ sơ khách (bấm vào thẻ khách — chủ nhà 21/10/2026). */
+  const [xemKhach, setXemKhach] = useState(false)
+  const { capNhatKhach } = usePosRefData()
   const [lines, setLines] = useState<Line[]>([])
   const [rets, setRets] = useState<InvoiceReturnRow[]>([])
   /** Đã thu — `null` là chưa đọc được, và bậc hai hiện "chưa xác định". */
@@ -242,9 +247,10 @@ function XemHoaDon({ id }: { id: string }) {
         </div>
 
         <div className="flex min-h-0 w-[380px] shrink-0 flex-col gap-3">
-          {/* ⚠ Xem hóa đơn thì không đổi khách — card chỉ đọc, không vẽ nút. */}
+          {/* ⚠ Xem hóa đơn thì không đổi khách — card chỉ đọc, không vẽ nút. Hồ sơ khách thì vẫn xem / sửa được. */}
           <PartnerCard
             readOnly
+            onOpen={() => setXemKhach(true)}
             partner={
               head?.customer
                 ? {
@@ -254,6 +260,18 @@ function XemHoaDon({ id }: { id: string }) {
                   }
                 : null
             }
+          />
+          <KhachPosModal
+            customerId={xemKhach ? head?.customer_id ?? null : null}
+            onClose={() => setXemKhach(false)}
+            onDaLuu={(c) => {
+              setHead((h) =>
+                h && h.customer_id === c.id
+                  ? { ...h, customer: { ...h.customer, store_name: c.store_name, phone: c.phone, address: c.address } }
+                  : h
+              )
+              capNhatKhach(c)
+            }}
           />
           <DocPeople
             createdById={head?.posted_by}

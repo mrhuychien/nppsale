@@ -12,6 +12,7 @@ import { useCustomerGroups } from "@/hooks/use-customer-groups"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { hasPermission } from "@/lib/permissions"
 import { newOrderHref } from "@/lib/nav/new-order"
+import { diHoacMoPos } from "@/components/sell/pos-new-tab"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CustomerPhotoCapture } from "@/components/customers/customer-photo-capture"
 import { CustomerManagers } from "@/components/customers/customer-managers"
@@ -737,7 +738,7 @@ export default function CustomerDetailPage() {
             </>
           )}
           {canOrder && (
-            <Button size="sm" className="hidden lg:inline-flex" onClick={() => router.push(newOrderHref(customer.id))}>
+            <Button size="sm" className="hidden lg:inline-flex" onClick={() => diHoacMoPos(router.push, newOrderHref(customer.id))}>
               <FilePlus2 className="mr-1.5 h-4 w-4" /> Tạo đơn
             </Button>
           )}

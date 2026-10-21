@@ -113,6 +113,24 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
   Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
+### Thẻ khách / NCC ở POS: xem đủ + sửa tại chỗ
+Chủ nhà 21/10/2026: *"Phần tạo đơn POS : phần Khách hàng / NCC khi ấn vào hiện modal xem thông tin đầy đủ và sửa các
+thông tin"*.
+- Bấm tên / dòng phụ ở thẻ đối tác (`PartnerCard` `onOpen`) ở **mọi** màn POS, kể cả thẻ chỉ đọc của hoá đơn →
+  `KhachPosModal` / `NccPosModal` (`src/components/pos/partner-info-modal.tsx`). Sửa bằng **biểu mẫu đang có**
+  (`CustomerForm` `onDaSua`; `SupplierFields` + `luuHoSoNcc` — một đường lưu với tấm Sửa ở chi tiết NCC), không viết form thứ hai.
+- Lưu xong **ở lại POS**: thẻ + danh mục POS theo ngay (`doiTacSauSua`, `capNhatKhach` / `capNhatNcc` → `gopTheoId`,
+  `src/lib/pos/doi-tac.ts`) — nhóm khách đổi là bảng giá đổi. "Mở hồ sơ" mở tab mới. Phím tắt POS không lọt khỏi hộp
+  (`chanPhimPos` — F9 lọt ra là gửi đơn đằng sau). Quyền như hai màn hồ sơ: khách `customers.update`, NCC `inventory.update`.
+  Trong hộp không có nút Định vị (máy POS ở văn phòng) — vị trí dời ở hồ sơ khách.
+
+### Mở POS ở tab mới
+Chủ nhà 23/09/2026: *"Mỗi khi mở pos bật tab mới đi"*; 21/10/2026: *"nút tạo đơn khoanh đỏ ở phần danh sách đơn hàng khi ấn
+vào chưa mở tab mới"*.
+- Thẻ `<a>` vào lối POS do `PosNewTab` bắt. Nút đi bằng `router.push` thì bộ bắt không thấy — máy tính phải gọi
+  `diHoacMoPos(router.push, …)` (`src/components/sell/pos-new-tab.tsx`); `tests/pos-tab-moi-nut.test.ts` chặn
+  `router.push(newOrderHref(` / ``router.push(`/sell/edit/``.
+
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.
 - Tờ in hoá đơn (POS `/in/hoa-don`, màn quản lý, Excel "như mẫu in") in **mọi dòng đổi / trả của phiếu đã trừ vào tờ**

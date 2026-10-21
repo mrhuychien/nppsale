@@ -32,6 +32,9 @@ test("đơn POS: bấm thẻ khách → xem đủ hồ sơ; sửa tên + nhóm �
     const the = page.getByRole("button", { name: "Xem thông tin khách hàng: Tạp hoá Cô Ba" })
     await expect(the).toBeVisible()
     await expect(page.getByText(/bảng giá Đại lý/)).toHaveCount(0)
+    // Khách chưa có nhóm: "bảng giá chung" — một lần chữ "bảng giá" (bản cũ: "bảng giá bảng giá chung").
+    await expect(page.getByText(/· bảng giá chung$/)).toBeVisible()
+    await expect(page.getByText(/bảng giá bảng giá/)).toHaveCount(0)
     // Có một dòng hàng: F9 lọt ra khung POS là GỬI ĐƠN thật.
     await oTimHang(page).fill("Sữa")
     await oTimHang(page).press("Enter")

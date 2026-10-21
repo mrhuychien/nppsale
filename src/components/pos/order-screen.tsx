@@ -100,6 +100,7 @@ import { PosProductSearchBox } from "@/components/pos/product-search-box"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
 import { KhachPosModal } from "@/components/pos/partner-info-modal"
 import { doiTacSauSua, metaKhach } from "@/lib/pos/doi-tac"
+import { nhanBangGia } from "@/lib/pos/bang-gia"
 import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { DocPeople } from "@/components/pos/doc-people"
 import { RelatedDocs } from "@/components/orders/related-docs"
@@ -1116,10 +1117,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
    * ⚠ CHƯA CHỌN KHÁCH THÌ NÓI "chưa chọn khách", không nói "Bảng giá
    *   chung". Giá lúc ấy đúng là giá chung, nhưng nó sẽ ĐỔI ngay khi
    *   chọn khách — hứa một bảng giá rồi đổi là tệ hơn im lặng.
+   *
+   * ⚠ CHỮ "bảng giá" ĐÃ NẰM TRONG `nhanBangGia` — đừng ghép thêm ở dưới
+   *   (bản cũ hiện "bảng giá bảng giá chung").
    */
-  const tenBangGia = !khach
-    ? "chưa chọn khách"
-    : groups.find((g) => g.id === groupId)?.name ?? "bảng giá chung"
+  const tenBangGia = nhanBangGia(!!khach, groups.find((g) => g.id === groupId)?.name)
 
 
   /* ⚠ `issuedCode` PHẢI CÒN TRONG CÂU NÀY. Nó là mã hóa đơn đã xuất
@@ -1130,7 +1132,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     mode === "lap" ? "Tạo offline · chưa kiểm tồn" : orderCode || "Đơn mới",
     badgeThat?.label ? badgeThat.label.toLowerCase() : null,
     issuedCode ? `đã xuất ${issuedCode}` : null,
-    `bảng giá ${tenBangGia}`,
+    tenBangGia,
   ]
     .filter(Boolean)
     .join(" · ")

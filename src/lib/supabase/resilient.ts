@@ -13,6 +13,9 @@
  *    Helper luôn trả `error` để trang hiển thị nguyên nhân.
  */
 
+import { cauHetGio, laHetGio } from "@/lib/supabase/fetch-het-gio"
+import { errorMessage } from "@/lib/errors"
+
 interface QueryResult {
   data: unknown
   error: { message?: string; code?: string } | null
@@ -37,9 +40,15 @@ export interface ResilientResult<T> {
   aborted?: boolean
 }
 
-/** Lỗi do huỷ request, không phải hỏng hóc. */
+/**
+ * Lỗi do huỷ request, không phải hỏng hóc.
+ *
+ * ⚠ HẾT GIỜ CHỜ MÁY CHỦ KHÔNG PHẢI "HUỶ" (chủ nhà 22/10/2026): nó cũng mang tên AbortError (`fetch-het-gio.ts`) nhưng là
+ *   hỏng thật — coi là huỷ thì trang `return` sớm, danh sách đứng trắng mà không một lời giải thích.
+ */
 export function isAbortError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false
+  if (laHetGio(err)) return false
   const e = err as { name?: unknown; message?: unknown }
   if (e.name === "AbortError") return true
   return typeof e.message === "string" && e.message.includes("aborted")
@@ -63,6 +72,7 @@ function isSchemaMismatch(err: { message?: string; code?: string } | null): bool
 
 function friendlyError(err: { message?: string; code?: string }): string {
   const msg = err.message || "Lỗi không xác định"
+  if (laHetGio(msg)) return cauHetGio(msg)
   if (isSchemaMismatch(err)) {
     return `Cơ sở dữ liệu thiếu cột/quan hệ so với phiên bản ứng dụng (${msg}). Cần chạy migration còn thiếu.`
   }
@@ -93,7 +103,7 @@ export async function selectResilient<T>(
     return {
       data: [],
       count: null,
-      error: err instanceof Error ? err.message : "Lỗi kết nối",
+      error: errorMessage(err, "Lỗi kết nối"),
       usedFallback: false,
     }
   }
@@ -120,7 +130,7 @@ export async function selectResilient<T>(
       return {
         data: [],
         count: null,
-        error: err instanceof Error ? err.message : "Lỗi kết nối",
+        error: errorMessage(err, "Lỗi kết nối"),
         usedFallback: true,
       }
     }

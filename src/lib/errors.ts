@@ -18,6 +18,8 @@
  * đổi một câu khó hiểu lấy một câu dễ hiểu nhưng SAI khi đoán trượt.
  */
 
+import { cauHetGio, laHetGio } from "@/lib/supabase/fetch-het-gio"
+
 interface DbLike {
   message?: unknown
   code?: unknown
@@ -175,6 +177,9 @@ export function errorMessage(err: unknown, fallback = "Lỗi không xác định
 
   const e = err as DbLike
   const raw = textOf(e.message) || (err instanceof Error ? err.message : "")
+  // Hết giờ chờ máy chủ (chủ nhà 22/10/2026: "AbortError: Fetch is aborted"): một câu ngắn nói phải làm gì — bỏ kèm
+  // dấu vết ngăn xếp (`details`) và gợi ý tiếng Anh (`hint`) thư viện gắn vào.
+  if (laHetGio(raw)) return cauHetGio(raw)
   const code = textOf(e.code)
   const details = textOf(e.details)
   const hint = textOf(e.hint)

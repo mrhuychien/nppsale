@@ -1,14 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr"
-
-// Custom fetch that times out after 10s so Supabase requests never hang forever
-function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10000)
-  return fetch(input, {
-    ...init,
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeoutId))
-}
+import { fetchCoHetGio } from "@/lib/supabase/fetch-het-gio"
 
 export function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -20,7 +11,9 @@ export function createClient() {
 
   return createBrowserClient(url!, key!, {
     global: {
-      fetch: fetchWithTimeout,
+      // Hẹn giờ 10 giây để câu không treo mãi; app nằm nền thì không đếm, câu đọc hết giờ thử lại một lần
+      // (chủ nhà 22/10/2026 — "AbortError: Fetch is aborted" ở màn Sản phẩm). Xem `fetch-het-gio.ts`.
+      fetch: fetchCoHetGio,
     },
     auth: {
       // Mặc định của @supabase/ssr đã là true; khai báo tường minh để

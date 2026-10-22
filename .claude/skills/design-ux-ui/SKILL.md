@@ -138,9 +138,13 @@ reps pinch-zoom to read price lists.
    `SegmentedScroller`; route by key.
 9. **A hidden filter must still show its count.** Badge the filter button,
    otherwise hiding filters hides state.
-10. **`AbortError` is not an error.** Fast navigation cancels requests;
-    `selectResilient` returns `aborted` — return early rather than
-    painting a red banner and blanking the list.
+10. **A deliberate `AbortError` is not an error.** A caller that cancels its
+    own request (`.abortSignal()`, effect cleanup) gets `aborted` from
+    `selectResilient` — return early rather than painting a red banner and
+    blanking the list. **A timeout IS an error** (2026-10-22, products list
+    on a phone: "AbortError: Fetch is aborted" was our own 10 s timer):
+    `fetchCoHetGio` names it `AbortError` but `laHetGio` tells it apart —
+    show `cauHetGio` text plus a "Thử lại" button, never a blank list.
 11. **One-time hints are dismissible and remembered** (`localStorage`),
     initialised `false` and enabled in an effect — reading storage during
     the first render is a hydration mismatch.

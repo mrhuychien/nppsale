@@ -49,6 +49,9 @@ const MIEN_TRU = [
   /* Màn gỡ rối nội bộ: in RA nguyên văn bằng `String(err)`, không
      nuốt gì cả. */
   "src/app/debug/page.tsx",
+  /* Chính là `errorMessage`: đọc `message` của object trước, `instanceof Error` chỉ là vế phụ (và một ví dụ trong chú
+     thích đầu tệp). Bị soi từ 22/10/2026 vì đường import `@/lib/supabase/fetch-het-gio` có chữ "supabase". */
+  "src/lib/errors.ts",
 ]
 
 describe("lỗi từ cơ sở dữ liệu phải giữ được nguyên nhân", () => {

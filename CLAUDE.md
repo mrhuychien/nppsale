@@ -187,6 +187,16 @@ Chốt: cả hai kiểu; toàn bộ / theo tuyến / theo công ty; mốc 3 / 6 
 - In ở POS: trang in riêng `/in/*` nạp vào khung ẩn (`inTaiCho`); header phải là
   `X-Frame-Options: SAMEORIGIN` (DENY làm nút In không chạy).
 
+### Hẹn giờ câu hỏi Supabase (trình duyệt)
+Chủ nhà 22/10/2026 (màn Sản phẩm trên điện thoại): *"Không tải được danh sách sản phẩm — AbortError: Fetch is aborted"* —
+không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
+- Một bộ duy nhất `fetchCoHetGio` (`src/lib/supabase/fetch-het-gio.ts`, `global.fetch` của `createClient`): **app nằm nền
+  thì không đếm** (hiện lại đếm từ đầu); câu **đọc** (GET/HEAD) hết giờ thử lại **một** lần; câu **ghi** không thử lại và
+  dặn tải lại kiểm tra (có thể đã ghi); tôn trọng `signal` của nơi gọi (`.abortSignal()`).
+- Hết giờ ném lỗi tên `AbortError` (thư viện PostgREST không tự thử thêm 3 lần) nhưng câu chữ có `LOI_HET_GIO`:
+  `laHetGio` nhận ra, `errorMessage` / `selectResilient` dịch thành câu tiếng Việt (`cauHetGio`), `isAbortError` **không**
+  coi là huỷ — coi là huỷ thì trang lặng lẽ `return`, danh sách đứng trắng.
+
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.
 - **Chụp lại** = sửa dòng `customer_photos` tại chỗ (giữ ô), không xoá-rồi-chèn. Tấm đã ghim vị trí

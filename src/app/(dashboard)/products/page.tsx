@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 import { selectResilient, type ResilientResult } from "@/lib/supabase/resilient"
 import { taiHaiNhip, laTaiThem, type KhoaTai } from "@/lib/supabase/hai-nhip"
 import { useRoleGuard } from "@/hooks/use-role-guard"
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { hasPermission } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
@@ -57,7 +58,7 @@ import {
   type DemNccDong,
   type SapXepSanPham,
 } from "@/lib/products/mobile-list"
-import { Plus, Package, PackageCheck, PackageX, Upload } from "lucide-react"
+import { Plus, Package, PackageCheck, PackageX, RefreshCw, Upload } from "lucide-react"
 import type { Product } from "@/types"
 import {
   PRODUCT_COLUMNS,
@@ -136,6 +137,13 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts()
   }, [pg.from, pg.to, debouncedSearch, locNC.key, supplierFilter, statusFilter, sapXep]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Quay lại app (chuyển app / mở khoá màn hình) mà lần tải trước hỏng thì tự tải lại — chủ nhà 22/10/2026 gặp
+     "AbortError: Fetch is aborted" trên điện thoại. Tải được rồi thì thôi, không nháy danh sách dưới tay người đọc. */
+  const quayLai = useRefreshOnFocus()
+  useEffect(() => {
+    if (quayLai > 0 && loadError) void fetchProducts()
+  }, [quayLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProducts() {
     // Tải thêm / đổi sang trang dài hơn: giữ danh sách đang hiện trong lúc chờ.
@@ -351,6 +359,10 @@ export default function ProductsPage() {
         <div className="rounded-xl border border-error/40 bg-error-container px-4 py-3 text-sm text-on-error-container">
           <p className="font-semibold">Không tải được danh sách sản phẩm</p>
           <p className="mt-0.5 break-words">{loadError}</p>
+          {/* Hỏng một lần (mạng chập chờn, máy chủ khựng) thì bấm lại được ngay — không phải tải lại cả trang. */}
+          <Button size="sm" variant="outline" className="mt-2 h-9 bg-surface-container-lowest" onClick={() => void fetchProducts()}>
+            <RefreshCw className="mr-1.5 h-4 w-4" /> Thử lại
+          </Button>
         </div>
       )}
 
@@ -392,7 +404,12 @@ export default function ProductsPage() {
             : "Thử điều chỉnh bộ lọc"
       }
     >
-      {products.length === 0 &&
+      {/* Tải hỏng thì mời THỬ LẠI, không mời "thêm sản phẩm đầu tiên" — danh mục vẫn còn, chỉ là chưa tải được. */}
+      {loadError ? (
+        <Button variant="outline" onClick={() => void fetchProducts()}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Thử lại
+        </Button>
+      ) : products.length === 0 &&
         user &&
         hasPermission(user.role, "products", "create") && (
           <Button onClick={() => router.push("/products/new")}>

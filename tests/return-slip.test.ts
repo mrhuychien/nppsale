@@ -397,8 +397,9 @@ describe("không màn nào MỚI bắt cuộn để chọn khách", () => {
       const src = code(read(rel))
       expect(src, `${rel} không dùng ô chọn có tìm kiếm`).toContain("<SearchSelect")
       /* ⚠ TÌM ĐƯỢC BẰNG THỨ NGƯỜI TA NHỚ — tên chủ và số điện thoại,
-         không chỉ tên cửa hàng. */
-      expect(src, `${rel} không đọc tên chủ / số điện thoại để tìm`)
+         không chỉ tên cửa hàng. Đơn hàng / hoá đơn đọc khách qua `useKhachLoc` (chỉ khi ô lọc hiện). */
+      const nguon = src.includes("useKhachLoc(") ? code(read("src/hooks/use-khach-loc.ts")) : src
+      expect(nguon, `${rel} không đọc tên chủ / số điện thoại để tìm`)
         .toContain("id, store_name, owner_name, phone")
     }
   })

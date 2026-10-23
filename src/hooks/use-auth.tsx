@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { COT_GIAM_GIA, COT_HO_SO, gopHoSo, hoSoGuiKemDung } from "@/lib/auth/ho-so"
+import { laDoiNguoi, xoaNhoTheoNguoi } from "@/lib/cache/theo-nguoi"
 import type { User } from "@/types"
 
 // Log chẩn đoán chỉ bật ở môi trường dev — production giữ console sạch,
@@ -116,11 +117,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // This is faster and more reliable than calling getSession().
     /** Người đã (đang) đọc hồ sơ trong phiên này. */
     let hoSoCua: string | null = null
+    /** Người của sự kiện phiên trước — đổi người là xoá danh mục nhớ trong RAM (`xoaNhoTheoNguoi`). */
+    let nguoiTruoc: string | null | undefined = undefined
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       debug("event:", event, session?.user ? "WITH_SESSION" : "NO_SESSION")
       if (!mounted) return
+      const nguoiNay = session?.user?.id ?? null
+      if (laDoiNguoi(nguoiTruoc, nguoiNay)) xoaNhoTheoNguoi()
+      nguoiTruoc = nguoiNay
 
       if (session?.user) {
         const au = session.user

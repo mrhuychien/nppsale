@@ -177,8 +177,9 @@ describe("Danh mục: hiện-cũ-tải-mới, không tải lại từ đầu ở
     expect(HOOK).toContain("const mem = peekSellRefData()")
     /* Bấm "Làm mới sản phẩm" = `force` (chủ nhà 28/09/2026). */
     expect(HOOK).toContain("if (isSellRefDataFresh() && !force) return xong()")
-    expect(HOOK).toContain("const cached = await peekCachedSellRefData()")
-    expect(HOOK).toContain("loadSellRefDataShared(() => loadSellRefData(createClient()))")
+    /* Kèm người đang tải: bản lưu của người khác không hiện, sản phẩm dùng lại khi danh mục chưa đổi (23/10/2026). */
+    expect(HOOK).toContain("const cached = await peekCachedSellRefData(nguoi?.uid)")
+    expect(HOOK).toContain("loadSellRefDataShared(() => loadSellRefData(createClient(), nguoi))")
     // ⚠ Đang hiện bản tốt thì bản rỗng chỉ được gắn cảnh báo, không thay.
     expect(HOOK).toContain('if (data.source === "server" || !shown) apply(data, true)')
     expect(HOOK).toContain("else setWarnings(data.warnings)")

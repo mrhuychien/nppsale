@@ -216,6 +216,15 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
 - Ô chọn Radix **dài** (phường/xã, tuyến, nhân viên) dựng mục qua `mucCanDung` (`src/lib/ui/muc-chon.ts`): đóng thì chỉ mục
   đang chọn — Radix dựng sẵn mọi mục kể cả khi đóng.
 - Bảng quyền mặc định dựng **một lần** (`getPermissionsCache`), chỉ đọc — `rowsToCache` dựng bản riêng để sửa.
+- **POS / bán hàng nhớ danh mục hàng** (đợt 3, chủ nhà *"Làm nốt"*): `loadSellRefData(sb, nguoi)` dùng lại sản phẩm + bảng
+  giá + đơn vị trong bản lưu IndexedDB khi khớp ĐỦ khoá `dungLaiSanPham` — số phiên (mig 209, đọc **trước** câu sản
+  phẩm), `uid`, vai, công ty được làm (NVBH chỉ thấy hàng công ty mình — RLS mig 081). Khách + tồn **luôn đọc mới**.
+  Khoá ghi **cùng** bản lưu (`cacheOrderRefData(…, khoa)`), không để riêng. Màn chờ biết người (`useNguoiTaiDanhMuc`,
+  mất mạng thì không chờ). Bản lưu của người khác trên cùng máy không hiện (`cuaNguoiKhac`).
+- **Đổi người trên cùng tab** (đăng xuất / đăng nhập là chuyển trang mềm) → `xoaNhoTheoNguoi` xoá danh mục bán trong RAM +
+  danh mục nền của ô lọc (`AuthProvider`). Thêm bộ nhớ RAM theo người mới thì xoá ở đó.
+- Ô lọc **Khách hàng** của Đơn hàng / Hoá đơn bán (`useKhachLoc`): chỉ tải sổ khách khi khung Lọc nhanh / tấm lọc mở
+  hoặc đang lọc một khách — không tải lúc mở màn.
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.

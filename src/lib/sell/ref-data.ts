@@ -1,5 +1,5 @@
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
-import { cacheOrderRefData, getCachedOrderRefData } from "@/lib/offline/ref-cache"
+import { fetchAllForAggregate, type AggregateResult } from "@/lib/supabase/aggregate"
+import { cacheOrderRefData, getCachedOrderRefData, type KhoaSanPham, type OrderRefData } from "@/lib/offline/ref-cache"
 import type { Customer, PriceList, Product, ProductUnit } from "@/types"
 
 export type SellProduct = Product & {
@@ -54,6 +54,8 @@ export interface SellRefData {
   cachedAt?: string
   /** Số phiên danh mục lúc đọc (mig 209) — `null` = sổ chưa có / đọc hỏng. */
   phien?: number | null
+  /** Sản phẩm lấy từ bản nhớ trên máy (đã kiểm khoá — xem `dungLaiSanPham`), không tải lại. */
+  sanPhamNho?: boolean
   /**
    * Chuyện cần nói với người dùng. RỖNG nghĩa là mọi thứ bình thường —
    * đừng im lặng khi mảng này có phần tử.
@@ -167,9 +169,14 @@ export async function diagnoseEmptyCatalog(supabase: unknown): Promise<string> {
   return "Đơn vị này đọc về 0 sản phẩm và 0 khách. Hoặc dữ liệu chưa được nhập, hoặc tài khoản không có quyền đọc (RLS chặn theo org_id). Kiểm tra đơn vị của tài khoản trước."
 }
 
-async function fromCache(reason: string): Promise<SellRefData | null> {
+/** Bản lưu của NGƯỜI KHÁC trên cùng máy — không được hiện / dùng (khách, giá theo RLS của người ấy). */
+function cuaNguoiKhac(nho: OrderRefData | null, uid: string | null | undefined): boolean {
+  return !!nho?.uid && !!uid && nho.uid !== uid
+}
+
+async function fromCache(reason: string, uid?: string | null): Promise<SellRefData | null> {
   const cached = await getCachedOrderRefData<Customer, SellProduct>()
-  if (!cached) return null
+  if (!cached || cuaNguoiKhac(cached, uid)) return null
   return {
     customers: cached.customers,
     products: cached.products,
@@ -190,15 +197,17 @@ async function fromCache(reason: string): Promise<SellRefData | null> {
  * Trả `null` khi bản lưu rỗng: hiện một danh mục trống rồi thay bằng danh
  * mục đầy thì còn giật hơn là hiện khung xương.
  */
-export async function peekCachedSellRefData(): Promise<SellRefData | null> {
+export async function peekCachedSellRefData(uid?: string | null): Promise<SellRefData | null> {
   const cached = await getCachedOrderRefData<Customer, SellProduct>()
-  if (!cached || (cached.products.length === 0 && cached.customers.length === 0)) return null
+  if (!cached || cuaNguoiKhac(cached, uid) || (cached.products.length === 0 && cached.customers.length === 0)) return null
   return {
     customers: cached.customers,
     products: cached.products,
     stockByProduct: cached.stockByProduct || {},
     source: "cache",
     cachedAt: cached.cachedAt,
+    /* Số phiên GHI CÙNG bản này (bản lưu cũ chưa có thì `null`). */
+    phien: cached.phien ?? null,
     warnings: [],
   }
 }
@@ -269,6 +278,38 @@ export async function docPhienDanhMuc(supabase: unknown): Promise<number | null>
   }
 }
 
+/** Người đang tải danh mục — sản phẩm NVBH thấy tuỳ vai + công ty được làm (RLS mig 081). */
+export interface NguoiTaiDanhMuc {
+  uid: string
+  vai: string
+}
+
+/**
+ * ⚠ DÙNG LẠI SẢN PHẨM ĐÃ LƯU TRÊN MÁY (chủ nhà 23/10/2026 "Làm nốt" — POS mở tab mới là tải lại cả ~2.500 mặt hàng +
+ *   bảng giá + đơn vị). Chỉ khi khớp ĐỦ: số phiên danh mục (mig 209 — tăng mỗi khi hàng / giá / đơn vị đổi), đúng
+ *   người, đúng vai, đúng công ty được làm (đổi phân công thì hàng NVBH thấy đổi mà số phiên không tăng). Thiếu một
+ *   thứ (sổ chưa chạy 209, đọc hỏng, bản lưu cũ chưa có khoá) là tải lại — không bao giờ bán theo giá cũ.
+ */
+export function dungLaiSanPham(nho: OrderRefData | null | undefined, khoa: KhoaSanPham | null | undefined): boolean {
+  return (
+    !!nho && !!khoa && nho.products.length > 0 &&
+    nho.phien === khoa.phien && nho.uid === khoa.uid && nho.vai === khoa.vai && nho.ncc === khoa.ncc
+  )
+}
+
+/** Công ty NVBH được làm — phần khoá `ncc` của bản sản phẩm lưu trên máy. Vai khác thấy mọi hàng: "*". `null` = đọc hỏng. */
+async function docNccCuaNguoi(supabase: unknown, nguoi: NguoiTaiDanhMuc): Promise<string | null> {
+  if (nguoi.vai !== "sales") return "*"
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).from("user_suppliers").select("supplier_id").eq("user_id", nguoi.uid)
+    if (error) return null
+    return ((data as Array<{ supplier_id: string | null }>) ?? []).map((r) => r.supplier_id ?? "").filter(Boolean).sort().join(",")
+  } catch {
+    return null
+  }
+}
+
 export async function loadSellStock(supabase: unknown): Promise<Record<string, number> | null> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return null
   const res = await docLoBan(supabase as Client)
@@ -276,12 +317,16 @@ export async function loadSellStock(supabase: unknown): Promise<Record<string, n
   return stockMapFrom(res.rows)
 }
 
-export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
+/**
+ * `nguoi` — người đang tải (biết thì sản phẩm dùng lại được bản lưu trên máy khi khớp khoá, xem `dungLaiSanPham`;
+ * không biết thì tải đủ như cũ). Khách + tồn kho luôn đọc mới.
+ */
+export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc | null): Promise<SellRefData> {
   const sb = supabase as Client
   const warnings: string[] = []
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    const c = await fromCache("Không có mạng")
+    const c = await fromCache("Không có mạng", nguoi?.uid)
     if (c) return c
   }
 
@@ -298,9 +343,26 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
       (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).order("id").range(from, to)) as any
     )
 
-  const [custRes0, prodRes0, batchRes, phien] = await Promise.all([
+  /* Có `nguoi`: câu sản phẩm CHỜ số phiên (đọc trước, không song song). Sửa giá chen giữa hai câu thì bản lưu mang số
+     CŨ — lần sau số đã khác, tải lại. Song song mà câu sản phẩm về trước thì bản cũ mang số mới: giữ nhầm mãi. Không
+     có `nguoi` thì tải song song như cũ, và bản lưu không mang khoá (không dùng lại được). */
+  const phienP = docPhienDanhMuc(sb)
+  const khoaP: Promise<KhoaSanPham | null> = nguoi
+    ? Promise.all([phienP, docNccCuaNguoi(sb, nguoi)]).then(([p, ncc]) =>
+        p === null || ncc === null ? null : { phien: p, uid: nguoi.uid, vai: nguoi.vai, ncc }
+      )
+    : Promise.resolve(null)
+  const sanPhamP: Promise<AggregateResult<SellProduct> & { nho?: boolean }> = nguoi
+    ? Promise.all([khoaP, getCachedOrderRefData<Customer, SellProduct>()]).then(([khoa, nho]) =>
+        nho && dungLaiSanPham(nho, khoa)
+          ? { rows: nho.products, truncated: false, error: null, total: nho.products.length, nho: true }
+          : pageAll<SellProduct>(PROD_COLS, "products", "name")
+      )
+    : pageAll<SellProduct>(PROD_COLS, "products", "name")
+
+  const [custRes0, prodRes0, batchRes, phien, khoa] = await Promise.all([
     pageAll<Customer>(CUST_COLS, "customers", "store_name"),
-    pageAll<SellProduct>(PROD_COLS, "products", "name"),
+    sanPhamP,
     /**
      * ⚠ PHẢI CÓ `.order("id")`. `fetchAllForAggregate` chia trang bằng
      *   `range(from, to)` và gọi các trang SONG SONG; không có thứ tự cố
@@ -322,7 +384,8 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
      */
     docLoBan(sb),
     /* Số phiên ĐỌC CÙNG LƯỢT với danh mục — lần kiểm sau so với đúng bản đang có. */
-    docPhienDanhMuc(sb),
+    phienP,
+    khoaP,
   ])
 
   let custRes = custRes0
@@ -360,7 +423,7 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   const customers = custRes.rows
   const products = prodRes.rows
   if (customers.length === 0 && products.length === 0) {
-    const c = await fromCache("Kết nối không ổn định")
+    const c = await fromCache("Kết nối không ổn định", nguoi?.uid)
     if (c) return c
     // ⚠ KHÔNG trả về rỗng KÈM IM LẶNG. Xem `diagnoseEmptyCatalog`: 0 dòng
     // là câu trả lời giống hệt nhau cho bốn nguyên nhân khác hẳn nhau, và
@@ -372,7 +435,7 @@ export async function loadSellRefData(supabase: unknown): Promise<SellRefData> {
   }
 
   const stockByProduct = stockMapFrom(batchRes.rows)
-  // Lưu lại để lần sau mất mạng vẫn soạn đơn được.
-  void cacheOrderRefData({ customers, products, stockByProduct })
-  return { customers, products, stockByProduct, source: "server", warnings, phien }
+  // Lưu lại để lần sau mất mạng vẫn soạn đơn được. Khoá chỉ đi kèm khi sản phẩm ĐỦ (thiếu một khúc thì lần sau tải lại).
+  void cacheOrderRefData({ customers, products, stockByProduct }, prodRes.error || prodRes.truncated ? null : khoa)
+  return { customers, products, stockByProduct, source: "server", warnings, phien, sanPhamNho: !!prodRes0.nho }
 }

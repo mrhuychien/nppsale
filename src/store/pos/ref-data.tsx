@@ -23,6 +23,7 @@ import { loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
 import { loadSuppliers, loadSellers, type PosSupplier, type PosSeller } from "@/lib/pos/load"
 import { gopTheoId } from "@/lib/pos/doi-tac"
 import { useAuth } from "@/hooks/use-auth"
+import { useNguoiTaiDanhMuc } from "@/hooks/use-nguoi-tai-danh-muc"
 import type { Customer } from "@/types"
 
 interface Value {
@@ -70,10 +71,15 @@ export function PosRefDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const { user } = useAuth()
 
+  /* ⚠ CHỜ BIẾT NGƯỜI rồi mới tải (chủ nhà 23/10/2026 "Làm nốt"): POS mở tab mới là tải cứng — biết người thì sản
+     phẩm + bảng giá dùng lại bản lưu trên máy khi danh mục chưa đổi (`dungLaiSanPham`), chỉ khách + tồn đọc mới. Chờ
+     thế không tốn thêm vòng mạng: câu Supabase vốn chờ phiên, mà hồ sơ có ngay ở sự kiện phiên đầu (gửi kèm). */
+  const { san, nguoi } = useNguoiTaiDanhMuc()
   useEffect(() => {
+    if (!san) return
     let huy = false
     ;(async () => {
-      const d = await loadSellRefData(createClient())
+      const d = await loadSellRefData(createClient(), nguoi)
       if (huy) return
       setProducts(d.products)
       setCustomers(d.customers)
@@ -82,7 +88,7 @@ export function PosRefDataProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })()
     return () => { huy = true }
-  }, [])
+  }, [san, nguoi])
 
   /**
    * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN. Thiếu danh mục NCC làm màn mua hàng

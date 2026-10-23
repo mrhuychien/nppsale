@@ -154,7 +154,8 @@ describe("Màn hình dùng câu dò đó, và có đường đi tiếp", () => {
    */
   it("có nút tải lại danh mục", () => {
     expect(HOOK).toContain("const reload = useCallback(")
-    expect(HOOK).toContain("}, [tick])")
+    /* Chờ biết người (`san`, chủ nhà 23/10/2026 "Làm nốt") — vẫn chạy lại theo `tick` của nút tải lại. */
+    expect(HOOK).toContain("}, [tick, san, nguoi])")
     expect(POS).toContain("onClick={reload}")
     expect(POS).toContain("Tải lại danh mục")
   })

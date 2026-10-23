@@ -47,8 +47,11 @@ describe("các chỗ đọc trùng đã gộp", () => {
     expect(src("src/components/home/sales-home.tsx")).toMatch(/boNhoTrangChu\.set\(khoaNho/)
     for (const f of ["orders", "sales-invoices"]) {
       const s = src(`src/app/(dashboard)/${f}/page.tsx`)
-      for (const k of ["nen:khach-nhe", "nen:nhan-vien-ban", "nen:tuyen"]) expect(s, `${f} ${k}`).toContain(`nhoNen("${k}"`)
+      for (const k of ["nen:nhan-vien-ban", "nen:tuyen"]) expect(s, `${f} ${k}`).toContain(`nhoNen("${k}"`)
+      /* Danh sách khách cho ô lọc: chỉ tải khi ô hiện (chủ nhà 23/10/2026), vẫn nhớ 5 phút. */
+      expect(s, `${f} useKhachLoc`).toContain("useKhachLoc(")
     }
+    expect(src("src/hooks/use-khach-loc.ts")).toContain('nhoNen(\n        "nen:khach-nhe"')
   })
 })
 

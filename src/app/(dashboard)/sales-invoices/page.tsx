@@ -38,6 +38,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
+import { useKhachLoc, cauTrongKhachLoc } from "@/hooks/use-khach-loc"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { usePagination } from "@/hooks/use-pagination"
@@ -91,7 +92,7 @@ import {
   DEFAULT_INVOICE_COLUMNS, DEFAULT_INVOICE_FILTERS,
   type InvoiceColumnKey, type InvoiceFilterKey,
 } from "./list-config"
-import type { Customer, User } from "@/types"
+import type { User } from "@/types"
 import { useLuuKy } from "@/hooks/use-luu-ky"
 
 /**
@@ -187,22 +188,9 @@ export default function SalesInvoicesPage() {
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const focusTick = useRefreshOnFocus()
 
-  const [customers, setCustomers] = useState<
-    Pick<Customer, "id" | "store_name" | "owner_name" | "phone">[]
-  >([])
   const [salesUsers, setSalesUsers] = useState<Pick<User, "id" | "full_name">[]>([])
-  /* ⚠ Dựng một lần theo `customers` — mảng mới mỗi lần vẽ là ô tìm nhận
-     một danh sách "đổi" liên tục. */
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        id: c.id,
-        label: c.store_name,
-        hint: [c.owner_name, c.phone].filter(Boolean).join(" · ") || null,
-        keywords: [c.owner_name, c.phone].filter(Boolean).join(" "),
-      })),
-    [customers]
-  )
+  /* Ô lọc khách chỉ có trong khung Lọc nhanh / tấm lọc — mở ra (hoặc đang lọc theo một khách) mới tải danh sách khách. */
+  const khachLoc = useKhachLoc(((showAdvanced || filterSheet) && filterActive("customer")) || customerFilter !== "all")
   const [routes, setRoutes] = useState<Array<{ code: string; name: string }>>([])
 
   const isSales = user?.role === "sales"
@@ -218,27 +206,8 @@ export default function SalesInvoicesPage() {
     if (!canDanhMuc) return
     let cancelled = false
     ;(async () => {
-      const [customersRes, usersRes, routesRes] = await Promise.all([
-        /**
-         * ⚠ KÉO ĐỦ THEO TRANG, và đọc cả `owner_name` + `phone`.
-         *   `.select()` trơn cắt ở 1.000 dòng: khách thứ 1.001 trở đi
-         *   không lọc được, mà bộ lọc im lặng như thể họ không có đơn
-         *   nào. Và một ô GÕ ĐỂ TÌM chỉ soi tên cửa hàng thì gõ số điện
-         *   thoại vẫn ra rỗng.
-         *
-         * ⚠ Phân trang theo `id` — mốc chia trang phải DUY NHẤT; hai
-         *   cửa hàng trùng tên là các trang lặp/sót nhau.
-         */
-        // Danh mục nền cho ô lọc — nhớ 5 phút trong phiên (log Supabase, 27/09/2026).
-        nhoNen("nen:khach-nhe", () =>
-          fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone">>(
-            (from, to) =>
-              supabase
-                .from("customers")
-                .select("id, store_name, owner_name, phone", { count: "exact" })
-                .order("id")
-                .range(from, to)
-          ), coLoi),
+      /* Danh sách khách cho ô lọc KHÔNG đọc ở đây — chỉ khi ô ấy hiện (`useKhachLoc`, chủ nhà 23/10/2026). */
+      const [usersRes, routesRes] = await Promise.all([
         /* NVBH không có ô lọc NV — khỏi đọc. */
         isSales
           ? Promise.resolve({ data: [], error: null })
@@ -246,14 +215,9 @@ export default function SalesInvoicesPage() {
         nhoNen("nen:tuyen", () => supabase.from("sales_routes").select("code, name").eq("is_active", true).order("sort_order"), coLoi),
       ])
       if (cancelled) return
-      const e = ([customersRes, usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)
+      const e = ([usersRes, routesRes] as Array<{ error?: { message?: string } | null }>)
         .find((r) => r?.error)?.error
       if (e) console.error("[sales-invoices] nạp dữ liệu nền lỗi:", e.message)
-      setCustomers(
-        customersRes.rows
-          .slice()
-          .sort((a, b) => (a.store_name ?? "").localeCompare(b.store_name ?? ""))
-      )
       setSalesUsers((usersRes.data as Pick<User, "id" | "full_name">[]) || [])
       setRoutes((routesRes.data as Array<{ code: string; name: string }>) || [])
     })()
@@ -700,11 +664,11 @@ export default function SalesInvoicesPage() {
           */}
           <SearchSelect
             id="inv-customer"
-            options={customerOptions}
+            options={khachLoc.options}
             valueId={customerFilter === "all" ? "" : customerFilter}
             onPick={(o) => setCustomerFilter(o?.id ?? "all")}
             placeholder="Tất cả khách hàng — gõ để lọc…"
-            emptyHint="Không tìm thấy khách nào khớp."
+            emptyHint={cauTrongKhachLoc(khachLoc)}
           />
         </div>
       )}

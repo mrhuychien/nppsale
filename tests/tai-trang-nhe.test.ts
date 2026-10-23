@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { mucCanDung } from "@/lib/ui/muc-chon"
+import { cauTrongKhachLoc, mucKhachLoc } from "@/hooks/use-khach-loc"
 
 /**
  * ⚠ CHỦ NHÀ 23/10/2026: "tốc độ load trang chậm lắm" — đợt 2–3: bớt việc vẽ thừa ở màn Khách hàng trên điện thoại và
@@ -59,6 +60,32 @@ describe("điện thoại không dựng phần chỉ máy tính mới hiện", (
     const shell = doc("src/components/layout/dashboard-shell.tsx")
     expect(shell).toContain("const coMenuTrai = useKhoMay() !== false")
     expect(shell.match(/\{coMenuTrai && <Sidebar role=\{role\} \/>\}/g)?.length).toBe(2)
+  })
+})
+
+describe("ô lọc khách của Đơn hàng / Hoá đơn bán: chỉ tải danh sách khách khi ô ấy hiện (chủ nhà 23/10/2026)", () => {
+  it("mở màn không đọc cả sổ khách — chỉ useKhachLoc, theo đúng lúc khung lọc mở hoặc đang lọc một khách", () => {
+    for (const f of ["orders", "sales-invoices"]) {
+      const s = doc(`src/app/(dashboard)/${f}/page.tsx`)
+      expect(s, f).not.toContain('from("customers")\n                .select("id, store_name, owner_name, phone"')
+      expect(s, f).not.toContain('nhoNen("nen:khach-nhe"')
+      expect(s, f).toContain('useKhachLoc(((showAdvanced || filterSheet) && filterActive("customer")) || customerFilter !== "all")')
+      expect(s, f).toContain("options={khachLoc.options}")
+      expect(s, f).toContain("emptyHint={cauTrongKhachLoc(khachLoc)}")
+    }
+  })
+
+  it("mục: tên cửa hàng; dòng phụ chủ quán · SĐT; tìm được theo chủ quán / SĐT", () => {
+    expect(mucKhachLoc([{ id: "k1", store_name: "Tạp hoá Cô Ba", owner_name: "Cô Ba", phone: "0911" }])).toEqual([
+      { id: "k1", label: "Tạp hoá Cô Ba", hint: "Cô Ba · 0911", keywords: "Cô Ba 0911" },
+    ])
+    expect(mucKhachLoc([{ id: "k2", store_name: "Đại lý Minh", owner_name: "", phone: "" }])[0].hint).toBeNull()
+  })
+
+  it("ô trống nói đúng chuyện: đang tải / tải hỏng / không khớp", () => {
+    expect(cauTrongKhachLoc({ dangTai: true, loi: null })).toContain("Đang tải")
+    expect(cauTrongKhachLoc({ dangTai: false, loi: "x" })).toContain("Không tải được")
+    expect(cauTrongKhachLoc({ dangTai: false, loi: null })).toBe("Không tìm thấy khách nào khớp.")
   })
 })
 

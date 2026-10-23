@@ -110,9 +110,12 @@ export function addSellProduct(p: SellRefData["products"][number]): void {
   memo = { ...memo, data: { ...memo.data, products: [...memo.data.products, p] } }
 }
 
-/** Ghi bản danh mục đọc từ máy (IndexedDB) làm gốc, để làm mới TỒN KHO trên nó. */
+/**
+ * Ghi bản danh mục đọc từ máy (IndexedDB) làm gốc, để làm mới TỒN KHO trên nó. Số phiên: cái GHI CÙNG bản ấy; bản lưu
+ * cũ chưa có thì mới lấy số để riêng ở localStorage (ghi IndexedDB hỏng mà số này vẫn mới là lệch).
+ */
 export function seedSellRefData(data: SellRefData, catalogAt: number): void {
-  if (!memo) memo = { data, at: 0, catalogAt, phien: phienTrenMay() }
+  if (!memo) memo = { data, at: 0, catalogAt, phien: data.phien ?? phienTrenMay() }
 }
 
 /* Số phiên của bản lưu trên máy (IndexedDB không giữ trường này) — ghi cạnh nó ở localStorage. */

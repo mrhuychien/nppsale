@@ -72,13 +72,15 @@ test("ít lượt gọi: hoá đơn điện thoại không đọc danh mục l�
   expect(dem(ds, (x) => x.path === "/rest/v1/sales_routes"), "tuyến cho ô lọc").toBe(0)
   expect(dem(ds, (x) => x.method === "HEAD" && x.path === "/rest/v1/sales_invoices"), "HEAD đếm").toBe(0)
   expect(dem(ds, (x) => x.path === "/rest/v1/sales_invoices" && decodeURIComponent(x.query || "").includes("count()")), "một lượt gom nhóm").toBe(1)
-  // Mở tấm lọc thì mới đọc danh mục.
+  // Mở tấm lọc thì mới đọc danh mục. Sổ khách chỉ khi tấm lọc CÓ ô Khách hàng (mặc định không bật — chủ nhà
+  // 23/10/2026 "Làm nốt": không kéo cả sổ khách cho một ô không hiện).
   t = (await nhatKy()).length
   await page.getByRole("button", { name: "Bộ lọc" }).click()
   await page.waitForLoadState("networkidle")
   await page.waitForTimeout(800)
   ds = (await nhatKy()).slice(t)
-  expect(dem(ds, (x) => x.path === "/rest/v1/customers"), "mở tấm lọc → đọc khách").toBeGreaterThan(0)
+  expect(dem(ds, (x) => x.path === "/rest/v1/sales_routes"), "mở tấm lọc → đọc tuyến").toBeGreaterThan(0)
+  expect(dem(ds, (x) => x.path === "/rest/v1/customers" && !(x.query || "").includes("id=eq.")), "ô Khách hàng không bật → không đọc sổ khách").toBe(0)
   await page.keyboard.press("Escape")
 
   // Đơn hàng (chủ nhà 27/09/2026: "Xử lý cả màn đơn hàng"): điện thoại không đọc danh mục lọc,

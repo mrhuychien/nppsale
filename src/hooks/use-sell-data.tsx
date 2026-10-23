@@ -33,6 +33,7 @@ import {
   kiemPhienDanhMucShared,
   sellCatalogAt,
 } from "@/lib/sell/ref-store"
+import { useNguoiTaiDanhMuc } from "@/hooks/use-nguoi-tai-danh-muc"
 import { locXepHang, taoMucTim, viQueryWords } from "@/lib/search"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import type { Customer } from "@/types"
@@ -139,7 +140,13 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("visibilitychange", khiHien)
   }, [])
 
+  /* Biết người rồi mới chạy (chủ nhà 23/10/2026 "Làm nốt"): bản lưu trên máy của người khác không hiện ra, và sản
+     phẩm dùng lại bản lưu khi danh mục chưa đổi (`dungLaiSanPham`) — tải lại chỉ còn khách + tồn. Mất mạng thì chạy
+     ngay (`useNguoiTaiDanhMuc`). */
+  const { san, nguoi } = useNguoiTaiDanhMuc()
+
   useEffect(() => {
+    if (!san) return
     let cancelled = false
     /** Đã có gì trên màn chưa — quyết định có được thay bằng bản kém hơn không. */
     let shown = false
@@ -171,7 +178,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
         // gửi gì cả. Đây là đường đi của "quay lại /sell từ /orders".
         if (isSellRefDataFresh() && !force) return xong()
       } else {
-        const cached = await peekCachedSellRefData()
+        const cached = await peekCachedSellRefData(nguoi?.uid)
         if (cancelled) return
         if (cached) {
           apply(cached, false)
@@ -201,7 +208,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
         // Đọc tồn hỏng, hoặc danh mục đã đổi → tải đủ như cũ (có sẵn nhánh báo lỗi / bản lưu).
       }
 
-      const data = await loadSellRefDataShared(() => loadSellRefData(createClient()))
+      const data = await loadSellRefDataShared(() => loadSellRefData(createClient(), nguoi))
       if (cancelled) return
       // ⚠ Đang hiện một bản tốt thì KHÔNG thay bằng bản rỗng hay bản cache
       // — chỉ gắn lời cảnh báo (mất mạng, hết phiên…) lên trên. Thay là
@@ -214,7 +221,7 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [tick])
+  }, [tick, san, nguoi])
 
   const addCustomer = useCallback((c: Customer) => {
     addSellCustomer(c)

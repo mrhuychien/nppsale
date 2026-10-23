@@ -1604,8 +1604,11 @@ export default function OrdersPage() {
 
       {/* ⚠ MÁY TÍNH — theo mẫu thiết kế "Đơn hàng": một thẻ trắng gồm thanh
           công cụ (tìm · tuyến · NVBH · khoảng ngày · xoá lọc), dải chọn
-          nhiều, bảng, và phân trang. Điện thoại có danh sách riêng ở dưới. */}
-      <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
+          nhiều, bảng, và phân trang. Điện thoại có danh sách riêng ở dưới —
+          và KHÔNG dựng thẻ này (ẩn mà vẫn vẽ đủ mọi dòng, chủ nhà 23/10/2026
+          "load trang chậm lắm"). */}
+      {laMay !== false && (
+      <div data-doc-list="desktop" className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
       <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
         {filterActive("search") && (
           <DocSearchBox
@@ -1722,6 +1725,7 @@ export default function OrdersPage() {
           <DataPagination pg={pg} shownCount={filtered.length} />
         </div>
       </div>
+      )}
 
       {/* Lỗi tải dữ liệu — hiện rõ thay vì im lặng ra danh sách rỗng. */}
       {loadError && !loading && (

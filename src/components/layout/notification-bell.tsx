@@ -1,15 +1,13 @@
 "use client"
 
 import { KhungAnToan } from "@/components/ui/error-boundary"
-import { useCallback, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
 import {
-  Bell, CheckCircle2, ShoppingCart, CircleCheck, CircleX, CreditCard,
-  Clock, Navigation, Info, Check, Camera, PackageCheck, Pencil, Undo2, Route, ShieldCheck } from "lucide-react"
+  Bell, ShoppingCart, CircleCheck, CircleX, CreditCard,
+  Clock, Navigation, Info, Camera, PackageCheck, Pencil, Undo2, Route, ShieldCheck } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { Notification, NotificationType } from "@/types"
 
@@ -20,7 +18,7 @@ import type { Notification, NotificationType } from "@/types"
  * "đã sửa đơn". `Record<NotificationType, …>` là thứ bắt lỗi đó lúc biên
  * dịch, nên đừng đổi sang `Partial<…>`.
  */
-const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = {
+export const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = {
   order_pending_approval: { icon: ShoppingCart, color: "text-[#b54708] bg-[#fff4ed]" },
   order_approved: { icon: CircleCheck, color: "text-tertiary bg-[#ecfdf3]" },
   order_completed: { icon: PackageCheck, color: "text-tertiary bg-[#ecfdf3]" },
@@ -36,7 +34,7 @@ const ICON_MAP: Record<NotificationType, { icon: LucideIcon; color: string }> = 
   info: { icon: Info, color: "text-muted-foreground bg-muted" },
 }
 
-function formatRelativeTime(iso: string): string {
+export function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return "vừa xong"
@@ -151,6 +149,8 @@ function moKenhTB(uid: string): () => void {
   }
 }
 
+const BangThongBao = lazy(() => import("./notification-panel").then((m) => ({ default: m.BangThongBao })))
+
 function ChuongThongBao() {
   const { authUser } = useAuth()
   const supabase = createClient()
@@ -228,103 +228,63 @@ function ChuongThongBao() {
     if (n.link_url) router.push(n.link_url)
   }
 
+  /* ⚠ HỘP DANH SÁCH TẢI LƯỜI (chủ nhà 23/10/2026 "load trang chậm lắm"): Popover + danh sách chỉ cần khi bấm chuông —
+     tải ở lần bấm đầu (chạm / rê chuột là tải trước). Số chưa đọc, kho, kênh realtime vẫn ở đây: chuông có số ngay. */
+  const [canHop, setCanHop] = useState(false)
+  const taiHop = () => void import("./notification-panel")
+  // 44px trên mobile (sàn WCAG 2.5.5); desktop giữ p-2 như cũ để không đẩy rộng cụm điều khiển bên phải app bar.
+  const lop = "relative flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 lg:h-9 lg:w-9"
+  const nhan = `Thông báo${unreadCount > 0 ? `, ${unreadCount} chưa đọc` : ""}`
+  const hinh = (
+    <>
+      <Bell className="h-5 w-5" />
+      {unreadCount > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </>
+  )
+  const nutTruoc = (
+    <button
+      type="button"
+      className={lop}
+      aria-label={nhan}
+      aria-haspopup="dialog"
+      aria-expanded={false}
+      onPointerEnter={taiHop}
+      onTouchStart={taiHop}
+      onFocus={taiHop}
+      onClick={() => {
+        setCanHop(true)
+        handleOpenChange(true)
+      }}
+    >
+      {hinh}
+    </button>
+  )
+  if (!canHop) return nutTruoc
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          // 44px trên mobile (sàn WCAG 2.5.5); desktop giữ p-2 như cũ để
-          // không đẩy rộng cụm điều khiển bên phải app bar.
-          className="relative flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 lg:h-9 lg:w-9"
-          aria-label={`Thông báo${unreadCount > 0 ? `, ${unreadCount} chưa đọc` : ""}`}
-        >
-          <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[360px] max-w-[calc(100vw-32px)] p-0">
-        <div className="flex items-center justify-between p-3 border-b">
-          <div>
-            <p className="font-bold text-sm">Thông báo</p>
-            <p className="text-[11px] text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} chưa đọc` : "Đã đọc hết"}
-            </p>
-          </div>
-          {unreadCount > 0 && (
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={markAllRead}>
-              <Check className="h-3.5 w-3.5 mr-1" /> Đánh dấu đã đọc
-            </Button>
-          )}
-        </div>
-
-        <div className="max-h-[400px] overflow-y-auto">
-          {loading && items.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">Đang tải...</div>
-          ) : items.length === 0 ? (
-            <div className="p-8 text-center">
-              <Bell className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">Chưa có thông báo</p>
-            </div>
-          ) : (
-            <ul className="divide-y">
-              {items.map((n) => {
-                const meta = ICON_MAP[n.type] || ICON_MAP.info
-                const Icon = meta.icon
-                return (
-                  <li key={n.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleClick(n)}
-                      className={`w-full text-left p-3 flex gap-3 hover:bg-muted/40 transition-colors ${
-                        !n.is_read ? "bg-primary/[0.03]" : ""
-                      }`}
-                    >
-                      <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${meta.color}`}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-2">
-                          <p className={`text-sm leading-tight ${!n.is_read ? "font-semibold" : "font-medium text-muted-foreground"}`}>
-                            {n.title}
-                          </p>
-                          {!n.is_read && (
-                            <span className="shrink-0 w-2 h-2 rounded-full bg-primary mt-1.5" />
-                          )}
-                        </div>
-                        {n.body && (
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
-                        )}
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          {formatRelativeTime(n.created_at)}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div className="p-2 border-t">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-xs"
-            onClick={() => {
-              setOpen(false)
-              router.push("/notifications")
-            }}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-            Xem tất cả thông báo
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <Suspense fallback={nutTruoc}>
+      <BangThongBao
+        open={open}
+        onOpenChange={handleOpenChange}
+        nut={
+          <button type="button" className={lop} aria-label={nhan}>
+            {hinh}
+          </button>
+        }
+        items={items}
+        unreadCount={unreadCount}
+        loading={loading}
+        onMarkAllRead={markAllRead}
+        onPick={handleClick}
+        onSeeAll={() => {
+          setOpen(false)
+          router.push("/notifications")
+        }}
+      />
+    </Suspense>
   )
 }
 

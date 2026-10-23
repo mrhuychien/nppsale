@@ -207,6 +207,15 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
 - Câu không phụ thuộc nhau **đi cùng đợt**; câu phụ thuộc chỉ chờ đúng câu nó cần (trang chủ NVBH: tên khách chờ hoá đơn /
   trả / nợ, không chờ cả chùm). Thứ màn **không hiện thì không đọc** (người phụ trách khách trên điện thoại NVBH).
 - Service worker bật **tải trước điều hướng** (`public/sw.js`, `event.preloadResponse`).
+- **Điện thoại không dựng phần chỉ máy tính mới hiện** (đợt 2): thẻ danh sách máy tính (`DocListLayout`, thẻ của Đơn hàng /
+  Hoá đơn bán — `data-doc-list="desktop"`) và menu trái (`aside[data-menu-trai]`) chỉ dựng khi `useKhoMay() !== false`.
+  `useKhoMay` là `useSyncExternalStore`: `null` chỉ ở lượt vẽ khớp HTML máy chủ, đi trong app thì biết khổ ngay lượt đầu —
+  đừng đổi lại `useState` + `useEffect` (mỗi lần mở màn vẽ cả phần khổ kia rồi mới gỡ).
+- **Phần chỉ dùng khi bấm tải lúc bấm**: hộp chuông (`notification-panel`), menu người dùng (`user-menu-day`), phần ghi tệp
+  của Xuất Excel — `lazy` / `import()`, rê / chạm là tải trước, bấm MỘT lần là mở. Đừng nhập thẳng lại vào khung.
+- Ô chọn Radix **dài** (phường/xã, tuyến, nhân viên) dựng mục qua `mucCanDung` (`src/lib/ui/muc-chon.ts`): đóng thì chỉ mục
+  đang chọn — Radix dựng sẵn mọi mục kể cả khi đóng.
+- Bảng quyền mặc định dựng **một lần** (`getPermissionsCache`), chỉ đọc — `rowsToCache` dựng bản riêng để sửa.
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.

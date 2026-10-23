@@ -20,6 +20,8 @@ import { Search, MapPin, Plus, X } from "lucide-react"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useState } from "react"
+import { mucCanDung } from "@/lib/ui/muc-chon"
 import { cn } from "@/lib/utils"
 import { shortMoney, type QuickFilter } from "@/lib/customers/list-view"
 
@@ -143,6 +145,10 @@ export function MobileCustomersScreen({
   notice?: React.ReactNode
 }) {
   const conNua = loaded < count
+  /* Ô chọn dài: đóng thì chỉ dựng mục đang chọn — xem `mucCanDung`. */
+  const [moTuyen, setMoTuyen] = useState(false)
+  const [moPhuong, setMoPhuong] = useState(false)
+  const [moNv, setMoNv] = useState(false)
 
   return (
     <div className="-mx-4 !-mt-4 lg:hidden" data-testid="kh-mobile">
@@ -214,33 +220,33 @@ export function MobileCustomersScreen({
                 <SelectItem value="locked">Đã khoá</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={channelFilter} onValueChange={onChannel}>
+            <Select value={channelFilter} onValueChange={onChannel} onOpenChange={setMoTuyen}>
               <SelectTrigger className="h-10 rounded-xl" aria-label="Tuyến"><SelectValue placeholder="Tuyến" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi tuyến</SelectItem>
                 <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
-                {routes.map((r) => (
+                {mucCanDung(routes, channelFilter, moTuyen, (r) => r.code).map((r) => (
                   <SelectItem key={r.code} value={r.code}>{r.name || r.code}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={wardFilter} onValueChange={onWard}>
+            <Select value={wardFilter} onValueChange={onWard} onOpenChange={setMoPhuong}>
               <SelectTrigger className="h-10 rounded-xl" aria-label="Phường/xã"><SelectValue placeholder="Phường/xã" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi phường/xã</SelectItem>
                 <SelectItem value={CHUA_CO_PHUONG}>Chưa ghi phường</SelectItem>
-                {wards.map((w) => (
+                {mucCanDung(wards, wardFilter, moPhuong, (w) => w).map((w) => (
                   <SelectItem key={w} value={w}>{w}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {salesFilter !== undefined && (
-              <Select value={salesFilter} onValueChange={onSales}>
+              <Select value={salesFilter} onValueChange={onSales} onOpenChange={setMoNv}>
                 <SelectTrigger className="h-10 rounded-xl" aria-label="Phụ trách"><SelectValue placeholder="Phụ trách" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Mọi người phụ trách</SelectItem>
                   <SelectItem value={CHUA_PHAN_CONG}>Chưa phân công</SelectItem>
-                  {salesUsers.map((u) => (
+                  {mucCanDung(salesUsers, salesFilter, moNv, (u) => u.id).map((u) => (
                     <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
                   ))}
                 </SelectContent>

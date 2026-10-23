@@ -316,8 +316,16 @@ export function ngheQuyenDaNap(f: () => void): () => void {
   }
 }
 
+/**
+ * ⚠ BẢNG MẶC ĐỊNH DỰNG MỘT LẦN (chủ nhà 23/10/2026 "load trang chậm lắm"). Bản cũ dựng lại cả bảng (mọi vai × mọi
+ *   mô-đun × ô riêng) ở MỖI phép tra khi bảng quyền thật chưa nạp xong — menu ~80 mục, mỗi mục tra vài lần, mỗi lượt
+ *   vẽ khung: đo trên điện thoại (CPU x4) ~50 ms chỉ để dựng lại đúng một bảng. Bảng này CHỈ ĐỌC — `rowsToCache` vẫn
+ *   dựng bản riêng để sửa, không đụng bản dùng chung.
+ */
+let cacheMacDinh: PermissionsCache | null = null
+
 export function getPermissionsCache(): PermissionsCache {
-  return runtimeCache ?? buildCacheFromMap(DEFAULT_PERMISSION_MAP)
+  return runtimeCache ?? (cacheMacDinh ??= buildCacheFromMap(DEFAULT_PERMISSION_MAP))
 }
 
 /**

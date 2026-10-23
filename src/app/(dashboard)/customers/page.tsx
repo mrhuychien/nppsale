@@ -23,6 +23,7 @@ import { locDanhSachMa, catTrangMa, xepTheoMa } from "@/lib/customers/loc-nhanh"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
 import { useKhoMay } from "@/hooks/use-is-desktop"
+import { mucCanDung } from "@/lib/ui/muc-chon"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
@@ -126,6 +127,10 @@ export default function CustomersPage() {
   /** Phường/xã — lọc trên máy chủ (`ward`). `CHUA_CO_PHUONG` = chưa ghi phường. */
   const [wardFilter, setWardFilter] = useState("all")
   const dsPhuong = DS_PHUONG_LOC
+  /* Ô chọn dài của thanh lọc máy tính: đóng thì chỉ dựng mục đang chọn — xem `mucCanDung`. */
+  const [moTuyen, setMoTuyen] = useState(false)
+  const [moPhuong, setMoPhuong] = useState(false)
+  const [moNv, setMoNv] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
   const [totalCustomers, setTotalCustomers] = useState(0)
@@ -893,33 +898,33 @@ export default function CustomersPage() {
                 </SelectContent>
               </Select>
             )}
-            <Select value={channelFilter} onValueChange={setChannelFilter}>
+            <Select value={channelFilter} onValueChange={setChannelFilter} onOpenChange={setMoTuyen}>
               <SelectTrigger aria-label="Tuyến" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Tuyến" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả tuyến</SelectItem>
                 <SelectItem value={CHUA_CO_TUYEN}>Chưa có tuyến</SelectItem>
-                {routes.map((r) => (
+                {mucCanDung(routes, channelFilter, moTuyen, (r) => r.code).map((r) => (
                   <SelectItem key={r.code} value={r.code}>{r.code} — {r.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={wardFilter} onValueChange={setWardFilter}>
+            <Select value={wardFilter} onValueChange={setWardFilter} onOpenChange={setMoPhuong}>
               <SelectTrigger aria-label="Phường/xã" className="h-10 w-44 rounded-xl font-semibold"><SelectValue placeholder="Phường/xã" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi phường/xã</SelectItem>
                 <SelectItem value={CHUA_CO_PHUONG}>Chưa ghi phường</SelectItem>
-                {dsPhuong.map((w) => (
+                {mucCanDung(dsPhuong, wardFilter, moPhuong, (w) => w).map((w) => (
                   <SelectItem key={w} value={w}>{w}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {!isSales && (
-              <Select value={salesUserFilter} onValueChange={setSalesUserFilter}>
+              <Select value={salesUserFilter} onValueChange={setSalesUserFilter} onOpenChange={setMoNv}>
                 <SelectTrigger aria-label="Nhân viên" className="h-10 w-48 rounded-xl font-semibold"><SelectValue placeholder="Nhân viên" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả nhân viên</SelectItem>
                   <SelectItem value={CHUA_PHAN_CONG}>Chưa phân công</SelectItem>
-                  {salesUsers.map((u) => (
+                  {mucCanDung(salesUsers, salesUserFilter, moNv, (u) => u.id).map((u) => (
                     <SelectItem key={u.id} value={u.id}>{u.full_name}</SelectItem>
                   ))}
                 </SelectContent>

@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { DocListTotals } from "@/components/ui/doc-list-totals"
 import type { UsePaginationReturn } from "@/hooks/use-pagination"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { DocListMobileHead, type DocListMobileHeadProps } from "@/components/ui/doc-list-mobile-head"
 
 export interface DocListTotalsInfo {
@@ -93,9 +94,14 @@ export function DocListLayout({
   /** Chữ dưới số đếm khi màn không có dòng tổng tiền — "nhân viên", "sản phẩm"… */
   mobileCountUnit?: string
 }) {
+  /* ⚠ ĐIỆN THOẠI KHÔNG DỰNG THẺ MÁY TÍNH (chủ nhà 23/10/2026 "load trang chậm lắm"): thẻ này ẩn bằng CSS trên điện
+     thoại, nhưng vẫn dựng đủ thanh công cụ + mọi dòng của lưới — gấp đôi việc vẽ cho thứ không ai thấy. Chưa biết khổ
+     (lượt vẽ khớp HTML máy chủ) thì vẫn dựng như cũ. */
+  const khoMay = useKhoMay()
   return (
     <>
       {/* ---------------- Máy tính: một thẻ ---------------- */}
+      {khoMay !== false && (
       <div
         data-doc-list="desktop"
         className="hidden flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest lg:flex"
@@ -130,6 +136,7 @@ export function DocListLayout({
           <DataPagination pg={pg} shownCount={shownCount} />
         </div>
       </div>
+      )}
 
       {/* ---------------- Điện thoại: dải tóm tắt + thẻ ---------------- */}
       {cards !== null && mobileHead && (

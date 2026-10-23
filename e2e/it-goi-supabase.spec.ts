@@ -71,7 +71,9 @@ test("NVBH mở cứng Đơn hàng: danh sách hỏi MỘT lần (không còn l�
     await page.waitForLoadState("networkidle")
     await page.waitForTimeout(1500)
     const ds = (await nhatKy()).slice(t).filter(tuTrinhDuyet)
-    const dsDon = ds.filter((x) => x.path === "/rest/v1/sales_orders" && decodeURIComponent(x.query || "").includes("order_code"))
+    /* Đúng câu danh sách của màn Đơn hàng (`id,org_id,order_code…`). Lọc theo "order_code" trơn thì vớ cả câu "5 đơn gần
+       đây" của trang chủ: `networkidle` của /home có khi xong TRƯỚC khi trang chủ gửi câu (bản dev) — đếm thành 2. */
+    const dsDon = ds.filter((x) => x.path === "/rest/v1/sales_orders" && decodeURIComponent(x.query || "").includes("select=id,org_id,order_code"))
     expect(dsDon.length, "lượt đọc danh sách đơn").toBe(1)
     expect(decodeURIComponent(dsDon[0].query || ""), "lượt duy nhất đã mang luật của NVBH (không lấy đơn huỷ)").toContain("status=neq.cancelled")
     expect(dem(ds, laHoSo), "hồ sơ đã gửi kèm").toBe(0)

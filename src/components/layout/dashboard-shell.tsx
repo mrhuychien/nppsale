@@ -13,6 +13,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { PermissionsLoader } from "@/components/permissions-loader"
 import { OrderSyncProvider } from "@/hooks/use-order-sync"
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import type { Role } from "@/types"
 
 interface DashboardShellProps {
@@ -33,6 +34,9 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
   // hai thanh `fixed` chồng nhau thì thanh dưới che mất nút của thanh
   // trên, mà cuộn không đẩy được khối `fixed`. Xem @/lib/nav/mobile-chrome.
   const showNav = showsBottomNav(pathname)
+  // Menu trái chỉ hiện ở máy tính (`hidden lg:flex`): điện thoại khỏi dựng ~80 mục + tra quyền mỗi lần đổi trang
+  // (chủ nhà 23/10/2026 "load trang chậm lắm"). Chưa biết khổ (lượt vẽ khớp HTML máy chủ) thì dựng như cũ.
+  const coMenuTrai = useKhoMay() !== false
 
   // Một chỗ duy nhất theo dõi bàn phím ảo, gắn cờ lên <body>. Mọi thanh
   // dính đáy đọc cờ đó bằng CSS — rẻ hơn nhiều so với truyền state xuống
@@ -84,7 +88,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
           <PermissionsLoader />
           <PosNewTab />
           <div className="flex min-h-screen bg-surface">
-            <Sidebar role={role} />
+            {coMenuTrai && <Sidebar role={role} />}
             <div className="min-w-0 flex-1">{children}</div>
           </div>
           {showNav && <MobileNav role={role} />}
@@ -99,7 +103,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
     <div className="flex min-h-screen bg-surface">
       <PermissionsLoader />
       <PosNewTab />
-      <Sidebar role={role} />
+      {coMenuTrai && <Sidebar role={role} />}
 
       {menuSheet}
 

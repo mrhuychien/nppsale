@@ -20,9 +20,8 @@ import { toast } from "@/hooks/use-toast"
 import { duocXuatFile, type Module } from "@/lib/permissions"
 import { errorMessage } from "@/lib/errors"
 import { truncationWarning } from "@/lib/supabase/aggregate"
-import { tenTepMotPhieu, tenTepXuat, type SheetXuat } from "@/lib/xuat-excel/phieu"
-import { downloadXlsxSheets } from "@/components/analytics/report-frame"
-import { taiXlsxDinhDang, type SheetDinhDang } from "@/lib/xuat-excel/xlsx-dinh-dang"
+import type { SheetXuat } from "@/lib/xuat-excel/phieu"
+import type { SheetDinhDang } from "@/lib/xuat-excel/xlsx-dinh-dang"
 import { cn } from "@/lib/utils"
 
 export interface KetQuaXuat {
@@ -68,7 +67,14 @@ export function XuatExcelButton({
     if (dang) return
     setDang(true)
     try {
-      const kq = await chuanBi()
+      /* ⚠ PHẦN GHI TỆP TẢI LÚC BẤM (chủ nhà 23/10/2026 "load trang chậm lắm"): nút này ở mọi màn danh sách; kéo sẵn
+         khung báo cáo + bộ định dạng Excel vào mọi màn là bắt mọi lần mở trang tải thứ chỉ dùng khi bấm. */
+      const [kq, { tenTepMotPhieu, tenTepXuat }, { downloadXlsxSheets }, { taiXlsxDinhDang }] = await Promise.all([
+        chuanBi(),
+        import("@/lib/xuat-excel/phieu"),
+        import("@/components/analytics/report-frame"),
+        import("@/lib/xuat-excel/xlsx-dinh-dang"),
+      ])
       const motPhieu = kq.ma !== undefined
       const ten = motPhieu ? tenTepMotPhieu(tenTep, kq.ma) : tenTepXuat(tenTep)
       if (kq.dinhDang) await taiXlsxDinhDang(ten, kq.dinhDang)

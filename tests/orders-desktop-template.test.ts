@@ -59,7 +59,8 @@ describe("Thẻ trạng thái (StatusChips) — cùng số với bảng bên dư
 
 describe("Thẻ bảng máy tính: thanh công cụ · dải chọn · bảng · phân trang", () => {
   it("một thẻ, thứ tự đúng, chỉ máy tính", () => {
-    const card = PAGE.indexOf('<div className="hidden lg:flex flex-col overflow-hidden rounded-2xl')
+    // Điện thoại không dựng thẻ này (`laMay !== false`, chủ nhà 23/10/2026 "load trang chậm lắm") — xem tai-trang-nhe.test.ts.
+    const card = PAGE.indexOf('<div data-doc-list="desktop" className="hidden lg:flex flex-col overflow-hidden rounded-2xl')
     expect(card).toBeGreaterThan(0)
     /* ⚠ NEO VÀO Ô TÌM, và placeholder của nó đổi khi ô tìm được mở
        rộng sang tên khách (21/09/2026) — neo vào phần KHÔNG đổi. */

@@ -33,12 +33,19 @@ test("máy tính: Tuyến · Phường · Phụ trách luôn hiện; lọc phư�
   for (const ten of ["Tuyến", "Phường/xã", "Nhân viên"]) {
     await expect(page.getByRole("combobox", { name: ten }).filter({ visible: true })).toBeVisible()
   }
-  await page.getByRole("combobox", { name: "Phường/xã" }).filter({ visible: true }).click()
+  const o = page.getByRole("combobox", { name: "Phường/xã" }).filter({ visible: true })
+  await o.click()
   await page.getByRole("option", { name: "Phường Ái Quốc" }).click()
   await expect(nhan(page, "BL Khách Phường Ái Quốc")).toBeVisible()
   await expect(nhan(page, "BL Khách Phường An Biên")).toHaveCount(0)
   const log = await (await fetch(`${FAKE}/__log`)).json()
   expect(JSON.stringify(log)).toContain("ward=eq.")
+  // Ô đóng chỉ dựng mục đang chọn (`mucCanDung`, 23/10/2026) — vẫn hiện đúng chữ; mở lại thì đủ mục.
+  await expect(o).toContainText("Phường Ái Quốc")
+  await o.click()
+  await expect(page.getByRole("option", { name: "Phường An Biên" })).toBeVisible()
+  await page.getByRole("option", { name: "Mọi phường/xã" }).click()
+  await expect(nhan(page, "BL Khách Phường An Biên")).toBeVisible()
 })
 
 test("điện thoại: có ô Phường và Phụ trách; lọc phường", async ({ page }) => {
@@ -48,8 +55,15 @@ test("điện thoại: có ô Phường và Phụ trách; lọc phường", asyn
   const man = page.getByTestId("kh-mobile")
   await expect(man.getByText("BL Khách Phường An Biên", { exact: true })).toBeVisible()
   await expect(man.getByRole("combobox", { name: "Phụ trách" })).toBeVisible()
-  await man.getByRole("combobox", { name: "Phường/xã" }).click()
+  const o = man.getByRole("combobox", { name: "Phường/xã" })
+  await o.click()
   await page.getByRole("option", { name: "Phường An Biên" }).click()
   await expect(man.getByText("BL Khách Phường An Biên", { exact: true })).toBeVisible()
   await expect(man.getByText("BL Khách Phường Ái Quốc", { exact: true })).toHaveCount(0)
+  // Ô đóng chỉ dựng mục đang chọn (`mucCanDung`, 23/10/2026) — vẫn hiện đúng chữ; mở lại thì đủ mục.
+  await expect(o).toContainText("Phường An Biên")
+  await o.click()
+  await expect(page.getByRole("option", { name: "Phường Ái Quốc" })).toBeVisible()
+  await page.getByRole("option", { name: "Mọi phường/xã" }).click()
+  await expect(man.getByText("BL Khách Phường Ái Quốc", { exact: true })).toBeVisible()
 })

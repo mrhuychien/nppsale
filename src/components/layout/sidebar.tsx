@@ -320,7 +320,7 @@ export function Sidebar({ role, mobile, onNavigate }: SidebarProps) {
   }
 
   return (
-    <aside className={cn(
+    <aside data-menu-trai={mobile ? undefined : ""} className={cn(
       "flex flex-col bg-surface-container-low h-screen",
       mobile ? "w-full" : "hidden lg:flex lg:w-60 border-r border-outline-variant/60 sticky top-0"
     )}>

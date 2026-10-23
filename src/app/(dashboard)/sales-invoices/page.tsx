@@ -835,8 +835,10 @@ export default function SalesInvoicesPage() {
       </div>
 
       {/* ⚠ MÁY TÍNH — một thẻ gồm thanh công cụ, lưới, phân trang. Cùng
-          khuôn với màn "Đơn hàng"; đổi ở đây thì đổi cả bên kia. */}
-      <div className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
+          khuôn với màn "Đơn hàng"; đổi ở đây thì đổi cả bên kia. Điện thoại
+          KHÔNG dựng thẻ này (chủ nhà 23/10/2026 "load trang chậm lắm"). */}
+      {laMay !== false && (
+      <div data-doc-list="desktop" className="hidden lg:flex flex-col overflow-hidden rounded-2xl border border-outline-variant/60 bg-surface-container-lowest">
         <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/40 px-4 py-3">
           {filterActive("search") && (
             <DocSearchBox
@@ -925,6 +927,7 @@ export default function SalesInvoicesPage() {
           <DataPagination pg={pg} />
         </div>
       </div>
+      )}
 
       {/* ⚠ ĐIỆN THOẠI — theo mẫu danh sách Đơn hàng (chủ nhà 27/09/2026: "Viết lại giao diện danh sách
           hoá đơn bán trên mobile theo mẫu danh sách Đơn hàng"). Bấm thẻ mở ngăn xem nhanh. */}

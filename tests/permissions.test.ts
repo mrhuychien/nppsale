@@ -91,6 +91,23 @@ describe("cache runtime", () => {
     setPermissionsCache(null)
     expect(hasPermission("sales", "orders", "create")).toBe(true)
   })
+
+  /* ⚠ Chủ nhà 23/10/2026 "load trang chậm lắm": menu tra quyền ~80 mục mỗi lượt vẽ; dựng lại cả bảng mặc định ở mỗi
+     phép tra là ~50 ms trên điện thoại. */
+  it("bảng mặc định dựng MỘT lần — tra nhiều lần là cùng một bảng", () => {
+    expect(getPermissionsCache()).toBe(getPermissionsCache())
+  })
+
+  it("bảng nạp từ máy chủ là bản RIÊNG — gỡ quyền ở đó không đụng bảng mặc định dùng chung", () => {
+    const macDinh = getPermissionsCache()
+    const rieng = rowsToCache([{ role: "sales", module: "orders", action: "create", allowed: false }])
+    expect(rieng).not.toBe(macDinh)
+    expect(macDinh.sales?.orders.has("create")).toBe(true)
+    setPermissionsCache(rieng)
+    setPermissionsCache(null)
+    expect(getPermissionsCache()).toBe(macDinh)
+    expect(hasPermission("sales", "orders", "create")).toBe(true)
+  })
 })
 
 describe("rowsToCache — ghép override lên bảng mặc định", () => {

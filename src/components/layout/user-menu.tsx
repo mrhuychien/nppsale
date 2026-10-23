@@ -1,20 +1,7 @@
 "use client"
 
-import type { ReactNode } from "react"
-import { useRouter } from "next/navigation"
-import { Home, Wallet, BarChart3, Settings, HelpCircle, LogOut } from "lucide-react"
-import { useAuth } from "@/hooks/use-auth"
-import { useOrg } from "@/hooks/use-org"
-import { canSeeHref } from "@/lib/nav/nav-permission"
-import { ROLE_LABELS } from "@/lib/constants"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { lazy, Suspense, useState, type ReactNode } from "react"
+import { Home, Wallet, BarChart3, Settings, HelpCircle } from "lucide-react"
 
 /** Các mục của menu người dùng — mục nào không có quyền thì ẩn (`canSeeHref`). */
 export const MUC_MENU_NGUOI_DUNG = [
@@ -32,50 +19,42 @@ export function chuVietTat(ten: string | null | undefined): string {
   return ((w[0][0] ?? "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase()
 }
 
+const MenuNguoiDungDay = lazy(() => import("./user-menu-day").then((m) => ({ default: m.MenuNguoiDungDay })))
+
 /**
  * MENU NGƯỜI DÙNG — chủ nhà 26/09/2026: "bấm vào icon và tên người dùng phải ra menu người
  * dùng". Một chỗ cho mọi nơi hiện ảnh đại diện / tên (thanh trên, trang chủ, đầu trang xanh
  * của Đơn hàng / Khách hàng): tên + vai, các lối đi nhanh theo quyền, Đăng xuất.
  * `children` là phần bấm được (ảnh đại diện, kèm tên nếu có).
+ *
+ * ⚠ MENU TẢI LƯỜI (chủ nhà 23/10/2026 "load trang chậm lắm"): menu thả (Radix DropdownMenu + định vị) chỉ cần khi bấm,
+ *   mà nút này có ở MỌI màn — nên trước lần bấm đầu chỉ là một nút thường; bấm thì tải phần menu (chạm / rê chuột là
+ *   tải trước) và mở luôn. Sau đó là menu thường.
  */
 export function UserMenu({ children, label = "Tài khoản", className }: { children: ReactNode; label?: string; className?: string }) {
-  const { user, signOut } = useAuth()
-  const { org } = useOrg()
-  const router = useRouter()
-  const muc = MUC_MENU_NGUOI_DUNG.filter((m) => canSeeHref(user?.role, m.href))
+  const [can, setCan] = useState(false)
+  const taiMenu = () => void import("./user-menu-day")
+  const nutTruoc = (
+    <button
+      type="button"
+      aria-label={label}
+      aria-haspopup="menu"
+      aria-expanded={false}
+      className={className}
+      onPointerEnter={taiMenu}
+      onTouchStart={taiMenu}
+      onFocus={taiMenu}
+      onClick={() => setCan(true)}
+    >
+      {children}
+    </button>
+  )
+  if (!can) return nutTruoc
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={label} className={className}>
-          {children}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56" data-testid="menu-nguoi-dung">
-        <DropdownMenuLabel>
-          <p className="font-semibold">{user?.full_name || "Người dùng"}</p>
-          <p className="mt-0.5 text-xs font-normal text-muted-foreground">
-            {[user?.role ? ROLE_LABELS[user.role] ?? user.role : "", org?.name].filter(Boolean).join(" · ")}
-          </p>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {muc.map((m) => (
-          <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)}>
-            <m.icon className="mr-2 h-4 w-4" />
-            {m.label}
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={async () => {
-            await signOut()
-            router.push("/login")
-          }}
-          className="text-destructive focus:text-destructive"
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Đăng xuất
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Suspense fallback={nutTruoc}>
+      <MenuNguoiDungDay label={label} className={className} moNgay>
+        {children}
+      </MenuNguoiDungDay>
+    </Suspense>
   )
 }

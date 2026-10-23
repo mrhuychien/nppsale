@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { COT_GIAM_GIA, COT_HO_SO, gopHoSo, hoSoGuiKemDung } from "@/lib/auth/ho-so"
 import type { User } from "@/types"
 
 // Log chẩn đoán chỉ bật ở môi trường dev — production giữ console sạch,
@@ -20,12 +21,19 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+/** Chỗ layout (máy chủ) gửi hồ sơ xuống — xem `NapHoSo`. */
+const NapHoSoContext = createContext<((hoSo: User | null) => void) | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [authUser, setAuthUser] = useState<{ id: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
+  /* Hồ sơ trang mang theo từ máy chủ (`NapHoSo`) — dùng MỘT lần, ở sự kiện phiên đầu. */
+  const guiKem = useRef<User | null>(null)
+  const napHoSo = useCallback((hoSo: User | null) => {
+    guiKem.current = hoSo
+  }, [])
 
   useEffect(() => {
     debug("mounted")
@@ -50,35 +58,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function fetchProfile(userId: string) {
       try {
-        /* ⚠ QUYỀN GIẢM GIÁ (mig 185) ĐỌC RIÊNG. Ghép vào câu chính thì DB chưa
-           chạy mig 185 là 42703 và KHÔNG AI đăng nhập được; ở đây hỏng thì chỉ
-           là quyền giảm giá tắt — đúng mặc định.
+        /* Quyền giảm giá (mig 185) đọc riêng — xem `COT_GIAM_GIA`.
            Hai câu chạy SONG SONG (chủ nhà 27/09/2026 "muốn nhanh hơn nữa"): mọi
            trang đều đợi hồ sơ này, nối đuôi là thêm một vòng mạng mỗi lần mở trang. */
-        const [{ data, error }, gg] = await Promise.all([
-          supabase
-            .from("users")
-            .select(
-              "id, org_id, full_name, role, phone, is_active, created_at, allow_price_edit, price_edit_max_increase_pct"
-            )
-            .eq("id", userId)
-            .maybeSingle(),
-          supabase
-            .from("users")
-            .select("allow_discount, discount_max_type, discount_max_value")
-            .eq("id", userId)
-            .maybeSingle(),
+        const [chinh, gg] = await Promise.all([
+          supabase.from("users").select(COT_HO_SO).eq("id", userId).maybeSingle(),
+          supabase.from("users").select(COT_GIAM_GIA).eq("id", userId).maybeSingle(),
         ])
-        if (error) {
-          console.error("[AuthProvider] profile error:", error.code, error.message)
+        if (chinh.error) {
+          console.error("[AuthProvider] profile error:", chinh.error.code, chinh.error.message)
           return null
         }
-        if (!data) return null
-        return { ...(data as User), ...(gg.error || !gg.data ? {} : (gg.data as Partial<User>)) }
+        return gopHoSo(chinh, gg)
       } catch (err) {
         console.error("[AuthProvider] profile unexpected error:", err)
         return null
       }
+    }
+
+    /**
+     * ⚠ TÀI KHOẢN BỊ KHOÁ PHẢI BỊ ĐẨY RA, VÀ PHẢI ĐƯỢC NÓI VÌ SAO.
+     *
+     * Trước migration 122, `is_active` chỉ được kiểm ở đường đăng
+     * nhập bằng mã QR. Đường email + mật khẩu đọc cờ này vào hồ sơ
+     * rồi không hỏi tới nó lần nào, và phía cơ sở dữ liệu cũng
+     * không — `user_org_id()` chỉ tra theo `auth.uid()`. Nghĩa là
+     * nút "Khoá tài khoản" ở Cài đặt → Người dùng từ trước tới nay
+     * chỉ là một cái nhãn: người đã nghỉ việc vẫn đăng nhập được
+     * bằng mật khẩu cũ với nguyên quyền của vai mình.
+     *
+     * Mig 122 chặn ở `user_org_id()` nên RLS không trả dòng nào
+     * nữa — nhưng RLS TỪ CHỐI LÀ IM LẶNG (0 dòng, HTTP 200, error
+     * null). Không có đoạn này thì người bị khoá thấy một ứng dụng
+     * trống trơn và nghĩ hệ thống hỏng. Lớp dưới để không lách
+     * được, lớp này để hiểu chuyện gì xảy ra.
+     *
+     * ⚠ `=== false` CHỨ KHÔNG PHẢI `!profile.is_active`. Cột này
+     * NULL được (mig 001 không NOT NULL) và NULL nghĩa là CHƯA AI
+     * KHOÁ — đá người đang đi làm ra ngoài là hỏng nặng hơn hẳn.
+     *
+     * Một chỗ cho cả hồ sơ đọc mạng lẫn hồ sơ trang mang theo từ máy chủ.
+     */
+    function apDungHoSo(profile: User) {
+      if (profile.is_active === false) {
+        debug("profile inactive — signing out")
+        setAuthError("Tài khoản của bạn đã bị khoá. Liên hệ chủ nhà phân phối để mở lại.")
+        setUser(null)
+        void supabase.auth.signOut()
+        return
+      }
+      debug("profile loaded")
+      setUser(profile)
     }
 
     // Subscribe to auth state. The INITIAL_SESSION event fires
@@ -103,46 +133,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         hoSoCua = au.id
-        // Fetch profile in background
-        fetchProfile(au.id).then((profile) => {
-          // Đọc hỏng thì cho sự kiện sau đọc lại — đừng kẹt ở "đã có hồ sơ".
-          if (!profile) hoSoCua = null
-          if (!profile || !mounted) return
-          /**
-           * ⚠ TÀI KHOẢN BỊ KHOÁ PHẢI BỊ ĐẨY RA, VÀ PHẢI ĐƯỢC NÓI VÌ SAO.
-           *
-           * Trước migration 122, `is_active` chỉ được kiểm ở đường đăng
-           * nhập bằng mã QR. Đường email + mật khẩu đọc cờ này vào hồ sơ
-           * rồi không hỏi tới nó lần nào, và phía cơ sở dữ liệu cũng
-           * không — `user_org_id()` chỉ tra theo `auth.uid()`. Nghĩa là
-           * nút "Khoá tài khoản" ở Cài đặt → Người dùng từ trước tới nay
-           * chỉ là một cái nhãn: người đã nghỉ việc vẫn đăng nhập được
-           * bằng mật khẩu cũ với nguyên quyền của vai mình.
-           *
-           * Mig 122 chặn ở `user_org_id()` nên RLS không trả dòng nào
-           * nữa — nhưng RLS TỪ CHỐI LÀ IM LẶNG (0 dòng, HTTP 200, error
-           * null). Không có đoạn này thì người bị khoá thấy một ứng dụng
-           * trống trơn và nghĩ hệ thống hỏng. Lớp dưới để không lách
-           * được, lớp này để hiểu chuyện gì xảy ra.
-           *
-           * ⚠ `=== false` CHỨ KHÔNG PHẢI `!profile.is_active`. Cột này
-           * NULL được (mig 001 không NOT NULL) và NULL nghĩa là CHƯA AI
-           * KHOÁ — đá người đang đi làm ra ngoài là hỏng nặng hơn hẳn.
-           */
-          if (profile.is_active === false) {
-            debug("profile inactive — signing out")
-            setAuthError(
-              "Tài khoản của bạn đã bị khoá. Liên hệ chủ nhà phân phối để mở lại."
-            )
-            setUser(null)
-            void supabase.auth.signOut()
-            return
-          }
-          debug("profile loaded")
-          setUser(profile)
-        })
+        /* ⚠ HỒ SƠ TRANG MANG THEO (chủ nhà 23/10/2026 "load trang chậm lắm"): máy chủ đã đọc sẵn khi dựng
+           trang (`NapHoSo`) — đúng người thì dùng luôn, không đi thêm một vòng mạng trước khi trang được hỏi
+           dữ liệu. Dùng một lần: sự kiện sau (đổi thông tin, đổi người) đọc mạng như cũ. */
+        const sanCo = hoSoGuiKemDung(guiKem.current, au.id, event)
+        guiKem.current = null
+        if (sanCo) apDungHoSo(sanCo)
+        else
+          fetchProfile(au.id).then((profile) => {
+            // Đọc hỏng thì cho sự kiện sau đọc lại — đừng kẹt ở "đã có hồ sơ".
+            if (!profile) hoSoCua = null
+            if (!profile || !mounted) return
+            apDungHoSo(profile)
+          })
       } else {
         hoSoCua = null
+        guiKem.current = null
         setUser(null)
         setAuthUser(null)
       }
@@ -186,10 +192,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, authUser, loading, authError, signOut }}>
-      {children}
-    </AuthContext.Provider>
+    <NapHoSoContext.Provider value={napHoSo}>
+      <AuthContext.Provider value={{ user, authUser, loading, authError, signOut }}>
+        {children}
+      </AuthContext.Provider>
+    </NapHoSoContext.Provider>
   )
+}
+
+/**
+ * Layout (máy chủ) gửi hồ sơ đã đọc xuống `AuthProvider` — xem `@/lib/auth/ho-so`.
+ *
+ * ⚠ ĐẶT Ở KHUNG, NGOÀI PHẦN TRANG. Hiệu ứng của con chạy TRƯỚC hiệu ứng của cha, nên hồ sơ nằm sẵn trước
+ *   khi `AuthProvider` nghe sự kiện phiên đầu. Lỡ đến muộn thì chỉ là đọc mạng như cũ — không sai, chỉ chậm.
+ */
+export function NapHoSo({ hoSo }: { hoSo: User | null }) {
+  const nap = useContext(NapHoSoContext)
+  useEffect(() => {
+    nap?.(hoSo)
+  }, [nap, hoSo])
+  return null
 }
 
 export function useAuth(): AuthContextValue {

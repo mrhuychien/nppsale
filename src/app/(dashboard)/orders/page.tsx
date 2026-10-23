@@ -521,6 +521,10 @@ export default function OrdersPage() {
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026), ghép VÀ như tìm theo trường. */
   const locNC = useAdvancedFilter("orders", LOC_DON_HANG)
   const searchReady = listSearch.ready && fieldSearch.ready && locNC.ready
+  /* ⚠ CHỜ BIẾT NGƯỜI DÙNG rồi mới hỏi (chủ nhà 23/10/2026 "load trang chậm lắm"). Hỏi lúc chưa có hồ sơ là hỏi theo
+     luật của chủ NPP; hồ sơ về, NVBH đổi luật (bỏ đơn huỷ) → danh sách, chip đếm, tổng tiền hỏi lại lần hai. Thư viện
+     vốn chờ phiên xong mới gửi câu, nên chờ ở đây không tốn thêm vòng mạng — hồ sơ thì máy chủ đã gửi kèm trang. */
+  const sanSang = searchReady && !authLoading
 
   const applyCommonFilters = <T,>(q: T): T => {
     let x = q as any // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -627,7 +631,7 @@ export default function OrdersPage() {
     let cancelled = false
     async function loadCounts() {
       /* Chờ lượt tra — đếm với bộ lọc "chưa xong" là nháy các tab về 0. */
-      if (!searchReady) return
+      if (!sanSang) return
       // audit-ok: lỗi của CẢ chùm truy vấn được gộp lại ở `countErr` ngay
       // bên dưới; không kiểm từng chỗ vì một phép đếm hỏng hay tất cả hỏng
       // đều dẫn tới cùng một việc phải làm.
@@ -687,7 +691,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter / thứ tự xếp đổi.
   useEffect(() => {
@@ -704,7 +708,7 @@ export default function OrdersPage() {
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ KHÁCH. Giữ nguyên trạng thái "đang nạp" chứ
          không vẽ ra một danh sách thiếu rồi tự sửa. */
-      if (!searchReady) return
+      if (!sanSang) return
       // selectResilient: nếu DB production thiếu cột (lệch migration) thì tự thử
       // lại với '*' thay vì trả danh sách rỗng im lặng; luôn trả error để hiển thị.
       const build = (select: string, from: number, to: number, dem: boolean) => {
@@ -757,7 +761,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, sort]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Đầu nhóm ngày trên điện thoại ("N đơn · tổng") — đếm TRÊN MÁY CHỦ cho đúng những ngày đang hiện, cùng bộ lọc
@@ -931,7 +935,7 @@ export default function OrdersPage() {
     ;(async () => {
       setFilteredTotal(null)
       /* Chờ lượt tra — cộng với bộ lọc "chưa xong" là nháy ra 0. */
-      if (!searchReady) return
+      if (!sanSang) return
       const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
         const q = applyStatusFilter(
           applyCommonFilters(
@@ -955,7 +959,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ⚠ Bộ lọc pipeline đã bỏ (chủ nhà chốt 23/09/2026) — mọi lọc chạy ở máy chủ. */
   const filtered = orders

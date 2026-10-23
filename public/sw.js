@@ -5,6 +5,8 @@
 //   - TUYỆT ĐỐI không cache: /api, /login, /qr-login, và mọi request
 //     khác origin (Supabase). Chỉ cache GET trả về 200.
 // Bump CACHE_VERSION mỗi lần đổi logic SW để dọn cache cũ.
+// (23/10/2026 bật tải trước điều hướng — KHÔNG bump: thứ trong cache không đổi nghĩa, dọn đi chỉ bắt
+// mọi máy tải lại toàn bộ JS lần sau.)
 const CACHE_VERSION = "npp-v2" // v2 (28/09/2026): logo mới — bỏ bản /logo.svg cũ trong bộ nhớ
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const PAGE_CACHE = `${CACHE_VERSION}-pages`
@@ -16,6 +18,15 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      /* ⚠ TẢI TRƯỚC ĐIỀU HƯỚNG (chủ nhà 23/10/2026 "load trang chậm lắm"). Không bật thì mỗi lần mở trang
+         cứng, trình duyệt phải ĐÁNH THỨC service worker xong mới được gửi yêu cầu trang — trên điện thoại
+         mất cả trăm mili giây trước khi máy chủ nhận được gì. Bật thì yêu cầu trang đi song song lúc SW
+         thức dậy (`event.preloadResponse`). Trình duyệt không có thì thôi — chạy như cũ. */
+      try {
+        if (self.registration.navigationPreload) await self.registration.navigationPreload.enable()
+      } catch (e) {
+        /* bỏ qua — chỉ là chậm hơn một chút */
+      }
       const keys = await caches.keys()
       await Promise.all(
         keys.filter((k) => !k.startsWith(CACHE_VERSION)).map((k) => caches.delete(k))
@@ -61,7 +72,9 @@ self.addEventListener("fetch", (event) => {
   // Điều hướng trang — network-first, fallback cache khi offline.
   if (req.mode === "navigate" && isCacheableNav(url)) {
     event.respondWith(
-      fetch(req)
+      // Bản tải trước (đã đi song song lúc SW thức dậy); không có thì tự tải như cũ.
+      Promise.resolve(event.preloadResponse)
+        .then((pre) => pre || fetch(req))
         .then((res) => {
           if (res.ok) {
             const clone = res.clone()

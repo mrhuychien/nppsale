@@ -50,7 +50,9 @@ describe("NVBH chỉ còn module bán hàng", () => {
   })
   it("trang chủ NVBH: không thấy kho thì không đọc / không hiện Tồn kho thấp", () => {
     const s = doc("src/components/home/sales-home.tsx")
-    expect(s).toMatch(/if \(xemKho\) \{\s*const \[ton, prod, lo\]/)
+    /* Câu kho đi CÙNG ĐỢT với các câu khác (chủ nhà 23/10/2026 "load trang chậm lắm") nhưng vẫn chỉ khi xem được kho. */
+    expect(s).toMatch(/const pKho = xemKho\s*\?\s*Promise\.all\(\[\s*loadSellStock\(sb\)[\s\S]*?\]\)\s*:\s*null\n/)
+    expect(s).toMatch(/if \(khoR\) \{\s*const \[ton, prod, lo\] = khoR/)
     expect(s).toContain("xemKho && (dl.tonThap ?? 0) > 0")
     expect(doc("src/app/(dashboard)/home/page.tsx")).toContain('xemKho={canSeeHref(role, "/products")}')
   })

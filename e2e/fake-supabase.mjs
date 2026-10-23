@@ -214,7 +214,9 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     if (req.method === "OPTIONS") return send(res, 204)
     if (url.pathname === "/__log") return send(res, 200, requests)
     if (url.pathname === "/__db") return send(res, 200, db)
-    const entry = { method: req.method, path: url.pathname, query: url.search, body: json, prefer: req.headers.prefer }
+    /* `client`: máy chủ Next (createServerClient) hay trình duyệt (createBrowserClient) — @supabase/ssr ghi ở
+       X-Client-Info; chốt đếm lượt gọi của trình duyệt dựa vào đây (hồ sơ do máy chủ đọc thì không tính). */
+    const entry = { method: req.method, path: url.pathname, query: url.search, body: json, prefer: req.headers.prefer, client: String(req.headers["x-client-info"] ?? "") }
     requests.push(entry)
 
     // ---- auth ----

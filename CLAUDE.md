@@ -197,6 +197,17 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   `laHetGio` nhận ra, `errorMessage` / `selectResilient` dịch thành câu tiếng Việt (`cauHetGio`), `isAbortError` **không**
   coi là huỷ — coi là huỷ thì trang lặng lẽ `return`, danh sách đứng trắng.
 
+### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
+Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).
+- **Hồ sơ người dùng do máy chủ đọc** khi dựng layout (dashboard, POS — `layHoSoMayChu`) và gửi kèm trang (`NapHoSo`);
+  `AuthProvider` dùng ngay ở sự kiện phiên đầu nếu **đúng người** (`hoSoGuiKemDung`), không đọc `users` lần nữa — vẫn qua
+  chốt tài khoản bị khoá (`apDungHoSo`). Bộ cột một chỗ: `src/lib/auth/ho-so.ts` (cột giảm giá mig 185 vẫn đọc riêng).
+- Màn có **luật theo vai** (NVBH khác chủ) chờ biết người dùng rồi mới hỏi (`authLoading` của `useRoleGuard`) — hỏi trước
+  là hỏi hai lần (Đơn hàng: `sanSang`). Thư viện vốn chờ phiên xong mới gửi câu, nên chờ thế không tốn thêm vòng mạng.
+- Câu không phụ thuộc nhau **đi cùng đợt**; câu phụ thuộc chỉ chờ đúng câu nó cần (trang chủ NVBH: tên khách chờ hoá đơn /
+  trả / nợ, không chờ cả chùm). Thứ màn **không hiện thì không đọc** (người phụ trách khách trên điện thoại NVBH).
+- Service worker bật **tải trước điều hướng** (`public/sw.js`, `event.preloadResponse`).
+
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.
 - **Chụp lại** = sửa dòng `customer_photos` tại chỗ (giữ ô), không xoá-rồi-chèn. Tấm đã ghim vị trí

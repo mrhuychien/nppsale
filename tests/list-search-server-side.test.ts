@@ -133,7 +133,10 @@ describe("mọi danh sách có phân trang đều tìm cả sổ", () => {
      */
     it(`${ten}: truy vấn chính chờ lượt tra mã`, () => {
       expect(
-        src.includes("if (!searchReady) return") || src.includes("if (!listSearch.ready) return"),
+        src.includes("if (!searchReady) return") ||
+          src.includes("if (!listSearch.ready) return") ||
+          /* Đơn hàng: `sanSang` = lượt tra mã xong VÀ đã biết người dùng (chủ nhà 23/10/2026). */
+          (/const sanSang = searchReady && /.test(src) && src.includes("if (!sanSang) return")),
         `${ten} không chờ lượt tra mã — lần gõ đầu trả về danh sách thiếu rồi tự sửa`
       ).toBe(true)
     })

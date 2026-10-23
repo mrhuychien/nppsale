@@ -22,6 +22,7 @@ import { docTheoLoId, fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { locDanhSachMa, catTrangMa, xepTheoMa } from "@/lib/customers/loc-nhanh"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useAuth } from "@/hooks/use-auth"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { useListViewPrefs } from "@/hooks/use-list-view-prefs"
 import { useToast } from "@/hooks/use-toast"
 import { hasPermission } from "@/lib/permissions"
@@ -83,6 +84,12 @@ export default function CustomersPage() {
   const { user, loading: authLoading } = useRoleGuard("customers")
   const { user: authUser } = useAuth()
   const isSales = authUser?.role === "sales"
+  /* ⚠ "AI PHỤ TRÁCH" — NVBH trên điện thoại KHÔNG hiện (thẻ khách bỏ dòng ấy, xem `meta` dưới), nên khỏi đọc: hai vòng
+     mạng (phân công → ngành hàng) cho thứ không ai thấy (chủ nhà 23/10/2026 "load trang chậm lắm"). Đọc qua ref: hiệu
+     ứng danh sách chạy từ lúc dựng, khi đó chưa biết vai; tới lúc danh sách về thì đã biết. Chưa biết khổ → cứ đọc. */
+  const khoMay = useKhoMay()
+  const docPhuTrach = useRef(true)
+  docPhuTrach.current = !(isSales && khoMay === false)
   const [customers, setCustomers] = useState<Customer[]>([])
   /**
    * `null` = CHƯA/KHÔNG đọc được công nợ. KHÔNG được hiện thành 0.
@@ -426,13 +433,23 @@ export default function CustomersPage() {
       }
       /* Chủ nhà 27/09/2026: bỏ hai cột "Đơn gần nhất" / "Lần ghé gần nhất" — phần đọc chậm nhất
          của màn (1.000 dòng đơn + 1.000 dòng ghé thăm, rồi hỏi bù từng khách). */
+      if (!docPhuTrach.current) {
+        setManagersMap({})
+        return
+      }
       // KHÔNG lọc role='primary' nữa: cột "Phụ trách" phải hiện đủ
       // những người cùng vào một điểm bán. Bộ lọc theo NV (máy chủ, `nvLoc`) vẫn chỉ lấy người CHÍNH.
-      const assignsRes = await supabase
-        .from("customer_assignments")
-        .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
-        .in("customer_id", ids)
-        .eq("status", "active")
+      /* Ba câu CÙNG LÚC (bản cũ: phân công xong mới hỏi ngành hàng của người phụ trách). Bảng ngành hàng của NV
+         nhỏ (NV × NCC) và cả đơn vị đều đọc được (RLS mig 080) — đọc hết khỏi chờ danh sách người. */
+      const [assignsRes, linkRes, supRes] = await Promise.all([
+        supabase
+          .from("customer_assignments")
+          .select("customer_id, user_id, role, status, user:users(id, full_name, is_active)")
+          .in("customer_id", ids)
+          .eq("status", "active"),
+        supabase.from("user_suppliers").select("user_id, supplier_id"),
+        supabase.from("suppliers").select("id, name"),
+      ])
       if (assignsRes.error) console.error("[app/customers] truy vấn lỗi:", assignsRes.error.message)
       if (cancelled) return
       type AssignRow = {
@@ -445,19 +462,11 @@ export default function CustomersPage() {
       const assignRows = (assignsRes.data as unknown as AssignRow[]) || []
 
       // Ngành hàng của những người đang phụ trách trang này.
-      const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
-      let links: Array<{ user_id: string; supplier_id: string }> = []
-      let sups: Array<{ id: string; name: string }> = []
-      if (managerIds.length > 0) {
-        const [linkRes, supRes] = await Promise.all([
-          supabase.from("user_suppliers").select("user_id, supplier_id").in("user_id", managerIds),
-          supabase.from("suppliers").select("id, name"),
-        ])
-        const linkErr = [linkRes, supRes].find((r) => r.error)?.error
-        if (linkErr) console.error("[app/customers] truy vấn lỗi:", linkErr.message)
-        links = (linkRes.data as typeof links) || []
-        sups = (supRes.data as typeof sups) || []
-      }
+      const linkErr = [linkRes, supRes].find((r) => r.error)?.error
+      if (linkErr) console.error("[app/customers] truy vấn lỗi:", linkErr.message)
+      const laNguoiPhuTrach = new Set(assignRows.map((a) => a.user_id))
+      const links = ((linkRes.data as Array<{ user_id: string; supplier_id: string }>) || []).filter((l) => laNguoiPhuTrach.has(l.user_id))
+      const sups = (supRes.data as Array<{ id: string; name: string }>) || []
       const byCustomer = new Map<string, AssignRow[]>()
       for (const a of assignRows) {
         const arr = byCustomer.get(a.customer_id)

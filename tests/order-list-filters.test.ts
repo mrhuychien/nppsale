@@ -209,7 +209,8 @@ describe("Lọc theo tuyến bán hàng", () => {
    * Chốt phải bắt khi MẤT một phụ thuộc, không phải khi có thêm.
    */
   it("đổi tuyến thì tải lại danh sách và về trang 1", () => {
-    const m = /\}, \[pg\.from, pg\.to,([^\]]*)\]/.exec(ORDERS)
+    /* `sanSang` đứng đầu (chủ nhà 23/10/2026): danh sách chờ biết người dùng rồi mới hỏi — xem chốt it-goi-supabase. */
+    const m = /\}, \[sanSang, pg\.from, pg\.to,([^\]]*)\]/.exec(ORDERS)
     expect(m, "không tìm thấy mảng phụ thuộc của truy vấn danh sách").toBeTruthy()
     for (const dep of ["debouncedSearch", "effectiveStatus", "routeFilter"]) {
       expect(m![1], `truy vấn danh sách không theo dõi ${dep}`).toContain(dep)
@@ -240,7 +241,7 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
      * `useRefreshOnFocus`.
      */
     /* ⚠ KIỂM TỪNG TÊN, KHÔNG KIỂM NGUYÊN VĂN MẢNG — xem chốt ở trên. */
-    const m = /\}, \[debouncedSearch,([^\]]*)focusTick\]/.exec(ORDERS)
+    const m = /\}, \[sanSang, debouncedSearch,([^\]]*)focusTick\]/.exec(ORDERS)
     expect(m, "không tìm thấy mảng phụ thuộc của phép đếm").toBeTruthy()
     for (const dep of [
       "routeFilter", "customerFilter", "salesFilter",

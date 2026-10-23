@@ -18,6 +18,13 @@ describe("chi tiết đơn hàng", () => {
     expect(DON).toContain('.select("created_by, creator:users!sales_orders_created_by_fkey(full_name)")')
     expect(DON).toMatch(/label: "Người tạo", value: nguoiTao/)
   })
+  it("người tạo hỏi CÙNG LÚC với chùm chính — không đợi chùm xong (chủ nhà 23/10/2026 \"load trang chậm lắm\")", () => {
+    const f = DON.slice(DON.indexOf("const fetchData = useCallback"))
+    const iNguoiTao = f.indexOf('.select("created_by, creator:users!sales_orders_created_by_fkey(full_name)")')
+    const iCho = f.indexOf("await Promise.all([")
+    expect(iNguoiTao).toBeGreaterThan(0)
+    expect(iNguoiTao, "đợi chùm 10 câu xong mới hỏi tên người tạo là thêm một vòng mạng").toBeLessThan(iCho)
+  })
   it("dòng hiện giảm giá dòng và quy đổi; tổng có Giảm giá đơn", () => {
     expect(DON).toContain("<LineExtra line={line} coCotGiam />")
     expect(DON).toContain("<LineExtra line={line} />")

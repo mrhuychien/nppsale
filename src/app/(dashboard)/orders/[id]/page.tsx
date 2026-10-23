@@ -344,6 +344,20 @@ export default function OrderDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    /* ⚠ NGƯỜI TẠO ĐỌC RIÊNG, NHƯ POS (`order-screen`). Cột `created_by` có từ
+       mig 178; ghép vào truy vấn đầu đơn thì DB chưa chạy mig ấy là trắng cả
+       trang. Ở đây lỗi chỉ là không hiện một dòng.
+       Gửi CÙNG LÚC với chùm dưới (chủ nhà 23/10/2026 "load trang chậm lắm") — bản cũ đợi chùm xong mới hỏi,
+       thêm một vòng mạng chỉ cho một cái tên. */
+    void supabase
+      .from("sales_orders")
+      .select("created_by, creator:users!sales_orders_created_by_fkey(full_name)")
+      .eq("id", id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        const ten = (data as { creator?: { full_name?: string | null } | null } | null)?.creator?.full_name
+        setNguoiTao(error ? null : ten || null)
+      })
     const [orderRes, linesRes, recRes, historyRes, invoiceRes, deliveryLinesRes, stockEntriesRes, returnsRes, activityRes, salesInvoicesRes] = await Promise.all([
       supabase.from("sales_orders").select("id, org_id, order_code, customer_id, sales_user_id, order_date, expected_delivery, status, current_workflow_stage, payment_terms, subtotal, discount, vat, total, merged_into, notes, approved_by, approved_at, approval_reason, created_at, customer:customers(*, group:customer_groups(name)), sales_user:users!sales_orders_sales_user_id_fkey(*)").eq("id", id).single(),
       supabase.from("sales_order_lines").select("id, order_id, product_id, unit_name, quantity, unit_price, line_discount, line_total, batch_id, note, conversion_factor, product:products(*)").eq("order_id", id),
@@ -410,19 +424,6 @@ export default function OrderDetailPage() {
     }
     const fetchedLines = (linesRes.data as unknown as SalesOrderLine[]) || []
     setLines(fetchedLines)
-
-    /* ⚠ NGƯỜI TẠO ĐỌC RIÊNG, NHƯ POS (`order-screen`). Cột `created_by` có từ
-       mig 178; ghép vào truy vấn đầu đơn thì DB chưa chạy mig ấy là trắng cả
-       trang. Ở đây lỗi chỉ là không hiện một dòng. */
-    void supabase
-      .from("sales_orders")
-      .select("created_by, creator:users!sales_orders_created_by_fkey(full_name)")
-      .eq("id", id)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        const ten = (data as { creator?: { full_name?: string | null } | null } | null)?.creator?.full_name
-        setNguoiTao(error ? null : ten || null)
-      })
 
     /**
      * ⚠ KHÔNG CÒN TRUY VẤN `v_sales_order_line_picked` — migration 119 đã

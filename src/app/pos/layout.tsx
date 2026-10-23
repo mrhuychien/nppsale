@@ -1,4 +1,6 @@
 import type { ReactNode } from "react"
+import { NapHoSo } from "@/hooks/use-auth"
+import { layHoSoMayChu } from "@/lib/auth/ho-so-may-chu"
 import { PosShell } from "@/components/pos/pos-shell"
 import { PosTabsProvider } from "@/store/pos/tabs"
 import { PosSettingsProvider } from "@/store/pos/settings"
@@ -21,9 +23,13 @@ import { PosProductSearchProvider } from "@/store/pos/product-search"
  * liệu tải về chỉ để phục vụ một màn — trong khi họ chữ đúng đã nằm
  * sẵn trong bộ nhớ đệm của trình duyệt từ mọi màn khác.
  */
-export default function PosLayout({ children }: { children: ReactNode }) {
+export default async function PosLayout({ children }: { children: ReactNode }) {
+  /* POS luôn mở ở TAB MỚI = tải cứng mỗi lần: gửi kèm hồ sơ để trình duyệt khỏi hỏi lại (xem `@/lib/auth/ho-so`).
+     Chưa đăng nhập thì middleware đã đưa về /login; ở đây đọc hỏng chỉ là không gửi kèm. */
+  const phien = await layHoSoMayChu()
   return (
     <PosSettingsProvider>
+      <NapHoSo hoSo={phien?.hoSo ?? null} />
       <PosRefDataProvider>
         <PosTabsProvider>
           {/* ⚠ Ô tìm hàng vẽ ở khung, danh mục do màn đăng ký — xem store. */}

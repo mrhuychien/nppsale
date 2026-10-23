@@ -93,16 +93,83 @@ export function SalesHome({
     const cuoi = khoangKy("quarter", homNay).to > khoangKy("week", homNay).to ? khoangKy("quarter", homNay).to : khoangKy("week", homNay).to
     ;(async () => {
       try {
-        const [hdR, traR, donR, thamR, nhapR, noR, tuyenR, ganR, tgR] = await Promise.all([
-          fetchAllForAggregate<HoaDonTC>((f, t) =>
-            sb.from("sales_invoices").select("id, customer_id, invoice_date, total", { count: "exact" })
-              .eq("sales_user_id", userId).eq("status", "posted")
-              .gte("invoice_date", dau).lte("invoice_date", cuoi).order("id").range(f, t)),
-          /* ⚠ KHÔNG lọc `sales_user_id` ở câu hỏi: phiếu tự sinh cũ có thể chưa ghi người (sổ
-             chưa chạy mig 194). RLS (mig 198) chỉ trả phiếu thuộc về mình; `traCuaToi` chọn tiếp. */
-          fetchAllForAggregate<TraTC & { sales_user_id: string | null }>((f, t) =>
-            sb.from("returns").select("customer_id, revenue_date, credit_note_amount, sales_user_id", { count: "exact" })
-              .gte("revenue_date", dau).lte("revenue_date", cuoi).order("id").range(f, t)),
+        /* ⚠ MỘT ĐỢT, KHÔNG NỐI ĐUÔI (chủ nhà 23/10/2026 "load trang chậm lắm" — đo điện thoại 4G: trang này đi
+           4 vòng mạng). Tên kênh và số kho không phụ thuộc câu nào → chạy cùng lúc với 9 câu chính; tên khách
+           chỉ cần hoá đơn / hàng trả / công nợ → hỏi ngay khi ba câu ấy về, không đợi cả 9. */
+        const pHd = fetchAllForAggregate<HoaDonTC>((f, t) =>
+          // audit-ok: lỗi đi trong kết quả — `hdR.error` vào `baoLoi` ở dưới.
+          sb.from("sales_invoices").select("id, customer_id, invoice_date, total", { count: "exact" })
+            .eq("sales_user_id", userId).eq("status", "posted")
+            .gte("invoice_date", dau).lte("invoice_date", cuoi).order("id").range(f, t))
+        /* ⚠ KHÔNG lọc `sales_user_id` ở câu hỏi: phiếu tự sinh cũ có thể chưa ghi người (sổ
+           chưa chạy mig 194). RLS (mig 198) chỉ trả phiếu thuộc về mình; `traCuaToi` chọn tiếp. */
+        const pTra = fetchAllForAggregate<TraTC & { sales_user_id: string | null }>((f, t) =>
+          // audit-ok: lỗi đi trong kết quả — `traR.error` vào `baoLoi` ở dưới (doanh số thuần thiếu phần trừ trả thì phải nói).
+          sb.from("returns").select("customer_id, revenue_date, credit_note_amount, sales_user_id", { count: "exact" })
+            .gte("revenue_date", dau).lte("revenue_date", cuoi).order("id").range(f, t))
+        const pNo = fetchAllForAggregate<{ amount: number; paid: number | null; due_date: string | null; customer_id: string | null }>((f, t) =>
+          // audit-ok: lỗi đi trong kết quả — `cn.loi` vào `baoLoi` ở dưới.
+          sb.from("receivables").select("amount, paid, due_date, customer_id", { count: "exact" })
+            .eq("sales_user_id", userId).neq("status", "paid").order("id").range(f, t))
+
+        // Công nợ: Σ(amount − paid) chưa 'paid', KHÔNG kẹp 0 từng dòng (luật mig 186).
+        const pCongNo = pNo.then((noR) => {
+          const theoKhach = new Map<string, number>()
+          let tong = 0
+          let quaHan = 0
+          for (const r of noR.rows) {
+            const con = Number(r.amount || 0) - Number(r.paid || 0)
+            tong += con
+            if (con > 0 && r.due_date && r.due_date < homNay) quaHan++
+            if (r.customer_id) theoKhach.set(r.customer_id, (theoKhach.get(r.customer_id) ?? 0) + con)
+          }
+          /* Đọc hỏng thì BÁO, không hiện "nợ 0" — bản cũ bỏ qua lỗi câu này. */
+          return { theoKhach, tong, quaHan, loi: noR.error }
+        })
+
+        const pKhach = Promise.all([pHd, pTra, pCongNo]).then(async ([hdR, traR, cn]) => {
+          const ids = new Set<string>()
+          for (const h of hdR.rows) if (h.customer_id) ids.add(h.customer_id)
+          for (const r of traR.rows) if (r.customer_id) ids.add(r.customer_id)
+          for (const c of Array.from(cn.theoKhach.keys())) ids.add(c)
+          const ds = Array.from(ids)
+          const khoi: string[][] = []
+          for (let i = 0; i < ds.length; i += 200) khoi.push(ds.slice(i, i + 200))
+          // Các khối 200 khách đi CÙNG LÚC (bản cũ chờ từng khối).
+          // audit-ok: lỗi từng khối kiểm ngay dưới (`khErr` → setLoi).
+          const kq = await Promise.all(khoi.map((k) => sb.from("customers").select("id, store_name, channel, credit_limit").in("id", k)))
+          const khach = new Map<string, { store: string; channel: string | null }>()
+          let vuotHanMuc = 0
+          for (const { data, error: khErr } of kq) {
+            /* Đọc hỏng thì báo (như hoá đơn / đơn ở trên) — thiếu khách là thiếu tên trong danh sách và đếm "vượt hạn mức" hụt. */
+            if (khErr && !huy) setLoi(errorMessage(khErr, "Không đọc được danh sách khách"))
+            for (const c of (data ?? []) as Array<{ id: string; store_name: string; channel: string | null; credit_limit: number | null }>) {
+              khach.set(c.id, { store: c.store_name, channel: c.channel })
+              const hm = Number(c.credit_limit || 0)
+              if (hm > 0 && (cn.theoKhach.get(c.id) ?? 0) > hm) vuotHanMuc++
+            }
+          }
+          return { khach, vuotHanMuc }
+        })
+
+        // audit-ok: chỉ là TÊN kênh; đọc hỏng thì hiện mã kênh thay tên — không con số nào đổi.
+        const pKenh = sb.from("sales_routes").select("code, name")
+
+        const pKho = xemKho
+          ? Promise.all([
+              loadSellStock(sb),
+              fetchAllForAggregate<{ id: string }>((f, t) =>
+                // audit-ok: `prod.error` kiểm ở dưới (đọc hỏng → "Tồn kho thấp" để trống, không đếm sai).
+                sb.from("products").select("id", { count: "exact" }).eq("status", "active").order("id").range(f, t)),
+              // audit-ok: chỉ là ô nhắc "lô sắp hết hạn"; đọc hỏng thì không nhắc — như bản trước.
+              sb.from("batches").select("id", { count: "exact", head: true }).gt("qty_on_hand", 0)
+                .eq("warehouse_zone", "sale").lte("expires_at", congNgay(homNay, 30)),
+            ])
+          : null
+
+        const [hdR, traR, donR, thamR, nhapR, cn, tuyenR, ganR, tgR, kh, kenhR, khoR] = await Promise.all([
+          pHd,
+          pTra,
           fetchAllForAggregate<{ order_date: string }>((f, t) =>
             sb.from("sales_orders").select("order_date", { count: "exact" })
               .eq("sales_user_id", userId).neq("status", "cancelled")
@@ -112,64 +179,30 @@ export function SalesHome({
               .eq("sales_user_id", userId).gte("visit_date", dau).lte("visit_date", cuoi).order("id").range(f, t)),
           sb.from("sales_orders").select("id, total, customer:customers(store_name)", { count: "exact" })
             .eq("sales_user_id", userId).eq("status", "draft").order("created_at", { ascending: false }).limit(1),
-          fetchAllForAggregate<{ amount: number; paid: number | null; due_date: string | null; customer_id: string | null }>((f, t) =>
-            sb.from("receivables").select("amount, paid, due_date, customer_id", { count: "exact" })
-              .eq("sales_user_id", userId).neq("status", "paid").order("id").range(f, t)),
+          pCongNo,
           sb.from("pjp_routes").select("customer_id").eq("sales_user_id", userId)
             .eq("day_of_week", ngayTuyen(homNay)).eq("is_active", true),
           sb.from("sales_orders").select("id, order_code, total, status, customer:customers(store_name)")
             .eq("sales_user_id", userId).neq("status", "cancelled")
             .order("order_date", { ascending: false }).order("created_at", { ascending: false }).limit(5),
           sb.rpc("my_sales_target"),
+          pKhach,
+          pKenh,
+          pKho,
         ])
         if (huy) return
-        const baoLoi = [hdR.error, donR.error].find(Boolean)
+        const baoLoi = [hdR.error, donR.error, cn.loi, traR.error].find(Boolean)
         if (baoLoi) setLoi(baoLoi)
 
-        // Công nợ: Σ(amount − paid) chưa 'paid', KHÔNG kẹp 0 từng dòng (luật mig 186).
-        const noTheoKhach = new Map<string, number>()
-        let tong = 0
-        let quaHan = 0
-        for (const r of noR.rows) {
-          const con = Number(r.amount || 0) - Number(r.paid || 0)
-          tong += con
-          if (con > 0 && r.due_date && r.due_date < homNay) quaHan++
-          if (r.customer_id) noTheoKhach.set(r.customer_id, (noTheoKhach.get(r.customer_id) ?? 0) + con)
-        }
-
-        const ids = new Set<string>()
-        for (const h of hdR.rows) if (h.customer_id) ids.add(h.customer_id)
-        for (const r of traR.rows) if (r.customer_id) ids.add(r.customer_id)
-        for (const c of Array.from(noTheoKhach.keys())) ids.add(c)
-        const khach = new Map<string, { store: string; channel: string | null }>()
-        let vuotHanMuc = 0
-        const ds = Array.from(ids)
-        for (let i = 0; i < ds.length; i += 200) {
-          const { data, error: khErr } = await sb.from("customers").select("id, store_name, channel, credit_limit").in("id", ds.slice(i, i + 200))
-          /* Đọc hỏng thì báo (như hoá đơn / đơn ở trên) — thiếu khách là thiếu tên trong danh sách và đếm "vượt hạn mức" hụt. */
-          if (khErr && !huy) setLoi(errorMessage(khErr, "Không đọc được danh sách khách"))
-          for (const c of (data ?? []) as Array<{ id: string; store_name: string; channel: string | null; credit_limit: number | null }>) {
-            khach.set(c.id, { store: c.store_name, channel: c.channel })
-            const hm = Number(c.credit_limit || 0)
-            if (hm > 0 && (noTheoKhach.get(c.id) ?? 0) > hm) vuotHanMuc++
-          }
-        }
-        // audit-ok: chỉ là TÊN kênh; đọc hỏng thì hiện mã kênh thay tên — không con số nào đổi.
-        const { data: kenhData } = await sb.from("sales_routes").select("code, name")
+        const { tong, quaHan } = cn
+        const { khach, vuotHanMuc } = kh
         const kenhTen = new Map<string, string>()
-        for (const r of (kenhData ?? []) as Array<{ code: string; name: string }>) kenhTen.set(r.code, r.name)
+        for (const r of (kenhR.data ?? []) as Array<{ code: string; name: string }>) kenhTen.set(r.code, r.name)
 
         let tonThap: number | null = null
         let loSapHet = 0
-        if (xemKho) {
-          const [ton, prod, lo] = await Promise.all([
-            loadSellStock(sb),
-            fetchAllForAggregate<{ id: string }>((f, t) =>
-              sb.from("products").select("id", { count: "exact" }).eq("status", "active").order("id").range(f, t)),
-            sb.from("batches").select("id", { count: "exact", head: true }).gt("qty_on_hand", 0)
-              .eq("warehouse_zone", "sale").lte("expires_at", congNgay(homNay, 30)),
-          ])
-          if (huy) return
+        if (khoR) {
+          const [ton, prod, lo] = khoR
           tonThap = ton && !prod.error ? prod.rows.filter((p) => (ton[p.id] ?? 0) < 10).length : null
           loSapHet = lo.count ?? 0
         }

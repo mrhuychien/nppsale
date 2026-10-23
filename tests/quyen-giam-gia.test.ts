@@ -78,8 +78,16 @@ describe("gắn vào màn", () => {
     expect(CAI_DAT).toMatch(/allow_discount: giamGia\.bat,\s*discount_max_type: giamGia\.kieu,\s*discount_max_value: maxSo === null \? null/)
   })
   it("đăng nhập đọc cột mig 185 RIÊNG — thiếu cột không chặn đăng nhập", () => {
-    const dau = AUTH.match(/"id, org_id, full_name, role[^"]*"/)![0]
+    /* Bộ cột chung cho máy chủ (layout gửi kèm hồ sơ) lẫn trình duyệt — `@/lib/auth/ho-so` (chủ nhà 23/10/2026). */
+    const HO_SO = readFileSync("src/lib/auth/ho-so.ts", "utf8")
+    const MAY_CHU = readFileSync("src/lib/auth/ho-so-may-chu.ts", "utf8")
+    const dau = HO_SO.match(/COT_HO_SO =\s*"([^"]*)"/)![1]
+    expect(dau).toContain("id, org_id, full_name, role")
     expect(dau).not.toContain("allow_discount")
-    expect(AUTH).toContain('.select("allow_discount, discount_max_type, discount_max_value")')
+    expect(HO_SO).toContain('COT_GIAM_GIA = "allow_discount, discount_max_type, discount_max_value"')
+    for (const [ten, s] of [["trình duyệt", AUTH], ["máy chủ", MAY_CHU]] as const) {
+      expect(s, `${ten}: câu chính`).toContain('.select(COT_HO_SO)')
+      expect(s, `${ten}: câu giảm giá riêng`).toContain('.select(COT_GIAM_GIA)')
+    }
   })
 })

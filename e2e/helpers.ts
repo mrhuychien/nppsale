@@ -19,7 +19,8 @@ export async function dangNhap(page: Page) {
 }
 
 /** Nhật ký yêu cầu của máy chủ giả (để đọc tải trọng app gửi đi). */
-export async function nhatKy(): Promise<Array<{ method: string; path: string; body: unknown }>> {
+/** `client`: X-Client-Info của @supabase/ssr — "…createBrowserClient" (trình duyệt) hay "…createServerClient" (máy chủ Next). */
+export async function nhatKy(): Promise<Array<{ method: string; path: string; body: unknown; query?: string; client?: string }>> {
   return (await fetch(`${FAKE}/__log`)).json()
 }
 

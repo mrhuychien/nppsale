@@ -44,6 +44,8 @@ interface Memo {
   catalogAt: number
   /** Số phiên danh mục của bản này (mig 209). */
   phien: number | null
+  /** Số phiên sổ khách của bản này (mig 254). */
+  phienKhach: number | null
 }
 
 let memo: Memo | null = null
@@ -115,7 +117,7 @@ export function addSellProduct(p: SellRefData["products"][number]): void {
  * cũ chưa có thì mới lấy số để riêng ở localStorage (ghi IndexedDB hỏng mà số này vẫn mới là lệch).
  */
 export function seedSellRefData(data: SellRefData, catalogAt: number): void {
-  if (!memo) memo = { data, at: 0, catalogAt, phien: data.phien ?? phienTrenMay() }
+  if (!memo) memo = { data, at: 0, catalogAt, phien: data.phien ?? phienTrenMay(), phienKhach: data.phienKhach ?? null }
 }
 
 /* Số phiên của bản lưu trên máy (IndexedDB không giữ trường này) — ghi cạnh nó ở localStorage. */
@@ -142,17 +144,25 @@ export function sellCatalogAt(): number | null {
 }
 
 let inflightPhien: Promise<boolean | null> | null = null
+/** Số phiên máy chủ trả về: chỉ số hàng (cách cũ) hoặc cả hai số (hàng + sổ khách, `docPhienDanhMucDu`). */
+export type PhienDocVe = number | null | { phien: number | null; phienKhach: number | null }
 /**
  * ⚠ SẢN PHẨM / GIÁ VỪA ĐỔI? (chủ nhà 28/09/2026, mig 209). Hỏi số phiên (một dòng) và so với bản
  *   đang dùng: `true` = đã đổi → tải lại danh mục; `false` = chưa đổi; `null` = không biết (sổ
  *   chưa chạy 209, mất mạng, bản đang dùng không có số) → giữ luật `CATALOG_FRESH_MS` cũ.
+ *   Sổ khách (mig 254) đi cùng câu: số khách đổi cũng là "đã đổi" (tải lại — hàng vẫn dùng bản lưu, chỉ khách tải mới);
+ *   không biết số khách (sổ chưa chạy 254) thì xét riêng số hàng như cũ.
  */
-export function kiemPhienDanhMucShared(loader: () => Promise<number | null>): Promise<boolean | null> {
+export function kiemPhienDanhMucShared(loader: () => Promise<PhienDocVe>): Promise<boolean | null> {
   if (inflightPhien) return inflightPhien
   inflightPhien = loader()
     .then((p) => {
-      if (p === null || !memo || memo.phien === null) return null
-      return p !== memo.phien
+      const so = typeof p === "object" && p !== null ? p : { phien: p, phienKhach: null }
+      if (!memo) return null
+      const khachDoi = so.phienKhach !== null && memo.phienKhach !== null && so.phienKhach !== memo.phienKhach
+      if (khachDoi) return true
+      if (so.phien === null || memo.phien === null) return null
+      return so.phien !== memo.phien
     })
     .finally(() => {
       inflightPhien = null
@@ -198,7 +208,7 @@ export function loadSellRefDataShared(
   inflight = loader()
     .then((data) => {
       if (data.source === "server") {
-        memo = { data, at: now(), catalogAt: now(), phien: data.phien ?? null }
+        memo = { data, at: now(), catalogAt: now(), phien: data.phien ?? null, phienKhach: data.phienKhach ?? null }
         ghiPhienTrenMay(data.phien)
       }
       return data

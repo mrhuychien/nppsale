@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
@@ -31,9 +31,21 @@ interface Catalogs {
   error: string | null
   /** Chạm trần `AGGREGATE_ROW_CAP` — danh sách lọc đang THIẾU. */
   truncated: boolean
+  /**
+   * Gọi khi ô chọn KHÁCH / HÀNG / THƯƠNG HIỆU mở (hoặc đã có giá trị cần nhãn) — lúc ấy mới tải ba danh mục nặng
+   * (chủ nhà 23/10/2026 "tốc độ load trang chậm lắm": mỗi lần mở báo cáo kéo cả sổ khách + danh mục hàng cho ô lọc
+   * chưa ai bấm). `FilterSearchSelect` / `FilterMultiSelect` nhận qua prop `khiMo`.
+   */
+  nang: () => void
+  /** Ba danh mục nặng đang tải (sau khi `nang()` được gọi). */
+  nangDangTai: boolean
 }
 
-export type CatalogLists = Omit<Catalogs, "loading" | "error" | "truncated">
+export type CatalogLists = Omit<Catalogs, "loading" | "error" | "truncated" | "nang" | "nangDangTai">
+/** Danh mục NHẸ — tải lúc mở báo cáo. */
+export type DanhMucNhe = Pick<CatalogLists, "salesUsers" | "allUsers" | "drivers" | "customerGroups" | "routes" | "suppliers">
+/** Danh mục NẶNG (cả sổ khách, cả danh mục hàng) — tải khi ô chọn mở. */
+export type DanhMucNang = Pick<CatalogLists, "customers" | "products" | "brands">
 
 const EMPTY: FilterOption[] = []
 
@@ -70,18 +82,19 @@ export async function taiDanhMucLoc(
   supabase: ClientToiThieu,
   orgId: string
 ): Promise<{ lists: CatalogLists; truncated: boolean }> {
-  const [custRes, userRes, prodRes, groupRes, routeRes, suppRes] = await Promise.all([
-    docDuHoacNem<{ id: string; store_name: string; phone: string | null }>(
-      (from, to): Trang =>
-        supabase
-          .from("customers")
-          .select("id, store_name, phone", { count: "exact" })
-          .eq("org_id", orgId)
-          .order("store_name")
-          .order("id")
-          .range(from, to),
-      "đọc danh sách khách hàng"
-    ),
+  const [nhe, nang] = await Promise.all([taiDanhMucNhe(supabase, orgId), taiDanhMucNang(supabase, orgId)])
+  return { lists: { ...nhe.lists, ...nang.lists }, truncated: nhe.truncated || nang.truncated }
+}
+
+// Mục đang hoạt động trước, mục đã ngừng sau (giữ thứ tự đọc trong mỗi nhóm) — có nhãn để không chọn nhầm.
+const truocSau = <T,>(rows: T[], dangDung: (r: T) => boolean) => [...rows.filter(dangDung), ...rows.filter((r) => !dangDung(r))]
+
+/** Danh mục NHẸ (nhân viên, nhóm khách, tuyến, NCC) — vài chục dòng, tải lúc mở báo cáo. */
+export async function taiDanhMucNhe(
+  supabase: ClientToiThieu,
+  orgId: string
+): Promise<{ lists: DanhMucNhe; truncated: boolean }> {
+  const [userRes, groupRes, routeRes, suppRes] = await Promise.all([
     docDuHoacNem<{ id: string; full_name: string; role: string; is_active: boolean }>(
       (from, to): Trang =>
         supabase
@@ -92,17 +105,6 @@ export async function taiDanhMucLoc(
           .order("id")
           .range(from, to),
       "đọc danh sách nhân viên"
-    ),
-    docDuHoacNem<{ id: string; sku: string; name: string; brand: string | null; status: string | null }>(
-      (from, to): Trang =>
-        supabase
-          .from("products")
-          .select("id, sku, name, brand, status", { count: "exact" })
-          .eq("org_id", orgId)
-          .order("name")
-          .order("id")
-          .range(from, to),
-      "đọc danh mục hàng"
     ),
     docDuHoacNem<{ id: string; name: string }>(
       (from, to): Trang =>
@@ -139,8 +141,72 @@ export async function taiDanhMucLoc(
     ),
   ])
 
-  // Mục đang hoạt động trước, mục đã ngừng sau (giữ thứ tự đọc trong mỗi nhóm) — có nhãn để không chọn nhầm.
-  const truocSau = <T,>(rows: T[], dangDung: (r: T) => boolean) => [...rows.filter(dangDung), ...rows.filter((r) => !dangDung(r))]
+  const nguoi = truocSau(userRes.rows, (u) => u.is_active !== false).map((u) => ({
+    ...u,
+    nghi: u.is_active === false ? { ghiChu: "đã nghỉ" } : {},
+  }))
+
+  return {
+    lists: {
+      salesUsers: nguoi
+        .filter((u) => ["sales", "manager", "owner"].includes(u.role))
+        .map((u) => ({ id: u.id, label: u.full_name, hint: u.role, ...u.nghi })),
+      allUsers: nguoi.map((u) => ({
+        id: u.id,
+        label: u.full_name,
+        hint: u.role,
+        ...u.nghi,
+      })),
+      drivers: nguoi
+        .filter((u) => u.role === "driver")
+        .map((u) => ({ id: u.id, label: u.full_name, ...u.nghi })),
+      customerGroups: groupRes.rows.map((g) => ({ id: g.id, label: g.name })),
+      // ⚠ Nhãn kênh = TÊN tuyến (nơi gọi khớp `customers.channel` theo id / tên / mã) — ghi "ngừng" ở `ghiChu`.
+      routes: truocSau(routeRes.rows, (r) => r.is_active !== false).map((r) => ({
+        id: r.id,
+        label: r.name,
+        hint: r.code,
+        ...(r.is_active === false ? { ghiChu: "ngừng" } : {}),
+      })),
+      suppliers: suppRes.rows.map((s) => ({ id: s.id, label: s.name })),
+    },
+    truncated: [userRes, groupRes, routeRes, suppRes].some((r) => r.truncated),
+  }
+}
+
+/**
+ * Danh mục NẶNG — cả sổ khách + cả danh mục hàng (thương hiệu rút từ hàng). Hàng nghìn dòng → chỉ tải khi ô chọn mở
+ * (`useFilterCatalogs().nang`).
+ */
+export async function taiDanhMucNang(
+  supabase: ClientToiThieu,
+  orgId: string
+): Promise<{ lists: DanhMucNang; truncated: boolean }> {
+  const [custRes, prodRes] = await Promise.all([
+    docDuHoacNem<{ id: string; store_name: string; phone: string | null }>(
+      (from, to): Trang =>
+        supabase
+          .from("customers")
+          .select("id, store_name, phone", { count: "exact" })
+          .eq("org_id", orgId)
+          .order("store_name")
+          .order("id")
+          .range(from, to),
+      "đọc danh sách khách hàng"
+    ),
+    docDuHoacNem<{ id: string; sku: string; name: string; brand: string | null; status: string | null }>(
+      (from, to): Trang =>
+        supabase
+          .from("products")
+          .select("id, sku, name, brand, status", { count: "exact" })
+          .eq("org_id", orgId)
+          .order("name")
+          .order("id")
+          .range(from, to),
+      "đọc danh mục hàng"
+    ),
+  ])
+
   const spDangBan = (p: { status: string | null }) => !p.status || p.status === "active"
   const products = truocSau(prodRes.rows, spDangBan).map((p) => ({
     id: p.id,
@@ -159,11 +225,6 @@ export async function taiDanhMucLoc(
     .sort()
     .map((b) => ({ id: b, label: b }))
 
-  const nguoi = truocSau(userRes.rows, (u) => u.is_active !== false).map((u) => ({
-    ...u,
-    nghi: u.is_active === false ? { ghiChu: "đã nghỉ" } : {},
-  }))
-
   return {
     lists: {
       customers: custRes.rows.map((c) => ({
@@ -171,53 +232,40 @@ export async function taiDanhMucLoc(
         label: c.store_name,
         hint: c.phone || undefined,
       })),
-      salesUsers: nguoi
-        .filter((u) => ["sales", "manager", "owner"].includes(u.role))
-        .map((u) => ({ id: u.id, label: u.full_name, hint: u.role, ...u.nghi })),
-      allUsers: nguoi.map((u) => ({
-        id: u.id,
-        label: u.full_name,
-        hint: u.role,
-        ...u.nghi,
-      })),
-      drivers: nguoi
-        .filter((u) => u.role === "driver")
-        .map((u) => ({ id: u.id, label: u.full_name, ...u.nghi })),
       products,
       brands,
-      customerGroups: groupRes.rows.map((g) => ({ id: g.id, label: g.name })),
-      // ⚠ Nhãn kênh = TÊN tuyến (nơi gọi khớp `customers.channel` theo id / tên / mã) — ghi "ngừng" ở `ghiChu`.
-      routes: truocSau(routeRes.rows, (r) => r.is_active !== false).map((r) => ({
-        id: r.id,
-        label: r.name,
-        hint: r.code,
-        ...(r.is_active === false ? { ghiChu: "ngừng" } : {}),
-      })),
-      suppliers: suppRes.rows.map((s) => ({ id: s.id, label: s.name })),
     },
-    truncated: [custRes, userRes, prodRes, groupRes, routeRes, suppRes].some((r) => r.truncated),
+    truncated: [custRes, prodRes].some((r) => r.truncated),
   }
 }
 
-const TRONG: CatalogLists = {
-  customers: EMPTY,
+const TRONG: DanhMucNhe = {
   salesUsers: EMPTY,
   allUsers: EMPTY,
   drivers: EMPTY,
-  products: EMPTY,
-  brands: EMPTY,
   customerGroups: EMPTY,
   routes: EMPTY,
   suppliers: EMPTY,
 }
 
+const NANG_TRONG: DanhMucNang = { customers: EMPTY, products: EMPTY, brands: EMPTY }
+
 export function useFilterCatalogs(orgId: string | null | undefined): Catalogs {
-  const [catalogs, setCatalogs] = useState<Catalogs>({
-    ...TRONG,
+  const [nhe, setNhe] = useState<{ lists: DanhMucNhe; loading: boolean; error: string | null; truncated: boolean }>({
+    lists: TRONG,
     loading: true,
     error: null,
     truncated: false,
   })
+  const [nangKq, setNangKq] = useState<{ lists: DanhMucNang; loading: boolean; error: string | null; truncated: boolean }>({
+    lists: NANG_TRONG,
+    loading: false,
+    error: null,
+    truncated: false,
+  })
+  /* Ô chọn khách / hàng / thương hiệu đã mở lần nào chưa — mở rồi thì tải ba danh mục nặng, một lần cho mỗi đơn vị. */
+  const [canNang, setCanNang] = useState(false)
+  const nang = useCallback(() => setCanNang(true), [])
   const supabase = createClient()
 
   useEffect(() => {
@@ -225,18 +273,13 @@ export function useFilterCatalogs(orgId: string | null | undefined): Catalogs {
     let cancelled = false
     ;(async () => {
       try {
-        const { lists, truncated } = await taiDanhMucLoc(supabase, orgId)
+        const { lists, truncated } = await taiDanhMucNhe(supabase, orgId)
         if (cancelled) return
-        setCatalogs({ ...lists, loading: false, error: null, truncated })
+        setNhe({ lists, loading: false, error: null, truncated })
       } catch (e) {
         console.error("[analytics/filter-catalogs] tải lỗi:", e)
         if (cancelled) return
-        setCatalogs({
-          ...TRONG,
-          loading: false,
-          error: errorMessage(e, "Không tải được danh mục bộ lọc"),
-          truncated: false,
-        })
+        setNhe({ lists: TRONG, loading: false, error: errorMessage(e, "Không tải được danh mục bộ lọc"), truncated: false })
       }
     })()
     return () => {
@@ -244,7 +287,35 @@ export function useFilterCatalogs(orgId: string | null | undefined): Catalogs {
     }
   }, [orgId, supabase])
 
-  return catalogs
+  useEffect(() => {
+    if (!orgId || !canNang) return
+    let cancelled = false
+    setNangKq((cu) => ({ ...cu, loading: true }))
+    ;(async () => {
+      try {
+        const { lists, truncated } = await taiDanhMucNang(supabase, orgId)
+        if (cancelled) return
+        setNangKq({ lists, loading: false, error: null, truncated })
+      } catch (e) {
+        console.error("[analytics/filter-catalogs] tải danh mục khách / hàng lỗi:", e)
+        if (cancelled) return
+        setNangKq({ lists: NANG_TRONG, loading: false, error: errorMessage(e, "Không tải được danh sách khách / hàng"), truncated: false })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orgId, canNang, supabase])
+
+  return {
+    ...nhe.lists,
+    ...nangKq.lists,
+    loading: nhe.loading,
+    error: nhe.error ?? nangKq.error,
+    truncated: nhe.truncated || nangKq.truncated,
+    nang,
+    nangDangTai: nangKq.loading,
+  }
 }
 
 // Static lists that don't need DB

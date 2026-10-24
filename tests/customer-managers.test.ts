@@ -201,7 +201,8 @@ describe("Trang chi tiết khách hàng", () => {
 
   /** Không có ai phụ trách thì đừng bắn hai truy vấn thừa. */
   it("bỏ qua truy vấn khi chưa phân công cho ai", () => {
-    expect(PAGE).toContain("if (managerIds.length === 0) {")
+    /* Hai câu (user_suppliers, suppliers) đi cùng đợt 2 của trang (23/10/2026) — mỗi câu đều gác `managerIds.length > 0`. */
+    expect(PAGE.match(/managerIds\.length > 0\s*\?\s*supabase\.from\("(user_suppliers|suppliers)"\)/g)?.length).toBe(2)
   })
 
   it("tab Phân công cũng thấy ngành hàng khi đang sửa", () => {

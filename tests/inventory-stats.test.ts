@@ -182,7 +182,10 @@ describe("Bảng tồn kho chia trang phần VẼ, không chia phần ĐỌC", (
    */
   it("tổng tiền và số sản phẩm tính trên TOÀN BỘ, không theo trang", () => {
     expect(TABLE).toContain("return pivot.reduce(")
-    expect(TABLE).toContain("{pivot.length} sản phẩm — tổng giá trị")
+    /* Đường RPC (mig 255): số dòng + tổng cộng là của CẢ tập đã lọc do máy chủ đếm (`tongSo` / `tongCong`), không của trang. */
+    expect(TABLE).toContain("const soDong = rpc ? tongSo : pivot.length")
+    expect(TABLE).toContain("if (rpc) return tongCong")
+    expect(TABLE).toContain("{soDong} sản phẩm — tổng giá trị")
     // Không được cộng trên pageRows.
     expect(TABLE).not.toContain("pageRows.reduce(")
   })
@@ -190,7 +193,10 @@ describe("Bảng tồn kho chia trang phần VẼ, không chia phần ĐỌC", (
   it("xuất Excel vẫn xuất cả danh sách đã lọc, không chỉ trang đang xem", () => {
     const i = TABLE.indexOf("const handleExport")
     const fn = TABLE.slice(i, TABLE.indexOf("<div className=\"space-y-3\">", i))
-    expect(fn).toContain("pivot.map((r) => ({")
+    /* Đường RPC: đọc HẾT các trang của tập đang lọc (`docTatCaTon`); đường cũ: cả `pivot` đã lọc. */
+    expect(fn).toContain("await docTatCaTon(createClient(), { tim: timTre, conTon: onlyOnHand,")
+    expect(fn).toContain(": pivot")
+    expect(fn).toContain("dong.map((r) => ({")
     expect(fn).not.toContain("pageRows")
   })
 

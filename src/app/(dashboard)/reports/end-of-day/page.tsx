@@ -286,8 +286,9 @@ export default function EndOfDayPage() {
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
+              khiMo={catalogs.nang}
               placeholder="Theo mã, tên, số điện thoại"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Nhân viên">

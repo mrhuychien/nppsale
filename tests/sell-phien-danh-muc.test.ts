@@ -44,7 +44,8 @@ describe("mig 209 + màn /sell", () => {
   })
   it("mở màn / quay lại app: hỏi số phiên cùng tồn; nút Làm mới sản phẩm tải đủ", () => {
     const h = readFileSync("src/hooks/use-sell-data.tsx", "utf8")
-    expect(h).toMatch(/kiemPhienDanhMucShared\(\(\) => docPhienDanhMuc\(sb\)\)/)
+    /* Mig 254: hỏi cả số phiên sổ khách trong CÙNG câu (`docPhienDanhMucDu`). */
+    expect(h).toMatch(/kiemPhienDanhMucShared\(\(\) => docPhienDanhMucDu\(sb\)\)/)
     expect(h).toMatch(/if \(stock && daDoi !== true\)/)
     expect(h).toMatch(/addEventListener\("visibilitychange"/)
     expect(readFileSync("src/app/(dashboard)/sell/page.tsx", "utf8")).toContain('aria-label="Làm mới sản phẩm"')

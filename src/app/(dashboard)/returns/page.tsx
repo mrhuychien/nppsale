@@ -64,7 +64,7 @@ import { TAB_TRA_MOBILE, ngayNhomTra, viTatTen } from "@/lib/returns/mobile-list
 import { useKhoMay } from "@/hooks/use-is-desktop"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
-import { docDemNhom, tongDem, type DemNhom } from "@/lib/list/dem-nhom"
+import { docDemNhom, docDemNhomTheo, tongDem, type DemNhom } from "@/lib/list/dem-nhom"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong } from "@/lib/xuat-excel/nap"
 import {
@@ -173,6 +173,15 @@ export default function ReturnsPage() {
     /* Màn máy tính mới có ô "Phân loại lý do" và số tổng ở đầu trang. */
     if (laMay !== true) return
     async function loadStats() {
+      /* ⚠ MỘT câu gom nhóm `reason, count()` (mig 206) thay 1 câu tổng + 5 câu HEAD theo lý do (chủ nhà 23/10/2026,
+         rà soát tốc độ). Tổng = cộng mọi nhóm, kể cả lý do gõ tay / bỏ trống. Máy chủ chưa gom được thì đếm lẻ như cũ. */
+      // audit-ok: lỗi đi trong kết quả — `docDemNhomTheo` trả null khi `error` (máy chủ chưa gom nhóm) → lùi về đếm lẻ bên dưới.
+      const nhom = docDemNhomTheo("reason", await supabase.from("returns").select("reason, count()" as string), "")
+      if (nhom) {
+        setTotalCount(tongDem(nhom))
+        setReasonCounts(nhom)
+        return
+      }
       const { count: totalC, error: totalErr } = await supabase
         .from("returns")
         .select("id", { count: "exact", head: true })

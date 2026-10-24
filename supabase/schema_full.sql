@@ -46054,3 +46054,368 @@ SELECT 'JIT của vai authenticated (câu hỏi của app)' AS hang_muc,
        coalesce((SELECT string_agg(c, ', ') FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole, unnest(s.setconfig) c
                   WHERE r.rolname = 'authenticated' AND c LIKE 'jit=%'), '(mặc định — chưa tắt)') AS gia_tri;
 
+
+-- ####################################################################
+-- # 252_tat_jit_vai_dang_nhap.sql
+-- ####################################################################
+
+-- ====================================================================
+-- TẮT JIT Ở VAI ĐĂNG NHẬP CỦA API (authenticator) VÀ VAI anon — bổ sung cho mig 251
+--
+-- VÌ SAO — chủ nhà 24/10/2026 gửi bảng pg_stat_statements của sổ thật: MỌI dạng câu của danh sách Hoá đơn bán mất
+--   ~3 giây một câu (10 dạng câu, ≈5.000 lượt, ≈4 giờ máy chủ), ba RPC trang tổng quan 0,5–0,85 giây. Tái hiện trên sổ
+--   thử 40.000 hoá đơn / 3.000 khách với ĐÚNG câu PostgREST sinh ra (đếm exact, soát quyền đủ tầng):
+--     · danh sách hoá đơn kỳ "Tất cả":  JIT bật 4.245 ms  —  JIT tắt 11 ms
+--     · dashboard_summary / top_customers / channel_revenue khi tắt: 42 / 43 / 26 ms
+--   Cùng một câu, chỉ khác JIT. Chính sách RLS của hoá đơn kéo theo hàng chục nhánh con nên plan rất to, JIT ngồi biên
+--   dịch mấy giây cho mỗi câu — qua pooler nên câu nào cũng biên dịch lại từ đầu.
+--
+--   Mig 251 đặt `jit = off` ở vai `authenticated` — vai được GIẢ LẬP trong giao dịch: PostgREST phải tự đọc cài đặt của
+--   vai ấy rồi SET LOCAL cho từng giao dịch (từ v11.1, sau `reload config`). Không chắc bản PostgREST của Supabase đang
+--   áp → đặt THÊM ở vai ĐĂNG NHẬP `authenticator` (và `anon`): cài đặt của vai đăng nhập do chính Postgres áp lúc mở
+--   kết nối, không phụ thuộc PostgREST hay pooler. Chỉ đổi CÁCH CHẠY, không đổi kết quả câu nào.
+--   Supabase không cho đổi vai nào thì ghi chú rồi bỏ qua — không làm hỏng cả tệp.
+-- ⚠ Muốn bật lại: ALTER ROLE authenticator RESET jit; ALTER ROLE anon RESET jit; NOTIFY pgrst, 'reload config';
+-- ====================================================================
+
+DO $jit$
+DECLARE v text;
+BEGIN
+  FOREACH v IN ARRAY ARRAY['authenticator', 'anon'] LOOP
+    BEGIN
+      EXECUTE format('ALTER ROLE %I SET jit = off', v);
+    EXCEPTION
+      WHEN insufficient_privilege THEN RAISE NOTICE 'Không đổi được jit của vai %: %', v, SQLERRM;
+      WHEN undefined_object THEN RAISE NOTICE 'Sổ không có vai % — bỏ qua', v;
+    END;
+  END LOOP;
+END
+$jit$;
+
+NOTIFY pgrst, 'reload config';
+NOTIFY pgrst, 'reload schema';
+
+SELECT r.rolname AS vai,
+       coalesce((SELECT string_agg(c, ', ') FROM pg_db_role_setting s, unnest(s.setconfig) c
+                  WHERE s.setrole = r.oid AND s.setdatabase = 0 AND c LIKE 'jit=%'), '(mặc định — chưa tắt)') AS jit
+FROM pg_roles r
+WHERE r.rolname IN ('authenticator', 'anon', 'authenticated')
+ORDER BY 1;
+
+
+-- ####################################################################
+-- # 253_khach_thieu_anh_rpc.sql
+-- ####################################################################
+
+-- ====================================================================
+-- RPC "ĐIỂM BÁN CÒN THIẾU ẢNH / VỊ TRÍ" + "ĐIỂM BÁN CHỜ DUYỆT ẢNH" — lọc trên máy chủ, có phân trang
+--
+-- VÌ SAO — chủ nhà 23/10/2026 "tốc độ load trang chậm lắm" → rà soát lại: màn Điểm bán cần cập nhật
+--   (/customers/missing-photos — nút mới trên trang chủ NVBH) kéo CẢ sổ khách (≈570 KB với 3.000 khách) + cả bảng ảnh
+--   về rồi mới lọc "chưa có ảnh / chưa có vị trí" trên máy, vẽ hết một lượt — đo điện thoại 4G: 5,9 giây.
+--   Nay máy chủ lọc + đếm ảnh + phân trang; máy chỉ nhận trang đang xem (50 dòng) kèm tổng số dòng khớp.
+--
+-- LÀM GÌ
+--   1. khach_thieu_anh(p_tab, p_offset, p_limit): khách đang hoạt động còn thiếu — p_tab 'all' (thiếu ảnh HOẶC thiếu
+--      vị trí) / 'no_photo' / 'no_gps'; mỗi dòng kèm số ảnh (photo_count) và tổng số dòng khớp (total_count).
+--   2. khach_cho_duyet_anh(p_offset, p_limit): điểm bán CHỜ DUYỆT (mig 244) — có yêu cầu đổi đang chờ, hoặc chưa duyệt
+--      mà đã có ảnh / vị trí để duyệt (luật `canDuyet` của màn cũ) — kèm da_duyet, so_yeu_cau.
+--   ⚠ SECURITY INVOKER: RLS của customers / customer_photos / customer_photo_requests tự lọc — NVBH chỉ thấy khách mình
+--     phụ trách, đúng tập khách màn cũ thấy. Không viết lại luật quyền ở đây. Sắp theo tên cửa hàng + id như màn cũ.
+--   ⚠ Trình duyệt chưa gọi được RPC (sổ chưa chạy migration) thì màn lùi về cách cũ — xem page.tsx.
+-- ====================================================================
+
+CREATE OR REPLACE FUNCTION public.khach_thieu_anh(
+  p_tab text DEFAULT 'all',
+  p_offset integer DEFAULT 0,
+  p_limit integer DEFAULT 50
+)
+RETURNS TABLE (
+  id uuid,
+  store_name text,
+  address text,
+  phone text,
+  gps_lat numeric,
+  gps_lng numeric,
+  photo_count integer,
+  total_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $fn$
+  WITH kh AS (
+    SELECT c.id, c.store_name, c.address, c.phone, c.gps_lat, c.gps_lng,
+           (SELECT count(*) FROM public.customer_photos p WHERE p.customer_id = c.id)::integer AS photo_count
+    FROM public.customers c
+    WHERE c.status = 'active'
+  ),
+  loc AS (
+    /* Gọi đích danh `kh.` — tên trần trùng tham số OUT của RETURNS TABLE (chốt tests/rpc-out-param-ambiguous.test.ts). */
+    SELECT * FROM kh
+    WHERE CASE coalesce(p_tab, 'all')
+            WHEN 'no_photo' THEN kh.photo_count = 0
+            WHEN 'no_gps'   THEN kh.gps_lat IS NULL OR kh.gps_lng IS NULL
+            ELSE kh.photo_count = 0 OR kh.gps_lat IS NULL OR kh.gps_lng IS NULL
+          END
+  )
+  SELECT l.id, l.store_name, l.address, l.phone, l.gps_lat, l.gps_lng, l.photo_count, count(*) OVER () AS total_count
+  FROM loc l
+  ORDER BY l.store_name, l.id
+  OFFSET greatest(coalesce(p_offset, 0), 0)
+  LIMIT least(greatest(coalesce(p_limit, 50), 1), 200);
+$fn$;
+GRANT EXECUTE ON FUNCTION public.khach_thieu_anh(text, integer, integer) TO authenticated;
+COMMENT ON FUNCTION public.khach_thieu_anh(text, integer, integer) IS
+  'Điểm bán đang hoạt động còn thiếu ảnh / vị trí (mig 253) — lọc + đếm ảnh + phân trang trên máy chủ, RLS tự lọc theo người gọi.';
+
+CREATE OR REPLACE FUNCTION public.khach_cho_duyet_anh(
+  p_offset integer DEFAULT 0,
+  p_limit integer DEFAULT 50
+)
+RETURNS TABLE (
+  id uuid,
+  store_name text,
+  address text,
+  phone text,
+  gps_lat numeric,
+  gps_lng numeric,
+  photo_count integer,
+  da_duyet boolean,
+  so_yeu_cau integer,
+  total_count bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $fn$
+  WITH kh AS (
+    SELECT c.id, c.store_name, c.address, c.phone, c.gps_lat, c.gps_lng,
+           (SELECT count(*) FROM public.customer_photos p WHERE p.customer_id = c.id)::integer AS photo_count,
+           (c.photo_approved_at IS NOT NULL) AS da_duyet,
+           (SELECT count(*) FROM public.customer_photo_requests r WHERE r.customer_id = c.id AND r.status = 'pending')::integer AS so_yeu_cau
+    FROM public.customers c
+    WHERE c.status = 'active'
+  ),
+  loc AS (
+    SELECT * FROM kh
+    WHERE kh.so_yeu_cau > 0
+       OR (NOT kh.da_duyet AND (kh.photo_count > 0 OR (kh.gps_lat IS NOT NULL AND kh.gps_lng IS NOT NULL)))
+  )
+  SELECT l.id, l.store_name, l.address, l.phone, l.gps_lat, l.gps_lng, l.photo_count, l.da_duyet, l.so_yeu_cau,
+         count(*) OVER () AS total_count
+  FROM loc l
+  ORDER BY l.store_name, l.id
+  OFFSET greatest(coalesce(p_offset, 0), 0)
+  LIMIT least(greatest(coalesce(p_limit, 50), 1), 200);
+$fn$;
+GRANT EXECUTE ON FUNCTION public.khach_cho_duyet_anh(integer, integer) TO authenticated;
+COMMENT ON FUNCTION public.khach_cho_duyet_anh(integer, integer) IS
+  'Điểm bán chờ duyệt ảnh + vị trí (mig 244 / 253): có yêu cầu đổi đang chờ, hoặc chưa duyệt mà đã có ảnh / vị trí.';
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'RPC điểm bán thiếu ảnh / chờ duyệt (mig 253)' AS hang_muc,
+       (SELECT count(*) FROM pg_proc
+         WHERE pronamespace = 'public'::regnamespace AND proname IN ('khach_thieu_anh', 'khach_cho_duyet_anh')) AS so_ham;
+
+
+-- ####################################################################
+-- # 254_phien_khach_ban.sql
+-- ####################################################################
+
+-- ====================================================================
+-- SỐ PHIÊN SỔ KHÁCH BÁN HÀNG — POS / màn bán hàng dùng lại sổ khách đã lưu trên máy khi khách chưa đổi
+--
+-- VÌ SAO — chủ nhà 23/10/2026 "tốc độ load trang chậm lắm" → đợt 4 (24/10/2026 "lần lượt hoàn thành toàn bộ"):
+--   POS / màn bán hàng mở là kéo CẢ sổ khách (≈570 KB với 3.000 khách) về máy dù sổ khách hầu như không đổi trong
+--   ngày. Sản phẩm đã có số phiên (mig 209) để máy biết danh mục chưa đổi thì dùng lại bản lưu; sổ khách chưa có
+--   nên vẫn tải lại mỗi lần. Nay thêm số phiên thứ hai `phien_khach` NGAY TRÊN DÒNG `danh_muc_ban_phien` — máy hỏi
+--   MỘT câu là có cả hai số, không thêm vòng mạng.
+--
+-- LÀM GÌ
+--   1. Cột `phien_khach bigint` + `luc_khach` trên bảng một dòng `danh_muc_ban_phien` (mig 209) — ai đăng nhập cũng
+--      đọc được (chính sách SELECT của mig 209), không ai ghi thẳng được (REVOKE của mig 209 phủ cả cột mới).
+--   2. Trigger MỨC CÂU LỆNH (một lần mỗi câu — nhập 3.000 khách là một lần tăng) `trg_phien_khach_ban` trên:
+--      · `customers` (sổ khách), `customer_groups` (tên nhóm nằm trong sổ khách POS, nhóm = bảng giá),
+--      · `customer_assignments` (NVBH thấy khách theo phân công — chính sách `customer_select`),
+--      · `user_permission_overrides`, `role_permissions` (quyền `customer.view_all` mở cả sổ cho một người / một vai).
+--      Thêm / sửa / xoá / truncate đều tăng số.
+--   ⚠ KHÔNG gắn vào `sales_orders` (vế `user_sells_to_customer` của chính sách — đơn đứng tên NVBH cũng mở khách ấy):
+--     tăng số mỗi đơn là bản lưu vô dụng; NVBH tự lên đơn thì đã thấy khách từ trước. Khách chỉ thấy qua đơn người
+--     khác lập hộ sẽ hiện khi sổ khách có bất kỳ thay đổi nào, hoặc khi được phân công.
+--   ⚠ `customers.debt` KHÔNG do trigger ghi (nợ tính từ `receivables`) nên bán hàng / thu tiền không làm số này nhảy.
+--   ⚠ Idempotent: chạy lại không đổi gì thêm (hai số giữ nguyên, trigger không nhân đôi).
+-- ====================================================================
+
+ALTER TABLE public.danh_muc_ban_phien ADD COLUMN IF NOT EXISTS phien_khach bigint NOT NULL DEFAULT 1;
+ALTER TABLE public.danh_muc_ban_phien ADD COLUMN IF NOT EXISTS luc_khach timestamptz NOT NULL DEFAULT now();
+
+CREATE OR REPLACE FUNCTION public._tang_phien_khach_ban()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+BEGIN
+  UPDATE public.danh_muc_ban_phien SET phien_khach = phien_khach + 1, luc_khach = now() WHERE id = 1;
+  RETURN NULL;
+END
+$fn$;
+-- Hàm trigger: không ai gọi thẳng qua /rpc (luật mig 166 / 207).
+REVOKE EXECUTE ON FUNCTION public._tang_phien_khach_ban() FROM PUBLIC, anon, authenticated;
+
+DO $trg$
+DECLARE
+  b text;
+BEGIN
+  FOREACH b IN ARRAY ARRAY['customers', 'customer_groups', 'customer_assignments', 'user_permission_overrides', 'role_permissions'] LOOP
+    IF to_regclass('public.' || b) IS NULL THEN
+      RAISE NOTICE 'mig 254: sổ không có bảng %, bỏ qua', b;
+      CONTINUE;
+    END IF;
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_phien_khach_ban ON public.%I', b);
+    EXECUTE format(
+      'CREATE TRIGGER trg_phien_khach_ban AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON public.%I '
+      'FOR EACH STATEMENT EXECUTE FUNCTION public._tang_phien_khach_ban()', b);
+  END LOOP;
+END
+$trg$;
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'Số phiên sổ khách bán hàng (mig 254)' AS hang_muc,
+       (SELECT phien_khach FROM public.danh_muc_ban_phien WHERE id = 1) AS phien_khach,
+       (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_phien_khach_ban' AND NOT tgisinternal) AS so_trigger;
+
+
+-- ####################################################################
+-- # 255_ton_kho_trang.sql
+-- ####################################################################
+
+-- ====================================================================
+-- RPC "TỒN KHO HIỆN TẠI" — máy chủ gộp tồn theo mặt hàng, lọc, tìm, sắp, phân trang, kèm tổng cộng
+--
+-- VÌ SAO — chủ nhà 23/10/2026 "tốc độ load trang chậm lắm" → đợt 4 (24/10/2026 "lần lượt hoàn thành toàn bộ"):
+--   màn Kho hàng (máy tính lẫn điện thoại) mở là kéo CẢ bảng tồn theo khu (v_stock_balance_by_zone) + CẢ 2.500 mặt
+--   hàng kèm đơn vị về máy rồi mới gộp, lọc "còn tồn", tìm, cộng tổng và chia trang ở trình duyệt — mỗi lần mở ≈ 1 MB
+--   JSON. Nay máy chủ làm hết: máy chỉ nhận trang đang xem (20–50 dòng) kèm tổng số dòng và TỔNG CỘNG của toàn bộ
+--   tập đã lọc — dòng "N sản phẩm — tổng giá trị X" và dòng Tổng cộng vẫn đúng trên cả sổ, không phải trên một trang.
+--
+-- LÀM GÌ
+--   ton_kho_trang(p_tim, p_con_ton, p_sap, p_offset, p_limit):
+--   · Gộp `v_stock_balance_by_zone` (security_invoker — RLS tự lọc) theo mặt hàng: kho bán / kho date SL + giá trị.
+--   · Luật dòng NHƯ MÀN CŨ (`gopTonTheoSanPham`, rà soát 03/10/2026): mã ngừng bán CHỈ lên bảng khi còn tồn khác 0;
+--     "chỉ hiện hàng còn tồn" (p_con_ton) = tổng SL > 0; bỏ lọc ấy thì thêm mã ĐANG BÁN hết tồn (SL 0).
+--   · Tìm (p_tim) theo khoá `tim_kd` của mặt hàng (sku + tên + mã vạch, mig 177/205) — MỌI từ gõ phải có mặt, không dấu,
+--     mỗi từ viết liền (như `viMatchAllWords` ở trình duyệt). Dòng chưa có `tim_kd` thì tính tại chỗ (`khoa_tim_ds`).
+--   · Sắp (p_sap): 'ten' (A–Z tiếng Việt khi sổ có collation vi-x-icu), 'gia-tri' (giá trị cao trước), 'so-luong'
+--     (tồn nhiều trước) — trùng thì theo tên rồi id, để các trang không lặp không sót.
+--   · Mỗi dòng kèm total_count và sum_* (cửa sổ trên toàn tập đã lọc, tính TRƯỚC khi cắt trang). p_limit 1..500.
+--   ⚠ SECURITY INVOKER — không viết lại luật quyền; NVBH chỉ thấy hàng công ty mình (RLS products / batches).
+--   ⚠ Trình duyệt chưa gọi được RPC (sổ chưa chạy migration) thì màn lùi về cách cũ — xem stock-balance-table.tsx.
+-- ====================================================================
+
+DO $mk$
+DECLARE
+  v_col text := CASE WHEN EXISTS (SELECT 1 FROM pg_collation WHERE collname = 'vi-x-icu') THEN ' COLLATE "vi-x-icu"' ELSE '' END;
+BEGIN
+  EXECUTE format($q$
+CREATE OR REPLACE FUNCTION public.ton_kho_trang(
+  p_tim text DEFAULT NULL,
+  p_con_ton boolean DEFAULT true,
+  p_sap text DEFAULT 'ten',
+  p_offset integer DEFAULT 0,
+  p_limit integer DEFAULT 20
+)
+RETURNS TABLE (
+  product_id uuid,
+  sku text,
+  name text,
+  base_unit text,
+  status text,
+  units jsonb,
+  sale_qty numeric,
+  sale_value numeric,
+  date_qty numeric,
+  date_value numeric,
+  total_qty numeric,
+  total_value numeric,
+  total_count bigint,
+  sum_sale_qty numeric,
+  sum_sale_value numeric,
+  sum_date_qty numeric,
+  sum_date_value numeric,
+  sum_total_qty numeric,
+  sum_total_value numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $fn$
+  WITH tu AS (
+    /* Từ gõ: bỏ dấu, hạ chữ thường, mỗi từ viết liền (như viQueryWords) — rỗng = khớp tất cả. */
+    SELECT DISTINCT regexp_replace(t.w, '[^a-z0-9]+', '', 'g') AS w
+    FROM regexp_split_to_table(public.khong_dau(coalesce(p_tim, '')), ' ') AS t(w)
+  ),
+  ton AS (
+    SELECT v.product_id,
+           coalesce(sum(v.qty_in_base_uom) FILTER (WHERE v.warehouse_zone = 'date'), 0) AS date_qty,
+           coalesce(sum(v.value)           FILTER (WHERE v.warehouse_zone = 'date'), 0) AS date_value,
+           coalesce(sum(v.qty_in_base_uom) FILTER (WHERE v.warehouse_zone IS DISTINCT FROM 'date'), 0) AS sale_qty,
+           coalesce(sum(v.value)           FILTER (WHERE v.warehouse_zone IS DISTINCT FROM 'date'), 0) AS sale_value
+    FROM public.v_stock_balance_by_zone v
+    GROUP BY v.product_id
+  ),
+  sp AS (
+    SELECT p.id, p.sku, p.name, p.base_unit, p.status,
+           coalesce(t.sale_qty, 0) AS sale_qty, coalesce(t.sale_value, 0) AS sale_value,
+           coalesce(t.date_qty, 0) AS date_qty, coalesce(t.date_value, 0) AS date_value
+    FROM public.products p
+    LEFT JOIN ton t ON t.product_id = p.id
+    WHERE (coalesce(p.status, 'active') = 'active' OR coalesce(t.sale_qty, 0) <> 0 OR coalesce(t.date_qty, 0) <> 0)
+      AND (NOT coalesce(p_con_ton, true) OR coalesce(t.sale_qty, 0) + coalesce(t.date_qty, 0) > 0)
+      AND NOT EXISTS (
+        SELECT 1 FROM tu
+        WHERE tu.w <> ''
+          AND coalesce(p.tim_kd, public.khoa_tim_ds(p.sku, p.name, p.barcode)) NOT LIKE '%%' || tu.w || '%%'
+      )
+  )
+  SELECT s.id, s.sku, s.name, s.base_unit, s.status,
+         (SELECT jsonb_agg(jsonb_build_object('unit_name', u.unit_name, 'conversion', u.conversion) ORDER BY u.conversion DESC)
+            FROM public.product_units u WHERE u.product_id = s.id) AS units,
+         s.sale_qty, s.sale_value, s.date_qty, s.date_value,
+         s.sale_qty + s.date_qty AS total_qty,
+         s.sale_value + s.date_value AS total_value,
+         count(*) OVER () AS total_count,
+         sum(s.sale_qty) OVER () AS sum_sale_qty,
+         sum(s.sale_value) OVER () AS sum_sale_value,
+         sum(s.date_qty) OVER () AS sum_date_qty,
+         sum(s.date_value) OVER () AS sum_date_value,
+         sum(s.sale_qty + s.date_qty) OVER () AS sum_total_qty,
+         sum(s.sale_value + s.date_value) OVER () AS sum_total_value
+  FROM sp s
+  ORDER BY CASE WHEN p_sap = 'gia-tri' THEN s.sale_value + s.date_value
+                WHEN p_sap = 'so-luong' THEN s.sale_qty + s.date_qty
+                ELSE 0 END DESC,
+           s.name%s, s.id
+  OFFSET greatest(coalesce(p_offset, 0), 0)
+  LIMIT least(greatest(coalesce(p_limit, 20), 1), 500);
+$fn$
+$q$, v_col);
+END
+$mk$;
+
+GRANT EXECUTE ON FUNCTION public.ton_kho_trang(text, boolean, text, integer, integer) TO authenticated;
+COMMENT ON FUNCTION public.ton_kho_trang(text, boolean, text, integer, integer) IS
+  'Tồn kho hiện tại theo mặt hàng (mig 255): gộp kho bán / kho date, lọc còn tồn, tìm theo tim_kd, sắp, phân trang; mỗi dòng kèm total_count + tổng cộng của cả tập đã lọc. RLS tự lọc (INVOKER).';
+
+NOTIFY pgrst, 'reload schema';
+
+SELECT 'RPC tồn kho phân trang (mig 255)' AS hang_muc,
+       (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'ton_kho_trang') AS so_ham,
+       (SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_collation WHERE collname = 'vi-x-icu') THEN 'vi-x-icu' ELSE 'mặc định' END) AS sap_ten;
+

@@ -596,8 +596,9 @@ export default function ProductsReportPage() {
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
+              khiMo={catalogs.nang}
               placeholder="Tất cả hàng hóa"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Tìm tự do">
@@ -614,8 +615,9 @@ export default function ProductsReportPage() {
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
+              khiMo={catalogs.nang}
               placeholder="Tất cả thương hiệu"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Nhà cung cấp (chọn nhiều)">

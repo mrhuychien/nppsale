@@ -361,8 +361,9 @@ export default function OrdersReportPage() {
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
+              khiMo={catalogs.nang}
               placeholder="Tất cả khách hàng"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Tìm theo mã đơn / tên KH">
@@ -379,8 +380,9 @@ export default function OrdersReportPage() {
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
+              khiMo={catalogs.nang}
               placeholder="Tất cả hàng hóa"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Thương hiệu (chọn nhiều)">
@@ -388,8 +390,9 @@ export default function OrdersReportPage() {
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
+              khiMo={catalogs.nang}
               placeholder="Tất cả thương hiệu"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           {/* Lọc theo NHÓM KHÁCH (bảng giá) — không phải nhóm hàng (đã bỏ, chủ nhà 03/10/2026). */}

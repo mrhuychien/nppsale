@@ -16,10 +16,12 @@
  */
 
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from "react"
+import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
+import { loadSellCustomers, loadSellRefData, type SellProduct } from "@/lib/sell/ref-data"
+import { canKhachPos } from "@/lib/pos/can-khach"
 import { loadSuppliers, loadSellers, type PosSupplier, type PosSeller } from "@/lib/pos/load"
 import { gopTheoId } from "@/lib/pos/doi-tac"
 import { useAuth } from "@/hooks/use-auth"
@@ -75,20 +77,44 @@ export function PosRefDataProvider({ children }: { children: ReactNode }) {
      phẩm + bảng giá dùng lại bản lưu trên máy khi danh mục chưa đổi (`dungLaiSanPham`), chỉ khách + tồn đọc mới. Chờ
      thế không tốn thêm vòng mạng: câu Supabase vốn chờ phiên, mà hồ sơ có ngay ở sự kiện phiên đầu (gửi kèm). */
   const { san, nguoi } = useNguoiTaiDanhMuc()
+  /* ⚠ MÀN NCC KHÔNG TẢI SỔ KHÁCH (chủ nhà 23/10/2026): nhập hàng / trả NCC chỉ làm với NCC mà vẫn kéo ≈1 MB khách.
+     Lấy theo đường dẫn lúc tải; đang ở màn NCC mà mở thêm tab đơn / hoá đơn (chuyển mềm) thì tải riêng khách bên dưới. */
+  const canKhach = canKhachPos(usePathname())
+  const canKhachMoiNhat = useRef(canKhach)
+  canKhachMoiNhat.current = canKhach
+  /** Sổ khách đã có trong lượt tải này chưa (`null` = chưa tải xong lượt chính). */
+  const [coKhach, setCoKhach] = useState<boolean | null>(null)
   useEffect(() => {
     if (!san) return
     let huy = false
+    const khach = canKhachMoiNhat.current
     ;(async () => {
-      const d = await loadSellRefData(createClient(), nguoi)
+      const d = await loadSellRefData(createClient(), nguoi, { khach })
       if (huy) return
       setProducts(d.products)
       setCustomers(d.customers)
       setStock(d.stockByProduct)
       setWarnings(d.warnings)
+      setCoKhach(khach)
       setLoading(false)
     })()
     return () => { huy = true }
   }, [san, nguoi])
+
+  /* Lượt chính không tải khách, giờ màn cần (mở tab đơn / hoá đơn / trả hàng khách) → tải riêng sổ khách, không tải lại hàng. */
+  useEffect(() => {
+    if (coKhach !== false || !canKhach) return
+    let huy = false
+    ;(async () => {
+      const k = await loadSellCustomers(createClient())
+      if (huy) return
+      setCustomers(k.customers)
+      if (k.warnings.length > 0) setWarnings((cu) => [...cu, ...k.warnings])
+      /* ⚠ Đặt SAU khi có kết quả: `coKhach` nằm trong deps — đặt trước là effect dọn ngay (`huy = true`) và vứt kết quả. */
+      setCoKhach(true)
+    })()
+    return () => { huy = true }
+  }, [coKhach, canKhach])
 
   /**
    * ⚠ ĐỌC HỎNG THÌ IM, KHÔNG CHẶN. Thiếu danh mục NCC làm màn mua hàng

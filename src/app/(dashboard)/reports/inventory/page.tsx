@@ -312,8 +312,9 @@ export default function InventoryReportPage() {
               value={brandFilter}
               onChange={setBrandFilter}
               options={catalogs.brands}
+              khiMo={catalogs.nang}
               placeholder="Tất cả thương hiệu"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </div>
           <div className="space-y-1.5">
@@ -324,8 +325,9 @@ export default function InventoryReportPage() {
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
+              khiMo={catalogs.nang}
               placeholder="Theo mã, tên hàng"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </div>
           <div className="md:col-span-3 flex items-end">

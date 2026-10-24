@@ -173,6 +173,18 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
   const db = structuredClone(tables)
   for (const t of Object.keys(TIM_KD)) for (const r of db[t] ?? []) ganTimKd(t, r)
   const requests = []
+  /* RPC "chưa có trên sổ" giả — chốt đường lùi của màn khi chủ nhà chưa chạy migration: POST /__tat_rpc { fn: ["ten_ham", …] }
+     (mảng rỗng = mở lại) → gọi hàm ấy trả 404 PGRST202 đúng như PostgREST khi hàm không có trong schema cache. */
+  const rpcTat = new Set()
+  /* Trigger giả của mig 254: ghi vào sổ khách / nhóm khách / phân công / quyền xem khách (qua bảng hay qua RPC) là số phiên
+     sổ khách `danh_muc_ban_phien.phien_khach` tăng — như trigger mức câu lệnh trên sổ thật; POS / bán hàng so số này để
+     biết có dùng lại sổ khách trong bản lưu không. */
+  const KHACH_BANG = new Set(["customers", "customer_groups", "customer_assignments", "user_permission_overrides", "role_permissions"])
+  const dauKhach = () => JSON.stringify(Array.from(KHACH_BANG, (t) => db[t] ?? []))
+  const tangPhienKhach = () => {
+    const d = (db.danh_muc_ban_phien || [])[0]
+    if (d) d.phien_khach = (Number(d.phien_khach) || 1) + 1
+  }
   let seq = 1
   const newId = () => `00000000-0000-4000-8000-${String(seq++).padStart(12, "0")}`
 
@@ -214,6 +226,11 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     if (req.method === "OPTIONS") return send(res, 204)
     if (url.pathname === "/__log") return send(res, 200, requests)
     if (url.pathname === "/__db") return send(res, 200, db)
+    if (url.pathname === "/__tat_rpc") {
+      rpcTat.clear()
+      for (const f of Array.isArray(json?.fn) ? json.fn : []) rpcTat.add(String(f))
+      return send(res, 200, Array.from(rpcTat))
+    }
     /* `client`: máy chủ Next (createServerClient) hay trình duyệt (createBrowserClient) — @supabase/ssr ghi ở
        X-Client-Info; chốt đếm lượt gọi của trình duyệt dựa vào đây (hồ sơ do máy chủ đọc thì không tính). */
     const entry = { method: req.method, path: url.pathname, query: url.search, body: json, prefer: req.headers.prefer, client: String(req.headers["x-client-info"] ?? "") }
@@ -240,10 +257,15 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     // ---- rpc ----
     if (url.pathname.startsWith("/rest/v1/rpc/")) {
       const fn = url.pathname.slice(13)
+      if (rpcTat.has(fn)) {
+        return send(res, 404, { code: "PGRST202", message: `Could not find the function public.${fn} in the schema cache`, details: null, hint: null })
+      }
       const h = rpc[fn]
       if (!h) { entry.unhandled = true; return send(res, 200, null) }
       try {
+        const truoc = dauKhach()
         const out = await h(json ?? {}, { db, newId, user: userFromAuth(req) })
+        if (dauKhach() !== truoc) tangPhienKhach()
         return send(res, 200, out ?? null)
       } catch (e) {
         return send(res, 400, { code: e.code ?? "P0001", message: String(e.message ?? e) })
@@ -337,6 +359,7 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     }
     const match = (r) => filters.every((f) => f(r)) && quaNhung(r)
 
+    if (KHACH_BANG.has(table) && (req.method === "POST" || req.method === "PATCH" || req.method === "DELETE")) tangPhienKhach()
     if (req.method === "POST") {
       const input = Array.isArray(json) ? json : [json]
       const upsert = (req.headers.prefer || "").includes("resolution=merge-duplicates")

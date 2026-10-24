@@ -88,13 +88,16 @@ describe("Xuất tồn kho ra Excel", () => {
 
   /** Xuất ĐÚNG những dòng đang hiện — người ta lọc rồi mới bấm xuất. */
   it("xuất từ danh sách đã lọc, không phải toàn bộ kho", () => {
-    expect(TABLE).toContain("pivot.map((r) => ({")
+    /* Đường RPC (mig 255): đọc hết các trang của tập đang lọc trên máy chủ; đường cũ: `pivot` đã lọc trên máy. */
+    expect(TABLE).toContain("await docTatCaTon(createClient(), { tim: timTre, conTon: onlyOnHand,")
+    expect(TABLE).toContain(": pivot")
+    expect(TABLE).toContain("dong.map((r) => ({")
     expect(TABLE).toContain("buildStockExportAoa(")
   })
 
   /** Không có dòng nào thì nút phải tắt, không tạo ra file rỗng. */
   it("tắt nút khi không có gì để xuất", () => {
-    expect(TABLE).toContain("disabled={loading || exporting || pivot.length === 0}")
+    expect(TABLE).toContain("disabled={loading || exporting || soDong === 0}")
   })
 
   /**

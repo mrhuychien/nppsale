@@ -17,7 +17,7 @@ import {
   type SellProduct,
   type SellRefData,
   loadSellStock,
-  docPhienDanhMuc,
+  docPhienDanhMucDu,
 } from "@/lib/sell/ref-data"
 import {
   isSellRefDataFresh,
@@ -193,12 +193,12 @@ export function SellDataProvider({ children }: { children: React.ReactNode }) {
        *   đủ. Bấm "Tải lại danh mục" (`tick > 0`) vẫn tải đủ.
        */
       if (!force && isSellCatalogFresh()) {
-        /* Số phiên (mig 209) hỏi CÙNG LÚC với tồn — sản phẩm / giá đổi thì tải lại đủ ngay, khỏi
-           đợi hết 30 phút. Không biết (sổ chưa có 209) → như cũ. */
+        /* Số phiên (mig 209 hàng + mig 254 sổ khách, MỘT câu) hỏi CÙNG LÚC với tồn — sản phẩm / giá / khách đổi thì
+           tải lại ngay (phần chưa đổi vẫn dùng bản lưu), khỏi đợi hết 30 phút. Không biết (sổ chưa có 209) → như cũ. */
         const sb = createClient()
         const [stock, daDoi] = await Promise.all([
           refreshSellStockShared(() => loadSellStock(sb)),
-          kiemPhienDanhMucShared(() => docPhienDanhMuc(sb)),
+          kiemPhienDanhMucShared(() => docPhienDanhMucDu(sb)),
         ])
         if (cancelled) return
         if (stock && daDoi !== true) {

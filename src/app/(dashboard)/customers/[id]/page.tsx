@@ -167,6 +167,7 @@ export default function CustomerDetailPage() {
   /** Tổng số lần ghé (đếm HEAD trên máy chủ) — `null` = chưa đếm được, quay về độ dài danh sách. */
   const [visitCount, setVisitCount] = useState<number | null>(null)
   const [priceTruncated, setPriceTruncated] = useState(false)
+  const [priceLoading, setPriceLoading] = useState(false)
   const [visitDialogOpen, setVisitDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
 
@@ -189,61 +190,16 @@ export default function CustomerDetailPage() {
     const ngayDauThangTruoc = thang === 1 ? `${nam - 1}-12-01` : `${nam}-${String(thang - 1).padStart(2, "0")}-01`
     const days90Ago = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [custRes, assignRes] = await Promise.all([
-      supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("id", id).single(),
-      supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(*)").eq("customer_id", id),
-    ])
-    const qErr2 = ([custRes, assignRes] as Array<{ error?: { message?: string } | null }>)
-      .find((r) => r?.error)?.error
-    if (qErr2) console.error("[customers/id] truy vấn lỗi:", qErr2.message)
-    if (custRes.data) setCustomer(custRes.data as unknown as Customer)
-    const assignRows = (assignRes.data as unknown as CustomerAssignment[]) || []
-    setAssignments(assignRows)
-
-    // Ngành hàng của từng người phụ trách. Hỏi RIÊNG hai bảng rồi ghép ở
-    // lib thuần: nhúng lồng ba tầng qua PostgREST vừa khó đọc vừa phụ
-    // thuộc cách RLS áp lên từng bảng cha.
-    // Người tạo — tra tên riêng. `created_by` có thể trỏ tới một nhân
-    // viên KHÔNG còn nằm trong danh sách phụ trách (đã nghỉ, đã đổi
-    // tuyến), nên lấy ké từ `assignRows` là có lúc ra rỗng.
-    const creatorId = (custRes.data as { created_by?: string | null } | null)?.created_by
-    if (creatorId) {
-      const { data: cu, error: cuErr } = await supabase
-        .from("users")
-        .select("full_name")
-        .eq("id", creatorId)
-        .maybeSingle()
-      if (cuErr) console.error("[customers/id] truy vấn lỗi:", cuErr.message)
-      setCreatorName((cu as { full_name?: string } | null)?.full_name ?? null)
-    } else {
-      setCreatorName(null)
-    }
-
-    const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
-    if (managerIds.length === 0) {
-      setManagers([])
-    } else {
-      const [linkRes, supRes] = await Promise.all([
-        supabase.from("user_suppliers").select("user_id, supplier_id").in("user_id", managerIds),
-        supabase.from("suppliers").select("id, name"),
-      ])
-      const linkErr = [linkRes, supRes].find((r) => r.error)?.error
-      if (linkErr) console.error("[customers/id] truy vấn lỗi:", linkErr.message)
-      setManagers(
-        buildManagers(
-          assignRows.map((a) => ({ user_id: a.user_id, role: a.role, status: a.status })),
-          assignRows
-            .map((a) => a.user)
-            .filter((u): u is NonNullable<typeof u> => !!u)
-            .map((u) => ({ id: u.id, full_name: u.full_name, is_active: u.is_active })),
-          (linkRes.data as Array<{ user_id: string; supplier_id: string }>) || [],
-          (supRes.data as Array<{ id: string; name: string }>) || []
-        )
-      )
-    }
-
-    // KPIs + tab data
+    /* ⚠ HAI ĐỢT, KHÔNG NỐI ĐUÔI (chủ nhà 23/10/2026 "load trang chậm lắm" — đo điện thoại NVBH: các câu của màn này
+       xếp thành 8 đợt chờ nhau, 3,1 s). Đợt 1: mọi câu chỉ cần `id`. Đợt 2: câu cần kết quả đợt 1 (người tạo, NCC của
+       người phụ trách, tên tuyến, dòng hàng của đơn gần nhất, hàng trả theo từng hoá đơn). Bảng giá KHÔNG ở đây — hàng
+       nghìn dòng, chỉ tải khi mở tab "Bảng giá áp dụng" (effect bên dưới). */
+    /* ⚠ ĐỌC HỎNG THÌ NÓI RA — im lặng về 0 là hiện doanh thu gộp như thể đã trừ. */
+    let loiTra: string | null = null
+    const baoLoi = <T,>(macDinh: T) => (e: unknown) => { loiTra = errorMessage(e); return macDinh }
     const [
+      custRes,
+      assignRes,
       monthOrdersRes,
       prevMonthOrdersRes,
       allOrdersRes,
@@ -253,7 +209,13 @@ export default function CustomerDetailPage() {
       paymentsRes,
       photosRes,
       pjpRes,
+      traThang,
+      traThangTruoc,
+      visitRes,
+      visitCountRes,
     ] = await Promise.all([
+      supabase.from("customers").select("id, org_id, store_name, owner_name, phone, address, province, district, ward, channel, group_id, credit_limit, payment_terms, status, gps_lat, gps_lng, created_at, created_by, billing_name, tax_code, billing_address, billing_email, payment_method_label, group:customer_groups(*)").eq("id", id).single(),
+      supabase.from("customer_assignments").select("id, customer_id, user_id, role, assigned_at, status, user:users(*)").eq("customer_id", id),
       /* ⚠ DOANH THU TÍNH THEO HÓA ĐƠN ĐÃ GHI SỔ (chủ nhà 24/09/2026), theo ngày
          hóa đơn — như `dashboard_summary` (mig 126). Tổng đơn "Hoàn thành" lệch
          khi đơn xuất nhiều đợt, sửa lúc xuất, hay hóa đơn bị huỷ. */
@@ -329,10 +291,31 @@ export default function CustomerDetailPage() {
         .eq("customer_id", id)
         .eq("is_active", true)
         .order("day_of_week"),
+      /* ⚠ DOANH THU THUẦN = hàng đi − hàng trả (chủ nhà 25/09/2026: "Doanh thu lệch công
+         nợ … Rà soát lại toàn bộ doanh số tính bằng số đi - số trả", mig 192). Hàng trả
+         theo `returns.revenue_date` — cùng luật với công nợ. Hai kỳ chỉ cần `id` + mốc ngày. */
+      traCuaKhach(supabase, id, ngayDauThang, null).catch(baoLoi(0)),
+      traCuaKhach(supabase, id, ngayDauThangTruoc, ngayDauThang).catch(baoLoi(0)),
+      // Lịch sử ghé thăm. Số trên tab "Ghé thăm (N)" đếm trên máy chủ — danh sách bị `db.max_rows` cắt ở 1.000 lần ghé.
+      supabase
+        .from("visit_logs")
+        .select(
+          "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user:users!visit_logs_sales_user_id_fkey(full_name)"
+        )
+        .eq("customer_id", id)
+        .order("visit_date", { ascending: false })
+        .order("check_in_at", { ascending: false }),
+      supabase
+        .from("visit_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", id),
     ])
-    const qErr = ([monthOrdersRes, prevMonthOrdersRes, last90Res, invoicesRes, paymentsRes, photosRes, pjpRes] as Array<{ error?: { message?: string } | null }>)
+    const qErr = ([custRes, assignRes, monthOrdersRes, prevMonthOrdersRes, last90Res, invoicesRes, paymentsRes, photosRes, pjpRes, visitRes, visitCountRes] as Array<{ error?: { message?: string } | null }>)
       .find((r) => r?.error)?.error
     if (qErr) console.error("[customers/id] truy vấn lỗi:", qErr.message)
+    if (custRes.data) setCustomer(custRes.data as unknown as Customer)
+    const assignRows = (assignRes.data as unknown as CustomerAssignment[]) || []
+    setAssignments(assignRows)
     setStatsError(
       allOrdersRes.error
         ? `Đơn hàng: ${allOrdersRes.error}`
@@ -344,24 +327,9 @@ export default function CustomerDetailPage() {
 
     const sumTotal = (rows: Array<{ total: number }> | null) =>
       (rows || []).reduce((s, o) => s + (o.total || 0), 0)
-    /* ⚠ DOANH THU THUẦN = hàng đi − hàng trả (chủ nhà 25/09/2026: "Doanh thu lệch công
-       nợ … Rà soát lại toàn bộ doanh số tính bằng số đi - số trả", mig 192). Hàng trả
-       theo `returns.revenue_date` — cùng luật với công nợ. */
     const invoiceRows = ((invoicesRes.data as unknown) as typeof allInvoices) || []
-    /* ⚠ ĐỌC HỎNG THÌ NÓI RA — im lặng về 0 là hiện doanh thu gộp như thể đã trừ. */
-    let loiTra: string | null = null
-    const baoLoi = <T,>(macDinh: T) => (e: unknown) => { loiTra = errorMessage(e); return macDinh }
-    const [traThang, traThangTruoc, traTungHD] = await Promise.all([
-      traCuaKhach(supabase, id, ngayDauThang, null).catch(baoLoi(0)),
-      traCuaKhach(supabase, id, ngayDauThangTruoc, ngayDauThang).catch(baoLoi(0)),
-      traTheoHoaDon(supabase, invoiceRows.filter((v) => v.status === "posted").map((v) => v.id)).catch(
-        baoLoi(new Map<string, number>())
-      ),
-    ])
-    if (loiTra) setStatsError((cu) => cu ?? `Hàng trả (chưa trừ vào doanh thu): ${loiTra}`)
     setMonthRevenue(sumTotal(monthOrdersRes.data as Array<{ total: number }>) - traThang)
     setLastMonthRevenue(sumTotal(prevMonthOrdersRes.data as Array<{ total: number }>) - traThangTruoc)
-    setTraHD(traTungHD)
 
     setAllInvoices(invoiceRows)
     setAllPayments(((paymentsRes.data as unknown) as typeof allPayments) || [])
@@ -391,6 +359,20 @@ export default function CustomerDetailPage() {
     // Frequency
     setOrderFrequency(Math.round(((last90Res.count || 0) / 3) * 10) / 10)
 
+    setVisits(((visitRes.data as unknown) as VisitRow[]) || [])
+    setVisitCount(visitCountRes.error ? null : visitCountRes.count ?? null)
+
+    // ---- Đợt 2: câu cần kết quả đợt 1 — vẫn đi CÙNG NHAU.
+    // Người tạo — tra tên riêng. `created_by` có thể trỏ tới một nhân
+    // viên KHÔNG còn nằm trong danh sách phụ trách (đã nghỉ, đã đổi
+    // tuyến), nên lấy ké từ `assignRows` là có lúc ra rỗng.
+    const creatorId = (custRes.data as { created_by?: string | null } | null)?.created_by
+    // Ngành hàng của từng người phụ trách. Hỏi RIÊNG hai bảng rồi ghép ở
+    // lib thuần: nhúng lồng ba tầng qua PostgREST vừa khó đọc vừa phụ
+    // thuộc cách RLS áp lên từng bảng cha.
+    const managerIds = Array.from(new Set(assignRows.map((a) => a.user_id).filter(Boolean)))
+    // Tên tuyến bán — cột `channel` lưu MÃ tuyến (mig 073).
+    const routeCode = (custRes.data as { channel?: string | null } | null)?.channel
     /**
      * Dòng hàng của những đơn gần nhất — nuôi cả "N mặt hàng" trên từng
      * dòng đơn lẫn khối "Sản phẩm hay lấy".
@@ -401,103 +383,118 @@ export default function CustomerDetailPage() {
      * lý. Giới hạn theo ĐƠN thì phạm vi luôn nói được thành lời.
      */
     const scanIds = orders.slice(0, LINE_SCAN_ORDERS).map((o) => o.id)
-    if (scanIds.length > 0) {
-      const linesRes = await supabase
-        .from("sales_order_lines")
-        .select("order_id, product_id, product:products(name)")
-        .in("order_id", scanIds)
-      if (linesRes.error) console.error("[customers/id] truy vấn dòng hàng lỗi:", linesRes.error.message)
-      const rows =
-        ((linesRes.data as unknown) as Array<{
-          order_id: string
-          product_id: string
-          product?: { name?: string } | null
-        }>) || []
-      const counts: Record<string, number> = {}
-      const names: Record<string, string[]> = {}
-      for (const r of rows) {
-        counts[r.order_id] = (counts[r.order_id] || 0) + 1
-        const n = r.product?.name
-        if (n) (names[r.order_id] = names[r.order_id] || []).push(n)
-      }
-      setOrderLineCount(counts)
-      const summary: Record<string, string> = {}
-      for (const oid of Object.keys(names)) {
-        const list = names[oid]
-        summary[oid] =
-          list.slice(0, 2).join(", ") + (list.length > 2 ? ` +${list.length - 2}` : "")
-      }
-      setOrderSummary(summary)
-      setFrequent(
-        frequentProducts(
-          rows.map((r) => ({
-            order_id: r.order_id,
-            product_id: r.product_id,
-            product_name: r.product?.name ?? null,
-          })),
-          5
-        )
-      )
-    } else {
-      setOrderLineCount({})
-      setOrderSummary({})
-      setFrequent([])
+    const [cuRes, linkRes, supRes, rtRes, linesRes, traTungHD] = await Promise.all([
+      creatorId
+        ? supabase.from("users").select("full_name").eq("id", creatorId).maybeSingle()
+        : Promise.resolve(null),
+      managerIds.length > 0
+        ? supabase.from("user_suppliers").select("user_id, supplier_id").in("user_id", managerIds)
+        : Promise.resolve(null),
+      managerIds.length > 0 ? supabase.from("suppliers").select("id, name") : Promise.resolve(null),
+      routeCode ? supabase.from("sales_routes").select("name").eq("code", routeCode).maybeSingle() : Promise.resolve(null),
+      scanIds.length > 0
+        ? supabase.from("sales_order_lines").select("order_id, product_id, product:products(name)").in("order_id", scanIds)
+        : Promise.resolve(null),
+      traTheoHoaDon(supabase, invoiceRows.filter((v) => v.status === "posted").map((v) => v.id)).catch(
+        baoLoi(new Map<string, number>())
+      ),
+    ])
+    const qErr2 = ([cuRes, linkRes, supRes, rtRes, linesRes] as Array<{ error?: { message?: string } | null } | null>)
+      .find((r) => r?.error)?.error
+    if (qErr2) console.error("[customers/id] truy vấn lỗi:", qErr2.message)
+    if (loiTra) setStatsError((cu) => cu ?? `Hàng trả (chưa trừ vào doanh thu): ${loiTra}`)
+    setTraHD(traTungHD)
+
+    setCreatorName((cuRes?.data as { full_name?: string } | null)?.full_name ?? null)
+    setManagers(
+      managerIds.length === 0
+        ? []
+        : buildManagers(
+            assignRows.map((a) => ({ user_id: a.user_id, role: a.role, status: a.status })),
+            assignRows
+              .map((a) => a.user)
+              .filter((u): u is NonNullable<typeof u> => !!u)
+              .map((u) => ({ id: u.id, full_name: u.full_name, is_active: u.is_active })),
+            (linkRes?.data as Array<{ user_id: string; supplier_id: string }> | null) || [],
+            (supRes?.data as Array<{ id: string; name: string }> | null) || []
+          )
+    )
+    // ⚠ Không tra ra thì in NGUYÊN MÃ, đừng in "—". Mã lạ là manh mối.
+    setRouteLabel(routeCode ? (rtRes?.data as { name?: string } | null)?.name || routeCode : null)
+
+    const rows =
+      ((linesRes?.data as unknown) as Array<{
+        order_id: string
+        product_id: string
+        product?: { name?: string } | null
+      }> | null) || []
+    const counts: Record<string, number> = {}
+    const names: Record<string, string[]> = {}
+    for (const r of rows) {
+      counts[r.order_id] = (counts[r.order_id] || 0) + 1
+      const n = r.product?.name
+      if (n) (names[r.order_id] = names[r.order_id] || []).push(n)
     }
-
-    // Tên tuyến bán — cột `channel` lưu MÃ tuyến (mig 073).
-    const routeCode = (custRes.data as { channel?: string | null } | null)?.channel
-    if (routeCode) {
-      const { data: rt, error: rtErr } = await supabase
-        .from("sales_routes")
-        .select("name")
-        .eq("code", routeCode)
-        .maybeSingle()
-      if (rtErr) console.error("[customers/id] truy vấn tuyến lỗi:", rtErr.message)
-      // ⚠ Không tra ra thì in NGUYÊN MÃ, đừng in "—". Mã lạ là manh mối.
-      setRouteLabel((rt as { name?: string } | null)?.name || routeCode)
-    } else {
-      setRouteLabel(null)
+    setOrderLineCount(counts)
+    const summary: Record<string, string> = {}
+    for (const oid of Object.keys(names)) {
+      const list = names[oid]
+      summary[oid] =
+        list.slice(0, 2).join(", ") + (list.length > 2 ? ` +${list.length - 2}` : "")
     }
-
-    // Price list
-    const groupId = custRes.data?.group_id
-    /* ⚠ ĐỌC ĐỦ (phân trang, rà soát 03/10/2026): bảng giá chung thường hơn 1.000 dòng — đọc trơn bị `db.max_rows`
-       cắt im lặng, tab Bảng giá thiếu mặt hàng. Khoá thứ tự `product_id` + `id` cho các trang song song. */
-    const priceRes = await fetchAllForAggregate<PriceRow>((from, to) => {
-      let q = supabase
-        .from("price_lists")
-        .select("id, product_id, group_id, unit_name, price, effective_from, effective_to, product:products(name, sku, base_unit), group:customer_groups(name)", { count: "exact" })
-      q = groupId ? q.or(`group_id.eq.${groupId},group_id.is.null`) : q.is("group_id", null)
-      return q.order("product_id").order("id").range(from, to)
-    })
-    if (priceRes.error) console.error("[customers/id] truy vấn bảng giá lỗi:", priceRes.error)
-    setPriceRows(priceRes.rows)
-    setPriceTruncated(priceRes.truncated)
-
-    // Visit history
-    /* Số trên tab "Ghé thăm (N)" đếm trên máy chủ — danh sách bị `db.max_rows` cắt ở 1.000 lần ghé. */
-    const visitCountReq = supabase
-      .from("visit_logs")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_id", id)
-    const { data: visitData, error: visitDataErr } = await supabase
-      .from("visit_logs")
-      .select(
-        "id, visit_date, check_in_at, check_out_at, check_in_lat, check_in_lng, result, notes, photo_url, sales_user:users!visit_logs_sales_user_id_fkey(full_name)"
+    setOrderSummary(summary)
+    setFrequent(
+      frequentProducts(
+        rows.map((r) => ({
+          order_id: r.order_id,
+          product_id: r.product_id,
+          product_name: r.product?.name ?? null,
+        })),
+        5
       )
-      .eq("customer_id", id)
-      .order("visit_date", { ascending: false })
-      .order("check_in_at", { ascending: false })
-    if (visitDataErr) console.error("[customers/id] truy vấn lỗi:", visitDataErr.message)
-    setVisits(((visitData as unknown) as VisitRow[]) || [])
-    const visitCountRes = await visitCountReq
-    if (visitCountRes.error) console.error("[customers/id] đếm lần ghé lỗi:", visitCountRes.error.message)
-    setVisitCount(visitCountRes.error ? null : visitCountRes.count ?? null)
+    )
 
     setLoading(false)
   }, [id, laNvbh]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetchData() }, [fetchData])
+  /* ⚠ CHỜ BIẾT NGƯỜI rồi mới tải (chủ nhà 23/10/2026): `laNvbh` đổi khi hồ sơ về, tải trước là cả bộ câu chạy HAI
+     LẦN trên máy NVBH (đo: 42 câu thay vì 21). `authLoading` của `useRoleGuard` chờ cả phiên lẫn bảng quyền; thư viện
+     vốn chờ phiên mới gửi câu nên chờ ở đây không tốn thêm vòng mạng — hồ sơ thì máy chủ đã gửi kèm trang. */
+  useEffect(() => {
+    if (authLoading) return
+    fetchData()
+  }, [fetchData, authLoading])
+
+  /* Bảng giá áp dụng — bảng giá chung + nhóm là hàng nghìn dòng (2.500 mặt hàng ≈ 5.000 dòng): CHỈ tải khi mở tab
+     (chủ nhà 23/10/2026). Đổi khách / đổi nhóm khách (sửa ở tab Sửa thông tin) thì tải lại; chụp lại ảnh (tải lại nhẹ)
+     thì không. */
+  const nhomGia = customer ? customer.group_id ?? null : undefined
+  const giaDaTai = useRef<string | null>(null)
+  useEffect(() => {
+    if (activeTab !== "prices" || nhomGia === undefined) return
+    const khoa = `${id}|${nhomGia ?? ""}`
+    if (giaDaTai.current === khoa) return
+    let huy = false
+    setPriceLoading(true)
+    ;(async () => {
+      /* ⚠ ĐỌC ĐỦ (phân trang, rà soát 03/10/2026): bảng giá chung thường hơn 1.000 dòng — đọc trơn bị `db.max_rows`
+         cắt im lặng, tab Bảng giá thiếu mặt hàng. Khoá thứ tự `product_id` + `id` cho các trang song song. */
+      const priceRes = await fetchAllForAggregate<PriceRow>((from, to) => {
+        let q = supabase
+          .from("price_lists")
+          .select("id, product_id, group_id, unit_name, price, effective_from, effective_to, product:products(name, sku, base_unit), group:customer_groups(name)", { count: "exact" })
+        q = nhomGia ? q.or(`group_id.eq.${nhomGia},group_id.is.null`) : q.is("group_id", null)
+        return q.order("product_id").order("id").range(from, to)
+      })
+      if (huy) return
+      if (priceRes.error) console.error("[customers/id] truy vấn bảng giá lỗi:", priceRes.error)
+      else giaDaTai.current = khoa
+      setPriceRows(priceRes.rows)
+      setPriceTruncated(priceRes.truncated)
+      setPriceLoading(false)
+    })()
+    return () => { huy = true }
+  }, [activeTab, id, nhomGia]) // eslint-disable-line react-hooks/exhaustive-deps
   const refreshQuiet = useCallback(() => fetchData(true), [fetchData])
 
   const currentDebt = useMemo(
@@ -1215,7 +1212,9 @@ export default function CustomerDetailPage() {
                   <CardTitle className="text-base">Bảng giá áp dụng</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {priceRows.length === 0 ? (
+                  {priceLoading ? (
+                    <Skeleton className="h-40" />
+                  ) : priceRows.length === 0 ? (
                     <EmptyState title="Chưa có bảng giá" description="Chưa có giá nào được thiết lập cho nhóm khách hàng này" />
                   ) : (
                     <>

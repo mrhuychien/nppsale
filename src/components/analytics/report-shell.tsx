@@ -228,6 +228,7 @@ export function FilterSearchSelect({
   placeholder = "Tất cả",
   emptyText = "Không có dữ liệu",
   loading = false,
+  khiMo,
 }: {
   value: string
   onChange: (v: string) => void
@@ -235,10 +236,15 @@ export function FilterSearchSelect({
   placeholder?: string
   emptyText?: string
   loading?: boolean
+  /** Gọi khi ô MỞ hoặc đã có giá trị cần nhãn — danh mục nặng (khách / hàng) tải lúc ấy (`useFilterCatalogs().nang`). */
+  khiMo?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open || (value && options.length === 0)) khiMo?.()
+  }, [open, value, options.length, khiMo])
 
   useEffect(() => {
     if (!open) return
@@ -365,6 +371,7 @@ export function FilterMultiSelect({
   placeholder = "Tất cả",
   emptyText = "Không có dữ liệu",
   loading = false,
+  khiMo,
 }: {
   value: string[]
   onChange: (v: string[]) => void
@@ -372,10 +379,15 @@ export function FilterMultiSelect({
   placeholder?: string
   emptyText?: string
   loading?: boolean
+  /** Như `FilterSearchSelect`: ô mở / đã có mục chọn cần nhãn → tải danh mục nặng. */
+  khiMo?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open || (value.length > 0 && options.length === 0)) khiMo?.()
+  }, [open, value.length, options.length, khiMo])
 
   useEffect(() => {
     if (!open) return

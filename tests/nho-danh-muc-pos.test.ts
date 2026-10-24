@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { readFileSync } from "node:fs"
 import { fakePostgrest, nRows } from "./helpers/fake-postgrest"
 
 /**
@@ -17,7 +18,8 @@ vi.mock("@/lib/offline/ref-cache", () => ({
   },
 }))
 
-import { dungLaiSanPham, loadSellRefData, peekCachedSellRefData } from "@/lib/sell/ref-data"
+import { dungLaiSanPham, loadSellCustomers, loadSellRefData, peekCachedSellRefData } from "@/lib/sell/ref-data"
+import { canKhachPos } from "@/lib/pos/can-khach"
 import { sanTaiDanhMuc } from "@/hooks/use-nguoi-tai-danh-muc"
 import { laDoiNguoi, xoaNhoTheoNguoi } from "@/lib/cache/theo-nguoi"
 import { loadSellRefDataShared, peekSellRefData } from "@/lib/sell/ref-store"
@@ -135,7 +137,7 @@ describe("loadSellRefData — sản phẩm dùng lại bản lưu, khách + tồ
    * ⚠ SỐ PHIÊN ĐỌC TRƯỚC SẢN PHẨM. Song song mà câu sản phẩm về trước, giá đổi chen giữa, thì bản cũ mang số MỚI — lần
    *   sau khớp khoá, dùng mãi bản giá cũ. Giữ câu số phiên lại: câu sản phẩm chưa được đi.
    */
-  it("câu sản phẩm CHỜ số phiên về rồi mới đi", async () => {
+  it("câu sản phẩm (và câu khách — khoá khách mig 254) CHỜ số phiên về rồi mới đi; tồn kho không chờ", async () => {
     const { client, calls } = fakePostgrest(bang(7))
     let tha!: () => void
     const giu = new Promise<void>((r) => (tha = r))
@@ -151,12 +153,15 @@ describe("loadSellRefData — sản phẩm dùng lại bản lưu, khách + tồ
     }
     const dang = loadSellRefData(boc, CHU)
     await new Promise((r) => setTimeout(r, 20))
-    expect(daHoi(calls, "customers")).toBe(true)
+    expect(daHoi(calls, "batches"), "tồn kho không chờ").toBe(true)
+    expect(daHoi(calls, "customers"), "khách chờ số phiên").toBe(false)
     expect(daHoi(calls, "products")).toBe(false)
     tha()
     const r = await dang
     expect(daHoi(calls, "products")).toBe(true)
+    expect(daHoi(calls, "customers")).toBe(true)
     expect(r.products).toHaveLength(4)
+    expect(r.customers).toHaveLength(3)
   })
 })
 
@@ -202,5 +207,79 @@ describe("đổi người trên cùng tab → xoá danh mục nhớ trong RAM", 
     expect(peekSellRefData()).toBeNull()
     await nhoNen("nen:khach-nhe", doc)
     expect(doc).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * ⚠ CHỦ NHÀ 23/10/2026 (rà soát lại sau "Làm nốt"): POS nhập hàng / trả NCC chỉ làm với NCC mà vẫn kéo cả sổ khách
+ *   (≈1 MB với 3.000 khách). Nay màn ấy tải với `khach: false`; mở thêm tab đơn / hoá đơn thì tải riêng khách.
+ */
+describe("loadSellRefData — màn không dùng sổ khách (POS nhập hàng / trả NCC)", () => {
+  it("khach: false → không hỏi bảng customers; hàng + tồn vẫn đọc; customers trả rỗng", async () => {
+    const { client, calls } = fakePostgrest(bang(7))
+    const r = await loadSellRefData(client, CHU, { khach: false })
+    expect(daHoi(calls, "customers")).toBe(false)
+    expect(daHoi(calls, "products")).toBe(true)
+    expect(daHoi(calls, "batches")).toBe(true)
+    expect(r.customers).toEqual([])
+    expect(r.products).toHaveLength(4)
+    expect(r.source).toBe("server")
+  })
+
+  it("không truyền tuỳ chọn → vẫn tải khách như cũ", async () => {
+    const { client, calls } = fakePostgrest(bang(7))
+    const r = await loadSellRefData(client, CHU)
+    expect(daHoi(calls, "customers")).toBe(true)
+    expect(r.customers).toHaveLength(3)
+  })
+
+  it("không tải khách thì KHÔNG đè khách rỗng lên bản lưu: bản lưu của đúng người → giữ khách cũ, hàng + khoá mới", async () => {
+    nho.ban = { ...banLuu({ phien: 6, uid: CHU.uid, vai: CHU.vai, ncc: "*" }), customers: [{ id: "k1" }, { id: "k2" }] }
+    const { client } = fakePostgrest(bang(7))
+    await loadSellRefData(client, CHU, { khach: false })
+    const ghi = nho.ghi.at(-1)
+    expect(ghi?.data.customers).toEqual([{ id: "k1" }, { id: "k2" }])
+    expect(ghi?.data.products).toHaveLength(4)
+    expect(ghi?.khoa).toMatchObject({ phien: 7, uid: CHU.uid })
+  })
+
+  it("bản lưu của người khác, hoặc chưa có bản lưu → không ghi gì", async () => {
+    nho.ban = { ...banLuu({ phien: 6, uid: "u-khac", vai: "owner", ncc: "*" }), customers: [{ id: "k9" }] }
+    await loadSellRefData(fakePostgrest(bang(7)).client, CHU, { khach: false })
+    expect(nho.ghi).toHaveLength(0)
+    nho.ban = null
+    await loadSellRefData(fakePostgrest(bang(7)).client, CHU, { khach: false })
+    expect(nho.ghi).toHaveLength(0)
+  })
+
+  it("loadSellCustomers: đọc riêng sổ khách (cho lúc mở thêm tab cần khách)", async () => {
+    const { client, calls } = fakePostgrest(bang(7))
+    const k = await loadSellCustomers(client)
+    expect(k.customers).toHaveLength(3)
+    expect(k.warnings).toEqual([])
+    expect(daHoi(calls, "customers")).toBe(true)
+    expect(daHoi(calls, "products")).toBe(false)
+  })
+
+  it("canKhachPos: nhập hàng / trả NCC không cần khách; đơn, hoá đơn, trả hàng khách, /pos thì cần", () => {
+    for (const p of ["/pos/nhap-hang/moi", "/pos/nhap-hang/abc/sua", "/pos/tra-ncc/moi", "/pos/tra-ncc", "/pos/tra-ncc/x/sua"]) {
+      expect(canKhachPos(p), p).toBe(false)
+    }
+    for (const p of ["/pos", "/pos/don-hang/moi", "/pos/hoa-don/x", "/pos/tra-hang/moi", "/pos/nhap-hang-khac", null, undefined]) {
+      expect(canKhachPos(p), String(p)).toBe(true)
+    }
+  })
+})
+
+describe("PosRefDataProvider — tải riêng khách khi mở thêm tab cần khách", () => {
+  const S = readFileSync("src/store/pos/ref-data.tsx", "utf8")
+  it("lượt chính tải theo đường dẫn (canKhachPos); effect tải riêng chỉ đặt coKhach SAU khi có kết quả (đặt trước là tự huỷ)", () => {
+    expect(S).toContain("const canKhach = canKhachPos(usePathname())")
+    expect(S).toContain("await loadSellRefData(createClient(), nguoi, { khach })")
+    const i = S.indexOf("const k = await loadSellCustomers(createClient())")
+    expect(i).toBeGreaterThan(0)
+    const truoc = S.slice(S.lastIndexOf("useEffect(", i), i)
+    expect(truoc, "không đặt coKhach trước khi tải").not.toContain("setCoKhach(true)")
+    expect(S.slice(i, i + 500)).toContain("setCoKhach(true)")
   })
 })

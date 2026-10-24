@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -17,18 +17,13 @@ import { truncationWarning } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 import { canDuyet, demAnhTheoKhach, docDuyetAnh, docKhachDangBan } from "./doc-anh"
 import { canApprovePhotos, chuaCoDuyetAnh } from "@/lib/customers/photo-approval"
+import {
+  TAB_THIEU, chuaCoRpc, docTrangChoDuyet, docTrangThieuAnh, ghepTrang, type DongChoDuyet, type DongThieuAnh, type TabThieu,
+} from "./rpc-thieu-anh"
 
-type Row = {
-  id: string
-  store_name: string
-  address: string | null
-  phone: string | null
-  gps_lat: number | null
-  gps_lng: number | null
-  photoCount: number
-}
+type Row = DongThieuAnh
 
-type Tab = "all" | "no_photo" | "no_gps" | "approval"
+type Tab = TabThieu | "approval"
 
 const TAB_LABEL: Record<Tab, string> = {
   all: "Còn thiếu",
@@ -49,6 +44,9 @@ type Duyet = { approved: Set<string>; pending: Map<string, number> }
  *
  * RLS tự lọc: NVBH chỉ thấy khách mình phụ trách, nên không cần (và
  * không được) lọc theo người ở đây.
+ *
+ * ⚠ HAI ĐƯỒNG ĐỌC (chủ nhà 23/10/2026 "tốc độ load trang chậm lắm"): sổ có RPC mig 253 thì máy chủ lọc + đếm + phân
+ *   trang, máy chỉ nhận trang đang xem; sổ chưa có thì lùi về cách cũ (kéo cả sổ khách + cả bảng ảnh về lọc trên máy).
  */
 export default function MissingPhotosPage() {
   const { user } = useAuth()
@@ -56,7 +54,7 @@ export default function MissingPhotosPage() {
   const supabase = createClient()
 
   const [rows, setRows] = useState<Row[]>([])
-  /** Mọi điểm bán đang hoạt động (kể cả đã đủ ảnh) — tab "Chờ duyệt" cần cả những điểm bán ấy. */
+  /** Đường cũ: mọi điểm bán đang hoạt động (kể cả đã đủ ảnh) — tab "Chờ duyệt" cần cả những điểm bán ấy. */
   const [allRows, setAllRows] = useState<Row[]>([])
   const [duyet, setDuyet] = useState<Duyet | null>(null)
   const canApprove = canApprovePhotos(user?.role)
@@ -64,11 +62,16 @@ export default function MissingPhotosPage() {
   const [tab, setTab] = useState<Tab>("all")
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** `true` = đường RPC (máy chủ phân trang); `false` = đường cũ; `null` = chưa biết. */
+  const [rpc, setRpc] = useState<boolean | null>(null)
+  const cheDo = useRef<"rpc" | "cu" | null>(null)
+  /** Tổng số dòng khớp từng tab (đường RPC) — số trên tab + nút Tải thêm. */
+  const [tong, setTong] = useState<Partial<Record<Tab, number>>>({})
+  const [choDuyetRpc, setChoDuyetRpc] = useState<DongChoDuyet[]>([])
+  const [dangThem, setDangThem] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!user?.org_id) return
-    setLoading(true)
-    setError(null)
+  /* ---------------- Đường cũ: sổ chưa có RPC mig 253 ---------------- */
+  const taiCachCu = useCallback(async () => {
     // Hai truy vấn rồi ghép ở máy khách, KHÔNG dùng anti-join qua embed:
     // PostgREST không diễn đạt được "khách CHƯA có ảnh nào" một cách
     // chắc chắn, và một embed hiểu sai sẽ trả ra danh sách rỗng trông y
@@ -90,7 +93,6 @@ export default function MissingPhotosPage() {
     } catch (err) {
       setError(errorMessage(err))
       setRows([])
-      setLoading(false)
       return
     }
     const all = customers.map((c) => ({ ...c, photoCount: counts.get(c.id) ?? 0 }))
@@ -107,21 +109,101 @@ export default function MissingPhotosPage() {
         if (!chuaCoDuyetAnh(err)) setError(errorMessage(err))
       }
     }
+  }, [canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------------- Đường RPC: trang đầu của tab đang xem + tổng của các tab còn lại (1 dòng mỗi câu) ---------------- */
+  const taiRpc = useCallback(async (t: Tab) => {
+    if (t === "approval") {
+      const [kq, ...dem] = await Promise.all([docTrangChoDuyet(supabase, 0), ...TAB_THIEU.map((k) => docTrangThieuAnh(supabase, k, 0, 1))])
+      setChoDuyetRpc(kq.rows)
+      setDuyet({ approved: new Set(kq.rows.filter((r) => r.daDuyet).map((r) => r.id)), pending: new Map(kq.rows.map((r) => [r.id, r.soYeuCau])) })
+      setTong({ approval: kq.tong ?? 0, all: dem[0].tong ?? 0, no_photo: dem[1].tong ?? 0, no_gps: dem[2].tong ?? 0 })
+      return
+    }
+    const khac = TAB_THIEU.filter((k) => k !== t)
+    const [kq, ...conLai] = await Promise.all([
+      docTrangThieuAnh(supabase, t, 0),
+      ...khac.map((k) => docTrangThieuAnh(supabase, k, 0, 1)),
+      canApprove ? docTrangChoDuyet(supabase, 0, 1) : Promise.resolve(null),
+    ])
+    setRows(kq.rows)
+    const tongMoi: Partial<Record<Tab, number>> = { [t]: kq.tong ?? 0 }
+    khac.forEach((k, i) => { tongMoi[k] = conLai[i]?.tong ?? 0 })
+    const cd = conLai[khac.length]
+    if (canApprove && cd) {
+      tongMoi.approval = cd.tong ?? 0
+      /* Tab Chờ duyệt hiện ra; danh sách của nó đọc khi bấm vào. */
+      setDuyet((cu) => cu ?? { approved: new Set(), pending: new Map() })
+    }
+    setTong(tongMoi)
+  }, [canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = useCallback(async (t: Tab) => {
+    if (!user?.org_id) return
+    /* Đường cũ đã tải đủ một lần — đổi tab chỉ lọc trên máy. */
+    if (cheDo.current === "cu") return
+    setLoading(true)
+    setError(null)
+    try {
+      await taiRpc(t)
+      cheDo.current = "rpc"
+      setRpc(true)
+    } catch (err) {
+      if (cheDo.current === null && chuaCoRpc(err)) {
+        cheDo.current = "cu"
+        setRpc(false)
+        await taiCachCu()
+      } else {
+        setError(errorMessage(err))
+      }
+    }
     setLoading(false)
-  }, [user?.org_id, canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, taiRpc, taiCachCu])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(tab) }, [load, tab])
 
-  const choDuyet = duyet ? canDuyet(allRows, duyet) : []
-  const shown =
+  const choDuyet: Row[] = rpc ? choDuyetRpc : duyet ? canDuyet(allRows, duyet) : []
+  const shown: Row[] =
     tab === "approval"
       ? choDuyet
-      : rows.filter((r) => {
-          if (tab === "no_photo") return r.photoCount === 0
-          if (tab === "no_gps") return r.gps_lat == null || r.gps_lng == null
-          return true
-        })
+      : rpc
+        ? rows
+        : rows.filter((r) => {
+            if (tab === "no_photo") return r.photoCount === 0
+            if (tab === "no_gps") return r.gps_lat == null || r.gps_lng == null
+            return true
+          })
   const tabs: Tab[] = duyet ? ["all", "no_photo", "no_gps", "approval"] : ["all", "no_photo", "no_gps"]
+  const demTab = (t: Tab): number | undefined =>
+    rpc
+      ? tong[t]
+      : t === "approval"
+        ? choDuyet.length
+        : rows.filter((r) => (t === "no_photo" ? r.photoCount === 0 : t === "no_gps" ? r.gps_lat == null || r.gps_lng == null : true)).length
+  /* Còn dòng chưa tải (đường RPC) → nút Tải thêm. */
+  const conThem = rpc === true && (tong[tab] ?? 0) > shown.length
+
+  const themTrang = useCallback(async () => {
+    setDangThem(true)
+    try {
+      if (tab === "approval") {
+        const kq = await docTrangChoDuyet(supabase, choDuyetRpc.length)
+        setChoDuyetRpc((cu) => ghepTrang(cu, kq.rows))
+        setDuyet((cu) => ({
+          approved: new Set([...Array.from(cu?.approved ?? []), ...kq.rows.filter((r) => r.daDuyet).map((r) => r.id)]),
+          pending: new Map([...Array.from(cu?.pending ?? []), ...kq.rows.map((r) => [r.id, r.soYeuCau] as const)]),
+        }))
+        if (kq.tong != null) setTong((cu) => ({ ...cu, approval: kq.tong ?? 0 }))
+      } else {
+        const kq = await docTrangThieuAnh(supabase, tab, rows.length)
+        setRows((cu) => ghepTrang(cu, kq.rows))
+        if (kq.tong != null) setTong((cu) => ({ ...cu, [tab]: kq.tong ?? 0 }))
+      }
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+    setDangThem(false)
+  }, [tab, rows.length, choDuyetRpc.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -134,15 +216,7 @@ export default function MissingPhotosPage() {
       />
 
       <SegmentedScroller
-        segments={tabs.map((t) => ({
-          key: t,
-          label: TAB_LABEL[t],
-          count: t === "approval" ? choDuyet.length : rows.filter((r) =>
-            t === "no_photo" ? r.photoCount === 0
-              : t === "no_gps" ? r.gps_lat == null || r.gps_lng == null
-                : true
-          ).length,
-        }))}
+        segments={tabs.map((t) => ({ key: t, label: TAB_LABEL[t], count: demTab(t) }))}
         value={tab}
         onChange={(t) => t && setTab(t as Tab)}
         ariaLabel="Lọc điểm bán còn thiếu"
@@ -256,6 +330,15 @@ export default function MissingPhotosPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!loading && conThem && (
+        <div className="flex flex-col items-center gap-1 pt-1">
+          <p className="text-xs text-on-surface-variant">Đã hiển thị {shown.length} / {tong[tab] ?? 0} điểm bán</p>
+          <Button variant="outline" className="h-11 w-full sm:w-auto" onClick={themTrang} disabled={dangThem}>
+            {dangThem ? "Đang tải…" : `Tải thêm ${Math.min(50, (tong[tab] ?? 0) - shown.length)} điểm bán`}
+          </Button>
         </div>
       )}
     </div>

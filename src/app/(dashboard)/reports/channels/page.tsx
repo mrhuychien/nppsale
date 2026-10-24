@@ -179,8 +179,9 @@ export default function ChannelsReportPage() {
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
+              khiMo={catalogs.nang}
               placeholder="Theo mã, tên, SĐT"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
         </>

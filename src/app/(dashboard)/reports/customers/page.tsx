@@ -532,8 +532,9 @@ export default function CustomersReportPage() {
               value={customerFilter}
               onChange={setCustomerFilter}
               options={catalogs.customers}
+              khiMo={catalogs.nang}
               placeholder="Tất cả khách hàng"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           <FilterField label="Tìm tự do">

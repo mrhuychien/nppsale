@@ -1,5 +1,5 @@
 import { fetchAllForAggregate, type AggregateResult } from "@/lib/supabase/aggregate"
-import { cacheOrderRefData, getCachedOrderRefData, type KhoaSanPham, type OrderRefData } from "@/lib/offline/ref-cache"
+import { cacheOrderRefData, getCachedOrderRefData, type KhoaKhach, type KhoaSanPham, type OrderRefData } from "@/lib/offline/ref-cache"
 import type { Customer, PriceList, Product, ProductUnit } from "@/types"
 
 export type SellProduct = Product & {
@@ -56,6 +56,10 @@ export interface SellRefData {
   phien?: number | null
   /** Sản phẩm lấy từ bản nhớ trên máy (đã kiểm khoá — xem `dungLaiSanPham`), không tải lại. */
   sanPhamNho?: boolean
+  /** Số phiên sổ khách lúc đọc (mig 254) — `null` = sổ chưa có / đọc hỏng. */
+  phienKhach?: number | null
+  /** Sổ khách lấy từ bản nhớ trên máy (đã kiểm khoá — xem `dungLaiKhach`), không tải lại. */
+  khachNho?: boolean
   /**
    * Chuyện cần nói với người dùng. RỖNG nghĩa là mọi thứ bình thường —
    * đừng im lặng khi mảng này có phần tử.
@@ -208,6 +212,7 @@ export async function peekCachedSellRefData(uid?: string | null): Promise<SellRe
     cachedAt: cached.cachedAt,
     /* Số phiên GHI CÙNG bản này (bản lưu cũ chưa có thì `null`). */
     phien: cached.phien ?? null,
+    phienKhach: cached.khach?.phien ?? null,
     warnings: [],
   }
 }
@@ -265,17 +270,37 @@ function docLoBan(sb: Client) {
  * vài byte: máy NVBH hỏi nó để biết có phải tải lại danh mục không (chủ nhà 28/09/2026). `null` =
  * sổ chưa chạy 209 / đọc hỏng → nơi gọi coi như không biết (giữ luật 30 phút cũ).
  */
-export async function docPhienDanhMuc(supabase: unknown): Promise<number | null> {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return null
+/** Hai số phiên đọc cùng MỘT câu: hàng (mig 209) + sổ khách (mig 254). `null` = không biết. */
+export interface PhienDanhMuc {
+  phien: number | null
+  phienKhach: number | null
+}
+const KHONG_BIET_PHIEN: PhienDanhMuc = { phien: null, phienKhach: null }
+const soPhien = (x: unknown): number | null => {
+  const n = Number(x)
+  return x != null && Number.isFinite(n) ? n : null
+}
+export async function docPhienDanhMucDu(supabase: unknown): Promise<PhienDanhMuc> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return KHONG_BIET_PHIEN
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any
+  const doc = (cols: string) =>
+    sb.from("danh_muc_ban_phien").select(cols).eq("id", 1).maybeSingle() as Promise<{
+      data: { phien?: unknown; phien_khach?: unknown } | null
+      error: unknown
+    }>
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from("danh_muc_ban_phien").select("phien").eq("id", 1).maybeSingle()
-    if (error || !data) return null
-    const n = Number((data as { phien?: unknown }).phien)
-    return Number.isFinite(n) ? n : null
+    let r = await doc("phien, phien_khach")
+    /* Sổ chưa chạy mig 254 (thiếu cột → 400) → hỏi lại chỉ số phiên hàng; số khách không biết → sổ khách tải lại như cũ. */
+    if (r.error) r = await doc("phien")
+    if (r.error || !r.data) return KHONG_BIET_PHIEN
+    return { phien: soPhien(r.data.phien), phienKhach: soPhien(r.data.phien_khach) }
   } catch {
-    return null
+    return KHONG_BIET_PHIEN
   }
+}
+export async function docPhienDanhMuc(supabase: unknown): Promise<number | null> {
+  return (await docPhienDanhMucDu(supabase)).phien
 }
 
 /** Người đang tải danh mục — sản phẩm NVBH thấy tuỳ vai + công ty được làm (RLS mig 081). */
@@ -294,6 +319,20 @@ export function dungLaiSanPham(nho: OrderRefData | null | undefined, khoa: KhoaS
   return (
     !!nho && !!khoa && nho.products.length > 0 &&
     nho.phien === khoa.phien && nho.uid === khoa.uid && nho.vai === khoa.vai && nho.ncc === khoa.ncc
+  )
+}
+
+/**
+ * ⚠ DÙNG LẠI SỔ KHÁCH ĐÃ LƯU TRÊN MÁY (đợt 4 tốc độ, mig 254) — POS / bán hàng mở là kéo cả sổ khách ≈570 KB về dù khách
+ *   hầu như không đổi trong ngày. Chỉ khi khớp ĐỦ: số phiên sổ khách (tăng khi khách / nhóm khách / phân công / quyền
+ *   xem khách đổi), đúng người, đúng vai (NVBH chỉ thấy khách mình phụ trách). Thiếu một thứ (sổ chưa chạy 254, đọc
+ *   hỏng, bản lưu chưa có khoá khách) là tải lại — khách vừa tạo / vừa được giao không bao giờ "mất" trên máy.
+ */
+export function dungLaiKhach(nho: OrderRefData | null | undefined, khoa: KhoaKhach | null | undefined): boolean {
+  const k = nho?.khach
+  return (
+    !!nho && !!khoa && !!k && nho.customers.length > 0 &&
+    k.phien === khoa.phien && k.uid === khoa.uid && k.vai === khoa.vai
   )
 }
 
@@ -317,51 +356,101 @@ export async function loadSellStock(supabase: unknown): Promise<Record<string, n
   return stockMapFrom(res.rows)
 }
 
+export interface TuyChonTai {
+  /** `false` = màn không dùng sổ khách (POS nhập hàng / trả NCC) — không kéo ≈1 MB khách về, `customers` trả rỗng. */
+  khach?: boolean
+}
+
+const KHONG_TAI_KHACH: AggregateResult<Customer> = { rows: [], truncated: false, error: null, total: 0 }
+
+type PageAll = <T>(cols: string, table: "customers" | "products", orderBy: string) => Promise<AggregateResult<T>>
+
+/**
+ * ⚠ KHOÁ PHỤ `id` SAU CỘT TÊN. Hai cửa hàng / hai mặt hàng trùng tên là
+ *   chuyện thường; các trang chạy SONG SONG, sắp theo tên không duy nhất
+ *   thì Postgres được trả mỗi trang một kiểu — một khách lặp hai lần,
+ *   khách khác biến mất khỏi bộ nhớ đệm, và nhân viên gõ đúng tên mà
+ *   không tìm ra (cùng lý do với lô hàng bên dưới).
+ */
+const taoPageAll = (sb: Client): PageAll => <T,>(cols: string, table: "customers" | "products", orderBy: string) =>
+  fetchAllForAggregate<T>((from, to) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).order("id").range(from, to)) as any
+  )
+
+/** Sổ khách cho màn bán — thiếu cột (sổ chưa chạy migration) thì thử lại bằng `*`. */
+async function docKhachBan(pageAll: PageAll): Promise<AggregateResult<Customer>> {
+  const r = await pageAll<Customer>(CUST_COLS, "customers", "store_name")
+  return r.error ? pageAll<Customer>("*, group:customer_groups(*)", "customers", "store_name") : r
+}
+
+/** Sổ khách RIÊNG — POS đang ở màn nhập hàng / trả NCC (không tải khách) mở thêm tab đơn / hoá đơn / trả hàng khách. */
+export async function loadSellCustomers(supabase: unknown): Promise<{ customers: Customer[]; warnings: string[] }> {
+  const r = await docKhachBan(taoPageAll(supabase as Client))
+  const warnings: string[] = []
+  if (r.error) warnings.push(`Không tải được danh sách khách: ${r.error}`)
+  if (r.truncated) warnings.push("Danh sách khách quá lớn, màn hình còn THIẾU một phần.")
+  return { customers: r.rows, warnings }
+}
+
 /**
  * `nguoi` — người đang tải (biết thì sản phẩm dùng lại được bản lưu trên máy khi khớp khoá, xem `dungLaiSanPham`;
- * không biết thì tải đủ như cũ). Khách + tồn kho luôn đọc mới.
+ * không biết thì tải đủ như cũ). Khách + tồn kho luôn đọc mới — trừ khi `tuyChon.khach === false` (màn không dùng khách).
  */
-export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc | null): Promise<SellRefData> {
+export async function loadSellRefData(
+  supabase: unknown,
+  nguoi?: NguoiTaiDanhMuc | null,
+  tuyChon?: TuyChonTai
+): Promise<SellRefData> {
   const sb = supabase as Client
   const warnings: string[] = []
+  const canKhach = tuyChon?.khach !== false
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     const c = await fromCache("Không có mạng", nguoi?.uid)
     if (c) return c
   }
 
-  /**
-   * ⚠ KHOÁ PHỤ `id` SAU CỘT TÊN. Hai cửa hàng / hai mặt hàng trùng tên là
-   *   chuyện thường; các trang chạy SONG SONG, sắp theo tên không duy nhất
-   *   thì Postgres được trả mỗi trang một kiểu — một khách lặp hai lần,
-   *   khách khác biến mất khỏi bộ nhớ đệm, và nhân viên gõ đúng tên mà
-   *   không tìm ra (cùng lý do với lô hàng bên dưới).
-   */
-  const pageAll = <T,>(cols: string, table: "customers" | "products", orderBy: string) =>
-    fetchAllForAggregate<T>((from, to) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (sb.from(table).select(cols, { count: "exact" }).eq("status", "active").order(orderBy).order("id").range(from, to)) as any
-    )
+  const pageAll = taoPageAll(sb)
+  /* Bản lưu trên máy — đọc MỘT lần, dùng cho cả việc dùng lại sản phẩm lẫn việc ghi lại bản lưu. */
+  const nhoP = getCachedOrderRefData<Customer, SellProduct>().catch(() => null)
 
   /* Có `nguoi`: câu sản phẩm CHỜ số phiên (đọc trước, không song song). Sửa giá chen giữa hai câu thì bản lưu mang số
      CŨ — lần sau số đã khác, tải lại. Song song mà câu sản phẩm về trước thì bản cũ mang số mới: giữ nhầm mãi. Không
      có `nguoi` thì tải song song như cũ, và bản lưu không mang khoá (không dùng lại được). */
-  const phienP = docPhienDanhMuc(sb)
+  /* Hai số phiên (hàng mig 209 + sổ khách mig 254) — MỘT câu. */
+  const phienDuP = docPhienDanhMucDu(sb)
+  const phienP = phienDuP.then((p) => p.phien)
   const khoaP: Promise<KhoaSanPham | null> = nguoi
     ? Promise.all([phienP, docNccCuaNguoi(sb, nguoi)]).then(([p, ncc]) =>
         p === null || ncc === null ? null : { phien: p, uid: nguoi.uid, vai: nguoi.vai, ncc }
       )
     : Promise.resolve(null)
+  /* Khoá sổ khách (mig 254): số phiên khách + người + vai. Như sản phẩm, câu khách CHỜ số phiên về rồi mới đi. */
+  const khoaKhachP: Promise<KhoaKhach | null> = nguoi
+    ? phienDuP.then((p) => (p.phienKhach === null ? null : { phien: p.phienKhach, uid: nguoi.uid, vai: nguoi.vai }))
+    : Promise.resolve(null)
   const sanPhamP: Promise<AggregateResult<SellProduct> & { nho?: boolean }> = nguoi
-    ? Promise.all([khoaP, getCachedOrderRefData<Customer, SellProduct>()]).then(([khoa, nho]) =>
+    ? Promise.all([khoaP, nhoP]).then(([khoa, nho]) =>
         nho && dungLaiSanPham(nho, khoa)
           ? { rows: nho.products, truncated: false, error: null, total: nho.products.length, nho: true }
           : pageAll<SellProduct>(PROD_COLS, "products", "name")
       )
     : pageAll<SellProduct>(PROD_COLS, "products", "name")
+  /* Màn không dùng sổ khách (POS nhập hàng / trả NCC — chủ nhà 23/10/2026) thì không kéo ≈1 MB khách về; biết người thì
+     sổ khách dùng lại bản lưu khi khớp khoá (`dungLaiKhach`), không biết thì tải như cũ. */
+  const khachP: Promise<AggregateResult<Customer> & { nho?: boolean }> = !canKhach
+    ? Promise.resolve(KHONG_TAI_KHACH)
+    : nguoi
+      ? Promise.all([khoaKhachP, nhoP]).then(([khoa, nho]) =>
+          nho && dungLaiKhach(nho, khoa)
+            ? { rows: nho.customers, truncated: false, error: null, total: nho.customers.length, nho: true }
+            : docKhachBan(pageAll)
+        )
+      : docKhachBan(pageAll)
 
-  const [custRes0, prodRes0, batchRes, phien, khoa] = await Promise.all([
-    pageAll<Customer>(CUST_COLS, "customers", "store_name"),
+  const [custRes, prodRes0, batchRes, phienDu, khoa, khoaKhach] = await Promise.all([
+    khachP,
     sanPhamP,
     /**
      * ⚠ PHẢI CÓ `.order("id")`. `fetchAllForAggregate` chia trang bằng
@@ -384,11 +473,12 @@ export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc
      */
     docLoBan(sb),
     /* Số phiên ĐỌC CÙNG LƯỢT với danh mục — lần kiểm sau so với đúng bản đang có. */
-    phienP,
+    phienDuP,
     khoaP,
+    khoaKhachP,
   ])
+  const phien = phienDu.phien
 
-  let custRes = custRes0
   let prodRes = prodRes0
 
   // ⚠ Lỗi ở đây làm MỌI sản phẩm hiện tồn 0 mà không báo gì.
@@ -397,9 +487,6 @@ export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc
   }
   if (prodRes.error) {
     prodRes = await pageAll<SellProduct>("*, price_lists(*), units:product_units(*)", "products", "name")
-  }
-  if (custRes.error) {
-    custRes = await pageAll<Customer>("*, group:customer_groups(*)", "customers", "store_name")
   }
   if (prodRes.error || custRes.error) {
     warnings.push(
@@ -422,7 +509,7 @@ export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc
 
   const customers = custRes.rows
   const products = prodRes.rows
-  if (customers.length === 0 && products.length === 0) {
+  if (products.length === 0 && (customers.length === 0 || !canKhach)) {
     const c = await fromCache("Kết nối không ổn định", nguoi?.uid)
     if (c) return c
     // ⚠ KHÔNG trả về rỗng KÈM IM LẶNG. Xem `diagnoseEmptyCatalog`: 0 dòng
@@ -436,6 +523,21 @@ export async function loadSellRefData(supabase: unknown, nguoi?: NguoiTaiDanhMuc
 
   const stockByProduct = stockMapFrom(batchRes.rows)
   // Lưu lại để lần sau mất mạng vẫn soạn đơn được. Khoá chỉ đi kèm khi sản phẩm ĐỦ (thiếu một khúc thì lần sau tải lại).
-  void cacheOrderRefData({ customers, products, stockByProduct }, prodRes.error || prodRes.truncated ? null : khoa)
-  return { customers, products, stockByProduct, source: "server", warnings, phien, sanPhamNho: !!prodRes0.nho }
+  const khoaGhi = prodRes.error || prodRes.truncated ? null : khoa
+  const khoaKhachGhi = custRes.error || custRes.truncated ? null : khoaKhach
+  if (canKhach) {
+    void cacheOrderRefData({ customers, products, stockByProduct }, khoaGhi, khoaKhachGhi)
+  } else {
+    /* ⚠ Không tải khách thì KHÔNG đè khách rỗng lên bản lưu — mất mạng mở bán hàng là không còn khách nào. Có bản lưu
+       của đúng người thì giữ khách cũ (kèm khoá khách của bản ấy), chỉ làm mới hàng + tồn; không có thì thôi, lần mở
+       đơn / hoá đơn sau sẽ ghi. */
+    const nho = await nhoP
+    if (nho && !cuaNguoiKhac(nho, nguoi?.uid)) {
+      void cacheOrderRefData({ customers: nho.customers, products, stockByProduct }, khoaGhi, nho.khach ?? null)
+    }
+  }
+  return {
+    customers, products, stockByProduct, source: "server", warnings,
+    phien, phienKhach: phienDu.phienKhach, sanPhamNho: !!prodRes0.nho, khachNho: !!custRes.nho,
+  }
 }

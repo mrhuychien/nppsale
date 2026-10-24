@@ -995,8 +995,9 @@ export default function EmployeesReportPage() {
               value={productFilter}
               onChange={setProductFilter}
               options={catalogs.products}
+              khiMo={catalogs.nang}
               placeholder="Tất cả hàng hóa"
-              loading={catalogs.loading}
+              loading={catalogs.nangDangTai}
             />
           </FilterField>
           {/* NCC chính của mặt hàng thay cho Thương hiệu — chủ nhà 09/10/2026. */}

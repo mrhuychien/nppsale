@@ -916,4 +916,43 @@ SELECT 90, 'Mig 251 (Tắt JIT cho app — danh sách / trang chủ không mất
        THEN 'OK — sổ vốn tắt JIT (mig 251 chỉ để chắc)'
        ELSE 'CHƯA — chạy migration 251 (JIT đang bật cho app: mỗi câu danh sách mất ~0,9 giây biên dịch)' END,
   'jit mặc định của sổ: ' || current_setting('jit')
+UNION ALL
+-- 91. Mig 252 — tắt JIT ở vai ĐĂNG NHẬP của API (authenticator) + anon (chủ nhà 24/10/2026: pg_stat_statements cho thấy
+--     danh sách hoá đơn ~3 giây/câu; tái hiện: JIT bật 4.245 ms, tắt 11 ms). Khác mig 251: Postgres tự áp lúc mở kết
+--     nối, không phụ thuộc PostgREST có áp cài đặt của vai giả lập hay không.
+SELECT 91, 'Mig 252 (Tắt JIT ở vai đăng nhập authenticator + anon — không phụ thuộc PostgREST)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole, unnest(s.setconfig) c
+                     WHERE r.rolname = 'authenticator' AND c = 'jit=off')
+       THEN 'OK — đã vá'
+       WHEN current_setting('jit') = 'off'
+       THEN 'OK — sổ vốn tắt JIT (mig 252 chỉ để chắc)'
+       ELSE 'CHƯA — chạy migration 252 (danh sách hoá đơn có thể mất ~3 giây biên dịch mỗi câu)' END,
+  coalesce((SELECT string_agg(r.rolname || ': ' || c, '; ') FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole, unnest(s.setconfig) c
+             WHERE r.rolname IN ('authenticator', 'anon', 'authenticated') AND c LIKE 'jit=%'), 'chưa vai nào tắt')
+UNION ALL
+-- 92. Mig 253 — RPC điểm bán thiếu ảnh / chờ duyệt lọc + phân trang trên máy chủ (chủ nhà 23/10/2026 "load trang chậm
+--     lắm": màn Điểm bán cần cập nhật kéo cả sổ khách + cả bảng ảnh về máy, điện thoại 5,9 giây). Chưa có thì màn vẫn
+--     chạy theo cách cũ (chậm), không sai số.
+SELECT 92, 'Mig 253 (RPC khach_thieu_anh / khach_cho_duyet_anh — màn Điểm bán cần cập nhật không kéo cả sổ khách)',
+  CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+              AND proname IN ('khach_thieu_anh', 'khach_cho_duyet_anh')) = 2
+       THEN 'OK — đã vá'
+       ELSE 'CHƯA — chạy migration 253 (màn Điểm bán cần cập nhật đang kéo cả sổ khách về máy)' END, ''
+UNION ALL
+-- 93. Mig 254 — số phiên sổ khách bán hàng (đợt 4 tốc độ: POS / bán hàng mở là kéo cả sổ khách ≈570 KB dù khách chưa
+--     đổi; có số phiên thì máy dùng lại bản lưu như đã làm với hàng ở mig 209). Chưa có thì vẫn tải lại mỗi lần, không sai số.
+SELECT 93, 'Mig 254 (Số phiên sổ khách bán hàng — POS / bán hàng không kéo lại cả sổ khách khi khách chưa đổi)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'danh_muc_ban_phien' AND column_name = 'phien_khach')
+       THEN 'CHƯA — chạy migration 254 (POS / bán hàng đang tải lại cả sổ khách mỗi lần mở)'
+       WHEN (SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_phien_khach_ban' AND NOT tgisinternal) < 5
+       THEN 'LỆCH — thiếu trigger (cần 5: customers, customer_groups, customer_assignments, user_permission_overrides, role_permissions), chạy lại mig 254'
+       ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 94. Mig 255 — RPC tồn kho gộp / lọc / tìm / phân trang trên máy chủ (đợt 4 tốc độ: màn Kho hàng kéo cả bảng tồn + cả
+--     2.500 mặt hàng về máy). Chưa có thì màn vẫn chạy theo cách cũ (chậm), không sai số.
+SELECT 94, 'Mig 255 (RPC ton_kho_trang — màn Kho hàng không kéo cả bảng tồn + cả danh mục hàng về máy)',
+  CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'ton_kho_trang') = 1
+       THEN 'OK — đã vá'
+       ELSE 'CHƯA — chạy migration 255 (màn Kho hàng đang kéo cả bảng tồn + cả danh mục hàng về máy)' END, ''
 ) t ORDER BY stt;

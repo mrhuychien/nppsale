@@ -225,6 +225,35 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
   danh mục nền của ô lọc (`AuthProvider`). Thêm bộ nhớ RAM theo người mới thì xoá ở đó.
 - Ô lọc **Khách hàng** của Đơn hàng / Hoá đơn bán (`useKhachLoc`): chỉ tải sổ khách khi khung Lọc nhanh / tấm lọc mở
   hoặc đang lọc một khách — không tải lúc mở màn.
+- **Đợt 4** (chủ nhà 24/10/2026 *"lần lượt hoàn thành toàn bộ"* các chỗ còn chậm rà ra):
+  · Chi tiết khách: `fetchData` đúng **hai** đợt `Promise.all`, chạy sau khi biết người (`authLoading`), bảng giá chỉ tải
+  khi mở tab Bảng giá (`giaDaTai`).
+  · POS nhập hàng / trả NCC **không tải sổ khách** (`canKhachPos`, `loadSellRefData(sb, nguoi, { khach: false })`); mở thêm tab
+  cần khách thì `loadSellCustomers` tải riêng và `setCoKhach(true)` **sau** khi tải xong (gọi trước là effect dọn dẹp huỷ
+  kết quả). Bản lưu IndexedDB giữ khách cũ khi `khach: false`.
+  · Trả hàng (máy tính): một câu gộp `reason, count()` (`docDemNhomTheo`, `src/lib/list/dem-nhom.ts`) thay 6 câu đếm; máy chủ
+  chưa gom nhóm → lùi về đếm lẻ.
+  · Báo cáo `/reports/*`: `useFilterCatalogs` tải danh mục **nhẹ** lúc mở (`taiDanhMucNhe`); danh mục **nặng** (khách / hàng /
+  thương hiệu) chỉ khi ô chọn mở (`khiMo={catalogs.nang}`, `loading={catalogs.nangDangTai}`), một bản dùng chung.
+  · Điểm bán cần cập nhật (`/customers/missing-photos`): đọc qua RPC `khach_thieu_anh` / `khach_cho_duyet_anh` (mig 253,
+  SECURITY INVOKER — RLS tự lọc): máy chủ lọc + đếm ảnh + phân trang 50 dòng kèm `total_count`; tab khác chỉ hỏi tổng
+  (`p_limit` 1); "Tải thêm" nối trang qua `ghepTrang` (không lặp id). Sổ chưa chạy mig 253 (PGRST202 — `chuaCoRpc`) → lùi
+  về cách cũ (`doc-anh.ts`) — đừng bỏ đường cũ khi chủ nhà chưa chạy migration. E2E tắt RPC giả: `POST /__tat_rpc`
+  (`e2e/fake-supabase.mjs`).
+  · **Sổ khách POS / bán hàng nhớ như hàng** (mig 254): số phiên `phien_khach` CÙNG DÒNG `danh_muc_ban_phien` (trigger mức
+  câu lệnh trên `customers` / `customer_groups` / `customer_assignments` / `user_permission_overrides` / `role_permissions`
+  — KHÔNG gắn `sales_orders`). `docPhienDanhMucDu` đọc hai số MỘT câu; thiếu cột (chưa chạy 254) thì hỏi lại chỉ `phien`,
+  khách tải như cũ. Khớp khoá `dungLaiKhach` (số phiên khách + `uid` + vai) mới dùng lại; câu khách CHỜ số phiên như câu
+  hàng; tồn kho luôn mới. Khoá khách ghi cùng bản lưu (`cacheOrderRefData(…, khoa, khach)`), màn NCC giữ khoá khách cũ.
+  Quay lại app (`kiemPhienDanhMucShared`) số khách đổi cũng là tải lại. Sổ giả e2e tự tăng `phien_khach` khi ghi các bảng
+  ấy (qua bảng hay RPC) như trigger thật.
+  · **Tồn kho hiện tại** (`/inventory`, `StockBalanceTable`): đọc qua RPC `ton_kho_trang` (mig 255, SECURITY INVOKER): máy chủ
+  gộp kho bán / kho date theo mặt hàng, lọc "còn tồn", tìm theo `tim_kd` (mọi từ, không dấu), sắp (tên `vi-x-icu` / giá trị /
+  tồn), chia trang; mỗi dòng kèm `total_count` + `sum_*` của CẢ tập đã lọc — dòng "N sản phẩm — tổng giá trị" và Tổng cộng vẫn
+  đúng trên cả sổ. Máy tính theo thanh trang, điện thoại 20 dòng + "Xem thêm" (`ghepTrang`, `src/lib/list/ghep-trang.ts`); ô
+  tìm hỏi sau 300 ms ngừng gõ; Xuất Excel đọc hết các trang (`docTatCaTon`). Sổ chưa chạy 255 (`chuaCoRpc`,
+  `src/lib/supabase/chua-co-rpc.ts` — dùng chung cho mọi màn có đường lùi) → lùi về cách cũ (`gopTonTheoSanPham`), giữ nguyên
+  đường cũ.
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.
@@ -277,7 +306,10 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   Postgres gọi lại cho TỪNG dòng (NVBH đếm công nợ 1,4 giây thay vì 8 ms). Hoặc cuối migration gọi
   `SELECT public._rls_tinh_mot_lan_ap();`. Hàm theo dòng (`customer_org_id(customer_id)`) để nguyên.
 - **JIT tắt cho vai `authenticated`** (mig 251): bật thì mỗi câu danh sách mất ~0,9 giây biên dịch, trang chủ 4,9 giây.
-  Đừng bật lại; câu nào thật sự cần thì `ALTER FUNCTION … SET jit = on` riêng hàm ấy.
+  Đừng bật lại; câu nào thật sự cần thì `ALTER FUNCTION … SET jit = on` riêng hàm ấy. **Mig 252 tắt thêm ở vai đăng nhập
+  `authenticator` + `anon`** (chủ nhà 24/10/2026, bảng `pg_stat_statements`: danh sách hoá đơn ~3 s/câu; tái hiện trên sổ
+  thử 40.000 HĐ: JIT bật 4.245 ms, tắt 11 ms) — cài đặt của vai đăng nhập do Postgres tự áp lúc mở kết nối, không phụ
+  thuộc PostgREST có áp cài đặt của vai giả lập hay không.
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

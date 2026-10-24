@@ -83,7 +83,7 @@ export function tables() {
     suppliers: [{ id: NCC, org_id: ORG, code: "NCC1", name: "Vinamilk", status: "active", is_active: true }],
     role_permissions: [],
     /* Số phiên danh mục bán hàng (mig 209) — bài e2e tăng tay (máy chủ giả không có trigger). */
-    danh_muc_ban_phien: [{ id: 1, phien: 1, luc: "2026-09-28T00:00:00Z" }],
+    danh_muc_ban_phien: [{ id: 1, phien: 1, phien_khach: 1, luc: "2026-09-28T00:00:00Z", luc_khach: "2026-09-28T00:00:00Z" }],
     /* Ba đơn: hai đơn tháng này, một đơn NĂM NGOÁI — máy tính chọn "Tất cả"
        phải thấy cả ba (lỗi cũ: lọc ngầm còn tháng này). */
     sales_orders: [
@@ -413,6 +413,28 @@ const duocDuyetAnh = (db, user) => {
   return u?.role === "owner"
 }
 
+/** Khách đang hoạt động người gọi thấy được (RLS giả) kèm số ảnh, cờ duyệt, số yêu cầu chờ — cho hai RPC mig 253. */
+function khachThieuAnh(db, user) {
+  const toi = (db.users || []).find((u) => u.id === user?.id)
+  const cuaToi = new Set((db.customer_assignments || []).filter((a) => a.user_id === user?.id && (a.status ?? "active") === "active").map((a) => a.customer_id))
+  return (db.customers || [])
+    .filter((c) => c.status === "active" && (toi?.role !== "sales" || cuaToi.has(c.id)))
+    .map((c) => ({
+      id: c.id, store_name: c.store_name, address: c.address ?? null, phone: c.phone ?? null,
+      gps_lat: c.gps_lat ?? null, gps_lng: c.gps_lng ?? null,
+      photo_count: (db.customer_photos || []).filter((p) => p.customer_id === c.id).length,
+      da_duyet: !!c.photo_approved_at,
+      so_yeu_cau: (db.customer_photo_requests || []).filter((r) => r.customer_id === c.id && r.status === "pending").length,
+    }))
+    /* So sánh thô như bảng giả xếp `order=store_name,id` — hai đường (RPC / đọc bảng) ra cùng thứ tự, như trên sổ thật. */
+    .sort((a, b) => (a.store_name > b.store_name ? 1 : a.store_name < b.store_name ? -1 : a.id > b.id ? 1 : a.id < b.id ? -1 : 0))
+}
+function trangKhach(ds, p_offset, p_limit) {
+  const tu = Math.max(Number(p_offset) || 0, 0)
+  const n = Math.min(Math.max(Number(p_limit) || 50, 1), 200)
+  return ds.slice(tu, tu + n).map((c) => ({ ...c, total_count: ds.length }))
+}
+
 export const rpc = {
   /* Lượt soạn hàng (mig 225): tạo / gộp tiến độ (null = xoá khoá) / hoàn tất (đánh dấu HĐ đã soạn) / huỷ. */
   tao_luot_soan: ({ p_invoice_ids }, { db, newId }) => {
@@ -622,6 +644,55 @@ export const rpc = {
   },
   ban_giao_khach: banGiaoKhach,
   hang_khach_da_lay: hangKhachDaLay,
+  /* Mig 253 — điểm bán thiếu ảnh / chờ duyệt lọc + phân trang trên máy chủ. RLS giả: NVBH chỉ khách mình phụ trách. */
+  khach_thieu_anh: ({ p_tab, p_offset, p_limit }, { db, user }) => {
+    const ds = khachThieuAnh(db, user).filter((c) =>
+      p_tab === "no_photo" ? c.photo_count === 0 : p_tab === "no_gps" ? c.gps_lat == null || c.gps_lng == null
+        : c.photo_count === 0 || c.gps_lat == null || c.gps_lng == null)
+    return trangKhach(ds, p_offset, p_limit)
+  },
+  /* Mig 255 — tồn kho gộp / lọc / tìm / sắp / phân trang trên máy chủ, kèm tổng cộng cả tập (bảng `v_stock_balance_by_zone`
+     giả do chốt gieo). Luật dòng như màn cũ: mã ngừng bán chỉ khi còn tồn; "còn tồn" = tổng SL > 0; tìm theo khoá tim_kd. */
+  ton_kho_trang: ({ p_tim, p_con_ton, p_sap, p_offset, p_limit }, { db }) => {
+    const chuan = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase()
+    const tu = chuan(p_tim).split(/\s+/).map((w) => w.replace(/[^a-z0-9]+/g, "")).filter(Boolean)
+    const ton = new Map()
+    for (const v of db.v_stock_balance_by_zone || []) {
+      const t = ton.get(v.product_id) ?? { sale_qty: 0, sale_value: 0, date_qty: 0, date_value: 0 }
+      const q = Number(v.qty_in_base_uom) || 0, g = Number(v.value) || 0
+      if (v.warehouse_zone === "date") { t.date_qty += q; t.date_value += g } else { t.sale_qty += q; t.sale_value += g }
+      ton.set(v.product_id, t)
+    }
+    const conTon = p_con_ton !== false
+    const ds = (db.products || [])
+      .filter((p) => tu.every((w) => String(p.tim_kd ?? "").includes(w)))
+      .map((p) => {
+        const t = ton.get(p.id) ?? { sale_qty: 0, sale_value: 0, date_qty: 0, date_value: 0 }
+        return {
+          product_id: p.id, sku: p.sku, name: p.name, base_unit: p.base_unit, status: p.status ?? "active",
+          units: (p.units || []).map((u) => ({ unit_name: u.unit_name, conversion: u.conversion })),
+          ...t, total_qty: t.sale_qty + t.date_qty, total_value: t.sale_value + t.date_value,
+        }
+      })
+      .filter((r) => (r.status === "active" || r.sale_qty !== 0 || r.date_qty !== 0) && (!conTon || r.total_qty > 0))
+      .sort((a, b) =>
+        (p_sap === "gia-tri" ? b.total_value - a.total_value : p_sap === "so-luong" ? b.total_qty - a.total_qty : 0)
+        || a.name.localeCompare(b.name, "vi") || a.product_id.localeCompare(b.product_id))
+    const tong = ds.reduce((s, r) => ({
+      sale_qty: s.sale_qty + r.sale_qty, sale_value: s.sale_value + r.sale_value, date_qty: s.date_qty + r.date_qty, date_value: s.date_value + r.date_value,
+    }), { sale_qty: 0, sale_value: 0, date_qty: 0, date_value: 0 })
+    const tu0 = Math.max(Number(p_offset) || 0, 0)
+    const n = Math.min(Math.max(Number(p_limit) || 20, 1), 500)
+    return ds.slice(tu0, tu0 + n).map((r) => ({
+      ...r, total_count: ds.length,
+      sum_sale_qty: tong.sale_qty, sum_sale_value: tong.sale_value, sum_date_qty: tong.date_qty, sum_date_value: tong.date_value,
+      sum_total_qty: tong.sale_qty + tong.date_qty, sum_total_value: tong.sale_value + tong.date_value,
+    }))
+  },
+  khach_cho_duyet_anh: ({ p_offset, p_limit }, { db, user }) => {
+    const ds = khachThieuAnh(db, user).filter((c) => c.so_yeu_cau > 0 || (!c.da_duyet && (c.photo_count > 0 || (c.gps_lat != null && c.gps_lng != null))))
+    return trangKhach(ds, p_offset, p_limit)
+  },
   bao_cao_so_ban: baoCaoSoBan,
   bao_cao_cong_no: baoCaoCongNo,
   bao_cao_ton_kho: baoCaoTonKho,

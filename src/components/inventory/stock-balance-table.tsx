@@ -8,10 +8,14 @@
  *
  * Click a row → opens StockHistoryDrawer for that product. Search +
  * "chỉ hiện hàng còn tồn" filter at the top.
+ *
+ * ⚠ HAI ĐƯỜNG ĐỌC (chủ nhà 23/10/2026 "tốc độ load trang chậm lắm" → đợt 4): sổ có RPC `ton_kho_trang` (mig 255) thì máy
+ *   chủ gộp + lọc + tìm + sắp + chia trang, máy chỉ nhận trang đang xem kèm TỔNG CỘNG của cả tập đã lọc; sổ chưa có
+ *   (PGRST202) thì lùi về cách cũ: đọc đủ hai bảng, gộp / lọc / chia trang trên máy (`gopTonTheoSanPham`).
  */
 
 import { duocXuatFile } from "@/lib/permissions"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePagination } from "@/hooks/use-pagination"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { createClient } from "@/lib/supabase/client"
@@ -37,6 +41,13 @@ import { nhanSapXep, sapXepKeTiep, sapXepTon, type SapXepTon } from "@/lib/inven
 import { StockHistoryDrawer } from "@/components/inventory/stock-history-drawer"
 import { buildStockExportAoa, stockExportFileName } from "@/lib/inventory/stock-export"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { errorMessage } from "@/lib/errors"
+import { chuaCoRpc } from "@/lib/supabase/chua-co-rpc"
+import { ghepTrang } from "@/lib/list/ghep-trang"
+import { TONG_RONG, docTatCaTon, docTrangTon, type DongTon, type TongTon } from "@/lib/inventory/ton-kho-trang"
+
+/** Số dòng mỗi lần "Xem thêm" trên điện thoại — như mẫu "đang hiện 20/257"; đường RPC cũng đọc từng trang này. */
+const BUOC_HIEN = 20
 
 interface BalanceRow {
   product_id: string
@@ -180,11 +191,24 @@ export function StockBalanceTable({
   const [loadError, setLoadError] = useState<string | null>(null)
   const pg = usePagination()
 
+  /* ⚠ HAI ĐƯỜNG ĐỌC (xem đầu tệp): `rpc` true = máy chủ chia trang (`trang` là trang đang xem — điện thoại: các trang đã
+     nối), `tongSo` / `tongCong` là số dòng + tổng cộng của CẢ tập đã lọc; `rpc` false = đường cũ (rows / products). */
+  const cheDo = useRef<"rpc" | "cu" | null>(null)
+  const [rpc, setRpc] = useState<boolean | null>(null)
+  const [trang, setTrang] = useState<DongTon[]>([])
+  const [tongSo, setTongSo] = useState(0)
+  const [tongCong, setTongCong] = useState<TongTon>(TONG_RONG)
+  const [sapXep, setSapXep] = useState<SapXepTon>("ten")
+  const [dangThem, setDangThem] = useState(false)
+  /* Ô tìm hỏi máy chủ sau khi NGỪNG gõ 300 ms — không một câu mỗi phím. */
+  const [timTre, setTimTre] = useState("")
   useEffect(() => {
-    if (!user?.org_id) return
-    let cancelled = false
-    const supabase = createClient()
-    setLoading(true)
+    const t = setTimeout(() => setTimTre(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  /* ---------------- Đường cũ: sổ chưa có RPC mig 255 — đọc đủ, gộp trên máy ---------------- */
+  const taiCachCu = useCallback((supabase: ReturnType<typeof createClient>, huy: () => boolean) => {
     // ⚠ PHẢI PHÂN TRANG CẢ HAI. Supabase chặn 1.000 dòng mỗi request và
     // trả 200 KHÔNG kèm lỗi.
     //
@@ -227,7 +251,7 @@ export function StockBalanceTable({
           .range(from, to)
       ),
     ]).then(([balRes, prodRes]) => {
-      if (cancelled) return
+      if (huy()) return
       // View v_stock_balance_by_zone chạy security_invoker (mig 092) nên
       // chịu RLS. View luôn trả 200 kể cả khi bị chặn → không có lỗi để
       // hiện; giữ lỗi lại để MÀN HÌNH nói ra, đừng chỉ ghi console.
@@ -246,18 +270,73 @@ export function StockBalanceTable({
       setProducts(map)
       setLoading(false)
     })
+  }, [])
+
+  /* ---------------- Đường RPC: trang đang xem (máy tính: theo thanh trang; điện thoại: 20 dòng đầu + "Xem thêm") ---------------- */
+  useEffect(() => {
+    if (!user?.org_id) return
+    /* Đường cũ đã đọc đủ một lần — lọc / tìm / sắp / chia trang trên máy, không hỏi lại. */
+    if (cheDo.current === "cu") return
+    let cancelled = false
+    const supabase = createClient()
+    setLoading(true)
+    setLoadError(null)
+    docTrangTon(supabase, {
+      tim: timTre,
+      conTon: onlyOnHand,
+      sapXep: dienThoai ? sapXep : "ten",
+      offset: dienThoai ? 0 : pg.from,
+      limit: dienThoai ? BUOC_HIEN : pg.pageSize,
+    })
+      .then((kq) => {
+        if (cancelled) return
+        cheDo.current = "rpc"
+        setRpc(true)
+        setTrang(kq.rows)
+        setTongSo(kq.tong ?? 0)
+        setTongCong(kq.tongCong ?? TONG_RONG)
+        setLoading(false)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        if (cheDo.current === null && chuaCoRpc(err)) {
+          cheDo.current = "cu"
+          setRpc(false)
+          taiCachCu(supabase, () => cancelled)
+          return
+        }
+        setLoadError(`Không đọc được số liệu tồn kho: ${errorMessage(err)}`)
+        setLoading(false)
+      })
     return () => {
       cancelled = true
     }
-  }, [user?.org_id])
+  }, [user?.org_id, timTre, onlyOnHand, sapXep, dienThoai, pg.from, pg.pageSize, taiCachCu])
+
+  /* Điện thoại, đường RPC: "Xem thêm" nối trang kế từ máy chủ (không lặp mã khi ranh giới trang dịch). */
+  const themTrang = useCallback(async () => {
+    setDangThem(true)
+    try {
+      const kq = await docTrangTon(createClient(), { tim: timTre, conTon: onlyOnHand, sapXep, offset: trang.length, limit: BUOC_HIEN })
+      setTrang((cu) => ghepTrang(cu, kq.rows, (r) => r.product.id))
+      if (kq.tong != null) setTongSo(kq.tong)
+    } catch (err) {
+      setLoadError(`Không đọc được số liệu tồn kho: ${errorMessage(err)}`)
+    }
+    setDangThem(false)
+  }, [timTre, onlyOnHand, sapXep, trang.length])
 
   const pivot = useMemo<PivotRow[]>(() => {
+    /* Đường RPC: máy chủ đã lọc / tìm / sắp — `trang` là trang đang xem. */
+    if (rpc) return trang
     let arr = gopTonTheoSanPham(rows, products, onlyOnHand)
     if (search.trim()) {
       arr = arr.filter((r) => viMatchAllWords(search, r.product.sku, r.product.name))
     }
     return arr.sort((a, b) => a.product.name.localeCompare(b.product.name, "vi"))
-  }, [rows, products, search, onlyOnHand])
+  }, [rpc, trang, rows, products, search, onlyOnHand])
+  /** Số dòng của CẢ tập đã lọc — đường RPC là tổng máy chủ đếm, đường cũ là số dòng gộp trên máy. */
+  const soDong = rpc ? tongSo : pivot.length
 
   /**
    * ⚠ CHIA TRANG CHỈ Ở PHẦN VẼ, KHÔNG Ở PHẦN ĐỌC.
@@ -272,14 +351,14 @@ export function StockBalanceTable({
    * được.
    */
   const pageRows = useMemo(
-    () => pivot.slice(pg.from, pg.from + pg.pageSize),
-    [pivot, pg.from, pg.pageSize]
+    () => (rpc ? pivot : pivot.slice(pg.from, pg.from + pg.pageSize)),
+    [rpc, pivot, pg.from, pg.pageSize]
   )
 
-  // Tổng số dòng để thanh phân trang biết có bao nhiêu trang.
+  // Tổng số dòng để thanh phân trang biết có bao nhiêu trang (đường RPC: tổng máy chủ đếm).
   useEffect(() => {
-    pg.setTotal(pivot.length)
-  }, [pivot.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    pg.setTotal(soDong)
+  }, [soDong]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lọc hay tìm kiếm đổi thì về trang 1 — đứng ở trang 12 của kết quả cũ
   // rồi lọc còn 3 dòng thì màn hình trống trơn mà không hiểu vì sao.
@@ -288,6 +367,8 @@ export function StockBalanceTable({
   }, [search, onlyOnHand]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => {
+    /* Đường RPC: tổng cộng của CẢ tập đã lọc, máy chủ tính trước khi cắt trang — không phải tổng của một trang. */
+    if (rpc) return tongCong
     return pivot.reduce(
       (acc, r) => {
         acc.saleQty += r.saleQty
@@ -307,7 +388,7 @@ export function StockBalanceTable({
         totalValue: 0,
       }
     )
-  }, [pivot])
+  }, [rpc, tongCong, pivot])
 
   /**
    * Xuất đúng những dòng ĐANG HIỆN ra Excel.
@@ -317,12 +398,16 @@ export function StockBalanceTable({
    * cho một người dùng.
    */
   const handleExport = async () => {
-    if (pivot.length === 0) return
+    if (soDong === 0) return
     setExporting(true)
     try {
       const XLSX = await import("xlsx")
+      /* Đường RPC: xuất ĐÚNG tập đang lọc trên máy chủ (đọc hết các trang), không chỉ trang đang xem. */
+      const dong = rpc
+        ? await docTatCaTon(createClient(), { tim: timTre, conTon: onlyOnHand, sapXep: dienThoai ? sapXep : "ten" })
+        : pivot
       const aoa = buildStockExportAoa(
-        pivot.map((r) => ({
+        dong.map((r) => ({
           sku: r.product.sku,
           name: r.product.name,
           baseUnit: r.product.base_unit,
@@ -361,6 +446,7 @@ export function StockBalanceTable({
     return (
       <TonKhoDienThoai
         rows={pivot}
+        tongSo={soDong}
         loading={loading}
         loadError={loadError}
         exportError={exportError}
@@ -368,6 +454,10 @@ export function StockBalanceTable({
         onSearch={setSearch}
         onlyOnHand={onlyOnHand}
         onOnlyOnHand={setOnlyOnHand}
+        sapXep={sapXep}
+        onSapXep={setSapXep}
+        onThem={rpc ? themTrang : undefined}
+        dangThem={dangThem}
         xemGiaTri={xemDuocGiaVon(user?.role)}
         onOpen={setDrawerProductId}
         dauMuc={dauMuc}
@@ -375,8 +465,8 @@ export function StockBalanceTable({
           <button
             type="button"
             onClick={handleExport}
-            disabled={loading || exporting || pivot.length === 0}
-            title={pivot.length === 0 ? "Không có dòng nào để xuất" : `Xuất ${pivot.length} dòng đang hiện ra Excel`}
+            disabled={loading || exporting || soDong === 0}
+            title={soDong === 0 ? "Không có dòng nào để xuất" : `Xuất ${soDong} dòng đang lọc ra Excel`}
             className="tap inline-flex items-center gap-1.5 text-sm font-semibold text-primary disabled:opacity-50"
           >
             <FileSpreadsheet className="h-4 w-4" />
@@ -430,21 +520,21 @@ export function StockBalanceTable({
           variant="outline"
           size="sm"
           onClick={handleExport}
-          disabled={loading || exporting || pivot.length === 0}
-          // Xuất đúng những dòng ĐANG HIỆN, không phải toàn bộ kho: người
+          disabled={loading || exporting || soDong === 0}
+          // Xuất đúng những dòng ĐANG LỌC, không phải toàn bộ kho: người
           // ta lọc rồi mới bấm xuất thì mong nhận đúng phần đã lọc.
           title={
-            pivot.length === 0
+            soDong === 0
               ? "Không có dòng nào để xuất"
-              : `Xuất ${pivot.length} dòng đang hiện ra Excel`
+              : `Xuất ${soDong} dòng đang lọc ra Excel`
           }
         >
           <Download className="mr-1.5 h-4 w-4" />
           {exporting ? "Đang xuất…" : "Xuất Excel"}
         </Button>
         )}
-        <span className="ml-auto text-xs text-muted-foreground">
-          {pivot.length} sản phẩm — tổng giá trị{" "}
+        <span className="ml-auto text-xs text-muted-foreground" data-testid="ton-dem-may-tinh">
+          {soDong} sản phẩm — tổng giá trị{" "}
           <strong className="text-foreground">{formatCurrency(totals.totalValue)}</strong>
         </span>
       </div>
@@ -573,15 +663,17 @@ export function StockBalanceTable({
   )
 }
 
-/** Số dòng mỗi lần "Xem thêm" trên điện thoại — như mẫu "đang hiện 20/257". */
-const BUOC_HIEN = 20
-
-/** Danh sách tồn trên điện thoại: ô tìm, chip Còn tồn / Sắp xếp, dòng tên · SKU · SL cơ sở · giá trị. */
+/**
+ * Danh sách tồn trên điện thoại: ô tìm, chip Còn tồn / Sắp xếp, dòng tên · SKU · SL cơ sở · giá trị.
+ * `onThem` có = đường RPC: `rows` là các trang máy chủ đã sắp + nối, `tongSo` là tổng máy chủ đếm, "Xem thêm" hỏi trang kế;
+ * không có = đường cũ: sắp + cắt từng 20 dòng trên máy.
+ */
 function TonKhoDienThoai({
-  rows, loading, loadError, exportError, search, onSearch, onlyOnHand, onOnlyOnHand,
-  xemGiaTri, onOpen, dauMuc, nutXuat, drawer,
+  rows, tongSo, loading, loadError, exportError, search, onSearch, onlyOnHand, onOnlyOnHand,
+  sapXep, onSapXep, onThem, dangThem, xemGiaTri, onOpen, dauMuc, nutXuat, drawer,
 }: {
   rows: PivotRow[]
+  tongSo: number
   loading: boolean
   loadError: string | null
   exportError: string | null
@@ -589,17 +681,21 @@ function TonKhoDienThoai({
   onSearch: (s: string) => void
   onlyOnHand: boolean
   onOnlyOnHand: (v: boolean) => void
+  sapXep: SapXepTon
+  onSapXep: (k: SapXepTon) => void
+  onThem?: () => void
+  dangThem: boolean
   xemGiaTri: boolean
   onOpen: (id: string) => void
   dauMuc?: (nutXuat: ReactNode) => ReactNode
   nutXuat: ReactNode
   drawer: ReactNode
 }) {
-  const [sapXep, setSapXep] = useState<SapXepTon>("ten")
   const [soHien, setSoHien] = useState(BUOC_HIEN)
   useEffect(() => { setSoHien(BUOC_HIEN) }, [search, onlyOnHand, sapXep])
-  const daSap = useMemo(() => sapXepTon(rows, sapXep), [rows, sapXep])
-  const hien = daSap.slice(0, soHien)
+  const daSap = useMemo(() => (onThem ? rows : sapXepTon(rows, sapXep)), [rows, sapXep, onThem])
+  const hien = onThem ? daSap : daSap.slice(0, soHien)
+  const tongHien = onThem ? tongSo : daSap.length
 
   return (
     <div className="space-y-3" data-testid="ton-kho-dien-thoai">
@@ -636,12 +732,12 @@ function TonKhoDienThoai({
         </button>
         <button
           type="button"
-          onClick={() => setSapXep(sapXepKeTiep(sapXep))}
+          onClick={() => onSapXep(sapXepKeTiep(sapXep))}
           className="inline-flex h-9 items-center gap-1 rounded-full border border-outline-variant bg-card px-3 text-[13px] font-semibold text-on-surface"
         >
           <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" /> Sắp xếp: {nhanSapXep(sapXep)}
         </button>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground" data-testid="ton-dem-sku">{rows.length} SKU</span>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground" data-testid="ton-dem-sku">{tongSo} SKU</span>
       </div>
 
       {loading ? (
@@ -676,13 +772,14 @@ function TonKhoDienThoai({
           ))}
         </ul>
       )}
-      {!loading && hien.length < daSap.length && (
+      {!loading && hien.length < tongHien && (
         <button
           type="button"
-          onClick={() => setSoHien((n) => n + BUOC_HIEN)}
-          className="h-12 w-full rounded-2xl border bg-card text-sm font-semibold text-primary"
+          onClick={() => (onThem ? onThem() : setSoHien((n) => n + BUOC_HIEN))}
+          disabled={dangThem}
+          className="h-12 w-full rounded-2xl border bg-card text-sm font-semibold text-primary disabled:opacity-50"
         >
-          Xem thêm · đang hiện {hien.length}/{daSap.length}
+          {dangThem ? "Đang tải…" : `Xem thêm · đang hiện ${hien.length}/${tongHien}`}
         </button>
       )}
       {drawer}

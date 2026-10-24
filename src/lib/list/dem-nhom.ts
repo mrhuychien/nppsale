@@ -8,16 +8,28 @@
  */
 export type DemNhom = Record<string, number>
 
-/** Đọc kết quả `select=status,count()`. `null` = máy chủ chưa gom nhóm được (lùi về cách cũ). */
-export function docDemNhom(kq: { data: unknown; error: unknown }): DemNhom | null {
+/**
+ * Đọc kết quả `select=<cot>,count()` gom theo một cột bất kỳ (trạng thái, lý do trả…). `null` = máy chủ chưa gom
+ * nhóm được (lùi về cách cũ). `nullLa`: dòng có cột NULL gom vào khoá này (lý do trả bỏ trống); không truyền thì
+ * NULL là dữ liệu lạ → `null`.
+ */
+export function docDemNhomTheo(cot: string, kq: { data: unknown; error: unknown }, nullLa?: string): DemNhom | null {
   if (kq.error || !Array.isArray(kq.data)) return null
   const out: DemNhom = {}
-  for (const r of kq.data as Array<{ status?: unknown; count?: unknown }>) {
+  for (const r of kq.data as Array<Record<string, unknown> | null>) {
     const n = Number(r?.count)
-    if (r == null || typeof r.status !== "string" || r.count == null || !Number.isFinite(n)) return null
-    out[r.status] = (out[r.status] ?? 0) + n
+    if (r == null || r.count == null || !Number.isFinite(n)) return null
+    const k = r[cot]
+    const khoa = typeof k === "string" ? k : k == null && nullLa !== undefined ? nullLa : null
+    if (khoa === null) return null
+    out[khoa] = (out[khoa] ?? 0) + n
   }
   return out
+}
+
+/** Đọc kết quả `select=status,count()`. `null` = máy chủ chưa gom nhóm được (lùi về cách cũ). */
+export function docDemNhom(kq: { data: unknown; error: unknown }): DemNhom | null {
+  return docDemNhomTheo("status", kq)
 }
 
 /** Tổng mọi trạng thái. */

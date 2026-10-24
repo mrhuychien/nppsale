@@ -64,6 +64,8 @@ test("NVBH: trang chủ theo mẫu — doanh số của tôi theo hóa đơn, ta
 test("NVBH: nút Cập nhật ảnh điểm bán ngay dưới Đi tuyến / Thu công nợ → màn Điểm bán cần cập nhật; mất quyền xem khách thì ẩn", async ({ page }) => {
   await dangNhap(page)
   await api(`users?id=eq.${OWNER}`, "PATCH", { role: "sales" })
+  /* NVBH chỉ thấy khách mình phụ trách (RLS — RPC giả mig 253 lọc như sổ thật) → phân công Cô Ba cho mình. */
+  await api("customer_assignments", "POST", [{ id: "pc-anh-db", org_id: ORG, customer_id: KHACH, user_id: OWNER, role: "primary", status: "active" }])
   try {
     await page.goto("/home")
     const trang = page.getByTestId("trang-chu-nvbh")
@@ -89,5 +91,6 @@ test("NVBH: nút Cập nhật ảnh điểm bán ngay dưới Đi tuyến / Thu 
   } finally {
     await api(`users?id=eq.${OWNER}`, "PATCH", { role: "owner" })
     await api("user_permission_overrides?id=eq.ov-anh-db", "DELETE")
+    await api("customer_assignments?id=eq.pc-anh-db", "DELETE")
   }
 })

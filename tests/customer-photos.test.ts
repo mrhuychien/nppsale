@@ -353,7 +353,8 @@ describe("Màn chụp ảnh", () => {
   it("mở thẳng camera sau và nén ảnh trước khi tải", () => {
     expect(CAP).toContain('capture="environment"')
     expect(CAP).toContain("await prepareImage(file, {")
-    expect(MAX_EDGE).toBeLessThanOrEqual(1600)
+    /* Chủ nhà 24/10/2026 "hạ xuống": cạnh dài 1024 px (từ 1280). */
+    expect(MAX_EDGE).toBe(1024)
   })
 })
 

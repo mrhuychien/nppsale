@@ -257,6 +257,9 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.
+- **Nén trước khi tải lên** (`prepareImage`, `src/lib/images/prepare.ts` — dùng chung ảnh điểm bán + ảnh POD): cạnh dài tối
+  đa **1024 px** (chủ nhà 24/10/2026 *"hạ xuống"* từ 1280), JPEG 0,7, đóng dấu giờ + toạ độ; không phóng to ảnh nhỏ
+  (`kichThuocSauNen`). Nén hỏng (trình duyệt không giải mã được file) thì tải nguyên file gốc, không mất ảnh.
 - **Chụp lại** = sửa dòng `customer_photos` tại chỗ (giữ ô), không xoá-rồi-chèn. Tấm đã ghim vị trí
   (`isStorePinFromPhoto`) thì vị trí đi theo ảnh mới; xoá tấm ấy thì hỏi xoá luôn vị trí.
 - Tự ghim lúc chụp vẫn **chỉ khi chưa có toạ độ** (`shouldPinCustomer`). Dời / xoá vị trí là nút riêng, đọc vị trí

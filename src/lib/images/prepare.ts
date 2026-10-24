@@ -6,10 +6,19 @@
  * kích thước, và bản bị quên sẽ âm thầm tải lên ảnh 6MB.
  */
 
-/** Cạnh dài tối đa sau khi nén, px. */
-export const MAX_EDGE = 1280
+/** Cạnh dài tối đa sau khi nén, px — chủ nhà 24/10/2026 "hạ xuống" (từ 1280): ảnh mặt tiền cửa hàng không cần hơn. */
+export const MAX_EDGE = 1024
 /** Chất lượng JPEG. */
 export const JPEG_QUALITY = 0.7
+
+/**
+ * Kích thước sau khi nén: cạnh dài về tối đa `maxEdge`, giữ tỷ lệ; ảnh nhỏ hơn GIỮ NGUYÊN (không phóng to).
+ * Tách ra để test được mà không cần canvas.
+ */
+export function kichThuocSauNen(width: number, height: number, maxEdge = MAX_EDGE): { w: number; h: number } {
+  const scale = Math.min(1, maxEdge / Math.max(width, height))
+  return { w: Math.round(width * scale), h: Math.round(height * scale) }
+}
 
 export type Stamp = {
   takenAt: Date
@@ -56,9 +65,7 @@ export function stampLines(s: Stamp): string[] {
 export async function prepareImage(file: File, stamp?: Stamp): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
-    const w = Math.round(bitmap.width * scale)
-    const h = Math.round(bitmap.height * scale)
+    const { w, h } = kichThuocSauNen(bitmap.width, bitmap.height)
     const canvas = document.createElement("canvas")
     canvas.width = w
     canvas.height = h

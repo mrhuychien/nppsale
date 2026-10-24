@@ -113,6 +113,16 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
   Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
+### Quét mã vạch ở form sản phẩm
+Chủ nhà 24/10/2026: *"phần thêm sản phẩm đoạn mã vạch thêm cho tao phần quét mã vạch nhé"*.
+- Ô Mã vạch của `ProductForm` (máy tính, điện thoại, khung tạo nhanh) có nút quét → **dùng lại** `BarcodeScanner`
+  (`src/components/ui/barcode-scanner.tsx`, html5-qrcode: camera + nhập tay), không dựng bộ quét thứ hai; mỗi lần mở chỉ nhận
+  MỘT mã rồi đóng (camera bắn 10 lần/giây — `daNhanRef`). Luật mã: `src/lib/products/ma-vach.ts` (`chuanMaVach` bỏ CR/LF
+  máy quét gửi kèm). Nhãn nút nhập tay theo nơi gọi (`manualLabel`).
+- **Enter trong ô Mã vạch không gửi form** (máy quét USB / Bluetooth gõ mã rồi Enter) — chỉ sang ô Tên hàng.
+- Mã đã gắn cho sản phẩm KHÁC → **cảnh báo** (`cauTrungMaVach`, hỏi sổ lúc quét / rời ô, loại chính hàng đang sửa), vẫn cho
+  lưu — sổ không khoá trùng mã vạch.
+
 ### Thẻ khách / NCC ở POS: xem đủ + sửa tại chỗ
 Chủ nhà 21/10/2026: *"Phần tạo đơn POS : phần Khách hàng / NCC khi ấn vào hiện modal xem thông tin đầy đủ và sửa các
 thông tin"*.

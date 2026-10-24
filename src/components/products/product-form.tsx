@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { DEFAULT_VAT_RATE, VAT_RATES } from "@/lib/constants"
@@ -24,10 +24,12 @@ import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, ImagePlus, Plus, ScanBarcode, Trash2 } from "lucide-react"
 import type { Product } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
+import { cauTrungMaVach, chuanMaVach, sanPhamTrungMaVach, type SanPhamTrungMa } from "@/lib/products/ma-vach"
 
 type Tab = "info" | "description" | "warranty"
 
@@ -402,6 +404,7 @@ export function ProductForm({
         <InfoTab
           form={form}
           setForm={setForm}
+          productId={product?.id}
           suppliers={suppliers}
           onNccVuaTao={(n) => setSuppliers((ds) => gopVuaTao(ds, [n]))}
           openSection={openSection}
@@ -513,6 +516,8 @@ interface SecondaryUnit {
 interface InfoTabProps {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
+  /** Sản phẩm đang sửa — chính nó mang mã vạch đang nhập thì không phải trùng. */
+  productId?: string
   suppliers: { id: string; name: string; is_active?: boolean | null }[]
   /** NCC vừa tạo tại chỗ — ghép vào danh sách để ô chọn hiện được tên. */
   onNccVuaTao: (ncc: { id: string; name: string }) => void
@@ -532,6 +537,7 @@ interface InfoTabProps {
 function InfoTab({
   form,
   setForm,
+  productId,
   suppliers,
   onNccVuaTao,
   openSection,
@@ -543,11 +549,50 @@ function InfoTab({
   removeSecondaryUnit,
 }: InfoTabProps) {
   const { user } = useAuth()
+  const supabase = createClient()
+  const { toast } = useToast()
   /** Khung tạo nhanh NCC (chữ đang gõ) — lồng trong khung tạo sản phẩm cũng được: hộp thoại chồng hộp thoại. */
   const [taoNcc, setTaoNcc] = useState<{ chu: string } | null>(null)
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm({ ...form, [key]: value })
   const skuVal = form.sku
+
+  /*
+   * QUÉT MÃ VẠCH (chủ nhà 24/10/2026: "phần thêm sản phẩm đoạn mã vạch thêm cho tao phần quét mã vạch nhé") — dùng lại
+   * `BarcodeScanner` của nhập kho / xuất kho / POS (camera điện thoại + nhập tay), mã đọc được điền vào ô Mã vạch.
+   * Luật mã: src/lib/products/ma-vach.ts.
+   */
+  const [quetMo, setQuetMo] = useState(false)
+  /** Camera bắn 10 lần/giây (xem src/lib/sell/scan.ts) — mỗi lần mở hộp quét chỉ nhận MỘT mã rồi đóng. */
+  const daNhanRef = useRef(false)
+  /** Mã đã hỏi sổ — rời ô nhiều lần với cùng một mã thì không hỏi lại. */
+  const daKiemRef = useRef("")
+  const tenRef = useRef<HTMLInputElement>(null)
+  const orgId = user?.org_id
+
+  /** Mã vạch đã gắn cho sản phẩm KHÁC thì cảnh báo — cảnh báo rồi vẫn cho lưu (sổ không khoá trùng mã vạch). */
+  const kiemTrungMaVach = async (ma: string) => {
+    if (!ma || !orgId || daKiemRef.current === ma) return
+    daKiemRef.current = ma
+    const cau = supabase.from("products").select("id, name, sku").eq("org_id", orgId).eq("barcode", ma)
+    const { data, error } = await (productId ? cau.neq("id", productId) : cau).limit(2)
+    if (error) {
+      console.error("[products/product-form] truy vấn lỗi:", error.message)
+      return
+    }
+    const trung = sanPhamTrungMaVach((data ?? []) as SanPhamTrungMa[], productId)
+    if (trung) toast({ ...cauTrungMaVach(ma, trung), variant: "destructive" })
+  }
+
+  const nhanMaQuet = (raw: string) => {
+    const ma = chuanMaVach(raw)
+    if (!ma || daNhanRef.current) return
+    daNhanRef.current = true
+    setForm((f) => ({ ...f, barcode: ma }))
+    setQuetMo(false)
+    daKiemRef.current = ""
+    void kiemTrungMaVach(ma)
+  }
 
   const placeholderImages = useMemo(() => Array.from({ length: 4 }, (_, i) => i), [])
 
@@ -568,12 +613,38 @@ function InfoTab({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="barcode">Mã vạch</Label>
-              <Input
-                id="barcode"
-                value={String(form.barcode || "")}
-                onChange={(e) => setField("barcode", e.target.value)}
-                placeholder="Nhập mã vạch"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="barcode"
+                  value={String(form.barcode || "")}
+                  onChange={(e) => setField("barcode", e.target.value)}
+                  onKeyDown={(e) => {
+                    /* Máy quét USB / Bluetooth gõ mã rồi Enter — Enter trong ô này KHÔNG gửi form, chỉ sang ô Tên hàng. */
+                    if (e.key !== "Enter") return
+                    e.preventDefault()
+                    void kiemTrungMaVach(chuanMaVach(e.currentTarget.value))
+                    tenRef.current?.focus()
+                  }}
+                  onBlur={(e) => void kiemTrungMaVach(chuanMaVach(e.target.value))}
+                  placeholder="Nhập hoặc quét mã vạch"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-11 w-11 shrink-0 lg:h-10 lg:w-10"
+                  onClick={() => {
+                    daNhanRef.current = false
+                    setQuetMo(true)
+                  }}
+                  title="Quét mã vạch bằng camera"
+                  aria-label="Quét mã vạch"
+                  data-testid="quet-ma-vach"
+                >
+                  <ScanBarcode className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -583,6 +654,7 @@ function InfoTab({
             </Label>
             <Input
               id="name"
+              ref={tenRef}
               value={String(form.name || "")}
               onChange={(e) => setField("name", e.target.value)}
               placeholder="Bắt buộc"
@@ -936,6 +1008,14 @@ function InfoTab({
           </Select>
         </div>
       </div>
+
+      <BarcodeScanner
+        open={quetMo}
+        onClose={() => setQuetMo(false)}
+        onScan={nhanMaQuet}
+        title="Quét mã vạch sản phẩm"
+        manualLabel="Dùng mã này"
+      />
     </div>
   )
 }

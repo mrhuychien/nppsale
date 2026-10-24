@@ -10,9 +10,11 @@ interface BarcodeScannerProps {
   onClose: () => void
   onScan: (code: string) => void
   title?: string
+  /** Nhãn nút gửi ở chế độ nhập tay — màn thêm hàng vào phiếu: "Thêm sản phẩm"; form sản phẩm: "Dùng mã này". */
+  manualLabel?: string
 }
 
-export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạch" }: BarcodeScannerProps) {
+export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạch", manualLabel = "Thêm sản phẩm" }: BarcodeScannerProps) {
   const [mode, setMode] = useState<"camera" | "manual">("camera")
   const [manualInput, setManualInput] = useState("")
   const [cameraError, setCameraError] = useState("")
@@ -110,6 +112,8 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div
+        role="dialog"
+        aria-label={title}
         className="bg-card w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border-t sm:border border-border/40 p-5 space-y-4 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -189,7 +193,7 @@ export function BarcodeScanner({ open, onClose, onScan, title = "Quét mã vạc
               autoFocus
             />
             <Button type="button" className="w-full" onClick={handleManualSubmit} disabled={!manualInput.trim()}>
-              Thêm sản phẩm
+              {manualLabel}
             </Button>
           </div>
         )}

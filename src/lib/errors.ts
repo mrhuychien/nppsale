@@ -27,6 +27,14 @@ interface DbLike {
   hint?: unknown
 }
 
+/** 25P02 — câu bị huỷ vì kết nối / giao dịch phía máy chủ đã hỏng từ trước; số liệu không sai, đọc lại là được. */
+const GIAO_DICH_HONG_VI =
+  "Máy chủ dữ liệu vừa trục trặc một kết nối nên câu hỏi bị huỷ giữa chừng (đã tự thử lại mà vẫn lỗi) — số liệu không " +
+  "sai. Tải lại trang; lặp lại nhiều lần thì báo người quản trị xem nhật ký Postgres trên Supabase"
+
+/** Câu 25P02 đã bị gói vào lỗi khác (`docTheoLoId` ném "đọc …: <câu gốc>") thì không còn mã — nhận bằng nội dung. */
+const GIAO_DICH_HONG_RE = /current transaction is aborted/i
+
 /** Mã lỗi Postgres / PostgREST hay gặp. */
 const CODE_VI: Record<string, string> = {
   "23505": "Dữ liệu này đã tồn tại",
@@ -45,6 +53,9 @@ const CODE_VI: Record<string, string> = {
   "42883": "Máy chủ chưa có chức năng này — nhiều khả năng chưa chạy migration mới. Báo người quản trị chạy các file migration mới nhất rồi thử lại",
   PGRST116: "Không tìm thấy bản ghi",
   PGRST301: "Phiên đăng nhập đã hết hạn. Đăng nhập lại rồi thử lại.",
+  /* Chủ nhà 29/10/2026 (Báo cáo nhân viên): kết nối phía máy chủ hỏng từ trước — app đã tự gửi lại
+     (`thu-lai-giao-dich-hong.ts`); tới được đây là gửi lại vẫn hỏng. */
+  "25P02": GIAO_DICH_HONG_VI,
 }
 
 /**
@@ -209,6 +220,7 @@ export function errorMessage(err: unknown, fallback = "Lỗi không xác định
   }
   if (!vi && code && CODE_VI[code]) vi = CODE_VI[code]
   if (!vi && RLS_RE.test(haystack)) vi = CODE_VI["42501"]
+  if (!vi && GIAO_DICH_HONG_RE.test(haystack)) vi = GIAO_DICH_HONG_VI
 
   // ⚠ Nguyên văn luôn đi kèm. Dịch xong vứt bản gốc là đổi một câu khó
   // hiểu lấy một câu dễ hiểu nhưng SAI khi đoán trượt.

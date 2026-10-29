@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { thuLaiKhiGiaoDichHong } from "@/lib/supabase/thu-lai-giao-dich-hong"
 
 /**
  * Admin Supabase client with service_role key.
@@ -13,5 +14,7 @@ export function createAdminClient() {
   }
   return createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Câu PostgREST trả 25P02 (giao dịch hỏng từ trước) thì gửi lại — một luật với client trình duyệt / máy chủ.
+    global: { fetch: thuLaiKhiGiaoDichHong((input, init) => fetch(input, init)) },
   })
 }

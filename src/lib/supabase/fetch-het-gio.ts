@@ -15,6 +15,8 @@
  *   dồn lên máy chủ đang chậm. Câu chữ thì khác câu huỷ: có `LOI_HET_GIO` — `laHetGio` nhận ra, `errorMessage` dịch.
  */
 
+import { thuLaiKhiGiaoDichHong, type HamFetch } from "@/lib/supabase/thu-lai-giao-dich-hong"
+
 /** Một lượt chờ máy chủ. */
 export const HET_GIO_MS = 10_000
 
@@ -94,8 +96,8 @@ async function motLuot(input: RequestInfo | URL, init: RequestInit | undefined, 
   }
 }
 
-/** fetch cho `createBrowserClient` (`global.fetch`). */
-export async function fetchCoHetGio(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+/** Một câu có hẹn giờ (câu đọc hết giờ thử lại một lần) — chưa gồm luật gửi lại khi giao dịch hỏng. */
+async function fetchHetGioMotCau(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const lan1 = await motLuot(input, init, HET_GIO_MS)
   if (lan1.res) return lan1.res
   if (!lan1.het) throw lan1.err
@@ -107,3 +109,9 @@ export async function fetchCoHetGio(input: RequestInfo | URL, init?: RequestInit
   if (!lan2.het) throw lan2.err
   throw new HetGioError(2)
 }
+
+/**
+ * fetch cho `createBrowserClient` (`global.fetch`): hẹn giờ như trên, và câu PostgREST trả 25P02 ("current transaction is
+ * aborted…", chủ nhà 29/10/2026 — Báo cáo nhân viên) thì gửi lại — xem `thu-lai-giao-dich-hong.ts`.
+ */
+export const fetchCoHetGio: HamFetch = thuLaiKhiGiaoDichHong(fetchHetGioMotCau)

@@ -176,6 +176,8 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
   /* RPC "chưa có trên sổ" giả — chốt đường lùi của màn khi chủ nhà chưa chạy migration: POST /__tat_rpc { fn: ["ten_ham", …] }
      (mảng rỗng = mở lại) → gọi hàm ấy trả 404 PGRST202 đúng như PostgREST khi hàm không có trong schema cache. */
   const rpcTat = new Set()
+  /** Lỗi 25P02 đang tiêm — POST /__loi_25p02. */
+  const loi25p02 = []
   /* Trigger giả của mig 254: ghi vào sổ khách / nhóm khách / phân công / quyền xem khách (qua bảng hay qua RPC) là số phiên
      sổ khách `danh_muc_ban_phien.phien_khach` tăng — như trigger mức câu lệnh trên sổ thật; POS / bán hàng so số này để
      biết có dùng lại sổ khách trong bản lưu không. */
@@ -230,6 +232,24 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       rpcTat.clear()
       for (const f of Array.isArray(json?.fn) ? json.fn : []) rpcTat.add(String(f))
       return send(res, 200, Array.from(rpcTat))
+    }
+    /* Tiêm lỗi 25P02 như PostgREST thật (chủ nhà 29/10/2026: "current transaction is aborted…" ở Báo cáo nhân viên):
+       POST /__loi_25p02 { path: "/rest/v1/stock_entry_lines", chua?: "<chuỗi trong query>", lan: n } → n câu khớp kế tiếp
+       trả 500 + mã 25P02 (giao dịch hỏng, không ghi gì). GET xem còn / đã dùng; DELETE gỡ hết. */
+    if (url.pathname === "/__loi_25p02") {
+      if (req.method === "DELETE") loi25p02.length = 0
+      else if (req.method === "POST") loi25p02.push({ path: String(json?.path ?? ""), chua: String(json?.chua ?? ""), con: Number(json?.lan ?? 1), daDung: 0 })
+      return send(res, 200, loi25p02)
+    }
+    {
+      const q = (() => { try { return decodeURIComponent(url.search) } catch { return url.search } })()
+      const tiem = loi25p02.find((t) => t.con > 0 && url.pathname === t.path && q.includes(t.chua))
+      if (tiem) {
+        tiem.con -= 1
+        tiem.daDung += 1
+        requests.push({ method: req.method, path: url.pathname, query: url.search, body: json, loi: "25P02" })
+        return send(res, 500, { code: "25P02", details: null, hint: null, message: "current transaction is aborted, commands ignored until end of transaction block" })
+      }
     }
     /* `client`: máy chủ Next (createServerClient) hay trình duyệt (createBrowserClient) — @supabase/ssr ghi ở
        X-Client-Info; chốt đếm lượt gọi của trình duyệt dựa vào đây (hồ sơ do máy chủ đọc thì không tính). */

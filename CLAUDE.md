@@ -210,6 +210,13 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
 - Hết giờ ném lỗi tên `AbortError` (thư viện PostgREST không tự thử thêm 3 lần) nhưng câu chữ có `LOI_HET_GIO`:
   `laHetGio` nhận ra, `errorMessage` / `selectResilient` dịch thành câu tiếng Việt (`cauHetGio`), `isAbortError` **không**
   coi là huỷ — coi là huỷ thì trang lặng lẽ `return`, danh sách đứng trắng.
+- **Giao dịch hỏng (25P02) thì gửi lại** (chủ nhà 29/10/2026, Báo cáo nhân viên: *"đọc dòng phiếu nhập hàng trả: current
+  transaction is aborted, commands ignored until end of transaction block"*): lỗi này không do câu bị báo gây ra — kết nối
+  PostgREST đã hỏng từ một lệnh trước (lỗi gốc ở nhật ký Postgres, ngay trước dòng 25P02); giao dịch 25P02 bị huỷ trọn nên
+  gửi lại **an toàn kể cả câu ghi / RPC**. `thuLaiKhiGiaoDichHong` (`src/lib/supabase/thu-lai-giao-dich-hong.ts`): chỉ câu
+  `/rest/v1/`, thân gửi lại được (không có / chuỗi), tối đa 2 lần, nơi gọi huỷ thì thôi — một luật cho client trình duyệt
+  (`fetchCoHetGio`), máy chủ và admin. Gửi lại vẫn hỏng thì `errorMessage` nói tiếng Việt kèm nguyên văn. E2E tiêm lỗi:
+  `POST /__loi_25p02` (`e2e/fake-supabase.mjs`).
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

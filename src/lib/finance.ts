@@ -67,7 +67,8 @@ export async function fetchPnl(
   // Giữ tham số để không phải sửa mọi nơi gọi, và vì nó vẫn đúng ngữ nghĩa.
   void orgId
   const { data, error } = await supabase
-    .rpc("finance_pnl", { p_from: period.from, p_to: period.to })
+    // Hàm chỉ đọc gọi bằng GET (chủ nhà 29/10/2026) — bộ hẹn giờ coi là câu đọc (thử lại, không dặn "có thể đã ghi").
+    .rpc("finance_pnl", { p_from: period.from, p_to: period.to }, { get: true })
     .maybeSingle()
   if (error) throw loiRpc("finance_pnl", error)
 
@@ -159,7 +160,7 @@ export async function fetchBalanceSheet(
   // Cộng ở phía database (migration 093) — xem ghi chú ở fetchPnl.
   void orgId
   const { data, error } = await supabase
-    .rpc("finance_balance_sheet", { p_as_of: asOf })
+    .rpc("finance_balance_sheet", { p_as_of: asOf }, { get: true })
     .maybeSingle()
   if (error) throw loiRpc("finance_balance_sheet", error)
 
@@ -215,7 +216,7 @@ export async function fetchCashFlow(
   // Cộng ở phía database (migration 093) — xem ghi chú ở fetchPnl.
   void orgId
   const { data, error } = await supabase
-    .rpc("finance_cash_flow", { p_from: period.from, p_to: period.to })
+    .rpc("finance_cash_flow", { p_from: period.from, p_to: period.to }, { get: true })
     .maybeSingle()
   if (error) throw loiRpc("finance_cash_flow", error)
 

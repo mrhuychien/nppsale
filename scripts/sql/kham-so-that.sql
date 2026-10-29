@@ -955,4 +955,25 @@ SELECT 94, 'Mig 255 (RPC ton_kho_trang — màn Kho hàng không kéo cả bản
   CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'ton_kho_trang') = 1
        THEN 'OK — đã vá'
        ELSE 'CHƯA — chạy migration 255 (màn Kho hàng đang kéo cả bảng tồn + cả danh mục hàng về máy)' END, ''
+UNION ALL
+-- 95. Mig 256 — báo cáo đọc nhanh (chủ nhà 29/10/2026: "Đọc số bán hàng hỏng: … Máy chủ chưa trả lời sau 10 giây"): hàm
+--     báo cáo tắt JIT NGAY TRÊN HÀM (không phụ thuộc vai / kết nối PostgREST) + bao_cao_so_ban bỏ dong_don / dong_hd_goc.
+--     Chưa vá: mỗi lần mở báo cáo Bán hàng Postgres ngồi biên dịch JIT ~3 giây, máy chủ bận thì quá giờ. Không sai số.
+SELECT 95, 'Mig 256 (Báo cáo đọc nhanh — hàm báo cáo tắt JIT trên hàm, số bán bỏ phần app không đọc)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = to_regprocedure('public.bao_cao_so_ban(date, date)')
+                         AND 'jit=off' = ANY (coalesce(proconfig, '{}')))
+       THEN 'CHƯA — chạy migration 256 (báo cáo Bán hàng mất vài giây biên dịch mỗi lần mở, máy chủ bận thì quá giờ)'
+       WHEN position('''dong_don''' IN pg_get_functiondef(to_regprocedure('public.bao_cao_so_ban(date, date)'))) > 0
+       THEN 'LỆCH — bao_cao_so_ban còn trả dong_don, chạy lại mig 256'
+       WHEN EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+                     AND proname IN ('bao_cao_cong_no', 'bao_cao_ton_kho', 'dashboard_summary', 'dashboard_top_customers',
+                                     'dashboard_channel_revenue', 'finance_pnl', 'finance_cash_flow', 'finance_balance_sheet')
+                     AND NOT ('jit=off' = ANY (coalesce(proconfig, '{}'))))
+       THEN 'LỆCH — còn hàm báo cáo chưa tắt JIT (cột cuối), chạy lại mig 256'
+       ELSE 'OK — đã vá' END,
+  coalesce((SELECT 'chưa tắt JIT: ' || string_agg(proname, ', ' ORDER BY proname) FROM pg_proc
+             WHERE pronamespace = 'public'::regnamespace
+               AND proname IN ('bao_cao_so_ban', 'bao_cao_cong_no', 'bao_cao_ton_kho', 'dashboard_summary', 'dashboard_top_customers',
+                               'dashboard_channel_revenue', 'finance_pnl', 'finance_cash_flow', 'finance_balance_sheet')
+               AND NOT ('jit=off' = ANY (coalesce(proconfig, '{}')))), '')
 ) t ORDER BY stt;

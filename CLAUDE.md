@@ -217,6 +217,12 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   `/rest/v1/`, thân gửi lại được (không có / chuỗi), tối đa 2 lần, nơi gọi huỷ thì thôi — một luật cho client trình duyệt
   (`fetchCoHetGio`), máy chủ và admin. Gửi lại vẫn hỏng thì `errorMessage` nói tiếng Việt kèm nguyên văn. E2E tiêm lỗi:
   `POST /__loi_25p02` (`e2e/fake-supabase.mjs`).
+- **Hàm chỉ đọc gọi bằng GET** (chủ nhà 29/10/2026, Báo cáo tổng hợp: *"Đọc số bán hàng hỏng: … Máy chủ chưa trả lời sau 10
+  giây — thao tác có thể đã được ghi"*): RPC STABLE (báo cáo một lượt `goiMotLuot`, `dashboard_*`, `finance_*`) gọi
+  `rpc(…, { get: true })` — gửi POST thì bộ hẹn giờ coi là câu GHI: không thử lại, dặn nhầm "có thể đã ghi". Hàm có ghi giữ
+  POST (GET chạy giao dịch chỉ đọc). Hàm báo cáo một lượt `/rpc/bao_cao_*` (dòng thô cả kỳ) chờ **45 giây, một lượt**
+  (`HET_GIO_BAO_CAO_MS`, `laBaoCaoMotLuot`) — chậm ở máy chủ, gửi lại là bắt máy đang bận làm lại từ đầu. Sổ giả e2e đọc
+  tham số GET trên URL.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).
@@ -334,6 +340,11 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   `authenticator` + `anon`** (chủ nhà 24/10/2026, bảng `pg_stat_statements`: danh sách hoá đơn ~3 s/câu; tái hiện trên sổ
   thử 40.000 HĐ: JIT bật 4.245 ms, tắt 11 ms) — cài đặt của vai đăng nhập do Postgres tự áp lúc mở kết nối, không phụ
   thuộc PostgREST có áp cài đặt của vai giả lập hay không.
+- **Hàm báo cáo tắt JIT ngay trên hàm** (mig 256, chủ nhà 29/10/2026 — Báo cáo Bán hàng quá 10 giây): `bao_cao_so_ban`
+  ước lượng ~1,09 triệu > ngưỡng tối ưu JIT nên mỗi lần gọi ngồi biên dịch ~3 giây (sổ thử: bật 3,4–4,1 s, tắt 0,3–0,6 s)
+  dù đã có mig 251 / 252. `SET jit = off` trên hàm thì áp ngay lúc gọi, không phụ thuộc vai / kết nối nào. Hàm báo cáo
+  nặng mới: viết `SET jit = off` ngay trong `CREATE FUNCTION`. `bao_cao_so_ban` không còn `dong_don` / `dong_hd_goc` (giá lúc
+  bán của mig 218 — luật chênh 01/10/2026 không dùng); đừng thêm lại phần app không đọc.
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

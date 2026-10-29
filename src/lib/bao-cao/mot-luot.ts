@@ -23,7 +23,10 @@ export function laThieuHam(e: LoiRpc | null | undefined): boolean {
  * rớt mạng thành "số 0".
  */
 export async function goiMotLuot<T>(sb: SupabaseClient, ham: string, thamSo: Record<string, unknown>, ten: string): Promise<T | null> {
-  const { data, error } = await sb.rpc(ham, thamSo)
+  /* ⚠ GỌI BẰNG GET (chủ nhà 29/10/2026 — "Đọc số bán hàng hỏng: … Máy chủ chưa trả lời sau 10 giây — thao tác có thể đã
+     được ghi"): hàm báo cáo là STABLE, chỉ đọc. Gửi POST thì bộ hẹn giờ coi là câu GHI — không chờ thêm, không thử lại,
+     lại dặn nhầm "có thể đã ghi". GET thì là câu đọc; hàm `bao_cao_*` được chờ lâu hơn (`HET_GIO_BAO_CAO_MS`). */
+  const { data, error } = await sb.rpc(ham, thamSo, { get: true })
   if (error) {
     if (laThieuHam(error)) return null
     throw new Error(`${ten}: ${error.message}`)

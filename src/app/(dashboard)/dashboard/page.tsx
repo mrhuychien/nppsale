@@ -116,9 +116,11 @@ export default function DashboardPage() {
           //   hàng trả theo `returns.revenue_date`) — chủ nhà 25/09/2026: "Rà
           //   soát lại toàn bộ doanh số tính bằng số đi - số trả". Đừng trừ
           //   hàng trả thêm lần nữa ở đây.
-          supabase.rpc("dashboard_summary", { p_period_start: periodStart }).maybeSingle(),
-          supabase.rpc("dashboard_top_customers", { p_period_start: periodStart, p_limit: 5 }),
-          supabase.rpc("dashboard_channel_revenue", { p_period_start: periodStart }),
+          // Hàm chỉ đọc gọi bằng GET (chủ nhà 29/10/2026): bộ hẹn giờ coi là câu đọc — hết giờ thì thử lại, không dặn "có
+          // thể đã ghi".
+          supabase.rpc("dashboard_summary", { p_period_start: periodStart }, { get: true }).maybeSingle(),
+          supabase.rpc("dashboard_top_customers", { p_period_start: periodStart, p_limit: 5 }, { get: true }),
+          supabase.rpc("dashboard_channel_revenue", { p_period_start: periodStart }, { get: true }),
           supabase
             .from("batches")
             .select("id", { count: "exact", head: true })

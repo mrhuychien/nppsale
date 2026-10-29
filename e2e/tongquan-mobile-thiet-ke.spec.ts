@@ -11,7 +11,9 @@ test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
 async function giaRpc(page: Page) {
   const ky: string[] = []
   await page.route(/:54321\/rest\/v1\/rpc\/dashboard_summary/, async (r) => {
-    ky.push(JSON.parse(r.request().postData() ?? "{}").p_period_start)
+    // Hàm chỉ đọc đi bằng GET (chủ nhà 29/10/2026) — tham số trên URL; thấy POST thì ghi "POST" cho bài hỏng ra.
+    const req = r.request()
+    ky.push(req.method() === "GET" ? new URL(req.url()).searchParams.get("p_period_start") ?? "" : `POST ${req.postData()}`)
     await r.fulfill({
       json: { period_revenue: 964_775_500, period_orders: 542, open_receivables: 12_500_000, overdue_count: 3 },
     })

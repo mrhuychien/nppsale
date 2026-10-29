@@ -284,7 +284,9 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       if (!h) { entry.unhandled = true; return send(res, 200, null) }
       try {
         const truoc = dauKhach()
-        const out = await h(json ?? {}, { db, newId, user: userFromAuth(req) })
+        /* Hàm chỉ đọc gọi bằng GET (`rpc(fn, args, { get: true })`, chủ nhà 29/10/2026) — tham số nằm trên URL như PostgREST. */
+        const thamSo = req.method === "GET" || req.method === "HEAD" ? Object.fromEntries(url.searchParams) : (json ?? {})
+        const out = await h(thamSo, { db, newId, user: userFromAuth(req) })
         if (dauKhach() !== truoc) tangPhienKhach()
         return send(res, 200, out ?? null)
       } catch (e) {

@@ -20,6 +20,19 @@ import { thuLaiKhiGiaoDichHong, type HamFetch } from "@/lib/supabase/thu-lai-gia
 /** Một lượt chờ máy chủ. */
 export const HET_GIO_MS = 10_000
 
+/**
+ * Hàm báo cáo đọc một lượt (`/rpc/bao_cao_*`, mig 204) trả DÒNG THÔ của cả kỳ — chờ lâu hơn, và KHÔNG gửi lại: chậm ở
+ * máy chủ chứ không phải mất gói tin, gửi lại là bắt máy chủ đang bận làm lại từ đầu. Chủ nhà 29/10/2026: "Đọc số bán
+ * hàng hỏng: … Máy chủ chưa trả lời sau 10 giây".
+ */
+export const HET_GIO_BAO_CAO_MS = 45_000
+
+/** Câu gọi hàm báo cáo một lượt (`bao_cao_so_ban`, `bao_cao_cong_no`, `bao_cao_ton_kho`). */
+export function laBaoCaoMotLuot(input: RequestInfo | URL): boolean {
+  const u = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url ?? ""
+  return /\/rest\/v1\/rpc\/bao_cao_/.test(u)
+}
+
 /** Dấu nhận ra lỗi hết giờ trong câu lỗi (thư viện ghép thành "AbortError: <câu này>"). */
 export const LOI_HET_GIO = "Máy chủ chưa trả lời"
 
@@ -27,9 +40,9 @@ export const LOI_HET_GIO = "Máy chủ chưa trả lời"
 export const DAN_CAU_GHI = "thao tác có thể đã được ghi — tải lại trang kiểm tra trước khi làm lại"
 
 export class HetGioError extends Error {
-  constructor(soLan: number, ghi = false) {
+  constructor(soLan: number, ghi = false, ms = HET_GIO_MS) {
     super(
-      `${LOI_HET_GIO} sau ${HET_GIO_MS / 1000} giây` +
+      `${LOI_HET_GIO} sau ${ms / 1000} giây` +
         (soLan > 1 ? ` (đã thử ${soLan} lần)` : "") +
         (ghi ? ` — ${DAN_CAU_GHI}` : "")
     )
@@ -50,7 +63,8 @@ export function laHetGio(err: unknown): boolean {
  * thư viện ghép vào và cả dấu vết ngăn xếp (stack) đi kèm: người dùng cần biết phải làm gì, không cần tên lớp lỗi.
  */
 export function cauHetGio(raw?: string | null): string {
-  const chiTiet = (raw ?? "").replace(/^\s*AbortError:\s*/, "").trim() || `${LOI_HET_GIO} sau ${HET_GIO_MS / 1000} giây`
+  // Bỏ "AbortError:" ở BẤT KỲ chỗ nào — lỗi đã gói ("đọc số bán: AbortError: …", chủ nhà 29/10/2026) có nó ở giữa câu.
+  const chiTiet = (raw ?? "").replace(/\bAbortError:\s*/g, "").trim() || `${LOI_HET_GIO} sau ${HET_GIO_MS / 1000} giây`
   return chiTiet.includes(DAN_CAU_GHI)
     ? `Mạng chậm hoặc máy chủ đang bận: ${chiTiet}.`
     : `Mạng chậm hoặc máy chủ đang bận: ${chiTiet}. Kiểm tra mạng rồi thử lại.`
@@ -98,11 +112,15 @@ async function motLuot(input: RequestInfo | URL, init: RequestInit | undefined, 
 
 /** Một câu có hẹn giờ (câu đọc hết giờ thử lại một lần) — chưa gồm luật gửi lại khi giao dịch hỏng. */
 async function fetchHetGioMotCau(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const lan1 = await motLuot(input, init, HET_GIO_MS)
+  // Hàm báo cáo một lượt: chờ HET_GIO_BAO_CAO_MS, một lượt duy nhất (xem trên).
+  const baoCao = laBaoCaoMotLuot(input)
+  const ms = baoCao ? HET_GIO_BAO_CAO_MS : HET_GIO_MS
+  const lan1 = await motLuot(input, init, ms)
   if (lan1.res) return lan1.res
   if (!lan1.het) throw lan1.err
   // Hết giờ: câu đọc thử lại một lần (trừ khi nơi gọi đã huỷ trong lúc chờ); câu ghi thì báo luôn.
-  if (!laCauDoc(init)) throw new HetGioError(1, true)
+  if (!laCauDoc(init)) throw new HetGioError(1, true, ms)
+  if (baoCao) throw new HetGioError(1, false, ms)
   if (init?.signal?.aborted) throw new HetGioError(1)
   const lan2 = await motLuot(input, init, HET_GIO_MS)
   if (lan2.res) return lan2.res

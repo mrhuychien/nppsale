@@ -363,6 +363,11 @@ export function KhongCoSo({ text, nut }: { text: string; nut?: { label: string; 
   )
 }
 
+/** Câu lỗi đã có dấu chấm cuối mà màn nối thêm ". Màn này …" thì thành ".." — gộp lại một dấu (không đụng "…"). */
+export function gopDauCham(text: string): string {
+  return text.replace(/(?<!\.)\.\.(?=\s|$)/g, ".")
+}
+
 export function LoiDocSo({ text, onThuLai }: { text: string; onThuLai: () => void }) {
   return (
     <div className="flex flex-col items-start gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 p-4" data-testid="bc-loi">
@@ -370,7 +375,7 @@ export function LoiDocSo({ text, onThuLai }: { text: string; onThuLai: () => voi
         <AlertTriangle className="h-[18px] w-[18px]" />
         Không đọc được số liệu
       </div>
-      <div className="text-[13px]">{text}</div>
+      <div className="text-[13px]">{gopDauCham(text)}</div>
       <button type="button" onClick={onThuLai} className="h-9 rounded-lg border border-destructive bg-card px-3.5 text-[13px] font-semibold text-destructive">
         Thử lại
       </button>

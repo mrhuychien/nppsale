@@ -84,7 +84,10 @@ test("khung trước, số sau: chờ số vẫn thấy nhãn thẻ, nút Xem th
   await dangNhap(page)
   let tha: () => void = () => undefined
   const cho = new Promise<void>((r) => (tha = r))
-  await page.route(/\/rest\/v1\/sales_invoices\?/, async (route) => {
+  // Giữ ĐÚNG câu màn đọc: một lượt `bao_cao_so_ban` (mig 204) — sổ chưa có hàm thì đọc từng bảng (`sales_invoices`).
+  //   Chỉ giữ `sales_invoices` là bài chạy đua: máy chủ trả số trước lúc soi khung chờ thì hỏng.
+  const SO = /\/rest\/v1\/(sales_invoices\?|rpc\/bao_cao_so_ban)/
+  await page.route(SO, async (route) => {
     await cho
     await route.continue()
   })
@@ -94,8 +97,8 @@ test("khung trước, số sau: chờ số vẫn thấy nhãn thẻ, nút Xem th
   await expect(khung.getByTestId("bc-xem-theo").getByRole("button", { name: "Khách" })).toBeVisible()
   await expect(khung).toContainText("Theo khách")
   await expect(page.getByTestId("bc-kpi-net")).toHaveCount(0)
+  // Thả là xong — đừng gỡ bộ chặn (unroute) khi câu còn đang giữ: Playwright tự cho đi, `continue` sau đó nổ "already handled".
   tha()
-  await page.unroute(/\/rest\/v1\/sales_invoices\?/)
   await expect(page.getByTestId("bc-kpi-net")).toContainText("1,2 tr")
   await expect(page.getByTestId("bc-dang-tai")).toHaveCount(0)
 })
@@ -109,8 +112,11 @@ test("đọc một lượt ở máy chủ (mig 204): Bán hàng / Công nợ / K
   await expect(page.getByTestId("bc-kpi-inS")).toBeVisible()
   await page.goto("/bao-cao/cong-no")
   await expect(page.getByTestId("bc-kpi-debt")).toBeVisible()
-  const ds = (await nhatKy()).slice(truoc).map((x) => x.path)
+  const log = (await nhatKy()).slice(truoc)
+  const ds = log.map((x) => x.path)
   for (const f of ["bao_cao_so_ban", "bao_cao_ton_kho", "bao_cao_cong_no"]) expect(ds.some((p) => p.includes(`/rpc/${f}`))).toBe(true)
+  // Hàm chỉ đọc đi bằng GET (chủ nhà 29/10/2026) — POST thì bộ hẹn giờ coi là câu ghi: không thử lại, dặn nhầm "có thể đã ghi".
+  expect(log.filter((x) => x.path.includes("/rpc/bao_cao_") && x.method !== "GET").map((x) => `${x.method} ${x.path}`)).toEqual([])
   for (const bang of ["sales_invoice_lines", "stock_entry_lines", "return_lines", "batches"]) {
     expect(ds.filter((p) => p.startsWith(`/rest/v1/${bang}`)), bang).toEqual([])
   }

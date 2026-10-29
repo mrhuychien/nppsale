@@ -877,6 +877,7 @@ export default function EmployeesReportPage() {
           "Theo bảng giá",
           "Doanh thu",
           "Chênh lệch bán",
+          "Thuế + làm tròn",
           "Giảm giá đơn",
           "SL trả",
           "Giá trị trả",
@@ -901,6 +902,7 @@ export default function EmployeesReportPage() {
           r.listed,
           r.revenue,
           Math.round(r.diff),
+          Math.round(r.thueLamTron),
           -r.docDiscount,
           hienSLTheoDonVi(r.returnQtyTheoDv),
           -r.returnValue,
@@ -924,6 +926,7 @@ export default function EmployeesReportPage() {
               d.listed,
               d.revenue,
               Math.round(d.diff),
+              "",
               "",
               d.returnQty,
               -d.returnValue,
@@ -1298,6 +1301,14 @@ export default function EmployeesReportPage() {
               render: (r) => hienChenh(r.diff),
             },
             {
+              /* Chủ nhà 29/10/2026: Doanh thu dòng NV là tiền hoá đơn (gồm VAT, sau giảm giá đơn, làm tròn), chênh tính trước
+                 thuế → Doanh thu − Theo bảng giá = Chênh lệch bán − Giảm giá đơn + Thuế + làm tròn (`thueLamTronNv`). */
+              key: "thueLamTron",
+              label: "Thuế + làm tròn",
+              align: "right",
+              render: (r) => hienChenh(r.thueLamTron),
+            },
+            {
               key: "docDiscount",
               label: "Giảm giá đơn",
               align: "right",
@@ -1369,6 +1380,7 @@ export default function EmployeesReportPage() {
                   align: "right",
                 },
                 { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.diff, 0)), align: "right" },
+                { content: hienChenh(employeeSummaryRows.reduce((s, r) => s + r.thueLamTron, 0)), align: "right" },
                 {
                   content: (() => {
                     const v = employeeSummaryRows.reduce((s, r) => s + r.docDiscount, 0)

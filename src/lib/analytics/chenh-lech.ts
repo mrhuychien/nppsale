@@ -67,6 +67,21 @@ export function chenhThuan(chenhBan: number, chenhTra: number): number {
   return chenhBan + chenhTra
 }
 
+/**
+ * THUẾ + LÀM TRÒN — chủ nhà 29/10/2026 hỏi vì sao ở dòng nhân viên "Doanh thu − Theo bảng giá" không ra "Chênh lệch bán":
+ * Doanh thu dòng nhân viên là TIỀN HOÁ ĐƠN (gồm VAT, sau giảm giá cả đơn, làm tròn — khớp công nợ, 26/09/2026), còn chênh
+ * tính TRƯỚC thuế theo dòng. Chốt cách 1: giữ Doanh thu khớp công nợ, thêm cột này cho đủ vế:
+ *
+ *     Doanh thu − Theo bảng giá = Chênh lệch bán − Giảm giá đơn + Thuế + làm tròn
+ *
+ * `sales_invoices.total = subtotal + vat`, `subtotal` ghi SAU giảm giá cả đơn (mig 183) → tiền chứng từ − Σ `line_total`
+ * = −giảm giá đơn + VAT + làm tròn; cộng lại giảm giá đơn thì còn đúng VAT + làm tròn. Đang lọc hàng thì ba số đều là
+ * PHẦN phân bổ của hàng được lọc (`phanTienQuaLoc`). Một luật cho Báo cáo › Nhân viên và Báo cáo tổng hợp › Theo nhân viên.
+ */
+export function thueLamTronNv(tienChungTu: number, tienDong: number, giamDon: number | null | undefined): number {
+  return (Number(tienChungTu) || 0) - (Number(tienDong) || 0) + (Number(giamDon) || 0)
+}
+
 /** Chênh của MỘT dòng (bán hay trả cùng một phép): SL × (đơn giá chứng từ − giá bảng cùng đơn vị). */
 export function chenhDong(l: DongChenh, sp: SanPhamQuyDoi | null | undefined): ChenhDong {
   const sl = so(l.quantity)

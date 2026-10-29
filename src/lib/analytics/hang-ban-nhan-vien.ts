@@ -11,7 +11,7 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDong, chenhThuan, giaBangCuaDong, tongChenhLech } from "./chenh-lech"
+import { chenhDong, chenhThuan, giaBangCuaDong, thueLamTronNv, tongChenhLech } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
@@ -116,6 +116,13 @@ export interface HangBanNhanVien {
   /** Tổng chênh lệch = chênh thuần − giảm giá đơn (chủ nhà 12/10/2026, `tongChenhLech`). Chỉ có ở cấp nhân viên —
    *  giảm giá cả đơn không chia được theo mặt hàng. */
   tongChenh: number
+  /**
+   * THUẾ + LÀM TRÒN của hoá đơn = tiền chứng từ − Σ `line_total` + giảm giá đơn (`thueLamTronNv`), chỉ ở cấp nhân viên sau
+   * `chotTienChungTu`. Chủ nhà 29/10/2026 hỏi vì sao "Doanh thu − Theo bảng giá" không ra "Chênh lệch bán": Doanh thu dòng
+   * nhân viên là tiền hoá đơn (gồm VAT, sau giảm giá cả đơn, làm tròn), chênh lệch tính trước thuế theo dòng. Cột này là
+   * phần còn thiếu: Doanh thu − Theo bảng giá = Chênh lệch bán − Giảm giá đơn + Thuế + làm tròn.
+   */
+  thueLamTron: number
   products: HangBanSanPham[]
 }
 
@@ -150,7 +157,7 @@ export function congHangBanNhanVien(input: {
       r = {
         id: uid, qty: 0, qtyTheoDv: {}, listed: 0, revenue: 0, diff: 0,
         returnQty: 0, returnQtyTheoDv: {}, returnValue: 0, netRevenue: 0, returnListed: 0, diffReturn: 0, diffNet: 0,
-        docDiscount: 0, tongChenh: 0, products: [], _sp: new Map(),
+        docDiscount: 0, tongChenh: 0, thueLamTron: 0, products: [], _sp: new Map(),
       }
       m.set(uid, r)
     }
@@ -515,8 +522,9 @@ export function chotTienChungTu<T extends HangBanNhanVien>(
   return rows.map((r) => {
     const revenue = tienHoaDon.get(r.id) ?? 0
     const returnValue = tienTra.get(r.id) ?? 0
-    /* ⚠ KHÔNG tính lại `diff` từ tiền chứng từ — tiền HĐ gồm VAT; chênh lệch là trước thuế (30/09/2026). */
-    return { ...r, revenue, returnValue, netRevenue: revenue - returnValue }
+    /* ⚠ KHÔNG tính lại `diff` từ tiền chứng từ — tiền HĐ gồm VAT; chênh lệch là trước thuế (30/09/2026). Phần VAT + làm
+       tròn ấy hiện ở cột riêng (chủ nhà 29/10/2026): `r.revenue` lúc này còn là Σ dòng. */
+    return { ...r, revenue, returnValue, netRevenue: revenue - returnValue, thueLamTron: thueLamTronNv(revenue, r.revenue, r.docDiscount) }
   })
 }
 

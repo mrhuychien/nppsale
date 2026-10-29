@@ -22,7 +22,7 @@ import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./
 import { chiTietBan, chiTietDat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { createClient } from "@/lib/supabase/client"
 import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
-import { chenhThuan, tongChenhLech } from "@/lib/analytics/chenh-lech"
+import { chenhThuan, thueLamTronNv, tongChenhLech } from "@/lib/analytics/chenh-lech"
 import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, cuaSoNap, type Ky } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN, type BuocDao } from "@/lib/bao-cao/trang-thai"
 import { congBan, gomBan, congDat, gomDat, quaLoc, maChuaCoGiaVon, hienSoLuong, chuaXuatDong, CHUA_CO, type DanhMucBC, type DongBan, type DongDat, type LoaiLoc, type NhomBan, type NhomDat } from "@/lib/bao-cao/cong"
@@ -337,6 +337,10 @@ export function ManBanHang() {
               { k: "revTT", label: "Tiền theo giá HĐ", f: "money", v: (x) => x.revTT, opt: true },
               M.rev,
               { k: "diff", label: "Chênh lệch bán", f: "money", v: (x) => (x.revTT || 0) - (x.listed || 0) },
+              /* Chủ nhà 29/10/2026: Doanh thu là tiền hoá đơn (gồm VAT, sau giảm giá đơn), chênh tính trước thuế → cột cho đủ vế:
+                 Doanh thu − Theo bảng giá = Chênh lệch bán − Giảm giá đơn + Thuế + làm tròn (`thueLamTronNv`, một luật với
+                 Báo cáo › Nhân viên). */
+              { k: "thueLamTron", label: "Thuế + làm tròn", f: "money", v: (x) => thueLamTronNv(x.rev || 0, x.revTT || 0, x.giamDon) },
               { k: "giamDon", label: "Giảm giá đơn", f: "money", v: (x) => (x.giamDon ? -x.giamDon : 0) },
               { k: "slTra", label: "SL trả", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.rqtyDv), sub: "" }), coTong: true, wrap: true },
               { ...M.ret, label: "Giá trị trả", v: (x: NhomBC) => (x.ret ? -x.ret : 0) },

@@ -10,7 +10,7 @@ import { chotTienChungTu, type HangBanNhanVien } from "@/lib/analytics/hang-ban-
  */
 const dong = (id: string, over: Partial<HangBanNhanVien> = {}): HangBanNhanVien => ({
   id, qty: 0, qtyTheoDv: {}, listed: 100_000, revenue: 95_000, diff: -5_000,
-  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, returnListed: 0, diffReturn: 0, diffNet: -5_000, docDiscount: 0, tongChenh: -5_000, products: [], ...over,
+  returnQty: 0, returnQtyTheoDv: {}, returnValue: 9_600, netRevenue: 85_400, returnListed: 0, diffReturn: 0, diffNet: -5_000, docDiscount: 0, tongChenh: -5_000, thueLamTron: 0, products: [], ...over,
 })
 
 describe("báo cáo nhân viên khớp công nợ", () => {
@@ -21,6 +21,9 @@ describe("báo cáo nhân viên khớp công nợ", () => {
     expect(r.netRevenue).toBe(87_000) // = công nợ phát sinh của nhân viên
     // ⚠ Chênh lệch KHÔNG tính lại từ tiền HĐ (gồm VAT) — chủ nhà 30/09/2026: chênh là trước thuế.
     expect(r.diff).toBe(-5_000)
+    // Phần VAT + làm tròn của HĐ (97.000 − 95.000 cộng dòng) hiện ở cột riêng (chủ nhà 29/10/2026).
+    expect(r.thueLamTron).toBe(2_000)
+    expect(r.revenue - r.listed).toBe(r.diff - r.docDiscount + r.thueLamTron)
   })
   it("nhân viên chỉ có hàng trả vẫn ra số âm đúng", () => {
     const [r] = chotTienChungTu([dong("nv2")], new Map(), new Map([["nv2", 5_000]]))

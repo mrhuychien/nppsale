@@ -47,6 +47,10 @@ cùng đơn vị tính) x số lượng"*.
   12/10/2026, thay "bán − trả": *"Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi"*) — `chenhThuan`.
 - Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `chenhDong` trong `src/lib/analytics/chenh-lech.ts`.
 - **Tổng chênh lệch = chênh thuần − giảm giá đơn** (chủ nhà 12/10/2026), chỉ ở cấp nhân viên — `tongChenhLech`.
+- **Doanh thu dòng nhân viên là TIỀN HOÁ ĐƠN** (gồm VAT, sau giảm giá đơn, làm tròn — khớp công nợ, `chotTienChungTu`), chênh
+  tính trước thuế theo dòng nên "Doanh thu − Theo bảng giá" KHÔNG bằng "Chênh lệch bán". Chủ nhà 29/10/2026 chốt giữ Doanh thu
+  khớp công nợ và thêm cột **Thuế + làm tròn** = tiền chứng từ − Σ `line_total` + giảm giá đơn (`thueLamTronNv`), ở cả hai
+  báo cáo: Doanh thu − Theo bảng giá = Chênh lệch bán − Giảm giá đơn + Thuế + làm tròn. Đừng đổi Doanh thu về cộng dòng.
 
 ### Quy đổi đơn vị trong báo cáo
 Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).

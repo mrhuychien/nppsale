@@ -976,4 +976,23 @@ SELECT 95, 'Mig 256 (Báo cáo đọc nhanh — hàm báo cáo tắt JIT trên h
                AND proname IN ('bao_cao_so_ban', 'bao_cao_cong_no', 'bao_cao_ton_kho', 'dashboard_summary', 'dashboard_top_customers',
                                'dashboard_channel_revenue', 'finance_pnl', 'finance_cash_flow', 'finance_balance_sheet')
                AND NOT ('jit=off' = ANY (coalesce(proconfig, '{}')))), '')
+UNION ALL
+-- 96. Mig 257 — tổng của danh sách cộng trên máy chủ (chủ nhà 01/11/2026: "tìm kiếm trong danh sách (đơn hàng, hóa đơn...)
+--     nhiều khi còn chậm … ở pos còn chậm"): view `v_hoa_don_con_lai` (tiền còn lại sau hàng trả, RLS người gọi) + hàm
+--     `ton_ban_theo_hang()`. Chưa có thì danh sách / POS đọc theo cách cũ (chậm), không sai số. View THIẾU security_invoker
+--     là bỏ qua RLS — NVBH cộng được tiền của cả NPP — báo LỆCH. View chốt cột lúc tạo (`i.*`): migration SAU thêm cột cho
+--     sales_invoices mà không dựng lại view thì lọc theo cột mới hỏng → danh sách lùi về cách cũ (chậm) — cũng báo LỆCH.
+SELECT 96, 'Mig 257 (Tổng danh sách trên máy chủ — tiền còn lại của HĐ, tồn kho bán một câu)',
+  CASE WHEN to_regclass('public.v_hoa_don_con_lai') IS NULL OR to_regprocedure('public.ton_ban_theo_hang()') IS NULL
+       THEN 'CHƯA — chạy migration 257 (danh sách Hoá đơn / Đơn hàng cộng tổng bằng cách tải mọi dòng; POS tải từng lô)'
+       WHEN NOT EXISTS (SELECT 1 FROM pg_class WHERE oid = to_regclass('public.v_hoa_don_con_lai')
+                         AND 'security_invoker=true' = ANY (coalesce(reloptions, '{}')))
+       THEN 'LỆCH — view v_hoa_don_con_lai THIẾU security_invoker (bỏ qua RLS, lộ tiền cả NPP cho NVBH) — chạy lại mig 257'
+       WHEN EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = 'public.sales_invoices'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+                       AND NOT EXISTS (SELECT 1 FROM pg_attribute v
+                                        WHERE v.attrelid = to_regclass('public.v_hoa_don_con_lai') AND v.attname = a.attname
+                                          AND v.attnum > 0 AND NOT v.attisdropped))
+       THEN 'LỆCH — view v_hoa_don_con_lai thiếu cột mới của sales_invoices (lọc theo cột ấy hỏng, danh sách lùi về cách chậm) — chạy lại mig 257'
+       ELSE 'OK — đã vá' END, ''
 ) t ORDER BY stt;

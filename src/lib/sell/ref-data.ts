@@ -1,4 +1,5 @@
 import { fetchAllForAggregate, type AggregateResult } from "@/lib/supabase/aggregate"
+import { chuaCoRpc } from "@/lib/supabase/chua-co-rpc"
 import { cacheOrderRefData, getCachedOrderRefData, type KhoaKhach, type KhoaSanPham, type OrderRefData } from "@/lib/offline/ref-cache"
 import type { Customer, PriceList, Product, ProductUnit } from "@/types"
 
@@ -79,6 +80,11 @@ export function stockMapFrom(
 }
 
 type Client = {
+  /** Hàm tồn kho bán một câu (mig 257). Tuỳ chọn: bản giả trong chốt cũ không có thì đọc từng lô như trước. */
+  rpc?: (fn: string, args?: Record<string, unknown>, opts?: { get?: boolean }) => PromiseLike<{
+    data: unknown
+    error: { message?: string; code?: string } | null
+  }>
   from: (t: string) => {
     select: (cols: string, opts?: unknown) => {
       eq: (c: string, v: unknown) => {
@@ -261,6 +267,37 @@ function docLoBan(sb: Client) {
   )
 }
 
+/** Tồn kho bán theo mặt hàng — cùng hình với `docLoBan` + `stockMapFrom`. */
+interface TonBan {
+  stock: Record<string, number>
+  error: string | null
+  truncated: boolean
+}
+
+/**
+ * TỒN KHO BÁN — MỘT CÂU qua `ton_ban_theo_hang` (mig 257, chủ nhà 01/11/2026: "mở đơn hàng, sửa đơn hàng, hóa đơn... ở
+ * pos còn chậm"): bản cũ tải từng lô kho bán (5.000 lô = 5 câu, 2 đợt, ~300 KB) rồi cộng ở máy, MỖI lần mở màn bán.
+ * ⚠ Sổ chưa có hàm (PGRST202) thì đọc từng lô như cũ; lỗi khác (mạng, quyền) thì báo như đọc lô hỏng — không lùi, lùi là
+ *   gửi thêm năm câu vào đúng lúc máy chủ đang bận.
+ */
+async function docTonBan(sb: Client): Promise<TonBan> {
+  if (typeof sb.rpc === "function") {
+    try {
+      const { data, error } = await sb.rpc("ton_ban_theo_hang", {}, { get: true })
+      if (error && !chuaCoRpc(error)) return { stock: {}, error: error.message || "Không đọc được tồn kho", truncated: false }
+      if (!error && data && typeof data === "object" && !Array.isArray(data)) {
+        const stock: Record<string, number> = {}
+        for (const [id, sl] of Object.entries(data as Record<string, unknown>)) stock[id] = Number(sl) || 0
+        return { stock, error: null, truncated: false }
+      }
+    } catch {
+      /* lùi về đọc từng lô */
+    }
+  }
+  const res = await docLoBan(sb)
+  return { stock: stockMapFrom(res.rows), error: res.error, truncated: res.truncated }
+}
+
 /**
  * CHỈ TỒN KHO (tối ưu /sell di động, 25/09/2026) — ~1/8 dữ liệu của `loadSellRefData`.
  * `null` = đọc hỏng / thiếu trang: giữ số đang hiện, đừng thay bằng tồn 0.
@@ -351,9 +388,9 @@ async function docNccCuaNguoi(supabase: unknown, nguoi: NguoiTaiDanhMuc): Promis
 
 export async function loadSellStock(supabase: unknown): Promise<Record<string, number> | null> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return null
-  const res = await docLoBan(supabase as Client)
+  const res = await docTonBan(supabase as Client)
   if (res.error || res.truncated) return null
-  return stockMapFrom(res.rows)
+  return res.stock
 }
 
 export interface TuyChonTai {
@@ -471,7 +508,7 @@ export async function loadSellRefData(
      *   theo nó rồi màn Xuất hàng báo thiếu. Vùng `date` là hàng gần
      *   hạn (mig 028); muốn bán xả thì chuyển lô về vùng `sale` trước.
      */
-    docLoBan(sb),
+    docTonBan(sb),
     /* Số phiên ĐỌC CÙNG LƯỢT với danh mục — lần kiểm sau so với đúng bản đang có. */
     phienDuP,
     khoaP,
@@ -521,7 +558,7 @@ export async function loadSellRefData(
     return { customers: [], products: [], stockByProduct: {}, source: "empty", warnings }
   }
 
-  const stockByProduct = stockMapFrom(batchRes.rows)
+  const stockByProduct = batchRes.stock
   // Lưu lại để lần sau mất mạng vẫn soạn đơn được. Khoá chỉ đi kèm khi sản phẩm ĐỦ (thiếu một khúc thì lần sau tải lại).
   const khoaGhi = prodRes.error || prodRes.truncated ? null : khoa
   const khoaKhachGhi = custRes.error || custRes.truncated ? null : khoaKhach

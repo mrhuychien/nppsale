@@ -23,7 +23,7 @@ export async function probes(
   supabase: any, fetchAllForAggregate: any, selectResilient: any,
   ghiPhaiTrungDong: any, docDuHoacNem: any, docTheoLoId: any, ids: string[],
   sb: any, docDemNhom: any, docThongKeNgay: any, apLoc: any, apSapXep: any, locTrangThai: any, applyFilters: any,
-  days: string[]
+  days: string[], gopMayChu: any
 ) {
   // 1. Truy vấn là ĐỐI SỐ của một hàm bọc, kiểm lỗi ở câu lệnh ngay sau.
   const aRes = await fetchAllForAggregate((from: number, to: number) =>
@@ -166,6 +166,11 @@ export async function probes(
   const nhom = docDemNhom(await apLoc(supabase.from("probe_dem_nhom_ok").select("status, count()")))
   const qDem = supabase.from("probe_dem_nhom_builder_ok").select("status, count()")
   const nhom2 = docDemNhom(await apLoc(qDem))
+  // 14b. Query dựng dần rồi đi THẲNG vào hàm bọc lỗi → null ngay trong biểu thức await (orders / sales-invoices — tổng của
+  //      bộ lọc gộp trên máy chủ): `await gopMayChu(applyFilters(q), …)`.
+  let qGopOk = supabase.from("probe_gop_may_chu_ok").select("total.sum()")
+  qGopOk = locTrangThai(qGopOk, "posted")
+  const gop = await gopMayChu(applyFilters(qGopOk as never) as typeof qGopOk, (d: unknown) => d, "mồi")
   const tk = await docThongKeNgay(
     days,
     (from: number, to: number) => supabase.from("probe_thong_ke_ngay_ok").select("id", { count: "exact" }).range(from, to),
@@ -213,5 +218,5 @@ export async function probes(
   ).abortSignal(undefined)
   if (tnErr) console.warn("lỗi")
 
-  return { data, du, lo, longKieu, nhieuDong, nhom, nhom2, tk, m1, m2, taoQ, demTrangThai, tn }
+  return { data, du, lo, longKieu, nhieuDong, nhom, nhom2, tk, gop, m1, m2, taoQ, demTrangThai, tn }
 }

@@ -62,6 +62,7 @@ import {
   invoiceWarnings,
 } from "@/lib/orders/post-invoice"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { NHOM_TUYEN, docDemTheoTuyen, docTongGop, gopMayChu } from "@/lib/list/tong-may-chu"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong } from "@/lib/xuat-excel/nap"
 import { DONG_DON, xuatDonHang, type DongDon, type DonXuat } from "@/lib/xuat-excel/cac-man"
@@ -380,6 +381,16 @@ export default function OrdersPage() {
      * bộ lọc vẫn dùng được, chỉ không xếp tuyến theo số đơn.
      */
     async function loadRouteCounts() {
+      /* Đếm trên máy chủ, một câu (chủ nhà 01/11/2026); chưa gộp được thì đếm theo cách cũ. */
+      const gop = await gopMayChu(
+        supabase.from("sales_orders").select(`count(), ${NHOM_TUYEN}` as string).eq("status", "submitted"),
+        docDemTheoTuyen,
+        "orders"
+      )
+      if (gop !== null) {
+        setRouteCounts(gop)
+        return
+      }
       const res = await fetchAllForAggregate<{ customer: { channel: string | null } | null }>(
         (from, to) =>
           supabase
@@ -609,10 +620,13 @@ export default function OrdersPage() {
               head: true,
             })
         )
-      /* Một lượt gom nhóm (mig 206) — bật rồi thì khỏi 8 lượt đếm bên dưới. */
+      /* Một lượt gom nhóm (mig 206) — bật rồi thì khỏi 8 lượt đếm bên dưới.
+         ⚠ Lọc tuyến: nhúng `customers!inner(channel)`, KHÔNG nhúng rỗng `customers!inner()` — PostgREST thật trả 400 (42703
+         "column customer does not exist") khi bảng nhúng rỗng đi cùng count(), màn lặng lẽ lùi về 8 lượt đếm (chủ nhà
+         01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"). Thêm nhóm theo tuyến không đổi số: docDemNhom cộng dồn. */
       const nhom = docDemNhom(
         await applyCommonFilters(
-          supabase.from("sales_orders").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()")
+          supabase.from("sales_orders").select((routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string)
         )
       )
       if (cancelled) return
@@ -900,6 +914,20 @@ export default function OrdersPage() {
       setFilteredTotal(null)
       /* Chờ lượt tra — cộng với bộ lọc "chưa xong" là nháy ra 0. */
       if (!sanSang) return
+      /* ⚠ CỘNG TRÊN MÁY CHỦ, MỘT CÂU (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"): kỳ "Tất cả" bản
+         cũ tải 20 trang tiền rồi chạm trần (dải "—"). Máy chủ chưa gộp được thì `null` → cộng theo cách cũ ngay dưới. */
+      let qGop = applyStatusFilter(
+        applyCommonFilters(supabase.from("sales_orders").select((routeFilter !== "all" ? `total.sum(), ${NHOM_TUYEN}` : "total.sum()") as string)),
+        effectiveStatus
+      )
+      // Tab "Tất cả": đơn đã huỷ không vào tổng tiền (số đơn vẫn đếm cả) — như đường cũ ngay dưới.
+      if (effectiveStatus === "all") qGop = qGop.neq("status", "cancelled")
+      const gop = await gopMayChu(qGop, docTongGop, "orders")
+      if (cancelled) return
+      if (gop !== null) {
+        setFilteredTotal(gop)
+        return
+      }
       const res = await fetchAllForAggregate<{ total: number | string }>((from, to) => {
         const q = applyStatusFilter(
           applyCommonFilters(

@@ -186,14 +186,41 @@ export interface MucTim {
   truong: TruongChuan[]
 }
 
+/**
+ * ⚠ NHỚ THEO NỘI DUNG (chủ nhà 01/11/2026 "mở đơn hàng, sửa đơn hàng, hóa đơn... ở pos còn chậm"): mở một màn POS dựng chỉ
+ *   mục cho cả danh mục ở 2–3 chỗ (sổ hàng + sổ khách của `use-sell-data`, rồi mỗi ô tìm `SearchDropdown`) — 2.500 hàng +
+ *   3.000 khách, mỗi lần ~0,5 giây ở máy chậm (CPU ×4). Cùng bộ chữ thì cùng chỉ mục, nên lần sau lấy lại. Đầy trần thì
+ *   xoá cả (danh mục đổi hẳn, không giữ rác). Chỉ mục trả ra là đồ CHỈ ĐỌC — dùng chung giữa các dòng cùng chữ.
+ */
+const NHO_MUC_TIM = new Map<string, MucTim>()
+const TRAN_NHO_MUC_TIM = 20_000
+
 export function taoMucTim(...values: unknown[]): MucTim {
+  /* `viNormalize` đọc `String(v)` (null / undefined → "") nên cùng bộ chuỗi là cùng chỉ mục; JSON để ranh giới trường không
+     bao giờ lẫn ("a,b" + "c" ≠ "a" + "b,c"). */
+  const khoaNho = JSON.stringify(values.map((v) => (v == null ? "" : String(v))))
+  const daCo = NHO_MUC_TIM.get(khoaNho)
+  if (daCo) return daCo
+  /* Chuẩn hoá MỖI TRƯỜNG MỘT LẦN — bản cũ chuẩn hoá hai lần (một cho `truong`, một trong `viSearchKey`). `khoa` ghép đúng
+     như `viSearchKey(...values)` (= `viValueKey` từng trường), chốt ở tests/tong-danh-sach-may-chu.test.ts. */
   const truong: TruongChuan[] = []
+  let khoa = ""
   for (const v of values) {
     const tu = tachTu(viNormalize(v))
     const tu0 = tu.map(boSo0Dau)
-    truong.push({ tu, tu0, lien: tu.join(""), lien0: tu0.join("") })
+    const lien = tu.join("")
+    const lien0 = tu0.join("")
+    truong.push({ tu, tu0, lien, lien0 })
+    if (tu.length === 0) continue
+    let k = tu.join(" ")
+    if (tu.length > 1) k += ` ${lien}`
+    if (lien0 !== lien) k += ` ${lien0}`
+    khoa = khoa ? `${khoa} ${k}` : k
   }
-  return { khoa: viSearchKey(...values), truong }
+  const muc: MucTim = { khoa, truong }
+  if (NHO_MUC_TIM.size >= TRAN_NHO_MUC_TIM) NHO_MUC_TIM.clear()
+  NHO_MUC_TIM.set(khoaNho, muc)
+  return muc
 }
 
 /** Bậc điểm — càng lớn càng lên đầu. */

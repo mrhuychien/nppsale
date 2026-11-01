@@ -39,8 +39,9 @@ THROWING_WRAPPERS = ("ghiPhaiTrungDong", "docDuHoacNem", "docTheoLoId", "demHoac
 # Hàm bọc NHẬN LỖI VÀ TRẢ `null` ("không biết"), kiểu trả về có `| null` nên nơi gọi buộc phải có đường lùi:
 #   docDemNhom (lib/list/dem-nhom.ts), docDemNcc (lib/products/mobile-list.ts) — null → nơi gọi đếm kiểu cũ (có kiểm lỗi).
 #   docThongKeNgay (lib/list/thong-ke-ngay.ts) — null → đầu nhóm ngày cộng các dòng đã tải.
+#   gopMayChu (lib/list/tong-may-chu.ts) — `if (error) … return null` → nơi gọi tổng / đếm theo cách cũ (có kiểm lỗi).
 # Lỗi không thành "danh sách rỗng" hay "số 0" — nó thành "chưa có số", và màn hình đã có cách nói điều đó.
-NULL_ON_ERROR_WRAPPERS = ("docDemNhom", "docDemNcc", "docThongKeNgay")
+NULL_ON_ERROR_WRAPPERS = ("docDemNhom", "docDemNcc", "docThongKeNgay", "gopMayChu")
 # Đuôi một lời gọi: `ten(`, `ten<T>(`, `ten<Record<string, unknown>>(`, hoặc `ten<{` mà kiểu còn chạy sang dòng dưới.
 _CALL_TAIL = r"\s*(?:<(?:[^<>()]|<[^<>()]*>)*>\s*\(|<[^()]*$|\()"
 
@@ -637,6 +638,9 @@ def builder_checked(lines, i, depths=None, call_re=None):
         if mw:
             # `docDemNhom(await apDungLoc(q, true))` — kết quả đi thẳng vào hàm bọc tự kiểm lỗi.
             if call_re is not None and call_re.search(lines[j][: mw.start()]):
+                return True
+            # `await gopMayChu(applyFilters(q), …)` — query đi thẳng vào hàm bọc tự kiểm lỗi NGAY TRONG biểu thức await.
+            if call_re is not None and call_re.search(mw.group(0)):
                 return True
             return bool(re.search(r"\berror\b|\w+Err\b", "\n".join(lines[max(0, j - 2) : j + 4])))
         # Trả query ra ngoài (build = (select) => ...) → nơi gọi chịu trách nhiệm.

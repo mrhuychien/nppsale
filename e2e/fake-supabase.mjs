@@ -169,6 +169,60 @@ function ganTimKd(table, row) {
   return row
 }
 
+/* View `v_hoa_don_con_lai` (mig 257): hoá đơn + `con_lai` = total − hàng trả đã trừ, ĐÚNG luật `creditCounted` (phiếu đi
+   cùng HĐ: submitted / completed; phiếu độc lập: completed; max(0, credit_note_amount)). Dựng lại MỖI CÂU từ bảng thật — ghi
+   gì vào hoá đơn / phiếu trả là view thấy ngay, như Postgres. */
+function hoaDonConLai(db) {
+  const tru = new Map()
+  for (const r of db.returns || []) {
+    if (!r.invoice_id) continue
+    const tinh = r.credit_with_invoice === true ? r.status === "submitted" || r.status === "completed" : r.status === "completed"
+    if (tinh) tru.set(r.invoice_id, (tru.get(r.invoice_id) || 0) + Math.max(0, Number(r.credit_note_amount) || 0))
+  }
+  return (db.sales_invoices || []).map((i) => ({ ...i, con_lai: (Number(i.total) || 0) - (tru.get(i.id) || 0) }))
+}
+const VIEW_GIA = { v_hoa_don_con_lai: hoaDonConLai }
+
+/** Tách `select` ở cấp ngoài cùng (dấu phẩy trong ngoặc của bảng nhúng không tính). */
+function tachSelect(sel) {
+  const out = []
+  let sau = 0, dau = 0
+  for (let i = 0; i < sel.length; i++) {
+    if (sel[i] === "(") sau++
+    else if (sel[i] === ")") sau--
+    else if (sel[i] === "," && sau === 0) { out.push(sel.slice(dau, i).trim()); dau = i + 1 }
+  }
+  out.push(sel.slice(dau).trim())
+  return out.filter(Boolean)
+}
+
+/* Câu GỘP của PostgREST (mig 206 / 257): `count()`, `<cột>.sum()`, nhóm theo cột thường và cột của bảng nhúng to-one
+   (`customer:customers!inner(channel)` → `{ customer: { channel } }`). Không có cột nhóm thì luôn một dòng (`sum` null khi
+   không dòng nào khớp, như Postgres); có cột nhóm mà không dòng nào khớp thì mảng rỗng. */
+function gopDong(sel, ds) {
+  const phan = tachSelect(sel)
+  const coDem = phan.includes("count()")
+  const cotTong = phan.map((x) => /^([\w.]+)\.sum\(\)$/.exec(x)?.[1]).filter(Boolean)
+  const thuong = phan.filter((x) => !x.includes("(") && !x.includes(":"))
+  const nhung = phan.map((x) => /^(\w+):\w+(?:!\w+)?\(([^)]*)\)$/.exec(x)).filter(Boolean).map((m) => ({ alias: m[1], cot: m[2].split(",").map((c) => c.trim()).filter(Boolean) }))
+  const nhom = new Map()
+  for (const r of ds) {
+    const g = {}
+    for (const c of thuong) g[c] = r[c] ?? null
+    for (const n of nhung) {
+      const v = Array.isArray(r[n.alias]) ? r[n.alias][0] : r[n.alias]
+      g[n.alias] = v == null ? null : Object.fromEntries(n.cot.map((c) => [c, v[c] ?? null]))
+    }
+    const k = JSON.stringify(g)
+    const o = nhom.get(k) || { ...g, ...(coDem ? { count: 0 } : {}), ...(cotTong.length ? { sum: null } : {}) }
+    if (coDem) o.count++
+    for (const c of cotTong) if (r[c] != null) o.sum = (o.sum ?? 0) + Number(r[c])
+    nhom.set(k, o)
+  }
+  if (nhom.size === 0 && !thuong.length && !nhung.length) return [{ ...(coDem ? { count: 0 } : {}), ...(cotTong.length ? { sum: null } : {}) }]
+  return Array.from(nhom.values())
+}
+
 export function createFakeSupabase({ tables, rpc = {}, users }) {
   const db = structuredClone(tables)
   for (const t of Object.keys(TIM_KD)) for (const r of db[t] ?? []) ganTimKd(t, r)
@@ -331,8 +385,11 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     // ---- bảng ----
     if (!url.pathname.startsWith("/rest/v1/")) return send(res, 404, { message: "not found" })
     const table = url.pathname.slice(9)
-    if (!db[table]) { db[table] = []; entry.unknownTable = true }
-    const rows = db[table]
+    /* View giả (mig 257). `POST /__tat_rpc { fn: ["v_hoa_don_con_lai"] }` = sổ chưa chạy 257 → 404 như PostgREST. */
+    const laView = Object.hasOwn(VIEW_GIA, table)
+    if (laView && rpcTat.has(table)) return send(res, 404, { code: "PGRST205", message: `Could not find the table 'public.${table}' in the schema cache`, details: null, hint: null })
+    if (!laView && !db[table]) { db[table] = []; entry.unknownTable = true }
+    const rows = laView ? VIEW_GIA[table](db) : db[table]
     const filters = []
     /* Bảng NHÚNG trong select (`alias:bang!inner(...)` / `!left`): lọc `alias.cot` áp lên các dòng nhúng (mảng
        hoặc một đối tượng); `!inner` thì dòng cha phải còn ít nhất một dòng nhúng khớp; `alias=is.null` = phép
@@ -439,18 +496,14 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     out = out.slice(from, to + 1)
     const headers = { "content-range": `${total ? from : "*"}-${total ? from + out.length - 1 : ""}/${total}` }
     if (req.method === "HEAD") return send(res, 200, undefined, headers)
-    /* Đếm theo nhóm `select=status,count()` (mig 206) — gom theo các cột thường trong select. */
+    /* Câu gộp: `select=status,count()` (mig 206), `total.sum()`, nhóm theo cột bảng nhúng (mig 257) — xem `gopDong`. */
     const sel = url.searchParams.get("select") || ""
-    if (/(^|,)\s*count\(\)/.test(sel)) {
-      const cot = sel.split(",").map((x) => x.trim()).filter((x) => x && !x.includes("(") && !x.includes(":"))
-      const nhom = new Map()
-      for (const r of rows.filter(match)) {
-        const k = JSON.stringify(cot.map((c) => r[c] ?? null))
-        const g = nhom.get(k) || { ...Object.fromEntries(cot.map((c) => [c, r[c] ?? null])), count: 0 }
-        g.count++
-        nhom.set(k, g)
-      }
-      return send(res, 200, Array.from(nhom.values()))
+    if (tachSelect(sel).some((x) => x === "count()" || /\.sum\(\)$/.test(x))) {
+      /* Như PostgREST 12 thật: bảng nhúng RỖNG (`customer:customers!inner()`) đi cùng câu gộp → 400 42703 — màn từng lặng lẽ
+         lùi về đếm từng trạng thái mỗi khi lọc tuyến (chủ nhà 01/11/2026). Nhóm theo tuyến thì nhúng `(channel)`. */
+      const rong = tachSelect(sel).map((x) => /^(\w+):\w+(?:!\w+)?\(\s*\)$/.exec(x)?.[1]).find(Boolean)
+      if (rong) return send(res, 400, { code: "42703", message: `column "${rong}" does not exist`, details: null, hint: null })
+      return send(res, 200, gopDong(sel, rows.filter(match)))
     }
     if ((req.headers.accept || "").includes("vnd.pgrst.object")) {
       if (out.length !== 1) return send(res, 406, { code: "PGRST116", message: `JSON object requested, ${out.length} rows returned` }, headers)

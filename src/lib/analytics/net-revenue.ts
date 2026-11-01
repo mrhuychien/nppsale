@@ -19,23 +19,30 @@ export async function traTheoHoaDon(
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>()
   const ids = Array.from(new Set(invoiceIds.filter(Boolean)))
-  for (let i = 0; i < ids.length; i += 200) {
-    const lo = ids.slice(i, i + 200)
-    const { data, error } = await supabase
-      .from("returns")
-      .select("invoice_id, status, credit_with_invoice, credit_note_amount")
-      .in("invoice_id", lo)
-    if (error) throw new Error(`Không đọc được phiếu trả của hóa đơn: ${error.message}`)
-    const theoHD = new Map<string, CreditInput[]>()
-    for (const r of (data ?? []) as Array<CreditInput & { invoice_id: string }>) {
-      const ds = theoHD.get(r.invoice_id) ?? []
-      ds.push(r)
-      theoHD.set(r.invoice_id, ds)
+  const cacLo: string[][] = []
+  for (let i = 0; i < ids.length; i += 200) cacLo.push(ids.slice(i, i + 200))
+  /* ⚠ SONG SONG TỪNG NHÓM 6 LÔ (chủ nhà 01/11/2026 "danh sách … nhiều khi còn chậm"): bản cũ đi TUẦN TỰ — 13.333 hoá đơn
+     là 67 câu nối đuôi (~4,7 giây máy tính, ~10 giây điện thoại). Vẫn 200 id một lô (URL dài là vỡ). Một hoá đơn chỉ nằm ở
+     một lô nên gom theo lô vẫn đủ. */
+  for (let i = 0; i < cacLo.length; i += 6) {
+    const kq = await Promise.all(
+      cacLo.slice(i, i + 6).map((lo) =>
+        supabase.from("returns").select("invoice_id, status, credit_with_invoice, credit_note_amount").in("invoice_id", lo)
+      )
+    )
+    for (const { data, error } of kq) {
+      if (error) throw new Error(`Không đọc được phiếu trả của hóa đơn: ${error.message}`)
+      const theoHD = new Map<string, CreditInput[]>()
+      for (const r of (data ?? []) as Array<CreditInput & { invoice_id: string }>) {
+        const ds = theoHD.get(r.invoice_id) ?? []
+        ds.push(r)
+        theoHD.set(r.invoice_id, ds)
+      }
+      theoHD.forEach((ds, id) => {
+        const c = creditOnInvoice(ds)
+        if (c) out.set(id, c)
+      })
     }
-    theoHD.forEach((ds, id) => {
-      const c = creditOnInvoice(ds)
-      if (c) out.set(id, c)
-    })
   }
   return out
 }

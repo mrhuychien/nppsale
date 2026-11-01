@@ -78,6 +78,7 @@ import { useFieldSearch } from "@/hooks/use-field-search"
 import { TRUONG_HOA_DON } from "@/lib/search/doc-fields"
 import { soTruongDangTim } from "@/lib/search/field-search"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
+import { NHOM_TUYEN, docDemTheoTuyen, docTongGop, gopMayChu } from "@/lib/list/tong-may-chu"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong } from "@/lib/xuat-excel/nap"
 import { DONG_HOA_DON, xuatHoaDon, type DongHoaDon, type HoaDonXuat } from "@/lib/xuat-excel/cac-man"
@@ -423,6 +424,17 @@ export default function SalesInvoicesPage() {
     setFilteredTotal(null)
     if (!searchReady) return
     const luot = ++luotRef.current.tong
+    /* ⚠ CỘNG TRÊN MÁY CHỦ, MỘT CÂU (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"): view
+       `v_hoa_don_con_lai` (mig 257) có sẵn số CÒN LẠI sau hàng trả của từng tờ. Bản cũ ngay dưới tải id + tiền mọi tờ rồi tra
+       hàng trả 200 tờ một câu — NVBH kỳ "Tất cả" 86 câu / 68 đợt. Sổ chưa có view → `null`, cộng theo cách cũ. */
+    let qGop = supabase.from("v_hoa_don_con_lai").select((routeFilter !== "all" ? `con_lai.sum(), ${NHOM_TUYEN}` : "con_lai.sum()") as string)
+    qGop = status !== "all" ? locTrangThai(qGop, status) : qGop.neq("status", "cancelled")
+    const gop = await gopMayChu(applyFilters(qGop as never) as typeof qGop, docTongGop, "sales-invoices")
+    if (luot !== luotRef.current.tong) return
+    if (gop !== null) {
+      setFilteredTotal(gop)
+      return
+    }
     const cust = routeFilter !== "all" ? CUSTOMER_EMBED_INNER : CUSTOMER_EMBED
     const res = await fetchAllForAggregate<{ id: string; total: number | string }>((from, to) => {
       let q = supabase
@@ -503,7 +515,8 @@ export default function SalesInvoicesPage() {
     /* Một lượt gom nhóm (mig 206) — bật rồi thì khỏi 3 lượt đếm. */
     const nhom = docDemNhom(
       await (applyFilters(
-        supabase.from("sales_invoices").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()") as never
+        /* Lọc tuyến: nhúng `customers!inner(channel)` — nhúng rỗng đi cùng count() là 400 (42703) trên PostgREST thật. */
+        supabase.from("sales_invoices").select((routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string) as never
       ) as unknown as PromiseLike<{ data: unknown; error: unknown }>)
     )
     if (luot !== luotRef.current.dem) return
@@ -560,6 +573,15 @@ export default function SalesInvoicesPage() {
     if (!canDanhMuc || !searchReady || authLoading) return
     let huy = false
     ;(async () => {
+      /* Đếm trên máy chủ, một câu (chủ nhà 01/11/2026) — bản cũ tải id mọi tờ (20 trang, chạm trần là đếm THIẾU). */
+      let qGop = supabase.from("sales_invoices").select(`count(), ${NHOM_TUYEN}` as string)
+      qGop = locTrangThai(qGop, status)
+      const gop = await gopMayChu(applyFilters(qGop as never, true) as typeof qGop, docDemTheoTuyen, "sales-invoices")
+      if (huy) return
+      if (gop !== null) {
+        setRouteCounts(gop)
+        return
+      }
       const res = await fetchAllForAggregate<{ customer: { channel: string | null } | null }>((from, to) => {
         let q = supabase
           .from("sales_invoices")

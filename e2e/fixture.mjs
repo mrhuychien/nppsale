@@ -694,6 +694,14 @@ export const rpc = {
     return trangKhach(ds, p_offset, p_limit)
   },
   bao_cao_so_ban: baoCaoSoBan,
+  /* Mig 257: tồn kho bán theo mặt hàng — như `docLoBan` + `stockMapFrom` (chỉ lô KHO BÁN còn hàng). */
+  ton_ban_theo_hang: (_p, { db }) => {
+    const m = {}
+    for (const b of db.batches || []) {
+      if (Number(b.qty_on_hand) > 0 && b.warehouse_zone === "sale") m[b.product_id] = (m[b.product_id] || 0) + Number(b.qty_on_hand)
+    }
+    return m
+  },
   bao_cao_cong_no: baoCaoCongNo,
   bao_cao_ton_kho: baoCaoTonKho,
   get_invoiceable_lines: invoiceableLines,

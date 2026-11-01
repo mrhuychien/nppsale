@@ -71,6 +71,7 @@ describe("Máy dò truy vấn chưa kiểm lỗi", () => {
       "probe_local_swallow_bad", // hàm bọc trong tệp NUỐT lỗi
       "probe_builder_wrapped_bad", // query bọc hàm gắn thứ tự, await không kiểm
       "probe_builder_unknown_wrap_bad", // kết quả đi vào hàm lạ
+      "probe_await_unknown_wrap_bad", // await qua hàm lạ trong cùng biểu thức (sinh đôi của `await gopMayChu(q)`)
       "probe_inside_long_fn_bad", // truy vấn trơn trong thân một hàm DÀI có `throw`
       "probe_long_fn_call_bad", // gọi hàm DÀI quanh truy vấn — hàm dài không phải hàm bọc
       "probe_inside_short_wrapper_bad", // trong thân hàm bọc ngắn — dòng khai báo không phải lời gọi

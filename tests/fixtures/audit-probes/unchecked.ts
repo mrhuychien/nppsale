@@ -179,6 +179,11 @@ export async function probes(
   const qLa = supabase.from("probe_builder_unknown_wrap_bad").select("id")
   console.log(boQuaLoi(await apLoc(qLa)))
 
+  // 16b. Dựng dần rồi await qua hàm LẠ ngay trong biểu thức await — sinh đôi của `await gopMayChu(applyFilters(q))`.
+  let qGopLa = supabase.from("probe_await_unknown_wrap_bad").select("total.sum()")
+  qGopLa = apSapXep(qGopLa, "x")
+  console.log(await boQuaLoi(apLoc(qGopLa), "mồi"))
+
   // 20. Await qua toán tử BA NGÔI mà KHÔNG kiểm lỗi.
   const coSoBad = supabase
     .from("probe_ternary_await_bad")

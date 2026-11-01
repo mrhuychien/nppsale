@@ -281,6 +281,25 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
   tìm hỏi sau 300 ms ngừng gõ; Xuất Excel đọc hết các trang (`docTatCaTon`). Sổ chưa chạy 255 (`chuaCoRpc`,
   `src/lib/supabase/chua-co-rpc.ts` — dùng chung cho mọi màn có đường lùi) → lùi về cách cũ (`gopTonTheoSanPham`), giữ nguyên
   đường cũ.
+- **Đợt 5** (chủ nhà 01/11/2026: *"tìm kiếm trong danh sách (đơn hàng, hóa đơn...) nhiều khi còn chậm hoặc mở đơn hàng, sửa đơn
+  hàng, hóa đơn... ở pos còn chậm"* — đo bằng PostgREST thật trên sổ thử 40.000 HĐ):
+  · **Tổng / đếm của cả bộ lọc gộp TRÊN MÁY CHỦ** (`src/lib/list/tong-may-chu.ts`: `gopMayChu`, `docTongGop`, `docDemTheoTuyen`,
+  `NHOM_TUYEN`): Đơn hàng `total.sum()`, Hoá đơn `con_lai.sum()` trên view `v_hoa_don_con_lai` (mig 257 — tiền CÒN LẠI sau hàng
+  trả, luật `creditCounted`, **security_invoker**; khoản trừ là truy vấn con THEO TỪNG TỜ — đừng đổi về LEFT JOIN nhóm sẵn: ô tìm
+  khớp rộng Postgres đoán sai, 2–3,3 giây thay vì 0,1), đếm theo tuyến `count(), customer:customers!inner(channel)` — cùng bộ lọc
+  với danh sách. Đừng quay lại tải mọi dòng rồi cộng: kỳ "Tất cả" là 20 câu rồi chạm trần (dải "—", đếm tuyến thiếu); NVBH mở Hoá
+  đơn 86–100 câu / 66–68 đợt (điện thoại ~10 giây) → nay 10–12 câu. Lỗi / sổ chưa chạy 257 → `null`, lùi về cách cũ
+  (`gopMayChu` nằm trong `NULL_ON_ERROR_WRAPPERS` của máy dò `scripts/audit-unchecked-db.py` — đưa câu vào thẳng nó, kể cả
+  `await gopMayChu(applyFilters(q), …)`, là đã kiểm lỗi). `traTheoHoaDon` (đường lùi + nơi khác) chạy **song song 6 lô** 200 id,
+  không tuần tự.
+  · **Tồn kho POS / bán hàng một câu**: `docTonBan` (`src/lib/sell/ref-data.ts`) gọi `ton_ban_theo_hang` (mig 257, GET) thay cho
+  tải từng lô; chỉ lùi về `docLoBan` khi sổ CHƯA CÓ hàm (`chuaCoRpc`) — lỗi khác báo như đọc lô hỏng, không gửi thêm câu.
+  · **Khoá tìm dựng một lần**: `taoMucTim` chuẩn hoá mỗi trường MỘT lần và nhớ theo nội dung (sổ hàng / sổ khách / từng ô tìm
+  dùng chung) — mở POS ở máy chậm từng mất ~0,5 giây dựng lại 2–3 lần cùng danh mục. `khoa` phải y hệt `viSearchKey`.
+  · View đọc bảng có RLS **phải** `WITH (security_invoker = true)` (luật mig 092) — view thường bỏ qua RLS, NVBH cộng được tiền
+  của cả NPP; khám sổ dòng 96 báo LỆCH nếu thiếu. View chốt cột lúc tạo (`i.*`): migration nào
+  thêm cột cho `sales_invoices` thì dựng lại `v_hoa_don_con_lai` trong cùng tệp (quên thì lọc theo cột mới hỏng, danh sách
+  lùi về cách chậm — khám sổ 96 cũng báo LỆCH).
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.

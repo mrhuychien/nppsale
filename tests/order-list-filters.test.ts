@@ -271,7 +271,9 @@ describe("Con số trên chip phải khớp danh sách bên dưới nó", () => 
     // Bốn: thêm lượt đếm gom nhóm một lượt (mig 206, 27/09/2026) — vẫn đi qua CÙNG hàm lọc.
     // Năm: đầu nhóm ngày điện thoại đếm trên máy chủ (rà soát 03/10/2026) — cũng CÙNG hàm lọc.
     // Sáu: nút Xuất Excel (chủ nhà 05/10/2026) xuất đúng bộ lọc đang xem — cũng CÙNG hàm lọc.
-    expect(uses.length, "phải gọi ở danh sách, phép đếm (gom nhóm + kiểu cũ), phép cộng tiền, đầu nhóm ngày và Xuất Excel").toBe(6)
+    // Bảy: phép cộng tiền gộp TRÊN MÁY CHỦ `total.sum()` (chủ nhà 01/11/2026, mig 257) — đường cũ vẫn giữ làm đường lùi,
+    //      cả hai CÙNG hàm lọc.
+    expect(uses.length, "phải gọi ở danh sách, phép đếm (gom nhóm + kiểu cũ), phép cộng tiền (gộp máy chủ + đường lùi), đầu nhóm ngày và Xuất Excel").toBe(7)
   })
 
   /**

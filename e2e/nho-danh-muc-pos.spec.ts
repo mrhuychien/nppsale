@@ -49,7 +49,8 @@ const banLuuCoKhoa = (page: Page, khach = false) =>
 const soKhach = async (): Promise<number> =>
   Number(((await (await fetch(`${FAKE}/__db`)).json()) as { danh_muc_ban_phien: Array<{ phien_khach: number }> }).danh_muc_ban_phien[0].phien_khach)
 const laSoPhien = (x: Luot) => x.path === "/rest/v1/danh_muc_ban_phien"
-const laTonKho = (x: Luot) => x.path === "/rest/v1/batches"
+/** Tồn kho bán: một câu `ton_ban_theo_hang` (mig 257); sổ chưa có hàm thì lùi về đọc từng lô `batches`. */
+const laTonKho = (x: Luot) => x.path === "/rest/v1/rpc/ton_ban_theo_hang" || x.path === "/rest/v1/batches"
 
 test.describe("POS nhớ danh mục hàng", () => {
   test.afterEach(async () => {

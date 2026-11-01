@@ -64,6 +64,17 @@ describe("đếm chip trạng thái một lượt (mig 206)", () => {
     expect(tongDem(d!)).toBe(8)
     expect(docDemNhom({ data: [], error: null })).toEqual({})
   })
+  it("lọc tuyến: dòng kèm khoá bảng nhúng `customer` (nhóm thêm theo tuyến) vẫn cộng dồn theo trạng thái", () => {
+    const d = docDemNhom({
+      data: [
+        { status: "posted", count: 3, customer: { channel: "T9" } },
+        { status: "posted", count: 2, customer: { channel: "T1" } },
+        { status: "cancelled", count: 1, customer: { channel: "T9" } },
+      ],
+      error: null,
+    })
+    expect(d).toEqual({ posted: 5, cancelled: 1 })
+  })
   it("chưa bật gom nhóm (lỗi, hay trả dòng không có count) → null để đếm kiểu cũ", () => {
     expect(docDemNhom({ data: null, error: { code: "PGRST123", message: "Use of aggregate functions is not allowed" } })).toBeNull()
     expect(docDemNhom({ data: [{ status: "draft" }], error: null })).toBeNull()
@@ -71,7 +82,10 @@ describe("đếm chip trạng thái một lượt (mig 206)", () => {
   it("danh sách đơn / hoá đơn thử gom nhóm trước, lùi về đếm từng trạng thái", () => {
     for (const [f, bang] of [["orders", "sales_orders"], ["sales-invoices", "sales_invoices"]]) {
       const s = readFileSync(`src/app/(dashboard)/${f}/page.tsx`, "utf8")
-      expect(s).toContain(`supabase.from("${bang}").select(routeFilter !== "all" ? "status, count(), customer:customers!inner()" : "status, count()")`)
+      /* Lọc tuyến: nhúng `customers!inner(channel)` (NHOM_TUYEN) — nhúng rỗng + count() là 400 (42703) trên PostgREST thật,
+         màn lặng lẽ lùi về đếm từng trạng thái (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"). */
+      expect(s).toContain(`supabase.from("${bang}").select((routeFilter !== "all" ? \`status, count(), \${NHOM_TUYEN}\` : "status, count()") as string)`)
+      expect(s).not.toContain("count(), customer:customers!inner()")
       expect(s).toMatch(/if \(nhom\) \{/)
     }
   })

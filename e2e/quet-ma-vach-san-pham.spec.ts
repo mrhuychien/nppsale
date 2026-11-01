@@ -33,6 +33,10 @@ test.describe("máy tính — /products/new", () => {
 
   test("máy quét USB gõ mã rồi Enter vào ô Mã vạch: không gửi form, sang ô Tên hàng; mã mới thì không cảnh báo", async ({ page }) => {
     await dangNhap(page)
+    /* Nhật ký của máy chủ giả dùng chung CẢ LƯỢT chạy: chỉ soi phần sinh ra từ đây. Soi cả nhật ký thì bài "tạo nhanh sản
+       phẩm" chạy trước đã POST /products → bài này đỏ ở mọi lượt full e2e (lượt 01/11/2026), dù form không gửi gì. */
+    const t0 = (await nhatKy()).length
+    const tuDay = async () => (await nhatKy()).slice(t0)
     await page.goto("/products/new")
     /* Tên + đơn vị là ô `required` — để trống thì trình duyệt tự chặn gửi, Enter có lọt cũng không thấy. Điền đủ hai ô ấy,
        chừa NCC: form mà bị gửi thì handleSubmit kêu "Vui lòng chọn nhà cung cấp" (và không ghi gì vào sổ). */
@@ -44,10 +48,10 @@ test.describe("máy tính — /products/new", () => {
     await expect(page).toHaveURL(/\/products\/new$/)
     await expect(page.locator("#barcode")).toHaveValue(MOI)
     await expect(page.getByText("Vui lòng chọn nhà cung cấp")).toHaveCount(0)
-    expect((await nhatKy()).some((r) => r.method === "POST" && r.path.endsWith("/products"))).toBe(false)
+    expect((await tuDay()).some((r) => r.method === "POST" && r.path.endsWith("/products"))).toBe(false)
     // Có hỏi sổ theo đúng mã, nhưng không có hàng nào mang mã ấy → không cảnh báo.
     await expect.poll(async () =>
-      (await nhatKy()).some((r) => r.method === "GET" && r.path.endsWith("/products") && (r.query ?? "").includes(`barcode=eq.${MOI}`))
+      (await tuDay()).some((r) => r.method === "GET" && r.path.endsWith("/products") && (r.query ?? "").includes(`barcode=eq.${MOI}`))
     ).toBe(true)
     await expect(page.getByText("Mã vạch đã gắn cho sản phẩm khác")).toHaveCount(0)
   })

@@ -120,12 +120,25 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 ### Quét mã vạch ở form sản phẩm
 Chủ nhà 24/10/2026: *"phần thêm sản phẩm đoạn mã vạch thêm cho tao phần quét mã vạch nhé"*.
 - Ô Mã vạch của `ProductForm` (máy tính, điện thoại, khung tạo nhanh) có nút quét → **dùng lại** `BarcodeScanner`
-  (`src/components/ui/barcode-scanner.tsx`, html5-qrcode: camera + nhập tay), không dựng bộ quét thứ hai; mỗi lần mở chỉ nhận
-  MỘT mã rồi đóng (camera bắn 10 lần/giây — `daNhanRef`). Luật mã: `src/lib/products/ma-vach.ts` (`chuanMaVach` bỏ CR/LF
+  (`src/components/ui/barcode-scanner.tsx`: camera + nhập tay), không dựng bộ quét thứ hai; mỗi lần mở chỉ nhận
+  MỘT mã rồi đóng (camera đọc ~8 khung/giây — `daNhanRef`). Luật mã: `src/lib/products/ma-vach.ts` (`chuanMaVach` bỏ CR/LF
   máy quét gửi kèm). Nhãn nút nhập tay theo nơi gọi (`manualLabel`).
 - **Enter trong ô Mã vạch không gửi form** (máy quét USB / Bluetooth gõ mã rồi Enter) — chỉ sang ô Tên hàng.
 - Mã đã gắn cho sản phẩm KHÁC → **cảnh báo** (`cauTrungMaVach`, hỏi sổ lúc quét / rời ô, loại chính hàng đang sửa), vẫn cho
   lưu — sổ không khoá trùng mã vạch.
+- **Camera do app tự lo, không giao lại cho `Html5Qrcode.start()`** (chủ nhà 02/11/2026: *"phần tạo sản phẩm mới trên điện
+  thoại mã vạch chưa quét được"* — bản html5-qrcode: 0/3 tình huống camera giả đọc được trong 15 giây; đóng hộp lúc camera
+  chạy thì `clear()` ném lỗi trong hàm dọn → SẬP TRANG "Không thể kết nối"). `src/lib/quet/camera.ts`: xin camera sau
+  **1920×1080 lý tưởng** (`RANG_BUOC_CAMERA` — mặc định 640×480 không đủ điểm ảnh ở 10–15 cm), lấy nét liên tục, cắt ĐÚNG ô
+  ngắm (`O_NGAM`, `vungCat` theo `object-fit: cover`) ở **độ phân giải gốc** rồi mới giải — đừng giải trên ô cỡ CSS (280 px là
+  ~1 điểm ảnh / mô-đun). `src/lib/quet/bo-giai.ts`: `BarcodeDetector` của máy (Android) nếu có, không thì ZXing đóng kèm
+  html5-qrcode **đã vá** (`src/lib/quet/zxing-va.ts` — bản đóng kèm dò vạch mở đầu EAN/UPC + Code128 sai: có vùng tối bên trái
+  mã là trượt). Hàm dọn chỉ tắt camera (`tatCamera`), không gì được ném ra; đóng hộp trước khi có quyền camera thì luồng về
+  sau vẫn bị tắt. Lỗi camera hiện câu tiếng Việt + "Thử lại camera" (`cauLoiCamera`).
+- **Cùng một mã qua camera chỉ báo lại sau 1,5 giây** (`shouldAcceptScan` ngay trong `BarcodeScanner`): Nhập kho thêm một DÒNG
+  mỗi lần báo mã, không tự lọc — giơ mã một giây từng là tám dòng. Nhập tay / máy quét USB không qua cửa này.
+- E2E camera: Chromium chiếu video Y4M giống camera điện thoại (`e2e/camera-gia.mjs`: mã nhỏ giữa khung, nền tối, mờ, nhiễu;
+  `e2e/camera-trang.ts`) — `quet-ma-vach-camera*.spec.ts`. Bài chỉ đi đường Nhập tay thì camera hỏng vẫn xanh.
 
 ### Thẻ khách / NCC ở POS: xem đủ + sửa tại chỗ
 Chủ nhà 21/10/2026: *"Phần tạo đơn POS : phần Khách hàng / NCC khi ấn vào hiện modal xem thông tin đầy đủ và sửa các

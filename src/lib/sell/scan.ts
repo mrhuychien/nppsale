@@ -3,10 +3,12 @@ import type { SellProduct } from "@/lib/sell/ref-data"
 /**
  * Quét mã vạch liên tục.
  *
- * ⚠ CAMERA BẮN 10 LẦN MỖI GIÂY. `html5-qrcode` gọi lại callback ở mỗi
- * khung hình nó đọc được, nên giơ mã vạch trước ống kính một giây rưỡi là
- * MƯỜI LĂM lần "thêm 1". Không có cửa chặn này thì mỗi lần quét ra một số
- * lượng ngẫu nhiên, và người dùng không đoán nổi vì sao.
+ * ⚠ CAMERA ĐỌC ~8–10 KHUNG MỖI GIÂY, mỗi khung đọc được là một lần báo mã,
+ * nên giơ mã vạch trước ống kính một giây rưỡi là cả chục lần "thêm 1".
+ * Không có cửa chặn này thì mỗi lần quét ra một số lượng ngẫu nhiên, và
+ * người dùng không đoán nổi vì sao. Bộ quét chung (`BarcodeScanner`) dùng
+ * chính hàm này ở đường camera (chủ nhà 02/11/2026 — Nhập kho không tự lọc);
+ * màn bán hàng lọc thêm cả đường nhập tay.
  */
 export const SCAN_DEDUPE_MS = 1500
 

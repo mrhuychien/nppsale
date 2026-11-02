@@ -144,6 +144,12 @@ vào chưa mở tab mới"*.
 - Thẻ `<a>` vào lối POS do `PosNewTab` bắt. Nút đi bằng `router.push` thì bộ bắt không thấy — máy tính phải gọi
   `diHoacMoPos(router.push, …)` (`src/components/sell/pos-new-tab.tsx`); `tests/pos-tab-moi-nut.test.ts` chặn
   `router.push(newOrderHref(` / ``router.push(`/sell/edit/``.
+- **Mở THẲNG đích POS, không qua màn cũ** (chủ nhà 02/11/2026: *"dường như trễ 1 nhịp để nhận diện là phải load pos"*):
+  nút "Xuất hàng" mở `/sales-invoices/new?order=…` → tab mới tải trọn màn cũ rồi mới `router.replace` sang POS (nhật ký
+  production: 1,1–2,7 giây thừa mỗi lần, màn cũ chớp lên). `openInNewTab` (`src/components/ui/new-tab-link.tsx`) nay tự đổi
+  lối vào POS cũ thành đích POS trên máy tính (`posTargetFor`) — `PosDesktopRedirect` chỉ là đường lùi cho dấu trang / gõ
+  tay. Bài e2e lối POS phải ghi **mọi lượt điều hướng** của tab mới (`isNavigationRequest`), không chỉ địa chỉ cuối —
+  kiểm địa chỉ cuối thì đi vòng vẫn xanh.
 
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.

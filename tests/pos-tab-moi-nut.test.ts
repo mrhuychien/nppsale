@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { diHoacMoPos } from "@/components/sell/pos-new-tab"
+import { openInNewTab } from "@/components/ui/new-tab-link"
 
 const goc = resolve(__dirname, "..")
 const read = (p: string) => readFileSync(resolve(goc, p), "utf-8")
@@ -65,6 +66,49 @@ describe("diHoacMoPos", () => {
     diHoacMoPos(push, "/sell")
     expect(push).toHaveBeenCalledWith("/sell")
     expect(open).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * ⚠ CHỦ NHÀ 02/11/2026: "dường như trễ 1 nhịp để nhận diện là phải load pos". Nút "Xuất hàng" (danh sách đơn + khung xem
+ *   nhanh) gọi `openInNewTab("/sales-invoices/new?order=…")`: tab mới tải màn cũ rồi mới tự chuyển sang POS (production:
+ *   1,1–2,7 giây thừa mỗi lần). `openInNewTab` nay tự đổi lối vào POS cũ thành đích POS trên máy tính.
+ */
+describe("openInNewTab: lối vào POS cũ mở thẳng đích POS (máy tính)", () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const cua = (innerWidth: number) => {
+    const open = vi.fn((_duong: string, _dich?: string) => ({ opener: {} }))
+    const location = { href: "/orders" }
+    vi.stubGlobal("window", { innerWidth, open, location })
+    return { open, location }
+  }
+
+  it("máy tính: Xuất hàng (/sales-invoices/new?order=) → /pos/hoa-don/moi?order= — không qua màn cũ", () => {
+    const { open } = cua(1440)
+    openInNewTab("/sales-invoices/new?order=don-7")
+    expect(open).toHaveBeenCalledWith("/pos/hoa-don/moi?order=don-7", "_blank")
+  })
+  it("máy tính: các lối khác cũng đổi (đơn mới, sửa hoá đơn, phiếu trả, nhập hàng); đường thường giữ nguyên", () => {
+    const { open } = cua(1440)
+    for (const d of ["/sell", "/sales-invoices/hd-1/edit", "/returns/new", "/purchasing/receipts/new", "/sales-invoices/hd-1"]) openInNewTab(d)
+    expect(open.mock.calls.map((c) => c[0])).toEqual([
+      "/pos/don-hang/moi", "/pos/hoa-don/hd-1/sua", "/pos/tra-hang/moi", "/pos/nhap-hang/moi", "/sales-invoices/hd-1",
+    ])
+  })
+  it("điện thoại: mở đúng đường được đưa (POS không dùng được trên điện thoại)", () => {
+    const { open } = cua(390)
+    openInNewTab("/sales-invoices/new?order=don-7")
+    expect(open).toHaveBeenCalledWith("/sales-invoices/new?order=don-7", "_blank")
+  })
+  it("luật ghi ở CLAUDE.md (mục Mở POS ở tab mới)", () => {
+    expect(read("CLAUDE.md")).toContain("**Mở THẲNG đích POS, không qua màn cũ** (chủ nhà 02/11/2026")
+  })
+  it("trình duyệt chặn cửa sổ mới: chuyển cùng tab — cũng tới THẲNG POS", () => {
+    const open = vi.fn(() => null)
+    const location = { href: "/orders" }
+    vi.stubGlobal("window", { innerWidth: 1440, open, location })
+    openInNewTab("/sales-invoices/new?order=don-7")
+    expect(location.href).toBe("/pos/hoa-don/moi?order=don-7")
   })
 })
 

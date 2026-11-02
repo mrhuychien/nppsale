@@ -128,6 +128,38 @@ test("danh sách trả hàng NCC: tạo phiếu mở POS trả NCC ở tab mới
   await expect(tab).toHaveURL(/\/pos\/tra-ncc\/moi/)
 })
 
+/**
+ * ⚠ CHỦ NHÀ 02/11/2026: "dường như trễ 1 nhịp để nhận diện là phải load pos". Nhật ký production: MỖI lượt mở
+ *   /pos/hoa-don/moi đi sau một lượt tải /sales-invoices/new 1,1–2,7 giây trước đó — nút "Xuất hàng" (dòng bảng đơn +
+ *   khung xem nhanh) mở MÀN CŨ ở tab mới; màn cũ tải xong JS, dựng xong mới tự `router.replace` sang POS. Các bài trên chỉ
+ *   kiểm địa chỉ CUỐI của tab nên không thấy. Ở đây ghi MỌI lượt điều hướng: tab mới phải vào THẲNG POS.
+ */
+for (const noi of ["dòng bảng đơn", "khung xem nhanh"] as const) {
+  test(`danh sách đơn — Xuất hàng (${noi}): tab mới vào THẲNG POS xuất hoá đơn, không tải màn cũ trước`, async ({ page, context }) => {
+    const dieuHuong: string[] = []
+    context.on("request", (r) => {
+      if (!r.isNavigationRequest()) return
+      const u = new URL(r.url())
+      dieuHuong.push(u.pathname + u.search)
+    })
+    await dangNhap(page)
+    await page.goto("/orders")
+    let nut = page.locator('[data-doc-list="desktop"]').getByRole("button", { name: "Xuất hàng", exact: true }).first()
+    if (noi === "khung xem nhanh") {
+      /* Bấm vào Ô (tên khách) của dòng, không bấm chữ "DH-0001" — chữ ấy là đường link sang trang chi tiết đơn. */
+      const dong = page.locator('[data-doc-list="desktop"]').getByRole("row", { name: /DH-0001/ })
+      await dong.getByText("Tạp hoá Cô Ba").click()
+      nut = page.getByRole("dialog").getByRole("button", { name: "Xuất hàng", exact: true })
+    }
+    const [tab] = await Promise.all([context.waitForEvent("page"), nut.click()])
+    await tab.waitForLoadState()
+    await expect(tab).toHaveURL(/\/pos\/hoa-don\/moi\?order=o-e2e-1$/)
+    expect(dieuHuong.filter((u) => u.startsWith("/sales-invoices/new")), "tab mới tải màn cũ trước rồi mới sang POS").toEqual([])
+    expect(dieuHuong.filter((u) => u.startsWith("/pos/hoa-don/moi")), "đúng MỘT lượt tải màn POS").toHaveLength(1)
+    await expect(page, "tab danh sách bị chuyển trang").toHaveURL(/\/orders/)
+  })
+}
+
 test("mở thẳng màn tạo cũ trên máy tính → chuyển sang POS", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/purchasing/receipts/new")

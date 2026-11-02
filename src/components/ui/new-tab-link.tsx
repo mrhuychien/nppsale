@@ -24,6 +24,7 @@
  */
 
 import { cn } from "@/lib/utils"
+import { manDuRong, posTargetFor } from "@/lib/nav/pos-preview"
 
 export function NewTabLink({
   href,
@@ -62,12 +63,20 @@ export function NewTabLink({
  * ⚠ VẪN GIỮ NHÁNH DỰ PHÒNG. Khi trình duyệt chặn thật thì không có nhánh
  * này là người dùng bấm nút và KHÔNG CÓ GÌ XẢY RA — họ bấm tiếp mấy lần
  * rồi kết luận app hỏng. Thà chuyển trang cùng tab còn hơn không đi đâu.
+ *
+ * ⚠ LỐI VÀO POS CŨ → MỞ THẲNG ĐÍCH POS (máy tính, như `PosNewTab`). Chủ nhà
+ * 02/11/2026: "dường như trễ 1 nhịp để nhận diện là phải load pos" — nút
+ * "Xuất hàng" mở `/sales-invoices/new?order=…`: tab mới tải TRỌN màn cũ (khung
+ * + JS + dựng) rồi mới tự `router.replace` sang POS. Nhật ký production: mỗi
+ * lượt `/pos/hoa-don/moi` đi sau lượt tải màn cũ 1,1–2,7 giây. Đổi ở đây thì
+ * mọi nút gọi hàm này, kể cả nút thêm sau, đều đi thẳng.
  */
 export function openInNewTab(href: string) {
   if (typeof window === "undefined") return
-  const w = window.open(href, "_blank")
+  const dich = (manDuRong() && posTargetFor(href)) || href
+  const w = window.open(dich, "_blank")
   if (!w) {
-    window.location.href = href
+    window.location.href = dich
     return
   }
   // Tab mới không được nắm `window.opener` của tab này.

@@ -139,6 +139,11 @@ Chủ nhà 24/10/2026: *"phần thêm sản phẩm đoạn mã vạch thêm cho 
   mỗi lần báo mã, không tự lọc — giơ mã một giây từng là tám dòng. Nhập tay / máy quét USB không qua cửa này.
 - E2E camera: Chromium chiếu video Y4M giống camera điện thoại (`e2e/camera-gia.mjs`: mã nhỏ giữa khung, nền tối, mờ, nhiễu;
   `e2e/camera-trang.ts`) — `quet-ma-vach-camera*.spec.ts`. Bài chỉ đi đường Nhập tay thì camera hỏng vẫn xanh.
+- **Phiếu xuất kho (`/inventory/stock-issue`) có nút quét** (chủ nhà 03/11/2026: *"có sửa luôn đi em"*) — bộ quét chung, hộp để
+  mở quét tiếp; `ketQuaQuetXuat` (`src/lib/inventory/stock-issue.ts`): hàng đã trên phiếu thì báo "Đã có trên phiếu", không
+  thêm dòng thứ hai. **Tra mã một luật** cho mọi màn quét: `findByCode` (`src/lib/sell/scan.ts` — mã vạch trước rồi SKU, bỏ
+  khoảng trắng, không phân biệt hoa thường); đừng tự viết `p.sku === code` (màn cũ `/inventory/stock-out` làm thế — mã vạch
+  thật không bao giờ ra; màn ấy đã chặn từ 22/09/2026, `LEGACY_V2_HREFS`, đừng sửa thêm).
 
 ### Thẻ khách / NCC ở POS: xem đủ + sửa tại chỗ
 Chủ nhà 21/10/2026: *"Phần tạo đơn POS : phần Khách hàng / NCC khi ấn vào hiện modal xem thông tin đầy đủ và sửa các

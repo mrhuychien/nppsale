@@ -1,5 +1,3 @@
-import type { SellProduct } from "@/lib/sell/ref-data"
-
 /**
  * Quét mã vạch liên tục.
  *
@@ -33,8 +31,14 @@ export function shouldAcceptScan(
  * ⚠ So SAU KHI cắt khoảng trắng và bỏ phân biệt hoa thường. Máy quét hay
  * kèm ký tự xuống dòng, và SKU nhập tay thì lúc hoa lúc thường — tra
  * trượt ở đây làm người dùng tưởng hàng chưa có trong danh mục.
+ *
+ * Một luật cho mọi màn quét (bán hàng, phiếu xuất kho — chủ nhà 03/11/2026):
+ * màn nào tự viết `p.sku === code` là quét mã vạch thật không bao giờ ra.
  */
-export function findByCode(products: SellProduct[], code: string): SellProduct | undefined {
+export function findByCode<T extends { barcode?: string | null; sku?: string | null }>(
+  products: readonly T[],
+  code: string
+): T | undefined {
   const c = code.trim().toLowerCase()
   if (!c) return undefined
   return (

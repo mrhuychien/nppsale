@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, ArrowLeftRight, Loader2, PackageMinus, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowLeftRight, Loader2, PackageMinus, ScanBarcode, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useOrg } from "@/hooks/use-org"
@@ -35,11 +35,12 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { formatInt } from "@/lib/utils"
 import { ProductPicker, PICKER_PEEK } from "@/components/ui/product-picker"
+import { BarcodeScanner } from "@/components/ui/barcode-scanner"
 import { CatalogueShortNote } from "@/components/ui/catalogue-short-note"
 import { searchReturnProducts } from "@/lib/purchasing/return-form"
 import {
   baseQtyOf, overIssueProducts, validIssueLines, friendlyIssueError,
-  ISSUE_REASONS, ISSUE_ZONES, destZonesFor, isTransfer,
+  ISSUE_REASONS, ISSUE_ZONES, destZonesFor, isTransfer, ketQuaQuetXuat,
   type IssueLine, type IssueProduct,
 } from "@/lib/inventory/stock-issue"
 import { loadCatalogue } from "@/lib/products/load-catalogue"
@@ -78,6 +79,8 @@ export default function StockIssuePage() {
   const seqRef = useRef(0)
   /** Khung tạo nhanh sản phẩm đang mở, kèm chữ đã gõ ở ô tìm (chủ nhà 03/10/2026). */
   const [taoSp, setTaoSp] = useState<{ chu: string } | null>(null)
+  /** Hộp quét mã vạch (camera điện thoại / nhập tay) — bộ quét dùng chung với Nhập kho. */
+  const [quetMo, setQuetMo] = useState(false)
   const coQuyenTaoSp = duocTaoNhanh(user?.role, "san-pham")
 
   useEffect(() => {
@@ -154,6 +157,19 @@ export default function StockIssuePage() {
     setTerm("")
     const n = await fetchOnHand(p.id, zone)
     setLines((a) => a.map((l) => (l.id === line.id ? { ...l, on_hand: n } : l)))
+  }
+
+  /** Mã quét được (camera / máy quét / nhập tay trong hộp quét) → thêm hàng; hộp để mở, quét tiếp mã sau. */
+  const nhanMaQuet = (raw: string) => {
+    const kq = ketQuaQuetXuat(products, onSlip, raw)
+    if (kq.loai === "khong-thay") {
+      toast({ title: "Không tìm thấy", description: `Mã: ${kq.ma}`, variant: "destructive" })
+    } else if (kq.loai === "da-co") {
+      toast({ title: "Đã có trên phiếu", description: `${kq.sp.name} — sửa số lượng ở dòng của nó.` })
+    } else {
+      void addProduct(kq.sp)
+      toast({ title: `Đã thêm: ${kq.sp.name}` })
+    }
   }
 
   /**
@@ -384,21 +400,39 @@ export default function StockIssuePage() {
       */}
       <Card>
         <CardContent className="pt-5">
-          <ProductPicker
-            closeOnPick
-            id="si-find"
-            term={term}
-            onTermChange={setTerm}
-            disabled={(products.length === 0 && !coQuyenTaoSp) || submitting}
-            items={hits.map((p) => ({
-              ...p,
-              title: p.name,
-              subtitle: `${p.sku || "—"} · ${p.base_unit}`,
-            }))}
-            onPick={(p) => addProduct(p)}
-            hint={catTruncated ? <CatalogueShortNote /> : null}
-            taoMoi={coQuyenTaoSp ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) } : undefined}
-          />
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <ProductPicker
+                closeOnPick
+                id="si-find"
+                term={term}
+                onTermChange={setTerm}
+                disabled={(products.length === 0 && !coQuyenTaoSp) || submitting}
+                items={hits.map((p) => ({
+                  ...p,
+                  title: p.name,
+                  subtitle: `${p.sku || "—"} · ${p.base_unit}`,
+                }))}
+                onPick={(p) => addProduct(p)}
+                hint={catTruncated ? <CatalogueShortNote /> : null}
+                taoMoi={coQuyenTaoSp ? { nhan: NHAN_TAO_NHANH["san-pham"], onTao: (chu) => setTaoSp({ chu }) } : undefined}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 shrink-0 lg:h-10 lg:w-10"
+              onClick={() => setQuetMo(true)}
+              disabled={products.length === 0 || submitting}
+              title="Quét mã vạch bằng camera"
+              aria-label="Quét mã vạch"
+              data-testid="xk-quet-ma"
+            >
+              <ScanBarcode className="h-5 w-5" />
+            </Button>
+          </div>
+          <BarcodeScanner open={quetMo} onClose={() => setQuetMo(false)} onScan={nhanMaQuet} title="Quét mã vạch" />
           {/* Tạo xong: ghép mã vào danh mục (bản đã nạp chưa có) rồi thêm luôn một dòng. */}
           <TaoNhanhSanPham
             open={!!taoSp}
@@ -427,7 +461,7 @@ export default function StockIssuePage() {
             </p>
           ) : (
             lines.map((l, i) => (
-              <div key={l.id} className="rounded-xl border p-3">
+              <div key={l.id} className="rounded-xl border p-3" data-testid="xk-dong">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">{i + 1}. {l.sku || "—"}</div>

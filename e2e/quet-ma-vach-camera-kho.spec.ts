@@ -8,8 +8,8 @@ import { modulCode128B, sinhVideoMaVach } from "./camera-gia.mjs"
 /**
  * ⚠ CHỦ NHÀ 02/11/2026 ("…mã vạch chưa quét được") — sửa xong camera đọc được thật, ~8 khung mỗi giây. Nhập kho thêm một
  *   DÒNG mỗi lần bộ quét báo mã, không tự lọc trùng: giơ mã một giây là tám dòng. Bộ quét chung nay chỉ báo lại CÙNG mã
- *   sau 1,5 giây (`shouldAcceptScan`). Tem Code128 mang SKU "SUA1" (nhập kho tra mã vạch hoặc SKU) — đồng thời kiểm bản
- *   vá Code128 của ZXing chạy thật trên trình duyệt.
+ *   sau 1,5 giây (`shouldAcceptScan`). Tem Code128 mang SKU "SUA1" (nhập kho / xuất kho tra mã vạch hoặc SKU) — đồng thời
+ *   kiểm bản vá Code128 của ZXing chạy thật trên trình duyệt. Cùng video cho hai màn kho (cờ trình duyệt đặt theo tệp).
  */
 const VIDEO = sinhVideoMaVach(join(tmpdir(), "npp-cam-c128-SUA1-720x1280-45-v1.y4m"), {
   w: 720, h: 1280, modul: modulCode128B("SUA1", bangCode128()), tiLe: 0.45, sigma: 0.9,
@@ -55,4 +55,25 @@ test("nhập kho điện thoại: giơ tem trước camera → MỘT dòng Sữa
   expect(moc.filter((t) => t - moc[0] < 900), "trong 0,9 giây sau lần đọc đầu chỉ được một dòng").toHaveLength(1)
   expect(moc.length).toBeLessThanOrEqual(3)
   for (let i = 1; i < moc.length; i++) expect(moc[i] - moc[i - 1]).toBeGreaterThanOrEqual(900)
+})
+
+test("phiếu xuất kho điện thoại (chủ nhà 03/11/2026): camera đọc tem → thêm Sữa hộp MỘT lần; giữ mã trong khung thì báo đã có, không thêm dòng", async ({ page }) => {
+  await theoDoiCamera(page)
+  await dangNhap(page)
+  await page.goto("/inventory/stock-issue")
+  const nut = page.getByTestId("xk-quet-ma")
+  await expect(nut).toBeEnabled()
+  await nut.click()
+  const hop = page.getByRole("dialog", { name: "Quét mã vạch" })
+  await expect(hop).toBeVisible()
+  const dong = page.getByTestId("xk-dong")
+  await expect(dong).toHaveCount(1, { timeout: 10_000 })
+  await expect(dong.first()).toContainText("Sữa hộp")
+  // Quá 1,5 giây mã vẫn trong khung → bộ quét báo lại → màn báo "Đã có trên phiếu", không thêm dòng thứ hai.
+  await expect(page.getByText("Đã có trên phiếu").first()).toBeVisible({ timeout: 5_000 })
+  await expect(dong).toHaveCount(1)
+  await hop.getByRole("button", { name: "Đóng" }).click()
+  await expect(hop).toHaveCount(0)
+  await expect.poll(() => cameraDaTat(page)).toBe(true)
+  await expect(dong).toHaveCount(1)
 })

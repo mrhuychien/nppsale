@@ -12,8 +12,28 @@
  */
 
 import type { Product, ProductUnit } from "@/types"
+import { findByCode } from "@/lib/sell/scan"
+import { chuanMaVach } from "@/lib/products/ma-vach"
 
 export type IssueProduct = Product & { units?: ProductUnit[] }
+
+export type KetQuaQuetXuat<T> = { loai: "them"; sp: T } | { loai: "da-co"; sp: T } | { loai: "khong-thay"; ma: string }
+
+/**
+ * QUÉT MÃ Ở PHIẾU XUẤT KHO (chủ nhà 03/11/2026: "có sửa luôn đi em" — quét mã vạch ở Xuất kho phải ra hàng).
+ * Tra mã vạch trước rồi SKU (`findByCode`, một luật với màn bán hàng). Hàng đã trên phiếu thì KHÔNG thêm dòng thứ hai —
+ * phiếu xuất một hàng một dòng (ô tìm cũng giấu hàng đã có), máy chủ tự lấy lô theo FIFO.
+ */
+export function ketQuaQuetXuat<T extends { id: string; barcode?: string | null; sku?: string | null }>(
+  products: readonly T[],
+  onSlip: ReadonlySet<string>,
+  raw: string
+): KetQuaQuetXuat<T> {
+  const ma = chuanMaVach(raw)
+  const sp = ma ? findByCode(products, ma) : undefined
+  if (!sp) return { loai: "khong-thay", ma }
+  return onSlip.has(sp.id) ? { loai: "da-co", sp } : { loai: "them", sp }
+}
 
 export interface IssueLine {
   id: string

@@ -40,6 +40,8 @@ import type { SanPhamQuyDoi } from "@/lib/analytics/units"
 import { congSL, hienSLTheoDonVi, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { napBienDong, tinhXnt, type BienDong } from "@/lib/bao-cao/nap-kho"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { errorMessage } from "@/lib/errors"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
@@ -138,6 +140,29 @@ export default function ProductsReportPage() {
   const catalogs = useFilterCatalogs(user?.org_id)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
+  /** Giá vốn xuất theo mặt hàng do hàm máy chủ gộp sẵn; `null` = đường đọc từng bảng (cộng từ dòng phiếu xuất bán). */
+  const [giaVonTheoSpMotLuot, setGiaVonTheoSpMotLuot] = useState<Map<string, number> | null>(null)
+  /** Phần KHO đã đọc chưa — lô tồn (Giá trị kho, XNT) · phiếu kho + dòng + biến động (XNT). Đường một lượt đọc khi mở tab ấy. */
+  const [loDaNap, setLoDaNap] = useState(false)
+  const [xntDaNap, setXntDaNap] = useState(false)
+
+  /* ⚠ LÔ CÒN HÀNG. Lô đã hết vẫn nằm trong bảng mãi mãi; đọc cả chúng thì trần 1.000 dòng cạn nhanh gấp mấy lần, mà giá
+     trị kho và tồn cuối của chúng đều là 0. */
+  const docLoTon = useCallback(
+    (orgId: string) =>
+      docDuHoacNem<BatchRow>(
+        (from, to) =>
+          supabase
+            .from("batches")
+            .select("id, product_id, qty_on_hand, unit_cost", { count: "exact" })
+            .eq("org_id", orgId)
+            .gt("qty_on_hand", 0)
+            .order("id")
+            .range(from, to),
+        "đọc lô tồn kho"
+      ),
+    [supabase]
+  )
 
   const batLuot = useLuotNap()
   const load = useCallback(async () => {
@@ -150,37 +175,54 @@ export default function ProductsReportPage() {
      *   thứ 1.001 không có trong map thì mọi view `if (!p) continue` bỏ
      *   luôn doanh số và giá vốn của nó, không một dấu vết.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
       setLoading(true)
       setLoadError(null)
       const orgId = user.org_id
-      const [invoiceRes, productsRes, batchesRes, returnsRes, entriesRes, customersRes, suppliersRes, bienDongRes] =
-        await Promise.all([
-          fetchRevenueInvoicesDu(supabase, orgId, range),
-          fetchOrgRows<ProductRow>(
-            supabase, "products", orgId,
-            `id, sku, name, brand, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
-          ),
-          /* ⚠ CHỈ LÔ CÒN HÀNG. Lô đã hết vẫn nằm trong bảng mãi mãi; đọc cả
-             chúng thì trần 1.000 dòng cạn nhanh gấp mấy lần, mà giá trị kho
-             và tồn cuối của chúng đều là 0. */
-          docDuHoacNem<BatchRow>(
-            (from, to) =>
-              supabase
-                .from("batches")
-                .select("id, product_id, qty_on_hand, unit_cost", { count: "exact" })
-                .eq("org_id", orgId)
-                .gt("qty_on_hand", 0)
-                .order("id")
-                .range(from, to),
-            "đọc lô tồn kho"
-          ),
-          fetchReturnsRowsDu(supabase, orgId, range),
-          fetchPostedStockEntries(supabase, orgId, range, null),
-          fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name", "đọc khách hàng"),
-          fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
-          napBienDong(supabase, orgId, range.from),
-        ])
+      /* ⚠ MỘT LƯỢT (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): số bán cả kỳ + giá vốn xuất theo mặt hàng qua
+         `bao_cao_so_ban` CÙNG ĐỢT với danh mục. Phần KHO (lô tồn, phiếu kho, biến động) chỉ các tab kho cần — đọc khi mở
+         tab ấy (`canLo` / `canXnt`). Sổ chưa có hàm (`null`) → đọc từng bảng như cũ, mọi thứ một lúc. */
+      const [mot, productsRes, customersRes, suppliersRes] = await Promise.all([
+        docSoBanKy(supabase, range),
+        fetchOrgRows<ProductRow>(
+          supabase, "products", orgId,
+          `id, sku, name, brand, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
+        ),
+        fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name", "đọc khách hàng"),
+        fetchOrgRows<SupplierRow>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
+      ])
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
+      const tranDanhMuc = productsRes.truncated || customersRes.truncated || suppliersRes.truncated
+
+      if (mot) {
+        soHd = mot.hd.length
+        const costByProduct = new Map<string, number>()
+        mot.giaVonTra.forEach((c) => {
+          c.byProduct.forEach((v, pid) => costByProduct.set(pid, (costByProduct.get(pid) ?? 0) + v))
+        })
+        if (conMoi()) setTruncated(tranDanhMuc)
+        if (conMoi()) setInvoices(mot.hd)
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        if (conMoi()) setReturnCostByProduct(costByProduct)
+        if (conMoi()) setGiaVonTheoSpMotLuot(mot.giaVonTheoSp)
+        if (conMoi()) setLoDaNap(false)
+        if (conMoi()) setXntDaNap(false)
+        return
+      }
+
+      const [invoiceRes, batchesRes, returnsRes, entriesRes, bienDongRes] = await Promise.all([
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        docLoTon(orgId),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchPostedStockEntries(supabase, orgId, range, null),
+        napBienDong(supabase, orgId, range.from),
+      ])
 
       const returnIds = returnsRes.rows.map((r) => r.id)
       const [lineList, returnLineList, stockLineList, returnCosts, xuatBan] = await Promise.all([
@@ -195,32 +237,81 @@ export default function ProductsReportPage() {
         c.byProduct.forEach((v, pid) => costByProduct.set(pid, (costByProduct.get(pid) ?? 0) + v))
       })
 
+      soHd = invoiceRes.rows.length
       if (conMoi()) setTruncated(
-        invoiceRes.truncated || productsRes.truncated || batchesRes.truncated || returnsRes.truncated ||
-          entriesRes.truncated || customersRes.truncated || suppliersRes.truncated || bienDongRes.thieu
+        tranDanhMuc || invoiceRes.truncated || batchesRes.truncated || returnsRes.truncated || entriesRes.truncated ||
+          bienDongRes.thieu
       )
       if (conMoi()) setInvoices(invoiceRes.rows)
       if (conMoi()) setLines(lineList)
       if (conMoi()) setReturnLines(returnLineList)
       if (conMoi()) setReturnCostByProduct(costByProduct)
-      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setGiaVonTheoSpMotLuot(null)
       if (conMoi()) setBatches(batchesRes.rows)
       if (conMoi()) setStockEntries(entriesRes.rows)
       if (conMoi()) setStockLines(stockLineList)
       if (conMoi()) setPhieuXuatBan(new Set(xuatBan.map((e) => e.id)))
       if (conMoi()) setBienDong(bienDongRes.ds)
-      if (conMoi()) setCustomers(customersRes.rows)
-      if (conMoi()) setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
+      if (conMoi()) setLoDaNap(true)
+      if (conMoi()) setXntDaNap(true)
     } catch (err) {
       if (conMoi()) setLoadError(errorMessage(err))
+      loiNap = errorMessage(err)
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("bc-hang-hoa", batDau, { loi: loiNap, dong: soHd })
     }
-  }, [user?.org_id, range, supabase, batLuot])
+  }, [user?.org_id, range, supabase, batLuot, docLoTon])
 
   useEffect(() => {
     load()
   }, [load])
+
+  /* Đường một lượt: phần KHO đọc khi mở tab cần nó (cách cũ đọc lúc mở trang cho mọi tab). Đổi kỳ / tab giữa chừng → điều
+     kiện đổi, lượt đang chạy bỏ kết quả (không đè số kỳ cũ lên kỳ mới). */
+  const xemKho = variant === "stock_value" || variant === "movement" || variant === "movement_detail"
+  const xemXnt = variant === "movement" || variant === "movement_detail"
+  const canLo = !loading && !loadError && !loDaNap && xemKho
+  const canXnt = !loading && !loadError && !xntDaNap && xemXnt
+  useEffect(() => {
+    if (!canLo || !user?.org_id) return
+    let bo = false
+    docLoTon(user.org_id)
+      .then((res) => {
+        if (bo) return
+        setBatches(res.rows)
+        if (res.truncated) setTruncated(true)
+        setLoDaNap(true)
+      })
+      .catch((err) => {
+        if (!bo) setLoadError(errorMessage(err))
+      })
+    return () => {
+      bo = true
+    }
+  }, [canLo, user?.org_id, docLoTon])
+  useEffect(() => {
+    if (!canXnt || !user?.org_id) return
+    let bo = false
+    const orgId = user.org_id
+    // Xuất – nhập – tồn: MỌI loại phiếu kho của kỳ (không chỉ phiếu xuất bán) + biến động từ đầu kỳ tới nay.
+    Promise.all([fetchPostedStockEntries(supabase, orgId, range, null), napBienDong(supabase, orgId, range.from)])
+      .then(async ([entriesRes, bienDongRes]) => {
+        const dong = await fetchStockEntryLines(supabase, entriesRes.rows.map((e) => e.id))
+        if (bo) return
+        setStockEntries(entriesRes.rows)
+        setStockLines(dong)
+        setBienDong(bienDongRes.ds)
+        if (entriesRes.truncated || bienDongRes.thieu) setTruncated(true)
+        setXntDaNap(true)
+      })
+      .catch((err) => {
+        if (!bo) setLoadError(errorMessage(err))
+      })
+    return () => {
+      bo = true
+    }
+  }, [canXnt, user?.org_id, range, supabase])
 
   // §3.2 + filter overhaul — apply ALL catalog-backed filters at the
   // productMap layer; downstream views skip any line/batch whose
@@ -295,8 +386,12 @@ export default function ProductsReportPage() {
     [groupSameType, tenNcc]
   )
 
+  /* ⚠ Mỗi bảng chỉ tính khi đang xem mối quan tâm của nó (`if (variant !== …) return …`, `variant` trong mảng phụ thuộc) —
+     như Báo cáo › Nhân viên. Xuất Excel cũng chỉ xuất bảng đang xem. */
+
   // -------------------- Bán hàng --------------------
   const salesRows: SalesByProductRow[] = useMemo(() => {
+    if (variant !== "sales") return []
     const m = new Map<string, SalesByProductRow>()
     const moiDongBan = (k: string, lbl: { sku: string; name: string }, p: ProductRow): SalesByProductRow => ({
       id: k, sku: lbl.sku, name: lbl.name, unit: groupSameType ? "" : p.base_unit,
@@ -336,7 +431,19 @@ export default function ProductsReportPage() {
     return Array.from(m.values())
       .map((r) => ({ ...r, netRevenue: r.revenue - r.returnValue }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [lines, returnLines, productMap, filterFn, groupKey, groupLabel, groupSameType])
+  }, [variant, lines, returnLines, productMap, filterFn, groupKey, groupLabel, groupSameType])
+
+  /** Giá vốn xuất của kỳ theo mặt hàng — bản hàm máy chủ gộp sẵn, hoặc cộng từ dòng phiếu xuất bán (đường đọc từng bảng). */
+  const giaVonXuatTheoSp = useMemo(() => {
+    if (giaVonTheoSpMotLuot) return giaVonTheoSpMotLuot
+    /* ⚠ Giá vốn chỉ từ phiếu XUẤT BÁN (`locPhieuXuatBan`, mig 228) — bản cũ lấy mọi phiếu xuất: cả phiếu của HĐ đã huỷ /
+       tờ cũ của HĐ đã sửa (hàng đã hoàn kho, không còn doanh thu) → giá vốn cao giả (rà báo cáo 09/10/2026). */
+    const exportLines = stockLines.filter((l) => phieuXuatBan.has(l.entry_id))
+    const m = new Map<string, number>()
+    // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
+    for (const l of exportLines) m.set(l.product_id, (m.get(l.product_id) || 0) + giaTriDongKho(l))
+    return m
+  }, [giaVonTheoSpMotLuot, stockLines, phieuXuatBan])
 
   // -------------------- Lợi nhuận --------------------
   /**
@@ -346,11 +453,9 @@ export default function ProductsReportPage() {
    *   đã nhập lại kho (`fetchReturnCosts`). Trừ một vế mà quên vế kia là lãi lệch.
    */
   const profitRows: ProfitByProductRow[] = useMemo(() => {
-    // Doanh thu & SL từ dòng hóa đơn đã ghi sổ; COGS from posted export entry lines
+    if (variant !== "profit") return []
+    // Doanh thu & SL từ dòng hóa đơn đã ghi sổ; giá vốn từ phiếu XUẤT BÁN đã ghi sổ (`giaVonXuatTheoSp`).
     const m = new Map<string, ProfitByProductRow>()
-    /* ⚠ Giá vốn chỉ từ phiếu XUẤT BÁN (`locPhieuXuatBan`, mig 228) — bản cũ lấy mọi phiếu xuất: cả phiếu của HĐ đã huỷ /
-       tờ cũ của HĐ đã sửa (hàng đã hoàn kho, không còn doanh thu) → giá vốn cao giả (rà báo cáo 09/10/2026). */
-    const exportLines = stockLines.filter((l) => phieuXuatBan.has(l.entry_id))
     const moiDong = (k: string, p: ProductRow): ProfitByProductRow => {
       const lbl = groupLabel(k, p)
       return { id: k, sku: lbl.sku, name: lbl.name, qty: 0, qtyTheoDv: {}, revenue: 0, cogs: 0, profit: 0, margin: 0 }
@@ -376,15 +481,14 @@ export default function ProductsReportPage() {
       e.revenue -= Number(l.line_total || 0)
       m.set(k, e)
     }
-    for (const l of exportLines) {
-      const p = productMap.get(l.product_id)
-      if (!p || !filterFn(p)) continue
+    giaVonXuatTheoSp.forEach((giaVon, pid) => {
+      const p = productMap.get(pid)
+      if (!p || !filterFn(p)) return
       const k = groupKey(p)
       const e = m.get(k) || moiDong(k, p)
-      // SL cơ sở × giá vốn mỗi đơn vị cơ sở.
-      e.cogs += giaTriDongKho(l)
+      e.cogs += giaVon
       m.set(k, e)
-    }
+    })
     // Giá vốn của chính số hàng trả đã về kho — trừ khỏi giá vốn.
     returnCostByProduct.forEach((cost, pid) => {
       const p = productMap.get(pid)
@@ -400,10 +504,11 @@ export default function ProductsReportPage() {
         return { ...r, profit, margin: r.revenue > 0 ? (profit / r.revenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [lines, returnLines, stockLines, returnCostByProduct, phieuXuatBan, productMap, filterFn, groupKey, groupLabel])
+  }, [variant, lines, returnLines, giaVonXuatTheoSp, returnCostByProduct, productMap, filterFn, groupKey, groupLabel])
 
   // -------------------- Giá trị kho --------------------
   const stockValueRows: StockValueRow[] = useMemo(() => {
+    if (variant !== "stock_value") return []
     const m = new Map<string, StockValueRow & { _qtyAccum: number; _valAccum: number }>()
     for (const b of batches) {
       const p = productMap.get(b.product_id)
@@ -442,11 +547,12 @@ export default function ProductsReportPage() {
         unit_cost: Object.keys(rest.qtyTheoDv).length === 1 && _qtyAccum > 0 ? _valAccum / _qtyAccum : null,
       }))
       .sort((a, b) => b.value - a.value)
-  }, [batches, productMap, filterFn, groupKey, groupLabel, tenNcc])
+  }, [variant, batches, productMap, filterFn, groupKey, groupLabel, tenNcc])
 
   // -------------------- Xuất nhập tồn --------------------
   const movementData = useMemo(() => {
     type MR = StockMovementRow & { _id: string }
+    if (!xemXnt) return { rows: [] as StockMovementRow[], detail: new Map<string, { date: string; type: "import" | "export" | "stocktake" | "transfer"; doc: string; qty: number; unit: string; unit_cost: number }[]>() }
     const m = new Map<string, MR>()
     const detail = new Map<string, { date: string; type: "import" | "export" | "stocktake" | "transfer"; doc: string; qty: number; unit: string; unit_cost: number }[]>()
     const moiDongXnt = (k: string, lbl: { sku: string; name: string }): MR => ({
@@ -520,7 +626,7 @@ export default function ProductsReportPage() {
       rows: Array.from(m.values()).sort((a, b) => b.endQty - a.endQty) as StockMovementRow[],
       detail,
     }
-  }, [batches, bienDong, range.from, range.to, stockLines, stockEntryMap, productMap, filterFn, groupKey, groupLabel])
+  }, [xemXnt, batches, bienDong, range.from, range.to, stockLines, stockEntryMap, productMap, filterFn, groupKey, groupLabel])
 
   /** Ô SL khi xuất: một mặt hàng → số; gộp theo nhóm → chuỗi theo đơn vị. */
   const slXuat = (qty: number, theoDv: SLTheoDonVi): string | number => (groupSameType ? hienSLTheoDonVi(theoDv) : qty)
@@ -638,7 +744,7 @@ export default function ProductsReportPage() {
       {!loadError && <ReportLoadNotice truncated={truncated} />}
       {loadError ? (
         <ReportLoadNotice error={loadError} />
-      ) : loading ? (
+      ) : loading || (xemKho && !loDaNap) || (xemXnt && !xntDaNap) ? (
         <Skeleton className="h-72" />
       ) : variant === "sales" ? (
         <SalesByProductView rows={salesRows} orderLines={lines} orderMap={orderMap} productMap={productMap} />

@@ -28,6 +28,8 @@ import {
   fetchReturnCosts,
   fetchCogsForRange,
 } from "@/lib/analytics/sales"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { formatCurrency } from "@/lib/utils"
 
 interface ExpenseRow {
@@ -125,8 +127,38 @@ export default function CostProfitPage() {
     const prev = previousRange(range)
     /* ⚠ MỘT `try/catch` CHO CẢ LƯỢT — kể cả các hàm ở `lib/analytics/sales`
        (đang chuyển sang NÉM khi đọc hỏng). Bắt để BÁO, không phải để nuốt. */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
-      const [invRes, prevInvRes, retRes, prevRetRes, cogsRes, prevCogsRes, exp, prevExp] =
+      const tongGiaVonTra = (m: ReadonlyMap<string, { total: number }>) => {
+        let t = 0
+        m.forEach((c) => { t += c.total })
+        return t
+      }
+      /* ⚠ MỘT LƯỢT MỖI KỲ (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): hoá đơn, phiếu trả, giá vốn xuất,
+         giá vốn hàng trả của kỳ này + kỳ trước qua `bao_cao_so_ban` CÙNG ĐỢT với chi phí hai kỳ — cách cũ hai đợt nối đuôi
+         (~60 câu: lô dòng phiếu xuất, lô soát HĐ huỷ — nhân hai kỳ). Sổ chưa có hàm (`null`) → đọc từng bảng như cũ. */
+      const [mot, motTruoc, exp, prevExp] = await Promise.all([
+        docSoBanKy(supabase, range),
+        docSoBanKy(supabase, prev),
+        fetchExpenses(orgId, range),
+        fetchExpenses(orgId, prev),
+      ])
+      if (mot && motTruoc) {
+        soHd = mot.hd.length
+        if (conMoi()) setRevenue(mot.hd.reduce((s, o) => s + Number(o.total || 0), 0))
+        if (conMoi()) setPrevRevenue(motTruoc.hd.reduce((s, o) => s + Number(o.total || 0), 0))
+        if (conMoi()) setReturnsValue(mot.tra.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+        if (conMoi()) setPrevReturnsValue(motTruoc.tra.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
+        if (conMoi()) setCogs(mot.giaVonXuat - tongGiaVonTra(mot.giaVonTra))
+        if (conMoi()) setPrevCogs(motTruoc.giaVonXuat - tongGiaVonTra(motTruoc.giaVonTra))
+        if (conMoi()) setExpenses(exp.rows)
+        if (conMoi()) setPrevExpenses(prevExp.rows)
+        if (conMoi()) setTruncated(exp.truncated || prevExp.truncated)
+        return
+      }
+      const [invRes, prevInvRes, retRes, prevRetRes, cogsRes, prevCogsRes] =
         await Promise.all([
           // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
           /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
@@ -136,13 +168,12 @@ export default function CostProfitPage() {
           fetchReturnsRowsDu(supabase, orgId, prev),
           fetchCogsForRange(supabase, orgId, range),
           fetchCogsForRange(supabase, orgId, prev),
-          fetchExpenses(orgId, range),
-          fetchExpenses(orgId, prev),
         ])
       const orders = invRes.rows
       const prevOrders = prevInvRes.rows
       const retRows = retRes.rows
       const prevRetRows = prevRetRes.rows
+      soHd = orders.length
       if (conMoi()) setRevenue(orders.reduce((s, o) => s + Number(o.total || 0), 0))
       if (conMoi()) setPrevRevenue(prevOrders.reduce((s, o) => s + Number(o.total || 0), 0))
       /**
@@ -154,11 +185,6 @@ export default function CostProfitPage() {
         fetchReturnCosts(supabase, retRows.map((r) => r.id)),
         fetchReturnCosts(supabase, prevRetRows.map((r) => r.id)),
       ])
-      const tongGiaVonTra = (m: Awaited<ReturnType<typeof fetchReturnCosts>>) => {
-        let t = 0
-        m.forEach((c) => { t += c.total })
-        return t
-      }
       if (conMoi()) setReturnsValue(retRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
       if (conMoi()) setPrevReturnsValue(prevRetRows.reduce((s, r) => s + Number(r.credit_note_amount || 0), 0))
       if (conMoi()) setCogs(cogsRes.cogs - tongGiaVonTra(retCosts))
@@ -172,8 +198,10 @@ export default function CostProfitPage() {
     } catch (e) {
       console.error("[business/cost-profit] tải lỗi:", e)
       if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận"))
+      loiNap = errorMessage(e, "Không tải được số liệu chi phí - lợi nhuận")
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("pt-chi-phi-loi-nhuan", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, fetchExpenses, batLuot])
 

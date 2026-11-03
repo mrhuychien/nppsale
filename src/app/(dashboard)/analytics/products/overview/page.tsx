@@ -29,6 +29,8 @@ import {
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface ProductRow {
@@ -82,14 +84,15 @@ export default function ProductsOverviewPage() {
      * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, kể cả hàm ở `lib/analytics/sales`
      *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
-      const [invRes, prevInvRes, retRes, prevRetRes, productsRes] = await Promise.all([
-        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
-        fetchRevenueInvoicesDu(supabase, orgId, range),
-        fetchRevenueInvoicesDu(supabase, orgId, prev),
-        fetchReturnsRowsDu(supabase, orgId, range),
-        fetchReturnsRowsDu(supabase, orgId, prev),
+      /* ⚠ MỘT LƯỢT MỖI KỲ (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): hoá đơn + dòng, dòng hàng trả của kỳ
+         này và kỳ trước qua `bao_cao_so_ban` CÙNG ĐỢT với danh mục hàng. Sổ chưa có hàm (`null`) → đọc từng bảng như cũ. */
+      const [mot, motTruoc, productsRes] = await Promise.all([
+        docSoBanKy(supabase, range),
+        docSoBanKy(supabase, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -101,6 +104,26 @@ export default function ProductsOverviewPage() {
           "đọc danh mục hàng"
         ),
       ])
+      if (conMoi()) setProducts(productsRes.rows)
+      if (mot && motTruoc) {
+        soHd = mot.hd.length
+        if (conMoi()) setOrders(mot.hd)
+        if (conMoi()) setPrevOrders(motTruoc.hd)
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setPrevLines(motTruoc.dongHd)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        if (conMoi()) setPrevReturnLines(motTruoc.dongTra)
+        if (conMoi()) setTruncated(productsRes.truncated)
+        return
+      }
+      const [invRes, prevInvRes, retRes, prevRetRes] = await Promise.all([
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
+      ])
       const orderList = invRes.rows
       const prevOrderList = prevInvRes.rows
       const retRows = retRes.rows
@@ -111,21 +134,23 @@ export default function ProductsOverviewPage() {
         fetchReturnLines(supabase, retRows.map((r) => r.id)),
         fetchReturnLines(supabase, prevRetRows.map((r) => r.id)),
       ])
+      soHd = orderList.length
       if (conMoi()) setOrders(orderList)
       if (conMoi()) setPrevOrders(prevOrderList)
       if (conMoi()) setLines(lineList)
       if (conMoi()) setPrevLines(prevLineList)
       if (conMoi()) setReturnLines(retLineList)
       if (conMoi()) setPrevReturnLines(prevRetLineList)
-      if (conMoi()) setProducts(productsRes.rows)
       if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || productsRes.truncated
       )
     } catch (e) {
       console.error("[products/overview] tải lỗi:", e)
       if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu hàng hóa"))
+      loiNap = errorMessage(e, "Không tải được số liệu hàng hóa")
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("pt-hang-tong-quan", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot])
 

@@ -39,8 +39,12 @@ describe("màn Phân tích: chạm trần thì NÓI RA", () => {
     expect(S).toContain("fetchRevenueInvoicesDu(supabase, orgId, prev)")
     expect(S).toContain("fetchReturnsRowsDu(supabase, orgId, range)")
     expect(S).toContain("fetchReturnsRowsDu(supabase, orgId, prev)")
-    const i = S.indexOf("setTruncated(")
-    const khoi = S.slice(i, S.indexOf("\n      )", i) + 8)
+    /* Đường một lượt (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em") đứng TRƯỚC đường đọc từng bảng: cờ chạm trần
+       của đường đọc từng bảng nằm ở `setTruncated(` CUỐI, hoặc gom vào `tranSoBan = …` rồi `setTruncated(tranSoBan || …)`. */
+    const gom = S.match(/tranSoBan =\s*\n([\s\S]*?)\n\s*\}/)
+    const i = S.lastIndexOf("setTruncated(")
+    const khoi = gom ? `${gom[1]}\n${S.slice(i, S.indexOf("\n", i))}` : S.slice(i, S.indexOf("\n      )", i) + 8)
+    if (gom) expect(S, `${ten}: tranSoBan phải lên dải cảnh báo`).toContain("setTruncated(tranSoBan ||")
     for (const co of ["invRes.truncated", "prevInvRes.truncated", "retRes.truncated", "prevRetRes.truncated", ...them]) {
       expect(khoi, `${ten}: setTruncated thiếu ${co}`).toContain(co)
     }

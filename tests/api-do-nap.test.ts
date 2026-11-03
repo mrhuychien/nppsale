@@ -33,7 +33,10 @@ describe("/api/do-nap", () => {
     expect((await POST(goi(JSON.stringify({ man: "bc-hang-ban-nv", ms: 4200 })))).status).toBe(204)
     expect((await POST(goi(JSON.stringify({ man: "xuat-hang", ms: 900 })))).status).toBe(204)
     expect((await POST(goi(JSON.stringify({ man: 7 })))).status).toBe(204)
-    expect(warn.mock.calls.map((c) => c[0])).toEqual(["[bao-cao-nap]", "[pos-nap]", "[pos-nap]"])
+    // Màn Phân tích (`pt-…`, chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em") cũng là màn báo cáo.
+    expect((await POST(goi(JSON.stringify({ man: "pt-tong-quan", ms: 3100 })))).status).toBe(204)
+    expect((await POST(goi(JSON.stringify({ man: "xpt-gia", ms: 1 })))).status).toBe(204)
+    expect(warn.mock.calls.map((c) => c[0])).toEqual(["[bao-cao-nap]", "[pos-nap]", "[pos-nap]", "[bao-cao-nap]", "[pos-nap]"])
   })
 
   it("thân gửi khoá 'user' giả cũng không ghi đè người đăng nhập thật", async () => {

@@ -10,8 +10,12 @@
 import { luotMangTu, type LuotMang } from "@/lib/supabase/do-mang"
 
 export type ManPos = "xuat-hang" | "sua-hd" | "sua-don"
-/** Màn báo cáo cũng báo (chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế") — nhật ký `[bao-cao-nap]`. */
-export type ManBaoCao = "bc-nhan-vien" | "bc-hang-ban-nv"
+/** Màn báo cáo cũng báo (chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế"; "chuyển nốt các báo cáo
+ *  cũ đi em") — nhật ký `[bao-cao-nap]`. */
+export type ManBaoCao =
+  | "bc-nhan-vien" | "bc-hang-ban-nv"
+  | "bc-ban-hang" | "bc-khach-hang" | "bc-hang-hoa" | "bc-tai-chinh"
+  | "pt-tong-quan" | "pt-chi-phi-loi-nhuan" | "pt-hang-tong-quan" | "pt-hang-nhom"
 export type ManDo = ManPos | ManBaoCao
 
 /** Màn bắt đầu nạp trong ngần này ms kể từ lúc mở trang mới coi là "màn đầu của lượt tải trang". Báo cáo thường mở bằng

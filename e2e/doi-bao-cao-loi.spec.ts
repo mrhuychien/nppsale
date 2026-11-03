@@ -27,7 +27,38 @@ async function tra(route: Route, rows: unknown[]) {
   })
 }
 
-async function chanDuLieu(page: Page) {
+/**
+ * Từ 03/11/2026 màn đọc số bán MỘT LƯỢT qua `bao_cao_so_ban` (chủ nhà: "chuyển nốt các báo cáo cũ đi em"); sổ chưa có hàm
+ * thì đọc từng bảng. Cùng một bộ số cho cả hai đường: `motLuot` = hàm trả bộ số ấy; không thì hàm "chưa có" (404 PGRST202
+ * như PostgREST) và các câu đọc từng bảng bên dưới trả bộ số ấy.
+ */
+async function chanDuLieu(page: Page, motLuot: boolean) {
+  await page.route(/\/rest\/v1\/rpc\/bao_cao_so_ban/, (r) =>
+    motLuot
+      ? r.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            hd: [{
+              id: "hd-bc-1", invoice_code: "HD-BC-1", invoice_date: "2026-09-10", order_id: "o-bc-1", status: "posted", total: 1000000,
+              subtotal: 1000000, vat: 0, customer_id: "00000000-0000-4000-8000-0000000000c1", sales_user_id: "00000000-0000-4000-8000-0000000000b1",
+              posted_by: null, payment_terms: "COD",
+            }],
+            dong_hd: [{
+              id: "l-bc-1", invoice_id: "hd-bc-1", product_id: SUA, unit_name: "hộp", conversion_factor: 1, quantity: 100,
+              unit_price: 10000, line_total: 1000000, is_exchange: false, line_discount: 0, order_line_id: null,
+            }],
+            tra: [{
+              id: "r-bc-1", status: "completed", customer_id: "00000000-0000-4000-8000-0000000000c1", invoice_id: null, credit_note_amount: 120000,
+              created_at: "2026-09-15T05:00:00Z", revenue_date: "2026-09-15", sales_user_id: null, reason: null, credit_with_invoice: false, ma: null,
+            }],
+            dong_tra: [],
+            gv: [{ product_id: SUA, sl: 100, tien: 500000 }],
+            gv_tra: [{ return_id: "r-bc-1", product_id: SUA, tien: 100000 }],
+          }),
+        })
+      : r.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ code: "PGRST202", message: "Could not find the function public.bao_cao_so_ban" }) })
+  )
   const XUAT = { id: "se-xuat-bc", type: "export", status: "posted", posted_at: "2026-09-10T03:00:00Z", entry_code: "XK-BC", supplier_id: null }
   const NHAP = { id: "se-nhap-bc", type: "import", status: "posted", posted_at: "2026-09-15T05:00:00Z", entry_code: "NK-BC", supplier_id: null, notes: "Nhập lại từ phiếu trả r-bc-1" }
   await page.route(/\/rest\/v1\/sales_invoices\?/, (r) => tra(r, [{
@@ -58,14 +89,16 @@ async function chanDuLieu(page: Page) {
 
 const dong = (page: Page, nhan: RegExp) => page.getByRole("row", { name: nhan }).first()
 
-test("LỖI 4 — Kết quả HĐKD: giá vốn phải trừ giá vốn hàng trả đã nhập kho → lợi nhuận gộp 480.000", async ({ page }) => {
-  await dangNhap(page)
-  await chanDuLieu(page)
-  await page.goto("/reports/finance")
-  // Doanh thu thuần đúng luật (đã trừ hàng trả) — phần này ĐÚNG.
-  await expect(dong(page, /Doanh thu thuần/)).toContainText("880.000")
-  await expect(dong(page, /Giá trị hàng bán bị trả lại/)).toContainText("120.000")
-  // Phần SAI: giá vốn chưa trừ 100.000 giá vốn hàng trả đã nhập lại kho.
-  await expect(dong(page, /Giá vốn hàng bán/)).toContainText("400.000")
-  await expect(dong(page, /Lợi nhuận gộp/)).toContainText("480.000")
-})
+for (const [ten, motLuot] of [["một lượt", true], ["sổ chưa có hàm — đọc từng bảng", false]] as const) {
+  test(`LỖI 4 — Kết quả HĐKD: giá vốn phải trừ giá vốn hàng trả đã nhập kho → lợi nhuận gộp 480.000 (${ten})`, async ({ page }) => {
+    await dangNhap(page)
+    await chanDuLieu(page, motLuot)
+    await page.goto("/reports/finance")
+    // Doanh thu thuần đúng luật (đã trừ hàng trả) — phần này ĐÚNG.
+    await expect(dong(page, /Doanh thu thuần/)).toContainText("880.000")
+    await expect(dong(page, /Giá trị hàng bán bị trả lại/)).toContainText("120.000")
+    // Phần SAI: giá vốn chưa trừ 100.000 giá vốn hàng trả đã nhập lại kho.
+    await expect(dong(page, /Giá vốn hàng bán/)).toContainText("400.000")
+    await expect(dong(page, /Lợi nhuận gộp/)).toContainText("480.000")
+  })
+}

@@ -17,7 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   fetchRevenueInvoicesDu, fetchInvoiceLines, fetchReturnsRowsDu, fetchReturnLines, fetchReturnCosts, fetchCogsForRange,
-  giaVonBinhQuanCoSo, soLuongCoSoDongHd, soLuongCoSoDongTra, giamGiaHoaDon,
+  giaVonBinhQuanCoSo, giaTriDongKho, soLuongCoSoDongHd, soLuongCoSoDongTra, giamGiaHoaDon,
   type RevenueInvoiceRow, type InvoiceLineRow, type ReturnSummaryRow, type ReturnLineRow,
 } from "@/lib/analytics/sales"
 import { nhanVienPhieuTra } from "@/lib/analytics/hang-ban-nhan-vien"
@@ -182,6 +182,10 @@ export interface SoBanTho {
   dongTra: ReturnLineRow[]
   giaVonCoSo: Map<string, number>
   giaVonTra: Map<string, { total: number; byProduct: Map<string, number> }>
+  /** Giá vốn xuất CẢ KỲ = `fetchCogsForRange(...).cogs` (Σ SL cơ sở × giá vốn của phiếu xuất bán trong kỳ). */
+  giaVonXuat: number
+  /** Giá vốn xuất của kỳ THEO MẶT HÀNG (Σ `giaTriDongKho` các dòng phiếu xuất bán của mặt hàng) — Σ mọi mặt hàng = `giaVonXuat`. */
+  giaVonTheoSp: Map<string, number>
   thieu: boolean
 }
 
@@ -198,25 +202,40 @@ interface SoBanMotLuot {
   gv_tra: { return_id: string; product_id: string; tien: number }[]
 }
 
-/** Chuyển kết quả hàm máy chủ về đúng dạng dòng mà cách đọc cũ trả ra (cùng phép chuẩn hoá). */
+/** So chuỗi theo mã điểm (như `ORDER BY` uuid / mã ASCII của Postgres) — không theo ngôn ngữ. */
+const soMa = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+/**
+ * Chuyển kết quả hàm máy chủ về đúng dạng dòng mà cách đọc cũ trả ra (cùng phép chuẩn hoá, CÙNG THỨ TỰ).
+ *
+ * ⚠ THỨ TỰ LÀ MỘT PHẦN CỦA SỐ. Hàm máy chủ không xếp `hd` / `tra`; cách cũ xếp hoá đơn `invoice_date` giảm dần rồi `id`
+ *   (`fetchRevenueInvoicesDu`), phiếu trả theo `id` (`fetchReturnsRowsDu`). `nhanVienPhieuTra` đoán NV của phiếu trả cũ
+ *   (chưa gán, không gắn HĐ) theo hoá đơn GẦN NHẤT của khách — hai HĐ cùng ngày thì HĐ gặp trước thắng; danh sách hoá đơn
+ *   trong một ngày (báo cáo Bán hàng › Thời gian) cũng hiện theo thứ tự này. Dòng HĐ / dòng trả: hàm xếp theo `id`, trong
+ *   một chứng từ trùng thứ tự cách cũ (dòng cuối nhận phần dư khi chia tiền).
+ */
 export function tuMotLuot(x: SoBanMotLuot): SoBanTho {
-  const hd = x.hd.map((r) => ({
-    ...r,
-    total: Number(r.total || 0),
-    subtotal: Number(r.subtotal || 0),
-    vat: Number(r.vat || 0),
-    sales_user_id: r.sales_user_id ?? "",
-  }))
+  const hd = x.hd
+    .map((r) => ({
+      ...r,
+      total: Number(r.total || 0),
+      subtotal: Number(r.subtotal || 0),
+      vat: Number(r.vat || 0),
+      sales_user_id: r.sales_user_id ?? "",
+    }))
+    .sort((a, b) => soMa(String(b.invoice_date), String(a.invoice_date)) || soMa(a.id, b.id))
   // Như fetchReturnsRowsDu: ngày xếp kỳ = ngày trừ doanh số (mig 192).
-  const tra: ReturnSummaryRow[] = x.tra.map((r) => ({
-    id: r.id,
-    status: r.status,
-    customer_id: r.customer_id,
-    credit_note_amount: Number(r.credit_note_amount || 0),
-    created_at: r.revenue_date || r.created_at,
-    sales_user_id: r.sales_user_id ?? null,
-    invoice_id: r.invoice_id ?? null,
-  }))
+  const tra: ReturnSummaryRow[] = x.tra
+    .map((r) => ({
+      id: r.id,
+      status: r.status,
+      customer_id: r.customer_id,
+      credit_note_amount: Number(r.credit_note_amount || 0),
+      created_at: r.revenue_date || r.created_at,
+      sales_user_id: r.sales_user_id ?? null,
+      invoice_id: r.invoice_id ?? null,
+    }))
+    .sort((a, b) => soMa(a.id, b.id))
   const traThem = new Map(x.tra.map((r) => [r.id, { ma: r.ma || undefined, lyDo: r.reason || "", tuSinh: !!r.credit_with_invoice }]))
   // Như giaVonBinhQuanCoSo: Σ giá trị / Σ SL cơ sở của phiếu xuất trong kỳ.
   const giaVonCoSo = new Map(x.gv.map((g) => [g.product_id, Number(g.sl) > 0 ? Number(g.tien) / Number(g.sl) : 0]))
@@ -227,8 +246,12 @@ export function tuMotLuot(x: SoBanMotLuot): SoBanTho {
     o.byProduct.set(g.product_id, (o.byProduct.get(g.product_id) ?? 0) + Number(g.tien || 0))
     giaVonTra.set(g.return_id, o)
   }
+  // Như fetchCogsForRange: Σ (SL cơ sở × giá vốn) của mọi dòng phiếu xuất bán trong kỳ — cả kỳ và theo mặt hàng.
+  const giaVonTheoSp = new Map<string, number>()
+  for (const g of x.gv) giaVonTheoSp.set(g.product_id, (giaVonTheoSp.get(g.product_id) ?? 0) + Number(g.tien || 0))
+  const giaVonXuat = x.gv.reduce((s, g) => s + Number(g.tien || 0), 0)
   return {
-    hd, dongHd: x.dong_hd, tra, traThem, dongTra: x.dong_tra, giaVonCoSo, giaVonTra, thieu: false,
+    hd, dongHd: x.dong_hd, tra, traThem, dongTra: x.dong_tra, giaVonCoSo, giaVonTra, giaVonXuat, giaVonTheoSp, thieu: false,
   }
 }
 
@@ -264,6 +287,8 @@ async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: stri
     dongTra,
     giaVonCoSo: giaVonBinhQuanCoSo(gv.lines),
     giaVonTra,
+    giaVonXuat: gv.cogs,
+    giaVonTheoSp: gv.lines.reduce((m, l) => m.set(l.product_id, (m.get(l.product_id) ?? 0) + giaTriDongKho(l)), new Map<string, number>()),
     thieu: hd.truncated || tra.truncated || gv.truncated,
   }
 }
@@ -277,6 +302,19 @@ async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: stri
 export async function docSoBanMotLuot(sb: SupabaseClient, a: string, b: string): Promise<SoBanTho | null> {
   const mot = await goiMotLuot<SoBanMotLuot>(sb, "bao_cao_so_ban", { p_tu: a, p_den: b }, "đọc số bán")
   return mot ? tuMotLuot(mot) : null
+}
+
+/**
+ * Số bán của một kỳ cho các BÁO CÁO CŨ (/reports/*, /analytics/*) — một lượt (`docSoBanMotLuot`), ở đúng tập dòng cách
+ * đọc từng bảng của các màn ấy trả ra (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"):
+ *   hd = fetchRevenueInvoicesDu · dongHd = fetchInvoiceLines (⚠ BỎ dòng hàng đổi — hàm máy chủ trả cả dòng đổi) ·
+ *   tra = fetchReturnsRowsDu · dongTra = fetchReturnLines · giaVonTra = fetchReturnCosts ·
+ *   giaVonCoSo = giaVonBinhQuanCoSo(fetchCogsForRange().lines) · giaVonXuat = fetchCogsForRange().cogs.
+ * `null` = sổ chưa có hàm → màn đọc từng bảng như cũ. Lỗi khác thì NÉM.
+ */
+export async function docSoBanKy(sb: SupabaseClient, range: { from: string; to: string }): Promise<SoBanTho | null> {
+  const tho = await docSoBanMotLuot(sb, range.from, range.to)
+  return tho && { ...tho, dongHd: tho.dongHd.filter((l) => !l.is_exchange) }
 }
 
 export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dmVao: DanhMucVao): Promise<SoBan> {

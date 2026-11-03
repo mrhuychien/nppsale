@@ -40,6 +40,8 @@ import {
   coDongQuaLoc,
 } from "@/lib/analytics/hang-ban-nhan-vien"
 import { errorMessage } from "@/lib/errors"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -105,7 +107,10 @@ export default function SalesReportPage() {
   const [returnCosts, setReturnCosts] = useState<Awaited<ReturnType<typeof fetchReturnCosts>>>(new Map())
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
-  const [stockLines, setStockLines] = useState<StockExportLineRow[]>([])
+  /** Dòng phiếu xuất (giá vốn theo NGÀY ở tab Lợi nhuận khi không lọc). `null` = chưa đọc — đường một lượt đọc khi cần. */
+  const [stockLines, setStockLines] = useState<StockExportLineRow[] | null>([])
+  /** Giá vốn bình quân cơ sở do hàm máy chủ gộp sẵn; `null` = đường đọc từng bảng (tự tính từ `stockLines`). */
+  const [giaVonMotLuot, setGiaVonMotLuot] = useState<Map<string, number> | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
@@ -130,39 +135,27 @@ export default function SalesReportPage() {
      *   Lợi nhuận và Nhân viên. Nay đi chung đường giá vốn với màn Tài
      *   chính (`fetchCogsForRange`), hỏng thì ném và dải báo thay bảng số.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
       setLoading(true)
       setLoadError(null)
       const orgId = user.org_id
-      const [invoiceRes, returnsRes, customersRes, usersRes, cogsRes, suppliersRes, productsRes] = await Promise.all([
-        fetchRevenueInvoicesDu(supabase, orgId, range),
-        fetchReturnsRowsDu(supabase, orgId, range),
+      /* ⚠ MỘT LƯỢT (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): số bán cả kỳ qua `bao_cao_so_ban` (như Báo cáo
+         tổng hợp / Báo cáo › Nhân viên) CÙNG ĐỢT với danh mục. Cách cũ: hai đợt nối đuôi, ~90 câu (lô dòng HĐ, lô dòng
+         phiếu xuất, lô soát HĐ huỷ). Sổ chưa có hàm (`null`) → đọc từng bảng như cũ, bên dưới. */
+      const [mot, customersRes, usersRes, suppliersRes, productsRes] = await Promise.all([
+        docSoBanKy(supabase, range),
         fetchOrgRows<CustomerRow & { group_id: string | null; channel: string | null }>(
           supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"
         ),
         fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role", "đọc nhân viên"),
-        fetchCogsForRange(supabase, orgId, range),
         fetchOrgRows<{ id: string; name: string }>(supabase, "suppliers", orgId, "id, name", "đọc nhà cung cấp"),
         fetchOrgRows<SanPhamBaoCao>(
           supabase, "products", orgId, "id, base_unit, primary_supplier_id, units:product_units(unit_name, conversion)", "đọc mặt hàng"
         ),
       ])
-      /* ⚠ Giá vốn hàng trả đọc hỏng thì NÉM (dải báo lỗi), đừng thành 0 — 0 là
-         giá vốn thuần cao giả, lãi hạ oan. */
-      const [linesList, returnCostMap, returnLinesList] = await Promise.all([
-        fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id)),
-        fetchReturnCosts(supabase, returnsRes.rows.map((r) => r.id)),
-        fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id)),
-      ])
-      if (conMoi()) setTruncated(
-        invoiceRes.truncated || returnsRes.truncated || customersRes.truncated || usersRes.truncated ||
-          cogsRes.truncated || suppliersRes.truncated || productsRes.truncated
-      )
-      if (conMoi()) setInvoices(invoiceRes.rows)
-      if (conMoi()) setLines(linesList)
-      if (conMoi()) setReturns(returnsRes.rows)
-      if (conMoi()) setReturnLines(returnLinesList)
-      if (conMoi()) setReturnCosts(returnCostMap)
       if (conMoi()) setCustomers(customersRes.rows)
       const groupMap = new Map<string, string | null>()
       const routeMap = new Map<string, string | null>()
@@ -173,7 +166,6 @@ export default function SalesReportPage() {
       if (conMoi()) setCustomerGroupMap(groupMap)
       if (conMoi()) setCustomerRouteMap(routeMap)
       if (conMoi()) setUsers(usersRes.rows)
-      if (conMoi()) setStockLines(cogsRes.lines)
       if (conMoi()) setSuppliers(suppliersRes.rows.slice().sort((x, y) => x.name.localeCompare(y.name, "vi")))
       const psMap = new Map<string, string | null>()
       const spMap = new Map<string, SanPhamBaoCao>()
@@ -183,16 +175,78 @@ export default function SalesReportPage() {
       }
       if (conMoi()) setProductSupplierMap(psMap)
       if (conMoi()) setProductMap(spMap)
+      const tranDanhMuc = customersRes.truncated || usersRes.truncated || suppliersRes.truncated || productsRes.truncated
+
+      if (mot) {
+        soHd = mot.hd.length
+        if (conMoi()) setTruncated(tranDanhMuc)
+        if (conMoi()) setInvoices(mot.hd)
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setReturns(mot.tra)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        if (conMoi()) setReturnCosts(mot.giaVonTra)
+        if (conMoi()) setGiaVonMotLuot(mot.giaVonCoSo)
+        // Giá vốn theo NGÀY (tab Lợi nhuận, không lọc) cần dòng phiếu xuất kèm ngày — đọc khi mở tab ấy (`docGiaVonNgay`).
+        if (conMoi()) setStockLines(null)
+        return
+      }
+
+      const [invoiceRes, returnsRes, cogsRes] = await Promise.all([
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchCogsForRange(supabase, orgId, range),
+      ])
+      /* ⚠ Giá vốn hàng trả đọc hỏng thì NÉM (dải báo lỗi), đừng thành 0 — 0 là
+         giá vốn thuần cao giả, lãi hạ oan. */
+      const [linesList, returnCostMap, returnLinesList] = await Promise.all([
+        fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id)),
+        fetchReturnCosts(supabase, returnsRes.rows.map((r) => r.id)),
+        fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id)),
+      ])
+      soHd = invoiceRes.rows.length
+      if (conMoi()) setTruncated(tranDanhMuc || invoiceRes.truncated || returnsRes.truncated || cogsRes.truncated)
+      if (conMoi()) setInvoices(invoiceRes.rows)
+      if (conMoi()) setLines(linesList)
+      if (conMoi()) setReturns(returnsRes.rows)
+      if (conMoi()) setReturnLines(returnLinesList)
+      if (conMoi()) setReturnCosts(returnCostMap)
+      if (conMoi()) setGiaVonMotLuot(null)
+      if (conMoi()) setStockLines(cogsRes.lines)
     } catch (err) {
       if (conMoi()) setLoadError(errorMessage(err))
+      loiNap = errorMessage(err)
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("bc-ban-hang", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot])
 
   useEffect(() => {
     load()
   }, [load])
+
+  /* Đường một lượt: giá vốn theo NGÀY của tab Lợi nhuận (không lọc) cần dòng phiếu xuất kèm ngày ghi sổ — hàm máy chủ chỉ
+     trả giá vốn gộp theo mặt hàng. Đọc khi mở tab ấy (cách cũ đọc lúc mở trang cho mọi tab), cùng hàm với màn Tài chính. */
+  const canGiaVonNgay =
+    !loading && !loadError && stockLines === null && variant === "profit" &&
+    supplierFilter.length === 0 && priceListFilter.length === 0 && routeFilter.length === 0
+  useEffect(() => {
+    if (!canGiaVonNgay || !user?.org_id) return
+    // Đổi kỳ / lọc / tab giữa chừng → `canGiaVonNgay` đổi, lượt này bỏ (kết quả kỳ cũ không đè lên kỳ mới).
+    let bo = false
+    fetchCogsForRange(supabase, user.org_id, range)
+      .then((cogsRes) => {
+        if (bo) return
+        setStockLines(cogsRes.lines)
+        if (cogsRes.truncated) setTruncated(true)
+      })
+      .catch((err) => {
+        if (!bo) setLoadError(errorMessage(err))
+      })
+    return () => {
+      bo = true
+    }
+  }, [canGiaVonNgay, user?.org_id, range, supabase])
 
   /* ⚠ LỌC NCC (chọn nhiều) = PHẦN TIỀN của hàng NCC ấy — cùng luật Báo cáo tổng hợp / báo cáo Nhân viên
      (`phanTienQuaLoc`): chứng từ có ≥ 1 dòng (không phải hàng đổi) qua lọc, tiền chứng từ chia theo tỉ lệ `line_total`.
@@ -292,8 +346,15 @@ export default function SalesReportPage() {
     return m
   }, [users])
 
+  /** Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ của kỳ — bản hàm máy chủ gộp sẵn (một lượt) hoặc tự tính từ dòng phiếu xuất. */
+  const giaVonCoSoKy = useMemo(() => giaVonMotLuot ?? giaVonBinhQuanCoSo(stockLines ?? []), [giaVonMotLuot, stockLines])
+
+  /* ⚠ Mỗi bảng dưới chỉ tính khi đang xem mối quan tâm của nó (`if (variant !== …) return []`, `variant` trong mảng phụ
+     thuộc) — như Báo cáo › Nhân viên: tính cả năm bảng mỗi lần đổi lọc là thừa. Xuất Excel cũng chỉ xuất bảng đang xem. */
+
   // -------------------- Thời gian --------------------
   const timeBuckets: DayBucket[] = useMemo(() => {
+    if (variant !== "time") return []
     const map = new Map<string, DayBucket>()
     for (const o of filteredInvoices) {
       const d = String(o.invoice_date).slice(0, 10)
@@ -327,7 +388,7 @@ export default function SalesReportPage() {
     return Array.from(map.values())
       .map((b) => ({ ...b, netRevenue: b.revenue - b.returnValue }))
       .sort((a, b) => a.date.localeCompare(b.date))
-  }, [filteredInvoices, filteredReturns, customerMap, search])
+  }, [variant, filteredInvoices, filteredReturns, customerMap, search])
 
   // -------------------- Lợi nhuận --------------------
   /**
@@ -337,9 +398,12 @@ export default function SalesReportPage() {
    *   Bản cũ lấy nguyên tiền hóa đơn − giá vốn xuất: ngày có hàng trả thì lãi phồng.
    */
   const profitRows: ProfitByDayRow[] = useMemo(() => {
+    if (variant !== "profit") return []
     if (!dangLoc) {
       // Không lọc: giá vốn xuất = phiếu XUẤT đã ghi sổ (`fetchCogsForRange`), theo ngày Việt Nam, SL cơ sở × giá vốn
       // cơ sở — khớp màn Tài chính. Giá vốn hàng trả đi cặp: mọi phiếu trả của kỳ.
+      // Đường một lượt: dòng phiếu xuất còn đang đọc (`canGiaVonNgay`) — màn hiện khung chờ, chưa tính.
+      if (!stockLines) return []
       const giaVonXuat = stockLines
         .filter((l) => l.posted_at)
         .map((l) => ({ ngay: vnDateOf(l.posted_at as string), giaVon: giaTriDongKho(l) }))
@@ -352,7 +416,7 @@ export default function SalesReportPage() {
     /* ⚠ ĐANG LỌC: giá vốn của ĐÚNG hàng đã lọc — dòng hoá đơn qua lọc × giá vốn bình quân cơ sở của kỳ (như tab Nhân
        viên), giá vốn hàng trả của các phiếu đã lọc. Bản cũ lấy doanh thu ĐÃ LỌC trừ giá vốn CẢ SỔ → lãi âm vô lý
        (rà báo cáo 09/10/2026). */
-    const avgCost = giaVonBinhQuanCoSo(stockLines)
+    const avgCost = giaVonCoSoKy
     const giaVonXuat = filteredInvoices.map((o) => {
       let giaVon = 0
       for (const l of dongTheoHd.get(o.id) || []) {
@@ -366,10 +430,14 @@ export default function SalesReportPage() {
       giaVon: giaVonTraCuaPhieu(returnCosts.get(r.id), supplierPasses),
     }))
     return congLoiNhuanTheoNgay({ hoaDon: filteredInvoices, phieuTra: filteredReturns, giaVonXuat, giaVonTra })
-  }, [dangLoc, filteredInvoices, filteredReturns, returns, returnCosts, stockLines, dongTheoHd, coLocHang, quaHang, productMap, supplierPasses])
+  }, [
+    variant, dangLoc, filteredInvoices, filteredReturns, returns, returnCosts, stockLines, giaVonCoSoKy, dongTheoHd, coLocHang,
+    quaHang, productMap, supplierPasses,
+  ])
 
   // -------------------- Giảm giá HĐ --------------------
   const discountRows: DiscountRow[] = useMemo(() => {
+    if (variant !== "discount") return []
     // Hóa đơn không có cột giảm giá: giảm = Σ dòng − subtotal (mig 183) — tính trên MỌI dòng của tờ. Đang lọc NCC thì
     // giảm giá / tạm tính là PHẦN của các dòng NCC ấy (chia theo tỉ lệ `line_total`, như tiền hoá đơn).
     return filteredInvoices
@@ -402,10 +470,11 @@ export default function SalesReportPage() {
         }
       })
       .sort((a, b) => b.discount - a.discount)
-  }, [filteredInvoices, dongTheoHd, coLocHang, quaHang, customerMap, search])
+  }, [variant, filteredInvoices, dongTheoHd, coLocHang, quaHang, customerMap, search])
 
   // -------------------- Trả hàng --------------------
   const returnsRows: ReturnSummaryRow[] = useMemo(() => {
+    if (variant !== "returns") return []
     // ⚠ Qua CÙNG bộ lọc với các tab khác (bảng giá / kênh / NCC — tiền là phần của hàng đã lọc). Bản cũ liệt kê mọi
     // phiếu trả của kỳ dù đang lọc (rà báo cáo 09/10/2026).
     return filteredReturns
@@ -422,7 +491,7 @@ export default function SalesReportPage() {
         amount: Number(r.credit_note_amount || 0),
       }))
       .sort((a, b) => b.amount - a.amount)
-  }, [filteredReturns, customerMap, search])
+  }, [variant, filteredReturns, customerMap, search])
 
   // -------------------- Nhân viên --------------------
   // Nhân viên của phiếu trả: tên trên phiếu → NV hóa đơn gắn → NV hóa đơn gần
@@ -436,6 +505,7 @@ export default function SalesReportPage() {
    *   Thời gian.
    */
   const employeeRows: EmployeeRow[] = useMemo(() => {
+    if (variant !== "employee") return []
     // attribute COGS by line aggregated to order
     const lineByInvoice = new Map<string, InvoiceLineRow[]>()
     for (const l of filteredLines) {
@@ -443,8 +513,8 @@ export default function SalesReportPage() {
       a.push(l)
       lineByInvoice.set(l.invoice_id, a)
     }
-    // Giá vốn bình quân mỗi đơn vị cơ sở (dòng từ `fetchCogsForRange` đã là SL cơ sở).
-    const avgCost = giaVonBinhQuanCoSo(stockLines)
+    // Giá vốn bình quân mỗi đơn vị cơ sở (bản máy chủ gộp sẵn, hoặc từ dòng `fetchCogsForRange` — đã là SL cơ sở).
+    const avgCost = giaVonCoSoKy
     const giaVonHoaDon = (invoiceId: string) => {
       let cogs = 0
       for (const l of lineByInvoice.get(invoiceId) || []) {
@@ -480,8 +550,8 @@ export default function SalesReportPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
   }, [
-    filteredInvoices, filteredLines, filteredReturns, nvPhieuTra, returnCosts,
-    stockLines, userMap, productMap, supplierPasses, search,
+    variant, filteredInvoices, filteredLines, filteredReturns, nvPhieuTra, returnCosts,
+    giaVonCoSoKy, userMap, productMap, supplierPasses, search,
   ])
 
   const handleExport = () => {
@@ -574,7 +644,7 @@ export default function SalesReportPage() {
       {!loadError && <ReportLoadNotice truncated={truncated} />}
       {loadError ? (
         <ReportLoadNotice error={loadError} />
-      ) : loading ? (
+      ) : loading || (variant === "profit" && !dangLoc && stockLines === null) ? (
         <Skeleton className="h-72" />
       ) : variant === "time" ? (
         <ByTimeView buckets={timeBuckets} />

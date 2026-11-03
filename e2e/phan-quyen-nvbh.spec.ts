@@ -11,7 +11,7 @@ const SUA = "00000000-0000-4000-8000-0000000000d1"
 const doiVai = (role: string) =>
   fetch(`${FAKE}/rest/v1/users?id=eq.${OWNER}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) })
 
-test("NVBH: không vào lãi lỗ / lô hàng / sản phẩm / kho / phiếu thu; vẫn lên đơn", async ({ page }) => {
+test("NVBH: không vào lãi lỗ / lô hàng / sản phẩm / kho / phiếu thu; vẫn lên đơn", async ({ page, baseURL }) => {
   await dangNhap(page)
   await doiVai("sales")
   try {
@@ -22,6 +22,10 @@ test("NVBH: không vào lãi lỗ / lô hàng / sản phẩm / kho / phiếu thu
       await expect(page, url).not.toHaveURL(new RegExp(url.replace(/\//g, "\\/") + "$"))
     }
 
+    /* Lên đơn trên ĐIỆN THOẠI (máy NVBH). Máy tính thì `/sell` là lối POS — máy chủ chuyển thẳng sang POS theo cookie khổ
+       màn (chủ nhà 03/11/2026, `e2e/pos-nhan-dien-may-chu.spec.ts`), màn bán điện thoại không dựng. */
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.context().addCookies([{ name: "npp_kho", value: "hep", url: baseURL! }])
     await page.goto("/sell")
     await expect(page.getByRole("button", { name: "Thêm Sữa hộp", exact: true })).toBeVisible()
   } finally {

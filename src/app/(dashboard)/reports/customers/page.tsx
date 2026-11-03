@@ -42,6 +42,8 @@ import { khopTimKhach, maKhachBaoCao } from "@/lib/analytics/tim-khach"
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { toast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 
 type Variant = "sales" | "profit" | "receivables" | "products"
 
@@ -115,6 +117,8 @@ export default function CustomersReportPage() {
   const [receivables, setReceivables] = useState<ReceivableRow[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [stockLines, setStockLines] = useState<StockEntryLineRow[]>([])
+  /** Giá vốn bình quân cơ sở do hàm máy chủ gộp sẵn; `null` = đường đọc từng bảng (tự tính từ `stockLines`). */
+  const [giaVonMotLuot, setGiaVonMotLuot] = useState<Map<string, number> | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
@@ -131,6 +135,9 @@ export default function CustomersReportPage() {
      *   dòng trông y hệt một báo cáo đúng. Nhưng ném mà không ai bắt là
      *   vòng quay không bao giờ dừng và không có chữ nào giải thích.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
       setLoading(true)
       setLoadError(null)
@@ -138,36 +145,57 @@ export default function CustomersReportPage() {
       /* ⚠ CÔNG NỢ VÀ PHIẾU XUẤT HỎNG THÌ NÉM. Bản cũ chỉ `console.error`
          rồi đọc `rows` rỗng → giá vốn 0 (lãi phồng) và công nợ 0. Khách
          hàng cũng đọc đủ theo trang: khách thứ 1.001 không có trong map
-         thì dòng của họ mất tên, mất kênh. */
-      const [invoiceRes, returnsRes, customersRes, productsRes, receivablesRes, stockEntriesRes] =
-        await Promise.all([
-          fetchRevenueInvoicesDu(supabase, orgId, range),
-          fetchReturnsRowsDu(supabase, orgId, range),
-          fetchOrgRows<CustomerRow>(
-            supabase, "customers", orgId, "id, store_name, channel, credit_limit, phone", "đọc khách hàng"
-          ),
-          fetchOrgRows<ProductRow>(
-            supabase, "products", orgId, "id, sku, name, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"
-          ),
-          docDuHoacNem<ReceivableRow>(
-            (from, to) =>
-              supabase
-                .from("receivables")
-                .select("id, customer_id, amount, paid, due_date, status, created_at", { count: "exact" })
-                .eq("org_id", orgId)
-                .in("status", ["open", "partial", "overdue"])
-                .order("id")
-                .range(from, to),
-            "đọc công nợ"
-          ),
-          fetchPostedStockEntries(supabase, orgId, range, "export"),
-        ])
+         thì dòng của họ mất tên, mất kênh.
+         ⚠ MỘT LƯỢT (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): số bán cả kỳ (hoá đơn, dòng, phiếu trả, dòng
+         trả, giá vốn) qua `bao_cao_so_ban` CÙNG ĐỢT với danh mục + công nợ. Sổ chưa có hàm (`null`) → đọc từng bảng. */
+      const [mot, customersRes, productsRes, receivablesRes] = await Promise.all([
+        docSoBanKy(supabase, range),
+        fetchOrgRows<CustomerRow>(
+          supabase, "customers", orgId, "id, store_name, channel, credit_limit, phone", "đọc khách hàng"
+        ),
+        fetchOrgRows<ProductRow>(
+          supabase, "products", orgId, "id, sku, name, base_unit, units:product_units(unit_name, conversion)", "đọc mặt hàng"
+        ),
+        docDuHoacNem<ReceivableRow>(
+          (from, to) =>
+            supabase
+              .from("receivables")
+              .select("id, customer_id, amount, paid, due_date, status, created_at", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("status", ["open", "partial", "overdue"])
+              .order("id")
+              .range(from, to),
+          "đọc công nợ"
+        ),
+      ])
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setReceivables(receivablesRes.rows)
+      const tranDanhMuc = customersRes.truncated || productsRes.truncated || receivablesRes.truncated
+
+      if (mot) {
+        soHd = mot.hd.length
+        if (conMoi()) setTruncated(tranDanhMuc)
+        if (conMoi()) setInvoices(mot.hd)
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setReturns(mot.tra)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        if (conMoi()) setReturnCosts(mot.giaVonTra)
+        if (conMoi()) setGiaVonMotLuot(mot.giaVonCoSo)
+        if (conMoi()) setStockEntries([])
+        if (conMoi()) setStockLines([])
+        return
+      }
+
+      const [invoiceRes, returnsRes, stockEntriesRes] = await Promise.all([
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchPostedStockEntries(supabase, orgId, range, "export"),
+      ])
       const invoiceList = invoiceRes.rows
       const returnsRows = returnsRes.rows
-      if (conMoi()) setTruncated(
-        invoiceRes.truncated || returnsRes.truncated || customersRes.truncated ||
-          productsRes.truncated || receivablesRes.truncated || stockEntriesRes.truncated
-      )
+      soHd = invoiceList.length
+      if (conMoi()) setTruncated(tranDanhMuc || invoiceRes.truncated || returnsRes.truncated || stockEntriesRes.truncated)
       const invoiceIds = invoiceList.map((o) => o.id)
       const returnIds = returnsRows.map((r) => r.id)
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
@@ -185,13 +213,12 @@ export default function CustomersReportPage() {
       if (conMoi()) setReturns(returnsRows)
       if (conMoi()) setReturnLines(retLinesList)
       if (conMoi()) setReturnCosts(retCosts)
-      if (conMoi()) setCustomers(customersRes.rows)
-      if (conMoi()) setProducts(productsRes.rows)
-      if (conMoi()) setReceivables(receivablesRes.rows)
+      if (conMoi()) setGiaVonMotLuot(null)
       if (conMoi()) setStockEntries(stockEntriesRes.rows)
       if (conMoi()) setStockLines(stockLinesList)
     } catch (err) {
       if (conMoi()) setLoadError(errorMessage(err))
+      loiNap = errorMessage(err)
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
@@ -199,6 +226,7 @@ export default function CustomersReportPage() {
       })
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("bc-khach-hang", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot])
 
@@ -244,7 +272,10 @@ export default function CustomersReportPage() {
     returnValue: number
     netRevenue: number
   }
+  /* ⚠ Mỗi bảng chỉ tính khi đang xem mối quan tâm của nó (`if (variant !== …) return []`, `variant` trong mảng phụ thuộc) —
+     như Báo cáo › Nhân viên. Xuất Excel cũng chỉ xuất bảng đang xem. */
   const salesRows: SalesRow[] = useMemo(() => {
+    if (variant !== "sales") return []
     const m = new Map<string, SalesRow>()
     for (const o of invoices) {
       const c = customerMap.get(o.customer_id)
@@ -280,7 +311,7 @@ export default function CustomersReportPage() {
     return Array.from(m.values())
       .map((r) => ({ ...r, netRevenue: r.revenue - r.returnValue }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [invoices, returns, customerMap, matchSearch])
+  }, [variant, invoices, returns, customerMap, matchSearch])
 
   // -------------------- Lợi nhuận (theo khách) --------------------
   /**
@@ -292,8 +323,9 @@ export default function CustomersReportPage() {
    */
   type ProfitRow = SalesRow & { cogs: number; returnCost: number; profit: number; margin: number }
   const profitRows: ProfitRow[] = useMemo(() => {
-    // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ.
-    const avgCost = giaVonBinhQuanCoSo(stockLines)
+    if (variant !== "profit") return []
+    // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ — bản hàm máy chủ gộp sẵn, hoặc tự tính từ dòng phiếu xuất.
+    const avgCost = giaVonMotLuot ?? giaVonBinhQuanCoSo(stockLines)
     const linesByInvoice = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
       const a = linesByInvoice.get(l.invoice_id) || []
@@ -346,7 +378,7 @@ export default function CustomersReportPage() {
         return { ...r, netRevenue, cogs, profit, margin: netRevenue > 0 ? (profit / netRevenue) * 100 : 0 }
       })
       .sort((a, b) => b.profit - a.profit)
-  }, [invoices, lines, stockLines, returns, returnCosts, customerMap, productMap, matchSearch])
+  }, [variant, invoices, lines, stockLines, giaVonMotLuot, returns, returnCosts, customerMap, productMap, matchSearch])
 
   // -------------------- Công nợ --------------------
   type RecvRow = {
@@ -359,6 +391,7 @@ export default function CustomersReportPage() {
     overdueDays: number
   }
   const recvRows: RecvRow[] = useMemo(() => {
+    if (variant !== "receivables") return []
     const m = new Map<string, RecvRow>()
     const now = Date.now()
     for (const r of receivables) {
@@ -386,11 +419,12 @@ export default function CustomersReportPage() {
       m.set(r.customer_id, e)
     }
     return Array.from(m.values()).sort((a, b) => b.outstanding - a.outstanding)
-  }, [receivables, customerMap, matchSearch])
+  }, [variant, receivables, customerMap, matchSearch])
 
   // -------------------- Hàng bán theo khách (drill-down) --------------------
   type CustomerProductRow = HangBanTheoKhach
   const customerProductRows: CustomerProductRow[] = useMemo(() => {
+    if (variant !== "products") return []
     const linesByInvoice = new Map<string, InvoiceLineRow[]>()
     for (const l of lines) {
       const a = linesByInvoice.get(l.invoice_id) || []
@@ -470,7 +504,7 @@ export default function CustomersReportPage() {
       e.products.sort((a, b) => b.revenue - a.revenue)
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
-  }, [invoices, lines, returnLines, productMap, customerMap, returnIdToCustomer, matchSearch])
+  }, [variant, invoices, lines, returnLines, productMap, customerMap, returnIdToCustomer, matchSearch])
 
   const handleExport = () => {
     if (variant === "sales") {

@@ -85,13 +85,16 @@ describe("báo cáo Bán hàng (cũ): lọc NCC = phần tiền của hàng NCC 
     expect(s).toContain("fetchReturnLines(supabase, returnsRes.rows.map((r) => r.id))")
   })
   it("tab Trả hàng dùng phiếu đã lọc; tab Giảm giá chia giảm giá theo dòng", () => {
-    expect(s).toMatch(/const returnsRows: ReturnSummaryRow\[\] = useMemo\(\(\) => \{\s*return filteredReturns/)
+    // Chỉ tính khi đang xem tab ấy (chủ nhà 03/11/2026 — như Báo cáo › Nhân viên), rồi dùng phiếu ĐÃ LỌC.
+    expect(s).toMatch(/const returnsRows: ReturnSummaryRow\[\] = useMemo\(\(\) => \{\s*if \(variant !== "returns"\) return \[\]\s*return filteredReturns/)
     expect(s).toContain("giam: phanTienQuaLoc(giamHd, ls, quaHang)")
   })
   it("tab Lợi nhuận: đang lọc thì giá vốn của đúng hàng đã lọc, không phải cả sổ", () => {
     expect(s).toContain("const dangLoc = coLocHang || priceListFilter.length > 0 || routeFilter.length > 0")
     expect(s).toContain("giaVonTraCuaPhieu(returnCosts.get(r.id), supplierPasses)")
-    expect(s).toMatch(/if \(!dangLoc\) \{[\s\S]*?stockLines[\s\S]*?\}\s*const avgCost = giaVonBinhQuanCoSo\(stockLines\)/)
+    expect(s).toMatch(/if \(!dangLoc\) \{[\s\S]*?stockLines[\s\S]*?\}\s*const avgCost = giaVonCoSoKy/)
+    // Giá vốn bình quân của kỳ: bản hàm máy chủ gộp sẵn (một lượt) hoặc tự tính từ dòng phiếu xuất (đọc từng bảng).
+    expect(s).toContain("const giaVonCoSoKy = useMemo(() => giaVonMotLuot ?? giaVonBinhQuanCoSo(stockLines ?? []), [giaVonMotLuot, stockLines])")
   })
 })
 

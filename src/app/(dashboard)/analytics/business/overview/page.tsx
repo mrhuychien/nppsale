@@ -36,6 +36,8 @@ import {
 import { docDuHoacNem, docTheoLoId } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
+import { docSoBanKy, type SoBanTho } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface UserRow {
@@ -116,27 +118,16 @@ export default function BusinessOverviewPage() {
      *   cũng đang chuyển sang ném. Không bắt thì màn hình kẹt ở khung xương
      *   mãi; bắt rồi nuốt thì ra "Doanh thu 0đ". Cả hai đều sai — phải báo.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
-      const [
-        invRes,
-        prevInvRes,
-        retRes,
-        prevRetRes,
-        cogsRes,
-        prevCogsRes,
-        customersRes,
-        productsRes,
-        usersRes,
-      ] = await Promise.all([
-        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo — bản cũ
-           chỉ `console.warn`, màn vẽ số THIẾU như số đủ. */
-        fetchRevenueInvoicesDu(supabase, orgId, range),
-        fetchRevenueInvoicesDu(supabase, orgId, prev),
-        fetchReturnsRowsDu(supabase, orgId, range),
-        fetchReturnsRowsDu(supabase, orgId, prev),
-        fetchCogsForRange(supabase, orgId, range),
-        fetchCogsForRange(supabase, orgId, prev),
+      /* ⚠ MỘT LƯỢT MỖI KỲ (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): số bán kỳ này và kỳ trước qua
+         `bao_cao_so_ban` — hai lời gọi CÙNG ĐỢT với ba danh mục. Cách cũ: hai đợt nối đuôi, ~90 câu (lô dòng HĐ, lô dòng
+         phiếu xuất, lô soát HĐ huỷ — nhân hai kỳ). Sổ chưa có hàm (`null`) → đọc từng bảng như cũ, bên dưới. */
+      const [mot, motTruoc, customersRes, productsRes, usersRes] = await Promise.all([
+        docSoBanKy(supabase, range),
+        docSoBanKy(supabase, prev),
         docDuHoacNem<CustomerRow>(
           (from, to) =>
             supabase
@@ -168,15 +159,51 @@ export default function BusinessOverviewPage() {
           "đọc danh sách nhân viên"
         ),
       ])
-      const orderList = invRes.rows
-      const prevOrderList = prevInvRes.rows
-      const retRows = retRes.rows
-      const prevRetRows = prevRetRes.rows
-      const orderIds = orderList.map((o) => o.id)
-      const prevOrderIds = prevOrderList.map((o) => o.id)
-      const retIds = retRows.map((r) => r.id)
-      const prevRetIds = prevRetRows.map((r) => r.id)
-      /* NV của hóa đơn gắn phiếu trả: hóa đơn trong hai kỳ đã có; hóa đơn cũ hơn thì đọc thêm. */
+      /** Số bán một kỳ — cùng tập dòng ở cả hai đường đọc (`docSoBanKy` ≡ đọc từng bảng). */
+      type SoKy = Pick<SoBanTho, "hd" | "tra" | "dongHd" | "dongTra" | "giaVonTra" | "giaVonXuat">
+      let cur: SoKy
+      let truoc: SoKy
+      let tranSoBan = false
+      if (mot && motTruoc) {
+        cur = mot
+        truoc = motTruoc
+      } else {
+        const [invRes, prevInvRes, retRes, prevRetRes, cogsRes, prevCogsRes] = await Promise.all([
+          // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+          /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo — bản cũ
+             chỉ `console.warn`, màn vẽ số THIẾU như số đủ. */
+          fetchRevenueInvoicesDu(supabase, orgId, range),
+          fetchRevenueInvoicesDu(supabase, orgId, prev),
+          fetchReturnsRowsDu(supabase, orgId, range),
+          fetchReturnsRowsDu(supabase, orgId, prev),
+          fetchCogsForRange(supabase, orgId, range),
+          fetchCogsForRange(supabase, orgId, prev),
+        ])
+        const retIds = retRes.rows.map((r) => r.id)
+        const prevRetIds = prevRetRes.rows.map((r) => r.id)
+        const [lineList, prevLineList, retLineList, prevRetLineList, retCosts, prevRetCosts] = await Promise.all([
+          fetchInvoiceLines(supabase, invRes.rows.map((o) => o.id)),
+          fetchInvoiceLines(supabase, prevInvRes.rows.map((o) => o.id)),
+          fetchReturnLines(supabase, retIds),
+          fetchReturnLines(supabase, prevRetIds),
+          fetchReturnCosts(supabase, retIds),
+          fetchReturnCosts(supabase, prevRetIds),
+        ])
+        cur = { hd: invRes.rows, tra: retRes.rows, dongHd: lineList, dongTra: retLineList, giaVonTra: retCosts, giaVonXuat: cogsRes.cogs }
+        truoc = {
+          hd: prevInvRes.rows, tra: prevRetRes.rows, dongHd: prevLineList, dongTra: prevRetLineList,
+          giaVonTra: prevRetCosts, giaVonXuat: prevCogsRes.cogs,
+        }
+        tranSoBan =
+          invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
+          cogsRes.truncated || prevCogsRes.truncated
+      }
+      const orderList = cur.hd
+      const prevOrderList = truoc.hd
+      const retRows = cur.tra
+      const prevRetRows = truoc.tra
+      soHd = orderList.length
+      /* NV của hóa đơn gắn phiếu trả: hóa đơn trong hai kỳ đã có; hóa đơn cũ hơn thì đọc thêm (thường không có → không câu). */
       const nvHoaDon = new Map<string, string>()
       for (const o of orderList.concat(prevOrderList)) nvHoaDon.set(o.id, o.sales_user_id || "")
       const thieuHd = Array.from(
@@ -187,26 +214,17 @@ export default function BusinessOverviewPage() {
             .filter(Boolean)
         )
       )
-      const [lineList, prevLineList, retLineList, prevRetLineList, retCosts, prevRetCosts, hdCu] =
-        await Promise.all([
-          fetchInvoiceLines(supabase, orderIds),
-          fetchInvoiceLines(supabase, prevOrderIds),
-          fetchReturnLines(supabase, retIds),
-          fetchReturnLines(supabase, prevRetIds),
-          fetchReturnCosts(supabase, retIds),
-          fetchReturnCosts(supabase, prevRetIds),
-          docTheoLoId<{ id: string; sales_user_id: string | null }>(
-            thieuHd,
-            (lo, from, to) =>
-              supabase
-                .from("sales_invoices")
-                .select("id, sales_user_id", { count: "exact" })
-                .in("id", lo)
-                .order("id")
-                .range(from, to),
-            "đọc NV của hóa đơn gắn phiếu trả"
-          ),
-        ])
+      const hdCu = await docTheoLoId<{ id: string; sales_user_id: string | null }>(
+        thieuHd,
+        (lo, from, to) =>
+          supabase
+            .from("sales_invoices")
+            .select("id, sales_user_id", { count: "exact" })
+            .in("id", lo)
+            .order("id")
+            .range(from, to),
+        "đọc NV của hóa đơn gắn phiếu trả"
+      )
       for (const h of hdCu) nvHoaDon.set(h.id, h.sales_user_id || "")
       const nvTra = new Map<string, string>()
       for (const r of retRows.concat(prevRetRows)) {
@@ -214,34 +232,32 @@ export default function BusinessOverviewPage() {
       }
       /* Giá vốn THUẦN = phiếu xuất − giá vốn hàng trả đã nhập lại kho. */
       let giaVonTra = 0
-      retCosts.forEach((c) => { giaVonTra += c.total })
+      cur.giaVonTra.forEach((c) => { giaVonTra += c.total })
       let giaVonTraTruoc = 0
-      prevRetCosts.forEach((c) => { giaVonTraTruoc += c.total })
+      truoc.giaVonTra.forEach((c) => { giaVonTraTruoc += c.total })
 
       if (conMoi()) setOrders(orderList)
       if (conMoi()) setPrevOrders(prevOrderList)
-      if (conMoi()) setLines(lineList)
-      if (conMoi()) setPrevLines(prevLineList)
+      if (conMoi()) setLines(cur.dongHd)
+      if (conMoi()) setPrevLines(truoc.dongHd)
       if (conMoi()) setReturns(retRows)
       if (conMoi()) setPrevReturns(prevRetRows)
-      if (conMoi()) setReturnLines(retLineList)
-      if (conMoi()) setPrevReturnLines(prevRetLineList)
+      if (conMoi()) setReturnLines(cur.dongTra)
+      if (conMoi()) setPrevReturnLines(truoc.dongTra)
       if (conMoi()) setReturnUser(nvTra)
-      if (conMoi()) setCogs(cogsRes.cogs - giaVonTra)
-      if (conMoi()) setPrevCogs(prevCogsRes.cogs - giaVonTraTruoc)
+      if (conMoi()) setCogs(cur.giaVonXuat - giaVonTra)
+      if (conMoi()) setPrevCogs(truoc.giaVonXuat - giaVonTraTruoc)
       if (conMoi()) setCustomers(customersRes.rows)
       if (conMoi()) setProducts(productsRes.rows)
       if (conMoi()) setUsers(usersRes.rows)
-      if (conMoi()) setTruncated(
-        invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated ||
-          cogsRes.truncated || prevCogsRes.truncated ||
-          customersRes.truncated || productsRes.truncated || usersRes.truncated
-      )
+      if (conMoi()) setTruncated(tranSoBan || customersRes.truncated || productsRes.truncated || usersRes.truncated)
     } catch (e) {
       console.error("[business/overview] tải lỗi:", e)
       if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu kinh doanh"))
+      loiNap = errorMessage(e, "Không tải được số liệu kinh doanh")
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("pt-tong-quan", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot])
 

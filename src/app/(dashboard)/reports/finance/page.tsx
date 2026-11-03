@@ -23,10 +23,13 @@ import {
   fetchInvoiceLines,
   giamGiaHoaDon,
   type InvoiceLineRow,
+  type RevenueInvoiceRow,
   fetchReturnsValueDu,
   fetchCogsForRange,
   fetchReturnCosts,
 } from "@/lib/analytics/sales"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { useClientNow } from "@/hooks/use-client-now"
@@ -108,17 +111,20 @@ export default function FinanceReportPage() {
      *   phải thu, phải trả, giá trị kho, tiền thu, lãi ròng đều hiện 0
      *   trông y như số thật. Bảng cân đối mà ra 0 thì còn tệ hơn trống.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
       setLoading(true)
       setLoadError(null)
       const r = effectiveRange
       const orgId = user.org_id
-      const [invoiceRes, retRes, cogsRes, expensesRes, recvRes, payRes, batchesRes, cashRes] =
+      /* ⚠ MỘT LƯỢT (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): hoá đơn + dòng, phiếu trả, giá vốn xuất, giá vốn
+         hàng trả của kỳ qua `bao_cao_so_ban` CÙNG ĐỢT với chi phí và bốn số tổng — cách cũ hai đợt nối đuôi (~80 câu: lô
+         dòng HĐ, lô dòng phiếu xuất, lô soát HĐ huỷ). Sổ chưa có hàm (`null`) → đọc từng bảng như cũ, bên dưới. */
+      const [mot, expensesRes, recvRes, payRes, batchesRes, cashRes] =
         await Promise.all([
-          // Doanh thu = hóa đơn ĐÃ GHI SỔ theo ngày hóa đơn (chủ nhà 24/09/2026).
-          fetchRevenueInvoicesDu(supabase, orgId, r),
-          fetchReturnsValueDu(supabase, orgId, r),
-          fetchCogsForRange(supabase, orgId, r),
+          docSoBanKy(supabase, r),
           docDuHoacNem<ExpRowRaw>(
             (from, to) =>
               supabase
@@ -144,19 +150,46 @@ export default function FinanceReportPage() {
       const rpcErr = ([recvRes, payRes, batchesRes, cashRes] as Array<{ error?: { message?: string } | null }>)
         .find((x) => x?.error)?.error
       if (rpcErr) throw new Error(`tính số tổng ở máy chủ: ${errorMessage(rpcErr)}`)
-      if (conMoi()) setTruncated(invoiceRes.truncated || retRes.truncated || cogsRes.truncated || expensesRes.truncated)
-      const invoiceList = invoiceRes.rows
-      const retVal = retRes.total
       /* Hóa đơn không có cột giảm giá: giảm = Σ dòng − subtotal (mig 183).
          ⚠ `total` ĐÃ trừ giảm giá, nên dòng (1) phải là total + giảm — lấy
          total rồi trừ giảm lần nữa là trừ HAI lần. */
       /* ⚠ GIÁ VỐN (4) = giá vốn xuất − giá vốn hàng trả ĐÃ NHẬP LẠI KHO (CLAUDE.md: "Lãi gộp = doanh thu
          thuần − (giá vốn − giá vốn hàng trả đã nhập kho)"). Doanh thu thuần đã trừ hàng trả (2.2); bản cũ
          không trừ giá vốn của chính số hàng ấy → lợi nhuận gộp thấp oan, lệch /reports/finance/pnl. */
-      const [dong, giaVonTra] = await Promise.all([
-        fetchInvoiceLines(supabase, invoiceList.map((o) => o.id)),
-        fetchReturnCosts(supabase, retRes.ids),
-      ])
+      let invoiceList: RevenueInvoiceRow[]
+      let dong: InvoiceLineRow[]
+      let retVal: number
+      let giaVonXuat: number
+      let giaVonTra: Map<string, { total: number }>
+      let tranSoBan: boolean
+      if (mot) {
+        invoiceList = mot.hd
+        dong = mot.dongHd
+        // Như fetchReturnsValueDu: Σ |tiền ghi có| của phiếu trả theo ngày trừ doanh số.
+        retVal = mot.tra.reduce((s, t) => s + Math.abs(Number(t.credit_note_amount || 0)), 0)
+        giaVonXuat = mot.giaVonXuat
+        giaVonTra = mot.giaVonTra
+        tranSoBan = false
+      } else {
+        const [invoiceRes, retRes, cogsRes] = await Promise.all([
+          // Doanh thu = hóa đơn ĐÃ GHI SỔ theo ngày hóa đơn (chủ nhà 24/09/2026).
+          fetchRevenueInvoicesDu(supabase, orgId, r),
+          fetchReturnsValueDu(supabase, orgId, r),
+          fetchCogsForRange(supabase, orgId, r),
+        ])
+        const [dongCu, giaVonTraCu] = await Promise.all([
+          fetchInvoiceLines(supabase, invoiceRes.rows.map((o) => o.id)),
+          fetchReturnCosts(supabase, retRes.ids),
+        ])
+        invoiceList = invoiceRes.rows
+        dong = dongCu
+        retVal = retRes.total
+        giaVonXuat = cogsRes.cogs
+        giaVonTra = giaVonTraCu
+        tranSoBan = invoiceRes.truncated || retRes.truncated || cogsRes.truncated
+      }
+      soHd = invoiceList.length
+      if (conMoi()) setTruncated(tranSoBan || expensesRes.truncated)
       const dongTheoHd = new Map<string, InvoiceLineRow[]>()
       for (const l of dong) {
         const a = dongTheoHd.get(l.invoice_id) || []
@@ -176,7 +209,7 @@ export default function FinanceReportPage() {
       if (conMoi()) setReturnsValue(retVal)
       let tongGiaVonTra = 0
       giaVonTra.forEach((c) => { tongGiaVonTra += c.total })
-      if (conMoi()) setCogs(cogsRes.cogs - tongGiaVonTra)
+      if (conMoi()) setCogs(giaVonXuat - tongGiaVonTra)
 
       const exps = expensesRes.rows.map((e) => ({
         amount: Number(e.amount || 0),
@@ -196,8 +229,10 @@ export default function FinanceReportPage() {
       if (conMoi()) setCashOutPaid(co)
     } catch (err) {
       if (conMoi()) setLoadError(errorMessage(err))
+      loiNap = errorMessage(err)
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("bc-tai-chinh", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, effectiveRange, supabase, batLuot])
 

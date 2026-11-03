@@ -368,7 +368,24 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
   bảng từng tính cùng lúc (~0,8 s JS ở CPU ×4 → ~0,17 s).
   · Đo thực tế: `baoNapSauKhiVe("bc-nhan-vien" | "bc-hang-ban-nv", …)` → nhật ký `[bao-cao-nap]` (`/api/do-nap`); màn bắt đầu nạp
   sau `MO_TRANG_MS` (15 s) kể từ lúc mở trang thì tính từ lúc mở màn (báo cáo mở bằng menu, không tải lại trang).
-  · Các báo cáo cũ khác (`/reports/sales`, `customers`, `products`, `end-of-day`, `finance`, `/analytics/*`) vẫn đọc từng bảng.
+- **Đợt 7 — các báo cáo cũ** (chủ nhà 03/11/2026: *"chuyển nốt các báo cáo cũ đi em"*): `/reports/sales`, `customers`,
+  `products`, `finance`, `/analytics/business/overview`, `cost-profit`, `/analytics/products/overview`, `categories` đọc số bán
+  **một lượt** qua `docSoBanKy(sb, range)` (`src/lib/bao-cao/nap-ban-hang.ts`) CÙNG ĐỢT với danh mục; màn Phân tích gọi hai lượt
+  (kỳ này + kỳ trước) song song. Đo sổ giả một tháng: Bán hàng 92 → 16 câu, Tài chính 83 → 9, Tổng quan 91 → 13, Chi phí – lợi
+  nhuận 62 → 7, Hàng hoá 28 → 15. Sổ chưa có hàm → đường đọc từng bảng giữ NGUYÊN bên dưới (bài ghim đọc nó).
+  · `docSoBanKy` = đúng tập dòng của cách cũ: **bỏ dòng hàng đổi** (như `fetchInvoiceLines`; `docSoBanMotLuot` thì trả đủ — Báo
+  cáo tổng hợp / Nhân viên tự bỏ). `tuMotLuot` **xếp lại** `hd` (ngày giảm dần rồi id) và `tra` (id) như cách cũ — hàm máy chủ
+  không xếp, mà `nhanVienPhieuTra` đoán NV phiếu trả cũ theo HĐ GẶP TRƯỚC khi hai HĐ cùng ngày (thiếu bước xếp là phiếu rơi
+  sang NV khác). Kèm `giaVonXuat` (= `fetchCogsForRange().cogs`) và `giaVonTheoSp` (Hàng hoá › Lợi nhuận).
+  · Phần màn ấy chỉ cần khi mở một tab thì **đọc khi mở tab** (effect có `let bo` — đổi kỳ / tab giữa chừng thì bỏ kết quả cũ):
+  Bán hàng › Lợi nhuận không lọc (giá vốn THEO NGÀY — `fetchCogsForRange`, `canGiaVonNgay`); Hàng hoá › Giá trị kho / Xuất nhập
+  tồn (lô tồn `canLo`; phiếu kho + dòng + biến động `canXnt`). Bảng của từng tab chỉ tính khi đang xem (`if (variant !== …)`).
+  · Đo thực tế `[bao-cao-nap]`: khoá `bc-ban-hang`, `bc-khach-hang`, `bc-hang-hoa`, `bc-tai-chinh`, `pt-tong-quan`,
+  `pt-chi-phi-loi-nhuan`, `pt-hang-tong-quan`, `pt-hang-nhom` (`/api/do-nap` nhận `bc-` / `pt-`).
+  · Bấm thật so HAI đường trên cùng dữ liệu (chụp chữ trong `<main>` có hàm rồi tắt hàm, phải bằng nhau):
+  `e2e/bao-cao-cu-mot-luot.spec.ts`. Sổ giả `bao_cao_so_ban` mang luật mig 228 (bỏ phiếu xuất của HĐ huỷ / "Đảo phiếu trả").
+  · Còn đọc từng bảng (không cần dòng bán hoặc khác nguồn): `end-of-day` (giá vốn theo phiếu xuất của từng HĐ), `channels`,
+  `/analytics/customers/*`, `suppliers`, `orders` (đơn hàng).
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.

@@ -354,7 +354,12 @@ function baoCaoSoBan({ p_tu, p_den }, { db }) {
     ma: r.return_code ?? null,
   }))
   const idTra = new Set(tra.map((t) => t.id))
-  const xuat = new Set((db.stock_entries || []).filter((e) => e.status === "posted" && e.type === "export" && Date.parse(e.posted_at) >= vnMoc(p_tu) && Date.parse(e.posted_at) <= vnMoc(p_den, true)).map((e) => e.id))
+  /* Như hàm thật (mig 228 / 256): chỉ phiếu xuất BÁN — bỏ phiếu "Đảo phiếu trả …" và phiếu xuất của HĐ đã huỷ. */
+  const huy = new Set((db.sales_invoices || []).filter((i) => i.status === "cancelled" && i.stock_entry_id).map((i) => i.stock_entry_id))
+  const xuat = new Set((db.stock_entries || []).filter((e) =>
+    e.status === "posted" && e.type === "export" && Date.parse(e.posted_at) >= vnMoc(p_tu) && Date.parse(e.posted_at) <= vnMoc(p_den, true) &&
+    !String(e.notes ?? "").startsWith("Đảo phiếu trả ") && !huy.has(e.id)
+  ).map((e) => e.id))
   const gv = new Map()
   for (const l of db.stock_entry_lines || []) {
     if (!xuat.has(l.entry_id)) continue

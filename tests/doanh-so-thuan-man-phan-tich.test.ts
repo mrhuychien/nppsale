@@ -81,8 +81,11 @@ describe("analytics/business/overview — các bảng Top là số thuần", () 
     expect(S).toContain("fetchReturnsRowsDu(supabase, orgId, prev)")
     expect(S).toContain("fetchReturnLines(supabase, retIds)")
     expect(S).toContain("fetchReturnLines(supabase, prevRetIds)")
-    expect(S).toContain("setCogs(cogsRes.cogs - giaVonTra)")
-    expect(S).toContain("setPrevCogs(prevCogsRes.cogs - giaVonTraTruoc)")
+    // Hai đường đọc (một lượt / từng bảng) ra cùng một bộ số mỗi kỳ (`SoKy`); giá vốn thuần = giá vốn xuất − giá vốn trả.
+    expect(S).toContain("giaVonTra: retCosts, giaVonXuat: cogsRes.cogs")
+    expect(S).toContain("giaVonTra: prevRetCosts, giaVonXuat: prevCogsRes.cogs")
+    expect(S).toContain("setCogs(cur.giaVonXuat - giaVonTra)")
+    expect(S).toContain("setPrevCogs(truoc.giaVonXuat - giaVonTraTruoc)")
   })
 
   it.each([

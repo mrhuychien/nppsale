@@ -28,6 +28,8 @@ import {
 import { docDuHoacNem } from "@/lib/supabase/aggregate"
 import { slCoSoDong } from "@/lib/analytics/quy-doi-dong"
 import { errorMessage } from "@/lib/errors"
+import { docSoBanKy } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { CanhBaoThieuDong, LoiTaiBaoCao } from "../../_shared/loi-tai"
 
 interface ProductRow {
@@ -83,14 +85,15 @@ export default function ProductsCategoriesPage() {
      * ⚠ MỘT `try/catch` CHO CẢ LƯỢT, kể cả hàm ở `lib/analytics/sales`
      *   (`fetchInvoiceLines` đã ném từ trước). Hỏng thì BÁO, không vẽ số 0.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
-      const [invRes, prevInvRes, retRes, prevRetRes, productsRes, suppliersRes] = await Promise.all([
-        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
-        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
-        fetchRevenueInvoicesDu(supabase, orgId, range),
-        fetchRevenueInvoicesDu(supabase, orgId, prev),
-        fetchReturnsRowsDu(supabase, orgId, range),
-        fetchReturnsRowsDu(supabase, orgId, prev),
+      /* ⚠ MỘT LƯỢT MỖI KỲ (chủ nhà 03/11/2026: "chuyển nốt các báo cáo cũ đi em"): dòng hoá đơn, dòng hàng trả của kỳ này
+         và kỳ trước qua `bao_cao_so_ban` CÙNG ĐỢT với danh mục. Sổ chưa có hàm (`null`) → đọc từng bảng như cũ, bên dưới. */
+      const [mot, motTruoc, productsRes, suppliersRes] = await Promise.all([
+        docSoBanKy(supabase, range),
+        docSoBanKy(supabase, prev),
         docDuHoacNem<ProductRow>(
           (from, to) =>
             supabase
@@ -112,10 +115,30 @@ export default function ProductsCategoriesPage() {
           "đọc nhà cung cấp"
         ),
       ])
+      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setSuppliers(new Map(suppliersRes.rows.map((x) => [x.id, x.name])))
+      if (mot && motTruoc) {
+        soHd = mot.hd.length
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setPrevLines(motTruoc.dongHd)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        if (conMoi()) setPrevReturnLines(motTruoc.dongTra)
+        if (conMoi()) setTruncated(productsRes.truncated || suppliersRes.truncated)
+        return
+      }
+      const [invRes, prevInvRes, retRes, prevRetRes] = await Promise.all([
+        // Doanh thu theo HÓA ĐƠN đã ghi sổ (chủ nhà 24/09/2026), không theo đơn.
+        /* ⚠ BẢN `…Du`: chạm trần 20.000 dòng thì cờ `truncated` lên dải cảnh báo. */
+        fetchRevenueInvoicesDu(supabase, orgId, range),
+        fetchRevenueInvoicesDu(supabase, orgId, prev),
+        fetchReturnsRowsDu(supabase, orgId, range),
+        fetchReturnsRowsDu(supabase, orgId, prev),
+      ])
       const orders = invRes.rows
       const prevOrders = prevInvRes.rows
       const retRows = retRes.rows
       const prevRetRows = prevRetRes.rows
+      soHd = orders.length
       const [lineList, prevLineList, retLineList, prevRetLineList] = await Promise.all([
         fetchInvoiceLines(supabase, orders.map((o) => o.id)),
         fetchInvoiceLines(supabase, prevOrders.map((o) => o.id)),
@@ -126,8 +149,6 @@ export default function ProductsCategoriesPage() {
       if (conMoi()) setPrevLines(prevLineList)
       if (conMoi()) setReturnLines(retLineList)
       if (conMoi()) setPrevReturnLines(prevRetLineList)
-      if (conMoi()) setProducts(productsRes.rows)
-      if (conMoi()) setSuppliers(new Map(suppliersRes.rows.map((x) => [x.id, x.name])))
       if (conMoi()) setTruncated(
         invRes.truncated || prevInvRes.truncated || retRes.truncated || prevRetRes.truncated || productsRes.truncated ||
           suppliersRes.truncated
@@ -135,8 +156,10 @@ export default function ProductsCategoriesPage() {
     } catch (e) {
       console.error("[products/categories] tải lỗi:", e)
       if (conMoi()) setLoadError(errorMessage(e, "Không tải được số liệu phân loại hàng"))
+      loiNap = errorMessage(e, "Không tải được số liệu phân loại hàng")
     } finally {
       if (conMoi()) setLoading(false)
+      if (conMoi()) baoNapSauKhiVe("pt-hang-nhom", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot])
 

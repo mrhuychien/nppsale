@@ -325,6 +325,10 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   chạy câu. Bị huỷ là huỷ trọn giao dịch → câu ghi CHƯA ghi gì: `errorMessage` dịch (`QUA_HAN_VI`, bắt cả theo câu chữ vì lỗi
   đi qua `new Error(...)` thì mất mã), Xuất hàng không hỏi lại sổ cho lỗi này. Câu nặng phải sửa ở máy chủ (chỉ mục, bớt sắp
   xếp tràn `work_mem`), không nới hẹn giờ ở app.
+- **Sổ thật chậm ~70 lần sổ thử cho CÙNG lệnh** (bảng khám 03/11/2026, đối chiếu sổ thử dựng lại cùng cỡ: 1.835 hàng, 598
+  khách, ~2.000 đơn / 2.700 HĐ qua đúng RPC): Xuất hàng 1.294 ms / 19 ms, kể cả câu `set_config` rỗng việc của PostgREST
+  3 ms / 0,02 ms — máy chủ Supabase thiếu sức (Micro: 1 GB RAM, CPU dùng chung — xem Reports: CPU, bộ nhớ + swap, Disk IO),
+  không phải câu lệnh. App chỉ bớt được việc (mig 258); hết chậm hẳn phải nâng cỡ máy — việc của chủ nhà.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).
@@ -496,6 +500,13 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   dù đã có mig 251 / 252. `SET jit = off` trên hàm thì áp ngay lúc gọi, không phụ thuộc vai / kết nối nào. Hàm báo cáo
   nặng mới: viết `SET jit = off` ngay trong `CREATE FUNCTION`. `bao_cao_so_ban` không còn `dong_don` / `dong_hd_goc` (giá lúc
   bán của mig 218 — luật chênh 01/10/2026 không dùng); đừng thêm lại phần app không đọc.
+- **Hàm phụ gọi từ trigger / plpgsql viết plpgsql** (mig 258, chủ nhà 03/11/2026 — khách NPP *"Loát chậm quá" · "Mất 3
+  phút"*, Xuất hàng TB 1.294 ms): hàm `LANGUAGE sql` có `SET search_path` không mở (inline) được và bị **lập kế hoạch lại MỖI
+  lần** một câu plpgsql gọi nó (Postgres ≤ 17) — khoá tìm `khoa_tim_ds` 1,45 ms / lần, `_da_xuat_cua_dong_don` 0,45 ms / dòng
+  HĐ, `_chuan_he_so_dong_hoa_don` 1,7 ms / lần Xuất hàng. plpgsql giữ kế hoạch cả phiên: sổ thử cỡ thật Xuất hàng −27%, Sửa HĐ
+  −25%, Tạo đơn −20%, khoá tìm ×25. Viết lại hàm có sẵn thì dựng lại bản cũ và so TỪNG kết quả trên kho mẫu (kể cả lỗi báo
+  ra) như `scripts/sql/thu-258-ham-phu-plpgsql.sql`; khoá tìm vẫn phải trùng `viValueKey`. Đo trong vòng lặp `x := f(…)` thì
+  bản SQL không lộ chậm (biểu thức đơn giữ kế hoạch) — đo đúng cách gọi thật: mỗi lần một câu / một giao dịch.
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

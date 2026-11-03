@@ -23,9 +23,12 @@ describe("mig 247 — Sửa HĐ giữ hệ số tờ cũ", () => {
   })
   it("thứ tự tra: đơn vị cơ sở = 1 → hệ số CHỤP trên tờ cũ (đúng mặt hàng + đơn vị) → danh mục → số gửi lên (đơn vị đã gỡ)", () => {
     const h = Array.from(hamDangChay().entries()).find(([k]) => k.startsWith("public._chuan_he_so_dong_hoa_don(") && k.includes(","))?.[1]
-    expect(h?.file).toBe("247_sua_hd_giu_he_so_to_cu.sql")
-    expect(h!.than).toMatch(/WHEN ord\.l->>'unit_name' = p\.base_unit THEN 1::numeric\s+WHEN cu\.he_so IS NOT NULL THEN cu\.he_so\s+WHEN pu\.conversion IS NOT NULL THEN pu\.conversion::numeric/)
-    expect(h!.than).toMatch(/sil\.invoice_id = p_hd_cu\s+AND sil\.product_id = p\.id\s+AND sil\.unit_name = ord\.l->>'unit_name'/)
+    // Mig 258 viết lại bằng plpgsql (hết lập kế hoạch lại mỗi lần Xuất hàng) — CÙNG thứ tự luật, so từng kết quả ở
+    // scripts/sql/thu-258-ham-phu-plpgsql.sql.
+    expect(h?.file).toBe("258_ham_phu_plpgsql.sql")
+    expect(h!.than).toMatch(/WHEN v_dv = v_base THEN 1::numeric\s+WHEN v_cu IS NOT NULL THEN v_cu\s+WHEN v_qd IS NOT NULL THEN v_qd\s+ELSE COALESCE\(\(l->>'conversion_factor'\)::numeric, 1\)/)
+    expect(h!.than).toMatch(/sil\.invoice_id = p_hd_cu\s+AND sil\.product_id = v_pid\s+AND sil\.unit_name = v_dv\s+AND sil\.conversion_factor > 0/)
+    expect(h!.than).toMatch(/v_qd\s+FROM product_units pu WHERE pu\.product_id = v_pid AND pu\.unit_name = v_dv/)
   })
   it("tờ cũ đi qua cờ phiên do reissue_invoice đặt rồi gỡ — post_invoice không đọc reissue_of của tải trọng để lấy hệ số", () => {
     expect(MIG).toContain("v_lines := public._chuan_he_so_dong_hoa_don(v_lines, NULLIF(current_setting(''npp.he_so_tu_hd'', true), '''')::uuid);")

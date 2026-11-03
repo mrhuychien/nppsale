@@ -995,4 +995,26 @@ SELECT 96, 'Mig 257 (Tổng danh sách trên máy chủ — tiền còn lại c�
                                           AND v.attnum > 0 AND NOT v.attisdropped))
        THEN 'LỆCH — view v_hoa_don_con_lai thiếu cột mới của sales_invoices (lọc theo cột ấy hỏng, danh sách lùi về cách chậm) — chạy lại mig 257'
        ELSE 'OK — đã vá' END, ''
+UNION ALL
+-- 97. Mig 258 — hàm phụ của Xuất hàng + khoá tìm viết plpgsql (chủ nhà 03/11/2026, khách NPP: "Loát chậm quá" · "Mất 3
+--     phút"; Xuất hàng TB 1.294 ms): bản `LANGUAGE sql` + `SET search_path` bị lập kế hoạch lại MỖI lần trigger / RPC gọi
+--     (khoá tìm 1,45 ms / lần, số đã xuất của dòng đơn 0,45 ms / dòng HĐ, chuẩn hệ số 1,7 ms / lần Xuất hàng). Kết quả
+--     y hệt, chỉ nhanh hơn — chưa chạy thì vẫn đúng, chỉ chậm như trước.
+SELECT 97, 'Mig 258 (Hàm phụ của Xuất hàng + khoá tìm viết plpgsql — hết lập kế hoạch lại mỗi lần gọi)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+                     WHERE p.oid IN (to_regprocedure('public.khong_dau(text)'), to_regprocedure('public.khoa_tim(text)'),
+                                     to_regprocedure('public.khoa_tim_ds(text[])'), to_regprocedure('public._da_xuat_cua_dong_don(uuid)'),
+                                     to_regprocedure('public._chuan_he_so_dong_hoa_don(jsonb, uuid)'))
+                       AND l.lanname <> 'plpgsql')
+       THEN 'CHƯA — chạy migration 258 (Xuất hàng / Sửa HĐ / Tạo đơn chậm hơn ~25%, khoá tìm mỗi chứng từ mới ~1,5 ms)'
+       WHEN public.khoa_tim('DH-0123') IS DISTINCT FROM 'dh 0123 dh0123 dh123'
+         OR public.khoa_tim_ds('Bánh Đậu Xanh', NULL, '') IS DISTINCT FROM 'banh dau xanh banhdauxanh'
+       THEN 'LỆCH — khoá tìm ra sai mẫu của mig 205 (ô tìm không khớp trình duyệt) — chạy lại mig 258'
+       ELSE 'OK — đã vá' END,
+  coalesce((SELECT 'còn LANGUAGE sql: ' || string_agg(p.proname, ', ' ORDER BY p.proname)
+              FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+             WHERE p.oid IN (to_regprocedure('public.khong_dau(text)'), to_regprocedure('public.khoa_tim(text)'),
+                             to_regprocedure('public.khoa_tim_ds(text[])'), to_regprocedure('public._da_xuat_cua_dong_don(uuid)'),
+                             to_regprocedure('public._chuan_he_so_dong_hoa_don(jsonb, uuid)'))
+               AND l.lanname <> 'plpgsql'), '')
 ) t ORDER BY stt;

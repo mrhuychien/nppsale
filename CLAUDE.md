@@ -275,10 +275,24 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   lỗi quá 10s"*): `get_invoiceable_lines` chỉ đọc (VOLATILE nhưng không ghi — PostgREST cho GET, chạy giao dịch chỉ đọc) →
   `loadInvoiceableLines` gọi `{ get: true }`: hết giờ được thử lại một lần, không dặn nhầm "có thể đã ghi". Thêm câu ghi vào
   hàm ấy thì phải về POST.
+- **Câu GHI chờ 60 giây; xuất hàng chưa biết kết quả thì HỎI LẠI SỔ** (chủ nhà 03/11/2026, khách NPP 18:07–18:25: *"Đơn
+  trên a chưa tạo mới bấm vào xuất hàng mà khi loát kém a thoát máy rồi vào lại thì nó đã ra hoàn thành"* · *"người nào ko
+  quen mà in đơn sẽ rơi vào quên đơn đó"*): bỏ chờ ở trình duyệt KHÔNG dừng được máy chủ, chỉ làm mất câu trả lời + lệnh in.
+  `HET_GIO_GHI_MS` = 60 giây (câu ghi, không gửi lại). Xuất hàng / Sửa HĐ / Xuất đủ ở danh sách đơn báo lỗi → MỘT luật
+  `kiemLaiSauLoiXuat` (`src/lib/orders/post-invoice.ts`): hết giờ / rớt mạng (`"chua-biet"`) → hỏi sổ vài lượt
+  (`choHoaDonCuaDon`), thấy tờ thì xử lý như trả lời bình thường (in + mở tờ); máy chủ nói đơn không còn xuất được
+  (`"da-co"` — lần bấm trước đã ghi, `post_invoice` khoá dòng đơn `FOR UPDATE` nên bấm lại an toàn) → mở tờ đã có
+  `?daXuat=1` + dải nhắc In, KHÔNG tự in; không thấy tờ mới báo hỏng kèm `DA_KIEM_LAI_CHUA_THAY`. Mở lại màn Xuất hàng của
+  đơn không còn xuất được mà đã có tờ (`hoaDonThayManXuat`, cùng luật trạng thái `post_invoice`) → sang thẳng tờ ấy (POS) /
+  báo + nút In (điện thoại). Đang ghi: `beforeunload` hỏi trước khi rời trang, quá `CHO_LAU_MS` nút nói "Máy chủ chậm — đang
+  chờ, đừng tắt máy…" (`nhanDangGhi`), POS khoá nút Huỷ. E2E giữ câu `post_invoice` + đồng hồ giả:
+  `e2e/xuat-hang-may-chu-cham.spec.ts`. Dữ liệu mẫu có HD-E2E-2 ghi sổ cho đơn DH-0001 đang `submitted` (lệch luật mig 217)
+  — vì thế màn chỉ chuyển khi đơn KHÔNG còn xuất được, đừng nới thành "có tờ là chuyển".
 - **Đo nạp POS ngoài thực tế**: `fetchCoHetGio` ghi mỗi câu vào vòng nhớ 80 lượt (`src/lib/supabase/do-mang.ts` — chỉ đường
   dẫn + cách gọi + ms + kết quả, **không tham số / dữ liệu**); màn POS (Xuất hàng / Sửa HĐ / Sửa đơn) nạp xong gửi tóm tắt về
   `/api/do-nap` (`baoNapSauKhiVe`, `src/lib/pos/bao-nap.ts`) → nhật ký Vercel dòng `[pos-nap]` (gói Hobby giữ 1 giờ — chậm thì
-  đọc ngay). Khám phía Postgres (chỉ đọc, chủ nhà chạy ở SQL Editor): `supabase/diagnostics/kham_cham_pos.sql`.
+  đọc ngay). Khám phía Postgres (chỉ đọc, chủ nhà chạy ở SQL Editor): `supabase/diagnostics/kham_cham_pos.sql` (6 phần: câu
+  POS, câu tốn máy nhất, kết nối, lệnh ghi bán hàng, chờ khoá ngay lúc chạy, tỉ lệ bộ nhớ đệm).
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

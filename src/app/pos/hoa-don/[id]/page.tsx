@@ -30,7 +30,7 @@ import { Suspense, useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
 import {
   creditOnInvoice, netDueOnInvoice, type InvoiceReturnRow,
 } from "@/lib/orders/invoice-credit"
@@ -63,6 +63,7 @@ interface Head {
   posted_by?: string | null
   order_id?: string | null
   sales_user_id?: string | null
+  created_at?: string | null
   customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
 }
 
@@ -98,10 +99,20 @@ export default function PosInvoicePage() {
       </Suspense>
     )
   }
-  return <XemHoaDon id={id} />
+  return (
+    <Suspense fallback={null}>
+      <XemTheoLink id={id} />
+    </Suspense>
+  )
 }
 
-function XemHoaDon({ id }: { id: string }) {
+/** `?daXuat=1` — tới đây vì đơn ĐÃ xuất ở một lần bấm trước (`duongTaiHoaDonDaCo`): hiện dải nhắc In. */
+function XemTheoLink({ id }: { id: string }) {
+  const q = useSearchParams()
+  return <XemHoaDon id={id} nhacIn={q.get("daXuat") === "1"} />
+}
+
+function XemHoaDon({ id, nhacIn = false }: { id: string; nhacIn?: boolean }) {
   const router = useRouter()
   const { toast } = useToast()
   const [dangGan, setDangGan] = useState(false)
@@ -125,7 +136,7 @@ function XemHoaDon({ id }: { id: string }) {
       const sb = createClient()
       const [h, l, r, p] = await Promise.all([
         sb.from("sales_invoices")
-          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, order_id, posted_by, sales_user_id, customer:customers(store_name, phone, address)")
+          .select("id, invoice_code, invoice_date, status, subtotal, vat, total, payment_terms, due_date, customer_id, order_id, posted_by, sales_user_id, created_at, customer:customers(store_name, phone, address)")
           .eq("id", id).maybeSingle(),
         sb.from("sales_invoice_lines")
           .select("id, quantity, unit_name, unit_price, line_discount, line_total, is_exchange, note, product:products(name, sku)")
@@ -174,6 +185,25 @@ function XemHoaDon({ id }: { id: string }) {
         badge={head ? { label: daHuy ? "ĐÃ HUỶ" : "ĐÃ XUẤT", tone: daHuy ? "tam" : "xong" } : null}
         subtitle={head ? `${formatDate(head.invoice_date)} · ${lines.length} mặt hàng` : undefined}
       />
+
+      {/* ⚠ Tới đây vì đơn ĐÃ xuất ở một lần bấm trước — máy chủ chậm, màn bỏ chờ, tờ không được in (chủ nhà 03/11/2026, khách
+          NPP: "người nào ko quen mà in đơn sẽ rơi vào quên đơn đó"). Nói rõ và để nút In ngay trước mắt. */}
+      {nhacIn && head && !daHuy && (
+        <div
+          data-testid="nhac-in-hoa-don"
+          role="status"
+          className="mx-4 mt-4 flex items-center gap-3 rounded-xl border-[1.5px] border-[var(--pos-warn-border)] bg-[var(--pos-warn-soft)] px-4 py-2.5 text-[13px] leading-snug text-[var(--pos-warn)]"
+        >
+          <p className="min-w-0 flex-1">
+            <strong>Đơn này đã xuất hoá đơn {head.invoice_code}</strong>
+            {head.created_at ? ` lúc ${formatDateTime(head.created_at)}` : ""} — tờ có thể <strong>CHƯA được in</strong>.
+            Kiểm tra lại; chưa in thì bấm In.
+          </p>
+          <PanelButton variant="primary" width={120} onClick={() => { const h = posPrintHref("INV", id); if (h) inTaiCho(h) }}>
+            In hoá đơn
+          </PanelButton>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-grow gap-4 p-4">
         {/* ⚠ `min-w-0 flex-1`, không cứng 1012px — xem `OrderScreen`. */}

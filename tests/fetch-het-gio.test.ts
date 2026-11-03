@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { PostgrestClient } from "@supabase/postgrest-js"
 import {
-  DAN_CAU_GHI, HET_GIO_MS, HetGioError, LOI_HET_GIO, cauHetGio, fetchCoHetGio, laHetGio,
+  DAN_CAU_GHI, HET_GIO_GHI_MS, HET_GIO_MS, HetGioError, LOI_HET_GIO, cauHetGio, fetchCoHetGio, laHetGio,
 } from "@/lib/supabase/fetch-het-gio"
 import { errorMessage } from "@/lib/errors"
 import { isAbortError, selectResilient } from "@/lib/supabase/resilient"
@@ -84,13 +84,24 @@ describe("fetchCoHetGio", () => {
     expect(f.fn).toHaveBeenCalledTimes(2)
   })
 
-  it("câu GHI hết giờ → KHÔNG thử lại (có thể đã ghi) và dặn tải lại kiểm tra", async () => {
+  it("câu GHI hết giờ (sau HET_GIO_GHI_MS) → KHÔNG thử lại (có thể đã ghi) và dặn tải lại kiểm tra", async () => {
     const p = xong(fetchCoHetGio("https://x/rest/v1/rpc/create_order_with_lines", { method: "POST", body: "{}" }))
-    await vi.advanceTimersByTimeAsync(HET_GIO_MS * 3)
+    await vi.advanceTimersByTimeAsync(HET_GIO_GHI_MS)
     const r = (await p) as { loi?: Error }
     expect(f.fn).toHaveBeenCalledTimes(1)
     expect(laHetGio(r.loi)).toBe(true)
-    expect(r.loi?.message).toContain(DAN_CAU_GHI)
+    expect(r.loi?.message).toBe(`${LOI_HET_GIO} sau 60 giây — ${DAN_CAU_GHI}`)
+  })
+
+  /* ⚠ Chủ nhà 03/11/2026 (khách NPP: bấm Xuất hàng lúc máy chủ chậm → app báo hỏng sau 10 giây, máy chủ vẫn ghi xong, đơn
+     Hoàn thành mà tờ không được in): câu ghi KHÔNG bỏ chờ ở 10 giây — máy chủ trả lời ở giây thứ 45 thì nhận được. */
+  it("câu GHI máy chủ trả lời chậm (45 giây) vẫn nhận được kết quả — không bị cắt ở 10 giây như câu đọc", async () => {
+    const p = xong(fetchCoHetGio("https://x/rest/v1/rpc/post_invoice", { method: "POST", body: "{}" }))
+    await vi.advanceTimersByTimeAsync(HET_GIO_MS * 4.5)
+    expect(f.fn).toHaveBeenCalledTimes(1)
+    f.luot[0].traLoi()
+    expect(((await p) as { ok?: Response }).ok?.status).toBe(200)
+    expect(HET_GIO_GHI_MS).toBeGreaterThanOrEqual(6 * HET_GIO_MS)
   })
 
   it("app nằm nền (trang ẩn) thì KHÔNG đếm; hiện lại mới đếm đủ 10 giây từ đầu", async () => {

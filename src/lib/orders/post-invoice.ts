@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { CheDoTraDaNhap } from "@/lib/returns/tra-da-nhap"
+import { laHetGio } from "@/lib/supabase/fetch-het-gio"
 
 /**
  * Một dòng có thể xuất, do `get_invoiceable_lines` trả về.
@@ -418,6 +419,147 @@ export async function postInvoice(
     nearExpirySkipped: Number(row?.near_expiry_skipped ?? 0),
     orderStatus: row?.order_status ?? null,
   }
+}
+
+/* =====================================================================
+ * XUẤT HÀNG MÀ CHƯA BIẾT KẾT QUẢ — kiểm lại sổ trước khi báo hỏng.
+ *
+ * ⚠ CHỦ NHÀ 03/11/2026 (khách NPP gửi ảnh): "Đơn trên a chưa tạo mới bấm vào xuất hàng mà khi loát kém a thoát máy rồi vào lại
+ *   thì nó đã ra hoàn thành" · "người nào ko quen mà in đơn sẽ rơi vào quên đơn đó". Máy chủ chậm: `post_invoice` chưa trả
+ *   lời kịp, màn báo "Chưa xuất được" — nhưng máy chủ VẪN ghi xong. Bỏ chờ không dừng được máy chủ, nên:
+ *     · KHÔNG BIẾT kết quả (hết giờ, rớt mạng giữa chừng) → hỏi lại sổ vài lượt; có tờ của đơn thì coi là xuất xong — in và
+ *       mở tờ như trả lời bình thường.
+ *     · Máy chủ nói "đơn không còn xuất được" (lần bấm TRƯỚC đã xong) → mở tờ đã có, nhắc In (không tự in).
+ *     · Mở lại màn Xuất hàng của đơn đã có hoá đơn (tải lại trang, trình duyệt mở lại tab cũ) → sang thẳng tờ ấy, nhắc In.
+ *   Bấm lại thì an toàn: một đơn một hoá đơn (`uq_sales_invoices_mot_don_mot_hd`, mig 217) — không lập trùng được.
+ * ===================================================================== */
+
+/** Câu dặn thêm khi đã hỏi lại sổ mà chưa thấy tờ của đơn — bấm lại là an toàn. */
+export const DA_KIEM_LAI_CHUA_THAY =
+  "Đã kiểm lại sổ: chưa thấy hoá đơn của đơn này — bấm lại để xuất (mỗi đơn chỉ một hoá đơn, không lập trùng được)."
+
+/** Chờ máy chủ quá ngần này thì nút Xuất hàng báo "máy chủ chậm — đang chờ, đừng tắt máy". */
+export const CHO_LAU_MS = 6000
+
+/** Chữ trên nút Xuất hàng / Lập lại lúc đang ghi sổ: chờ lâu thì nói thẳng là máy chủ chậm, đừng tắt máy. */
+export function nhanDangGhi(tt: { kiemLai: boolean; choLau: boolean }): string {
+  if (tt.kiemLai) return "Đang kiểm lại hoá đơn…"
+  if (tt.choLau) return "Máy chủ chậm — đang chờ, đừng tắt máy…"
+  return "Đang ghi sổ…"
+}
+
+/** Hoá đơn đã ghi sổ của một đơn. */
+export interface HoaDonCuaDon {
+  id: string
+  code: string
+}
+
+/** Màn xem tờ đã có, kèm dải nhắc In (`?daXuat=1`) — đơn đã xuất ở một lần bấm trước. */
+export const duongTaiHoaDonDaCo = (invoiceId: string) => `/pos/hoa-don/${invoiceId}?daXuat=1`
+
+/** Trạng thái đơn còn xuất hàng được — CÙNG luật `post_invoice` (mig 125: ngoài hai trạng thái này là ORDER_NOT_INVOICEABLE). */
+export const DON_CON_XUAT_DUOC: readonly string[] = ["submitted", "partially_invoiced"]
+
+/**
+ * Mở màn Xuất hàng của một đơn KHÔNG còn xuất được mà đã có hoá đơn ghi sổ (tải lại trang lúc đang chờ, trình duyệt mở lại
+ * tab cũ, bấm lại link cũ) → id tờ phải mở thay cho màn xuất. `null` = dựng màn xuất như thường. Đơn còn xuất được thì luôn
+ * dựng màn xuất — máy chủ là nơi quyết.
+ */
+export function hoaDonThayManXuat(trangThaiDon: string, hoaDonGhiSo: ReadonlyArray<{ id: string }>): string | null {
+  if (DON_CON_XUAT_DUOC.includes(trangThaiDon)) return null
+  return hoaDonGhiSo[0]?.id ?? null
+}
+
+/**
+ * Hoá đơn ĐÃ GHI SỔ của đơn (một đơn một hoá đơn — mig 217), mới nhất trước. `boQua` = tờ đang sửa: Sửa HĐ thì tờ cũ còn
+ * `posted` cho tới khi `reissue_invoice` xong — tìm tờ MỚI. Đọc hỏng thì NÉM.
+ */
+export async function timHoaDonCuaDon(sb: SupabaseClient, orderId: string, boQua?: string | null): Promise<HoaDonCuaDon | null> {
+  const { data, error } = await sb
+    .from("sales_invoices")
+    .select("id, invoice_code")
+    .eq("order_id", orderId)
+    .eq("status", "posted")
+    .order("created_at", { ascending: false })
+    .limit(3)
+  if (error) throw new Error(`kiểm lại hoá đơn của đơn: ${error.message}`)
+  const r = ((data ?? []) as Array<{ id: string; invoice_code: string }>).find((h) => h.id !== (boQua ?? null))
+  return r ? { id: r.id, code: r.invoice_code } : null
+}
+
+/**
+ * Lỗi của lần Xuất hàng / Sửa HĐ mà CHƯA CHẮC là hỏng — vì sao phải hỏi lại sổ:
+ *   · `"chua-biet"`: hết giờ chờ máy chủ, rớt mạng giữa chừng — câu có thể đã tới máy chủ và đang / đã ghi. Thấy tờ thì đó là
+ *     tờ của CHÍNH lần bấm này → xử lý như trả lời bình thường (in + mở tờ).
+ *   · `"da-co"`: máy chủ nói đơn không còn xuất được / tờ cũ không còn hiệu lực / đơn đã có hoá đơn — lần bấm TRƯỚC (tưởng
+ *     hỏng) đã xong, hoặc người khác vừa xuất. Thấy tờ thì mở tờ ấy và nhắc In — KHÔNG tự in (có thể đã in rồi).
+ *   · `null`: lỗi thật (thiếu tồn, thiếu quyền…) — báo như cũ.
+ */
+export type LyDoKiemLai = "chua-biet" | "da-co"
+
+export function lyDoKiemLaiSauXuat(err: unknown): LyDoKiemLai | null {
+  if (laHetGio(err)) return "chua-biet"
+  const m = String((err as { message?: unknown } | null)?.message ?? err ?? "")
+  if (/Failed to fetch|NetworkError|Load failed|network connection was lost/i.test(m)) return "chua-biet"
+  if (
+    /ORDER_NOT_INVOICEABLE|INVOICE_NOT_POSTED|uq_sales_invoices_mot_don_mot_hd/.test(m) ||
+    // Câu đã dịch bởi `explainInvoiceError` (postInvoice / reissueInvoice ném câu tiếng Việt, mã đã bị cắt).
+    m.includes("Đơn không còn xuất hàng được") ||
+    m.includes("Hóa đơn không còn hiệu lực")
+  )
+    return "da-co"
+  return null
+}
+
+/**
+ * Chờ hoá đơn của đơn hiện ra trong sổ — máy chủ có thể còn đang ghi lúc trình duyệt bỏ chờ. Hỏi `lan` lần, cách nhau
+ * `cachMs`; một lượt đọc hỏng thì thử lượt sau (mạng vẫn đang chập chờn). Không thấy → `null` (nơi gọi báo như cũ).
+ */
+export async function choHoaDonCuaDon(
+  sb: SupabaseClient,
+  orderId: string,
+  boQua?: string | null,
+  opt: { lan?: number; cachMs?: number; ngu?: (ms: number) => Promise<unknown> } = {}
+): Promise<HoaDonCuaDon | null> {
+  const lan = opt.lan ?? 4
+  const cachMs = opt.cachMs ?? 5000
+  const ngu = opt.ngu ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
+  for (let i = 0; i < lan; i++) {
+    if (i > 0) await ngu(cachMs)
+    try {
+      const hd = await timHoaDonCuaDon(sb, orderId, boQua)
+      if (hd) return hd
+    } catch {
+      /* đọc hỏng (mạng / máy chủ còn chậm) — thử lượt sau */
+    }
+  }
+  return null
+}
+
+export interface KetQuaKiemLai {
+  lyDo: LyDoKiemLai
+  /** Tờ thấy trong sổ — `null` là đã hỏi mà chưa thấy (nơi gọi báo lỗi gốc; "chua-biet" thì kèm `DA_KIEM_LAI_CHUA_THAY`). */
+  hd: HoaDonCuaDon | null
+}
+
+/**
+ * Xuất hàng / Sửa HĐ vừa báo lỗi → hỏi lại sổ nếu lỗi CHƯA CHẮC là hỏng. MỘT luật cho mọi đường xuất (màn POS, màn Xuất hàng
+ * điện thoại, Xuất đủ ở danh sách đơn): "chua-biet" chờ vài lượt (`choHoaDonCuaDon`), "da-co" hỏi một lượt. Lỗi thật → `null`.
+ */
+export async function kiemLaiSauLoiXuat(
+  sb: SupabaseClient,
+  orderId: string,
+  err: unknown,
+  boQua?: string | null,
+  opt?: Parameters<typeof choHoaDonCuaDon>[3]
+): Promise<KetQuaKiemLai | null> {
+  const lyDo = lyDoKiemLaiSauXuat(err)
+  if (!lyDo) return null
+  const hd =
+    lyDo === "chua-biet"
+      ? await choHoaDonCuaDon(sb, orderId, boQua, opt)
+      : await timHoaDonCuaDon(sb, orderId, boQua).catch(() => null)
+  return { lyDo, hd }
 }
 
 export interface CancelInvoiceResult {

@@ -28,6 +28,17 @@ export const HET_GIO_MS = 10_000
  */
 export const HET_GIO_BAO_CAO_MS = 45_000
 
+/**
+ * Câu GHI (POST / PATCH / DELETE — RPC xuất hàng, lưu đơn, phiếu thu…) chờ lâu hơn câu đọc, và vẫn KHÔNG gửi lại.
+ *
+ * ⚠ CHỦ NHÀ 03/11/2026 (khách NPP gửi ảnh, 18:07–18:25: "Loát chậm quá" · "Đơn trên a chưa tạo mới bấm vào xuất hàng mà khi
+ *   loát kém a thoát máy rồi vào lại thì nó đã ra hoàn thành" · "người nào ko quen mà in đơn sẽ rơi vào quên đơn đó"): máy chủ
+ *   chậm, `post_invoice` quá 10 giây → app báo "Chưa xuất được" và bỏ chờ, nhưng máy chủ VẪN ghi xong — đơn thành Hoàn thành,
+ *   tờ không được in. Bỏ chờ ở trình duyệt KHÔNG dừng được máy chủ, chỉ làm mất câu trả lời (và lệnh in đi kèm nó). Câu ghi
+ *   nay chờ 60 giây; quá nữa thì vẫn báo "có thể đã ghi" — màn Xuất hàng tự kiểm lại sổ (`choHoaDonCuaDon`).
+ */
+export const HET_GIO_GHI_MS = 60_000
+
 /** Câu gọi hàm báo cáo một lượt (`bao_cao_so_ban`, `bao_cao_cong_no`, `bao_cao_ton_kho`). */
 export function laBaoCaoMotLuot(input: RequestInfo | URL): boolean {
   const u = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url ?? ""
@@ -113,9 +124,9 @@ async function motLuot(input: RequestInfo | URL, init: RequestInit | undefined, 
 
 /** Một câu có hẹn giờ (câu đọc hết giờ thử lại một lần) — chưa gồm luật gửi lại khi giao dịch hỏng. */
 async function fetchHetGioMotCau(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  // Hàm báo cáo một lượt: chờ HET_GIO_BAO_CAO_MS, một lượt duy nhất (xem trên).
+  // Hàm báo cáo một lượt: chờ HET_GIO_BAO_CAO_MS, một lượt duy nhất; câu ghi chờ HET_GIO_GHI_MS (xem trên).
   const baoCao = laBaoCaoMotLuot(input)
-  const ms = baoCao ? HET_GIO_BAO_CAO_MS : HET_GIO_MS
+  const ms = baoCao ? HET_GIO_BAO_CAO_MS : laCauDoc(init) ? HET_GIO_MS : HET_GIO_GHI_MS
   const lan1 = await motLuot(input, init, ms)
   if (lan1.res) return lan1.res
   if (!lan1.het) throw lan1.err

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { PostgrestClient } from "@supabase/postgrest-js"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
-import { fetchCoHetGio, HET_GIO_MS, DAN_CAU_GHI } from "@/lib/supabase/fetch-het-gio"
+import { fetchCoHetGio, HET_GIO_MS, HET_GIO_GHI_MS, DAN_CAU_GHI } from "@/lib/supabase/fetch-het-gio"
 
 /**
  * CHỦ NHÀ 03/11/2026: "em rà soát kỹ phần load đơn vào pos vẫn có hiện tượng chậm hoặc báo lỗi quá 10s".
@@ -54,14 +54,15 @@ describe("nạp dòng đơn vào POS: get_invoiceable_lines gọi bằng GET", (
       expect(goi[0].url).toContain("/rpc/get_invoiceable_lines?p_order_id=o-1")
     })
 
-    it("(đối chứng) cùng câu gửi POST như bản cũ: hỏng ngay sau 10 giây, không thử lại, dặn nhầm 'có thể đã được ghi'", async () => {
+    it("(đối chứng) cùng câu gửi POST như bản cũ: bị coi là câu GHI — chờ hết HET_GIO_GHI_MS, không thử lại, dặn nhầm 'có thể đã được ghi'", async () => {
       vi.useFakeTimers()
       const { fn, goi } = fetchKhungLanDau()
       vi.stubGlobal("fetch", fn)
       const sb = new PostgrestClient("https://x/rest/v1", { fetch: fetchCoHetGio })
       // Trình dựng câu PostgREST chỉ gửi khi được `then` — khởi động trước rồi mới tua đồng hồ.
       const p = sb.rpc("get_invoiceable_lines", { p_order_id: "o-1" }).then((r) => r)
-      await vi.advanceTimersByTimeAsync(HET_GIO_MS + 50)
+      // Câu ghi chờ lâu (chủ nhà 03/11/2026 — xem HET_GIO_GHI_MS): câu đọc gửi nhầm POST thì phải chờ trọn mức ấy mới báo.
+      await vi.advanceTimersByTimeAsync(HET_GIO_GHI_MS + 50)
       const { error } = await p
       expect(goi).toHaveLength(1)
       expect(String(error?.message)).toContain(DAN_CAU_GHI)

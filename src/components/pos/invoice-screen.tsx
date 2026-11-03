@@ -41,6 +41,8 @@ import { giamCuaChungTu, giamGiaDonConLai } from "@/lib/pos/invoice-discount"
 import {
   invoiceTotals, loadInvoiceableLines, postInvoice, reissueInvoice,
   invoiceWarnings, shortageOf, type PostInvoiceResult,
+  lyDoKiemLaiSauXuat, kiemLaiSauLoiXuat, duongTaiHoaDonDaCo, hoaDonThayManXuat, nhanDangGhi,
+  DA_KIEM_LAI_CHUA_THAY, CHO_LAU_MS,
 } from "@/lib/orders/post-invoice"
 import {
   seedForNew, seedForReissue, makeAddedRow, toDraft, toDraftCoGiam, rowsOverOrdered,
@@ -228,6 +230,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [loi, setLoi] = useState<string | null>(null)
   const [loiTra, setLoiTra] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
+  /** Đã chờ máy chủ lâu (> `CHO_LAU_MS`) — nút báo "máy chủ chậm, đừng tắt" (chủ nhà 03/11/2026, khách NPP). */
+  const [choLau, setChoLau] = useState(false)
+  /** Đang hỏi lại sổ xem lần bấm vừa rồi đã ghi chưa (`choHoaDonCuaDon`). */
+  const [kiemLai, setKiemLai] = useState(false)
   const [dangGan, setDangGan] = useState(false)
   /** Người đứng tên ĐƠN — hóa đơn mới mặc định đứng tên người này. */
   const [ganCuaDon, setGanCuaDon] = useState<string | null>(null)
@@ -246,6 +252,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
     const batDau = typeof performance !== "undefined" ? performance.now() : 0
     let loiNap: string | null = null
     let soDongNap = 0
+    /** Đơn đã có hoá đơn → đang chuyển sang tờ ấy: giữ màn "đang tải", không báo đo nạp. */
+    let chuyenDi = false
     ;(async () => {
       const sb = createClient()
       try {
@@ -360,6 +368,17 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           customer?: { store_name?: string | null; phone?: string | null; address?: string | null } | null
         } | null
         if (!don) throw new Error("Không tìm thấy đơn hàng, hoặc bạn không có quyền xem nó.")
+        /* ⚠ ĐƠN ĐÃ XUẤT RỒI (chủ nhà 03/11/2026, khách NPP: bấm Xuất hàng lúc máy chủ chậm, thoát ra vào lại thì đơn đã Hoàn
+           thành mà tờ chưa in — "người nào ko quen … sẽ rơi vào quên đơn đó"). Mở lại màn Xuất hàng của đơn ấy (tải lại trang,
+           trình duyệt mở lại tab cũ) thì sang thẳng tờ đã có, kèm dải nhắc In — không dựng màn xuất cho đơn không xuất được. */
+        if (!invoiceId && !hdKhac.error) {
+          const daCo = hoaDonThayManXuat(don.status, (hdKhac.data as unknown as Array<{ id: string }>) ?? [])
+          if (daCo) {
+            chuyenDi = true
+            router.replace(duongTaiHoaDonDaCo(daCo))
+            return
+          }
+        }
         setOrderCode(don.order_code)
         if (!invoiceId) setDieuKhoan(don.payment_terms)
         /* ⚠ Chủ nhà 26/09/2026: "Bỏ hết phần ghi chú đơn hàng, chỉ dùng ghi chú dòng" — ghi
@@ -464,7 +483,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         loiNap = errorMessage(e)
         if (!huy) setLoi(loiNap)
       } finally {
-        if (!huy) {
+        if (!huy && !chuyenDi) {
           setDangTai(false)
           baoNapSauKhiVe(invoiceId ? "sua-hd" : "xuat-hang", batDau, { loi: loiNap, dong: soDongNap })
         }
@@ -698,6 +717,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       if (loi) { toast({ title: loi, variant: "destructive" }); return }
     }
     setDangLuu(true)
+    /** Đã hỏi lại sổ mà chưa thấy tờ — câu báo dặn thêm (bấm lại an toàn). */
+    let daKiemLai = false
     try {
       const returnAdds = traMoi
         .filter((a) => a.qty > 0)
@@ -720,56 +741,112 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           ...(ghiMoi(l).note !== undefined && ghiMoi(l).note !== l.note ? { note: ghiMoi(l).note!.trim() } : {}),
           ...(ghiMoi(l).reason !== undefined && ghiMoi(l).reason !== (l.reason ?? "") ? { reason: ghiMoi(l).reason } : {}),
         }))
-      const r: PostInvoiceResult = invoiceId
-        ? await reissueInvoice(createClient(), invoiceId, {
-            lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
-            paymentTerms: dieuKhoan, returnEdits, returnAdds, discount: tong.discount,
-            traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
-          })
-        : await postInvoice(createClient(), {
-            orderId, lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
-            paymentTerms: dieuKhoan, returnAdds, returnEdits, discount: tong.discount,
-          })
-      /**
-       * ⚠ XUẤT HÀNG MÀ ĐỔI NGƯỜI ĐƯỢC GÁN: `post_invoice` đứng tên người của
-       *   ĐƠN, nên gán lại ngay sau khi có tờ. Hai lệnh, không một giao dịch
-       *   — gán hỏng thì hóa đơn VẪN đã xuất, và phải nói ra như vậy để
-       *   người dùng gán lại ở màn hóa đơn, đừng bấm xuất lần nữa.
-       */
-      if (!invoiceId && r.invoiceId && nguoi.ganId && nguoi.ganId !== ganCuaDon) {
-        try {
-          await assignDocSeller(createClient(), "invoice", r.invoiceId, nguoi.ganId)
-        } catch (e) {
-          toast({
-            title: `Đã xuất ${r.invoiceCode ?? ""} nhưng chưa gán được người phụ trách`,
-            description: `${errorMessage(e)} — gán lại ở màn hóa đơn, KHÔNG xuất lại.`,
-            variant: "destructive",
-          })
+      /** Phần sau khi tờ đã ghi sổ — chung cho trả lời bình thường và trả lời CHẬM đã kiểm lại sổ (`cham`). */
+      const xong = async (r: PostInvoiceResult, cham: boolean) => {
+        /**
+         * ⚠ XUẤT HÀNG MÀ ĐỔI NGƯỜI ĐƯỢC GÁN: `post_invoice` đứng tên người của
+         *   ĐƠN, nên gán lại ngay sau khi có tờ. Hai lệnh, không một giao dịch
+         *   — gán hỏng thì hóa đơn VẪN đã xuất, và phải nói ra như vậy để
+         *   người dùng gán lại ở màn hóa đơn, đừng bấm xuất lần nữa.
+         */
+        if (!invoiceId && r.invoiceId && nguoi.ganId && nguoi.ganId !== ganCuaDon) {
+          try {
+            await assignDocSeller(createClient(), "invoice", r.invoiceId, nguoi.ganId)
+          } catch (e) {
+            toast({
+              title: `Đã xuất ${r.invoiceCode ?? ""} nhưng chưa gán được người phụ trách`,
+              description: `${errorMessage(e)} — gán lại ở màn hóa đơn, KHÔNG xuất lại.`,
+              variant: "destructive",
+            })
+          }
+        }
+        setMocChuaLuu(chuKy)
+        toast({
+          title: invoiceId
+            ? `Đã lập lại: ${invoiceCode ?? ""} → ${r.invoiceCode ?? ""}`
+            : `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`,
+          ...(cham ? { description: "Máy chủ trả lời chậm — đã kiểm lại sổ: hoá đơn ĐÃ ghi. Đang mở lệnh in." } : {}),
+        })
+        const w = invoiceWarnings(r)
+        if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
+        if (r.invoiceId) {
+          /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in. */
+          inTaiCho(trangInHoaDon(r.invoiceId))
+          router.replace(`/pos/hoa-don/${r.invoiceId}`)
         }
       }
-      setMocChuaLuu(chuKy)
-      toast({
-        title: invoiceId
-          ? `Đã lập lại: ${invoiceCode ?? ""} → ${r.invoiceCode ?? ""}`
-          : `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`,
-      })
-      const w = invoiceWarnings(r)
-      if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
-      if (r.invoiceId) {
-        /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in. */
-        inTaiCho(trangInHoaDon(r.invoiceId))
-        router.replace(`/pos/hoa-don/${r.invoiceId}`)
+      let r: PostInvoiceResult
+      daKiemLai = false
+      try {
+        r = invoiceId
+          ? await reissueInvoice(createClient(), invoiceId, {
+              lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
+              paymentTerms: dieuKhoan, returnEdits, returnAdds, discount: tong.discount,
+              traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
+            })
+          : await postInvoice(createClient(), {
+              orderId, lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
+              paymentTerms: dieuKhoan, returnAdds, returnEdits, discount: tong.discount,
+            })
+      } catch (e) {
+        /* ⚠ CHƯA BIẾT KẾT QUẢ ≠ HỎNG (chủ nhà 03/11/2026, khách NPP: bấm Xuất hàng lúc chậm, tưởng chưa xuất, vào lại đã Hoàn
+           thành, tờ không ai in). Hỏi lại sổ trước khi báo hỏng — xem `lyDoKiemLaiSauXuat`. Không thấy tờ mới báo hỏng (bấm
+           lại an toàn: một đơn một hoá đơn). */
+        if (!lyDoKiemLaiSauXuat(e)) throw e
+        setKiemLai(true)
+        const kq = await kiemLaiSauLoiXuat(createClient(), orderId, e, invoiceId ?? null)
+        setKiemLai(false)
+        const hd = kq?.hd
+        if (!kq || !hd) {
+          daKiemLai = kq?.lyDo === "chua-biet"
+          throw e
+        }
+        if (kq.lyDo === "chua-biet") {
+          /* Tờ của CHÍNH lần bấm này — như trả lời bình thường: in + mở tờ. */
+          await xong({ invoiceId: hd.id, invoiceCode: hd.code, entryId: null, receivableId: null, shortQty: 0, nearExpirySkipped: 0, orderStatus: null }, true)
+          return
+        }
+        /* Lần bấm TRƯỚC (tưởng hỏng) đã ghi, hoặc người khác vừa xuất: mở tờ ấy + dải nhắc In — không tự in (có thể đã in). */
+        setMocChuaLuu(chuKy)
+        toast({
+          title: `Đơn ${orderCode ?? ""} đã có hoá đơn ${hd.code}`,
+          description: "Lần bấm trước đã ghi sổ (hoặc người khác vừa xuất) — không lập thêm tờ. Đã mở tờ ấy: kiểm tra rồi bấm In nếu chưa in.",
+        })
+        router.replace(duongTaiHoaDonDaCo(hd.id))
+        return
       }
+      await xong(r, false)
     } catch (e) {
       toast({
         title: invoiceId ? "Chưa lập lại được" : "Chưa xuất được",
-        description: errorMessage(e),
+        description: daKiemLai ? `${errorMessage(e)} ${DA_KIEM_LAI_CHUA_THAY}` : errorMessage(e),
         variant: "destructive",
       })
     } finally {
+      setKiemLai(false)
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
+  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
+
+  /* ⚠ ĐANG GHI SỔ MÀ ĐÓNG TAB / TẢI LẠI = mất câu trả lời và lệnh in đi kèm (chủ nhà 03/11/2026, khách NPP: "khi loát kém a
+     thoát máy rồi vào lại thì nó đã ra hoàn thành"). Trình duyệt hỏi lại trước khi rời trang; chờ quá `CHO_LAU_MS` thì nút
+     nói rõ máy chủ đang chậm, đừng tắt máy. */
+  useEffect(() => {
+    if (!dangLuu) {
+      setChoLau(false)
+      return
+    }
+    const t = setTimeout(() => setChoLau(true), CHO_LAU_MS)
+    const chan = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault()
+      ev.returnValue = ""
+    }
+    window.addEventListener("beforeunload", chan)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener("beforeunload", chan)
+    }
+  }, [dangLuu])
 
   usePosKeys({
     F2: () => { setMoThemTra(false); focusPosPicker() },
@@ -1385,7 +1462,15 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         </div>
 
         <PanelActions>
-          <PanelButton width={64} onClick={() => router.back()}>Huỷ</PanelButton>
+          {/* Đang ghi sổ thì không rời màn: máy chủ vẫn ghi dù màn bỏ đi — chỉ mất câu trả lời và lệnh in. */}
+          <PanelButton
+            width={64}
+            disabled={dangLuu}
+            title={dangLuu ? "Đang ghi sổ — chờ máy chủ trả lời" : undefined}
+            onClick={() => router.back()}
+          >
+            Huỷ
+          </PanelButton>
           {sua && invoiceId && (
             <PanelButton
               width={84}
@@ -1401,7 +1486,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
             onClick={() => void luu()}
             title={khoa ? khoa.message : soDong === 0 ? "Chưa có dòng nào có số lượng" : undefined}
           >
-            {dangLuu ? "Đang ghi sổ…" : sua ? "Huỷ HĐ & lập lại (F9)" : "Xuất hàng & lập HĐ (F9)"}
+            {dangLuu ? nhanDangGhi({ kiemLai, choLau }) : sua ? "Huỷ HĐ & lập lại (F9)" : "Xuất hàng & lập HĐ (F9)"}
           </PanelButton>
         </PanelActions>
       </div>

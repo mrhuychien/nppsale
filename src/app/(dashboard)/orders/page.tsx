@@ -60,6 +60,8 @@ import {
   loadInvoiceableLines,
   postInvoice,
   invoiceWarnings,
+  kiemLaiSauLoiXuat,
+  DA_KIEM_LAI_CHUA_THAY,
 } from "@/lib/orders/post-invoice"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { NHOM_TUYEN, docDemTheoTuyen, docTongGop, gopMayChu } from "@/lib/list/tong-may-chu"
@@ -1012,6 +1014,8 @@ export default function OrdersPage() {
      * trả về mới biết — xem `completeOrder`.
      */
     const warned: string[] = []
+    /** Đơn ĐÃ có hoá đơn từ lần bấm trước / người khác vừa xuất — không lập thêm, chỉ cập nhật dòng (chủ nhà 03/11/2026). */
+    const daCoTruoc: string[] = []
     const doneIds: string[] = []
     /**
      * ⚠ TRẠNG THÁI MỚI LẤY TỪ RPC, KHÔNG ĐOÁN "completed". Đơn xuất
@@ -1054,10 +1058,20 @@ export default function OrdersPage() {
           const w = invoiceWarnings(r)
           if (w) warned.push(`${code}: ${w}`)
         } catch (e) {
-          failed.push(`${code}: ${errorMessage(e)}`)
+          /* ⚠ CHƯA BIẾT KẾT QUẢ ≠ HỎNG (chủ nhà 03/11/2026, khách NPP: máy chủ chậm, màn báo hỏng mà sổ đã ghi). Cùng luật
+             màn POS: hỏi lại sổ trước khi báo hỏng — `kiemLaiSauLoiXuat`. */
+          const kq = await kiemLaiSauLoiXuat(supabase, id, e)
+          if (kq?.hd) {
+            doneIds.push(id)
+            newStatus.set(id, "completed")
+            if (kq.lyDo === "chua-biet") ok += 1
+            else daCoTruoc.push(`${code} → ${kq.hd.code}`)
+          } else {
+            failed.push(`${code}: ${errorMessage(e)}${kq?.lyDo === "chua-biet" ? ` ${DA_KIEM_LAI_CHUA_THAY}` : ""}`)
+          }
         }
       }
-      if (ok > 0) {
+      if (doneIds.length > 0) {
         setOrders((prev) =>
           prev.map((o) =>
             doneIds.includes(o.id)
@@ -1069,7 +1083,13 @@ export default function OrdersPage() {
               : o
           )
         )
-        toast({ title: `Đã xuất hàng ${ok} đơn` })
+        if (ok > 0) toast({ title: `Đã xuất hàng ${ok} đơn` })
+        if (daCoTruoc.length > 0) {
+          toast({
+            title: `${daCoTruoc.length} đơn đã có hoá đơn từ trước — không lập thêm`,
+            description: `${daCoTruoc.join(" · ")}. Mở hoá đơn kiểm tra, chưa in thì in.`,
+          })
+        }
       }
       /**
        * ⚠ Cảnh báo đi TOAST RIÊNG, không nhét vào description của toast

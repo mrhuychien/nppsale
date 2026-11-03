@@ -38,6 +38,7 @@ import { errorMessage } from "@/lib/errors"
 import {
   invoiceTotals, loadInvoiceableLines, postInvoice, reissueInvoice,
   invoiceWarnings, shortageOf, type PostInvoiceResult,
+  lyDoKiemLaiSauXuat, kiemLaiSauLoiXuat, nhanDangGhi, CHO_LAU_MS, DA_KIEM_LAI_CHUA_THAY,
 } from "@/lib/orders/post-invoice"
 import {
   seedForNew, seedForReissue, makeAddedRow, withStock, toDraft,
@@ -116,6 +117,9 @@ export function InvoiceEditor({
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  /** Chờ máy chủ quá `CHO_LAU_MS` / đang hỏi lại sổ — xem `nhanDangGhi` (chủ nhà 03/11/2026, khách NPP). */
+  const [choLau, setChoLau] = useState(false)
+  const [kiemLai, setKiemLai] = useState(false)
   const [rows, setRows] = useState<EditorRow[]>([])
   const [notes, setNotes] = useState("")
   /**
@@ -570,11 +574,58 @@ export function InvoiceEditor({
        */
       router.replace(r.invoiceId ? `/sales-invoices/${r.invoiceId}/print?auto=1` : backHref)
     } catch (e) {
-      toast({ title: "Không xuất được", description: errorMessage(e), variant: "destructive" })
+      /* ⚠ CHƯA BIẾT KẾT QUẢ ≠ HỎNG (chủ nhà 03/11/2026, khách NPP: bấm Xuất hàng lúc máy chủ chậm, vào lại thì đơn đã Hoàn
+         thành mà tờ không ai in). Cùng luật màn POS: hỏi lại sổ trước khi báo hỏng — `kiemLaiSauLoiXuat`. */
+      let cau = errorMessage(e)
+      if (lyDoKiemLaiSauXuat(e)) {
+        setKiemLai(true)
+        const kq = await kiemLaiSauLoiXuat(supabase, orderId, e, reissueOf?.invoiceId ?? null)
+        setKiemLai(false)
+        if (kq?.hd) {
+          if (kq.lyDo === "chua-biet") {
+            // Tờ của CHÍNH lần bấm này — như trả lời bình thường: sang màn in, tự bật hộp thoại in.
+            toast({
+              title: reissueOf ? `Đã lập lại: ${reissueOf.invoiceCode} → ${kq.hd.code}` : `Đã xuất hóa đơn ${kq.hd.code}`,
+              description: "Máy chủ trả lời chậm — đã kiểm lại sổ: hoá đơn ĐÃ ghi. Đang mở lệnh in.",
+            })
+            router.replace(`/sales-invoices/${kq.hd.id}/print?auto=1`)
+          } else {
+            // Lần bấm TRƯỚC đã ghi (hoặc người khác vừa xuất): mở tờ ấy, không tự in (có thể đã in).
+            toast({
+              title: `Đơn ${orderCode} đã có hoá đơn ${kq.hd.code}`,
+              description: "Lần bấm trước đã ghi sổ (hoặc người khác vừa xuất) — không lập thêm tờ. Đã mở tờ ấy: kiểm tra rồi bấm In nếu chưa in.",
+            })
+            router.replace(`/sales-invoices/${kq.hd.id}`)
+          }
+          return
+        }
+        if (kq?.lyDo === "chua-biet") cau = `${cau} ${DA_KIEM_LAI_CHUA_THAY}`
+      }
+      toast({ title: "Không xuất được", description: cau, variant: "destructive" })
     } finally {
+      setKiemLai(false)
       setSaving(false)
     }
   }
+
+  /* ⚠ Đang ghi sổ mà đóng tab / tải lại = mất câu trả lời và lệnh in đi kèm — trình duyệt hỏi lại trước khi rời trang (cùng
+     luật màn POS, chủ nhà 03/11/2026). */
+  useEffect(() => {
+    if (!saving) {
+      setChoLau(false)
+      return
+    }
+    const t = setTimeout(() => setChoLau(true), CHO_LAU_MS)
+    const chan = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault()
+      ev.returnValue = ""
+    }
+    window.addEventListener("beforeunload", chan)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener("beforeunload", chan)
+    }
+  }, [saving])
 
   return (
     <div className="space-y-4 pb-28">
@@ -1112,7 +1163,13 @@ export function InvoiceEditor({
           <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 p-3 backdrop-blur lg:pl-[var(--sidebar-w,0px)]">
             <div className="mx-auto flex max-w-5xl items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-xs text-muted-foreground">{picked.length} dòng</div>
+                {saving && (choLau || kiemLai) ? (
+                  <div data-testid="dang-ghi-cham" className="truncate text-xs font-semibold text-amber-600">
+                    {nhanDangGhi({ kiemLai, choLau })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">{picked.length} dòng</div>
+                )}
                 <div className="truncate text-lg font-bold tabular-nums">
                   {formatCurrency(Math.max(0, totals.total - retCreditNow))}
                   {retCreditNow > 0 && (

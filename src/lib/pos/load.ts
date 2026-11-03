@@ -383,23 +383,46 @@ export interface LastPriceInfo {
  * hóa đơn là thứ đã GIAO và đã ghi sổ. Gợi ý theo đơn là gợi ý một giá
  * có thể chưa bao giờ thu được.
  *
- * ⚠ GIỚI HẠN 500 DÒNG GẦN NHẤT, và đó là một cái trần CÓ CHỦ Ý — gợi ý
- * giá không đáng để kéo cả lịch sử. Người đọc cần biết nó là gợi ý chứ
- * không phải một phép thống kê đầy đủ.
+ * ⚠ GIỚI HẠN `SO_TO_GIA_GAN_NHAT` TỜ / 500 DÒNG GẦN NHẤT, và đó là một cái
+ * trần CÓ CHỦ Ý — gợi ý giá không đáng để kéo cả lịch sử. Người đọc cần biết
+ * nó là gợi ý chứ không phải một phép thống kê đầy đủ.
+ *
+ * ⚠ DÒNG HOÁ ĐƠN KHÔNG CÓ `created_at` (mig 124). Bản cũ sắp theo cột ấy: máy
+ *   chủ trả 42703 mỗi lần mở đơn của một khách (log Supabase chủ nhà gửi
+ *   03/11/2026: 13 lần trong ngày), lỗi bị nuốt nên "giá gần nhất" CHƯA BAO GIỜ
+ *   hiện. Nay: các tờ ghi sổ gần nhất của khách (ngày HĐ, rồi lúc tạo) → dòng
+ *   của các tờ ấy, xếp theo thứ tự tờ; bỏ dòng hàng đổi (0đ, không phải giá bán).
  */
+/** 30 tờ × vài chục dòng vẫn dưới trần 1.000 dòng một câu của Supabase. */
+export const SO_TO_GIA_GAN_NHAT = 30
+
 export async function loadLastPrices(
   sb: SupabaseClient,
   customerId: string
 ): Promise<Record<string, LastPriceInfo>> {
+  const { data: hd, error: loiHd } = await sb
+    .from("sales_invoices")
+    .select("id")
+    .eq("customer_id", customerId)
+    .eq("status", "posted")
+    .order("invoice_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(SO_TO_GIA_GAN_NHAT)
+  if (loiHd) return {}
+  const ids = ((hd ?? []) as Array<{ id: string }>).map((h) => h.id)
+  if (ids.length === 0) return {}
   const { data, error } = await sb
     .from("sales_invoice_lines")
-    .select("product_id, unit_price, created_at, invoice:sales_invoices!inner(customer_id, status)")
-    .eq("invoice.customer_id", customerId)
-    .eq("invoice.status", "posted")
-    .order("created_at", { ascending: false })
-    .limit(500)
+    .select("invoice_id, product_id, unit_price, sort_order")
+    .in("invoice_id", ids)
+    .eq("is_exchange", false)
+    .limit(1000)
   if (error) return {}
-  const rows = ((data as unknown) as Array<{ product_id: string; unit_price: number }>) ?? []
+  const thuTu = new Map(ids.map((id, i) => [id, i]))
+  const rows = (((data as unknown) as Array<{ invoice_id: string; product_id: string; unit_price: number; sort_order: number | null }>) ?? [])
+    .slice()
+    .sort((a, b) => (thuTu.get(a.invoice_id) ?? 0) - (thuTu.get(b.invoice_id) ?? 0) || (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .slice(0, 500)
   const out: Record<string, LastPriceInfo> = {}
   for (const r of rows) {
     const cu = out[r.product_id]

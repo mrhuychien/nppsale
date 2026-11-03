@@ -35,6 +35,15 @@ const GIAO_DICH_HONG_VI =
 /** Câu 25P02 đã bị gói vào lỗi khác (`docTheoLoId` ném "đọc …: <câu gốc>") thì không còn mã — nhận bằng nội dung. */
 const GIAO_DICH_HONG_RE = /current transaction is aborted/i
 
+/**
+ * Postgres tự huỷ câu chạy quá hạn (57014 — vai `authenticated` của Supabase: 8 giây). Chủ nhà 03/11/2026 gửi log Supabase:
+ * 101 câu bị huỷ trong ngày, dồn vào 8h / 10h / 18h — kể cả `post_invoice`. Huỷ là huỷ TRỌN giao dịch: câu ghi bị huỷ là
+ * CHƯA ghi gì, bấm lại an toàn. Bắt cả theo câu chữ: lỗi đi qua `new Error(explainInvoiceError(...))` thì mất `code`.
+ */
+const QUA_HAN_VI =
+  "Máy chủ đang quá tải nên tự huỷ lệnh chạy quá 8 giây — lệnh bị huỷ thì CHƯA ghi gì. Đợi một lát rồi thử lại"
+const QUA_HAN_RE = /canceling statement due to statement timeout/i
+
 /** Mã lỗi Postgres / PostgREST hay gặp. */
 const CODE_VI: Record<string, string> = {
   "23505": "Dữ liệu này đã tồn tại",
@@ -56,6 +65,7 @@ const CODE_VI: Record<string, string> = {
   /* Chủ nhà 29/10/2026 (Báo cáo nhân viên): kết nối phía máy chủ hỏng từ trước — app đã tự gửi lại
      (`thu-lai-giao-dich-hong.ts`); tới được đây là gửi lại vẫn hỏng. */
   "25P02": GIAO_DICH_HONG_VI,
+  "57014": QUA_HAN_VI,
 }
 
 /**
@@ -221,6 +231,7 @@ export function errorMessage(err: unknown, fallback = "Lỗi không xác định
   if (!vi && code && CODE_VI[code]) vi = CODE_VI[code]
   if (!vi && RLS_RE.test(haystack)) vi = CODE_VI["42501"]
   if (!vi && GIAO_DICH_HONG_RE.test(haystack)) vi = GIAO_DICH_HONG_VI
+  if (!vi && QUA_HAN_RE.test(haystack)) vi = QUA_HAN_VI
 
   // ⚠ Nguyên văn luôn đi kèm. Dịch xong vứt bản gốc là đổi một câu khó
   // hiểu lấy một câu dễ hiểu nhưng SAI khi đoán trượt.

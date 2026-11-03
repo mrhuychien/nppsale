@@ -130,6 +130,12 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
   Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
+### Giá bán gần nhất ở POS
+- `loadLastPrices` (`src/lib/pos/load.ts`): `SO_TO_GIA_GAN_NHAT` tờ ghi sổ gần nhất của khách (ngày HĐ rồi lúc tạo) → dòng
+  của các tờ ấy, xếp theo thứ tự tờ, bỏ dòng hàng đổi. ⚠ `sales_invoice_lines` KHÔNG có `created_at` (mig 124) — bản cũ sắp
+  theo cột ấy, máy chủ trả 42703 mỗi lần (log Supabase 03/11/2026), lỗi bị nuốt nên gợi ý giá chưa bao giờ hiện. Sổ giả e2e
+  không kiểm tên cột — đọc cột mới thì đối chiếu migration.
+
 ### Quét mã vạch ở form sản phẩm
 Chủ nhà 24/10/2026: *"phần thêm sản phẩm đoạn mã vạch thêm cho tao phần quét mã vạch nhé"*.
 - Ô Mã vạch của `ProductForm` (máy tính, điện thoại, khung tạo nhanh) có nút quét → **dùng lại** `BarcodeScanner`
@@ -309,8 +315,16 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
 - **Đo nạp POS ngoài thực tế**: `fetchCoHetGio` ghi mỗi câu vào vòng nhớ 80 lượt (`src/lib/supabase/do-mang.ts` — chỉ đường
   dẫn + cách gọi + ms + kết quả, **không tham số / dữ liệu**); màn POS (Xuất hàng / Sửa HĐ / Sửa đơn) nạp xong gửi tóm tắt về
   `/api/do-nap` (`baoNapSauKhiVe`, `src/lib/pos/bao-nap.ts`) → nhật ký Vercel dòng `[pos-nap]` (gói Hobby giữ 1 giờ — chậm thì
-  đọc ngay). Khám phía Postgres (chỉ đọc, chủ nhà chạy ở SQL Editor): `supabase/diagnostics/kham_cham_pos.sql` (6 phần: câu
-  POS, câu tốn máy nhất, kết nối, lệnh ghi bán hàng, chờ khoá ngay lúc chạy, tỉ lệ bộ nhớ đệm).
+  đọc ngay). Khám phía Postgres (chỉ đọc, chủ nhà chạy ở SQL Editor): `supabase/diagnostics/kham_cham_pos.sql` — **MỘT câu
+  duy nhất** (UNION ALL, cột chung): SQL Editor chỉ hiện kết quả câu CUỐI, bản nhiều câu trước đây chủ nhà chỉ gửi được phần
+  cuối. Có phần "ghi tệp tạm nhiều nhất" (`temp_blks_written` của `pg_stat_statements`), cài đặt `work_mem` /
+  `statement_timeout` theo vai, bảng đọc tuần tự nhiều. Chủ nhà xuất kết quả bằng nút Export → JSON.
+- **57014 = Postgres tự huỷ câu quá hạn** (log Supabase chủ nhà gửi 03/11/2026: 101 câu trong ngày, dồn vào 8h / 10h / 18h, kể
+  cả `post_invoice`): vai `authenticated` của Supabase chặn mỗi câu ở **8 giây** — chờ ở trình duyệt lâu hơn (60 giây câu
+  ghi, 45 giây báo cáo) chỉ có ích khi câu phải xếp hàng chờ kết nối lúc máy chủ bận, KHÔNG kéo dài được thời gian Postgres
+  chạy câu. Bị huỷ là huỷ trọn giao dịch → câu ghi CHƯA ghi gì: `errorMessage` dịch (`QUA_HAN_VI`, bắt cả theo câu chữ vì lỗi
+  đi qua `new Error(...)` thì mất mã), Xuất hàng không hỏi lại sổ cho lỗi này. Câu nặng phải sửa ở máy chủ (chỉ mục, bớt sắp
+  xếp tràn `work_mem`), không nới hẹn giờ ở app.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

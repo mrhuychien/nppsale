@@ -52,6 +52,9 @@ GRANT EXECUTE ON FUNCTION pg_temp.ghi(text, text, boolean, text), pg_temp.dem_ti
 DO $truoc$
 DECLARE r record; v_bt text;
 BEGIN
+  -- (mig 257) View tiền còn lại chốt cột `i.*` của sales_invoices — có nó thì không gỡ được cột tim_kd để dựng lại
+  -- trạng thái trước mig 249. Gỡ view trong giao dịch này (ROLLBACK cuối tệp trả lại).
+  DROP VIEW IF EXISTS public.v_hoa_don_con_lai;
   FOR r IN SELECT * FROM bang LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_zzzz_tim_kd ON public.%I', r.bang);
     EXECUTE format('ALTER TABLE public.%I DROP COLUMN IF EXISTS tim_kd', r.bang);

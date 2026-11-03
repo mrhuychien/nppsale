@@ -162,7 +162,13 @@ describe("Middleware nối đúng chỗ", () => {
    */
   it("dùng rewrite chứ không redirect", () => {
     expect(MW).toContain('NextResponse.rewrite(new URL("/maintenance", request.url)')
-    expect(MW).not.toContain("NextResponse.redirect")
+    const kiem = MW.indexOf("shouldBlockForMaintenance({")
+    const viet = MW.indexOf('NextResponse.rewrite(new URL("/maintenance"')
+    expect(MW.slice(kiem, viet)).not.toContain("NextResponse.redirect")
+    // Redirect DUY NHẤT là lối POS cũ → POS (chủ nhà 03/11/2026), đặt SAU khối bảo trì: đang bảo trì thì không đẩy sang POS.
+    expect(MW.match(/NextResponse\.redirect\(/g) ?? []).toHaveLength(1)
+    expect(MW).toContain("if (dichPos) return NextResponse.redirect(new URL(dichPos, request.url), 307)")
+    expect(MW.indexOf("NextResponse.redirect(")).toBeGreaterThan(viet)
   })
 
   /**

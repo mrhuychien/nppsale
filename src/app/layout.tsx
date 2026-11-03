@@ -4,6 +4,7 @@ import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/hooks/use-auth"
 import { ServiceWorkerRegister } from "@/components/offline/sw-register"
+import { GhiKhoMan } from "@/components/nav/ghi-kho-man"
 
 const manrope = Manrope({
   subsets: ["latin", "vietnamese"],
@@ -62,6 +63,8 @@ export default function RootLayout({
         </AuthProvider>
         <Toaster />
         <ServiceWorkerRegister />
+        {/* Khổ màn → cookie: máy chủ chuyển thẳng lối POS cũ sang POS trên máy tính (chủ nhà 03/11/2026). */}
+        <GhiKhoMan />
       </body>
     </html>
   )

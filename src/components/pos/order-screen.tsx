@@ -74,6 +74,7 @@ import {
 import { editableReturnOf, type PendingReturnRow } from "@/lib/sell/order-edit"
 import { loadInvoiceableLines } from "@/lib/orders/post-invoice"
 import { loadCustomerDebt, loadLastPrices, loadLotsByProduct, attachLineExtras } from "@/lib/pos/load"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { savePosOrder, posLinesToCart, posLinesToReturnCart } from "@/lib/pos/save"
 import { vatChungCuaDong, vatChungKeTiep } from "@/lib/pos/vat"
 import { formatCurrency } from "@/lib/utils"
@@ -495,6 +496,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
   useEffect(() => {
     if (!orderId) return
     let huy = false
+    /* Đo nạp (chủ nhà 03/11/2026: "…chậm hoặc báo lỗi quá 10s") — gửi tóm tắt về nhật ký máy chủ sau lượt vẽ. */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
     ;(async () => {
       try {
         const sb = createClient()
@@ -531,7 +534,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             address?: string | null; group_id?: string | null
           } | null
         } | null
-        if (!head) { setLoiNap("Không tìm thấy đơn này."); return }
+        if (!head) {
+          setLoiNap("Không tìm thấy đơn này.")
+          baoNapSauKhiVe("sua-don", batDau, { loi: "Không tìm thấy đơn này." })
+          return
+        }
         setOrderCode(head.order_code)
         setOrderStatus(head.status)
         setDieuKhoan(head.payment_terms || "COD")
@@ -650,8 +657,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
           }
         }
         setDaNap(true)
+        baoNapSauKhiVe("sua-don", batDau, { dong: ds.filter((r) => !r.isExchange && r.orderLineId).length })
       } catch (e) {
-        if (!huy) setLoiNap(errorMessage(e))
+        if (!huy) {
+          setLoiNap(errorMessage(e))
+          baoNapSauKhiVe("sua-don", batDau, { loi: errorMessage(e) })
+        }
       }
     })()
     return () => { huy = true }

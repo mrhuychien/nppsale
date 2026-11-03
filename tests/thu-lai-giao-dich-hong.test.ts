@@ -141,7 +141,8 @@ describe("nối vào app", () => {
     expect(f.fn).toHaveBeenCalledTimes(2)
   })
   it("client máy chủ + admin cùng luật; client trình duyệt qua fetchCoHetGio", () => {
-    expect(doc("src/lib/supabase/fetch-het-gio.ts")).toContain("export const fetchCoHetGio: HamFetch = thuLaiKhiGiaoDichHong(fetchHetGioMotCau)")
+    // `ghiThoiGian` chỉ ghi thời gian từng câu (đo nạp POS, chủ nhà 03/11/2026) — gửi lại 25P02 vẫn bọc ngay câu hẹn giờ.
+    expect(doc("src/lib/supabase/fetch-het-gio.ts")).toContain("export const fetchCoHetGio: HamFetch = ghiThoiGian(thuLaiKhiGiaoDichHong(fetchHetGioMotCau))")
     expect(doc("src/lib/supabase/client.ts")).toContain("fetch: fetchCoHetGio,")
     for (const t of ["src/lib/supabase/server.ts", "src/lib/supabase/admin.ts"]) {
       expect(doc(t)).toContain("global: { fetch: thuLaiKhiGiaoDichHong((input, init) => fetch(input, init)) },")

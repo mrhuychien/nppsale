@@ -78,6 +78,7 @@ import { hasPermission } from "@/lib/permissions"
 import { docMaPhieuTra, tenPhieuTra } from "@/lib/returns/ma-phieu"
 import { laDaNhapTuSinh, phieuDaNhapCuaHoaDon, traSuaDuoc, type CheDoTraDaNhap, type PhieuTraCuaDon } from "@/lib/returns/tra-da-nhap"
 import { HoiTraDaNhap } from "@/components/returns/hoi-tra-da-nhap"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 
 export interface InvoiceScreenProps {
   /** Xuất hàng: đơn cần lập hóa đơn. */
@@ -241,6 +242,10 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
   useEffect(() => {
     let huy = false
+    /* Đo nạp (chủ nhà 03/11/2026: "…chậm hoặc báo lỗi quá 10s") — gửi tóm tắt về nhật ký máy chủ sau lượt vẽ. */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soDongNap = 0
     ;(async () => {
       const sb = createClient()
       try {
@@ -395,6 +400,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
          */
         const tatCa = seed ? seedForReissue(ds, seed) : seedForNew(ds)
         setRows(tatCa.filter((r) => !r.isExchange))
+        soDongNap = tatCa.filter((r) => !r.isExchange).length
         const doiTuPhieu = new Set(
           ((rt.data as unknown as Array<{ status: string; invoice_id: string | null; lines?: Array<{ product_id: string; is_exchange: boolean | null }> | null }>) ?? [])
             .filter((r) => (r.status === "draft" || r.status === "submitted") && (invoiceId ? r.invoice_id === invoiceId : r.invoice_id === null))
@@ -455,9 +461,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           )
         }
       } catch (e) {
-        if (!huy) setLoi(errorMessage(e))
+        loiNap = errorMessage(e)
+        if (!huy) setLoi(loiNap)
       } finally {
-        if (!huy) setDangTai(false)
+        if (!huy) {
+          setDangTai(false)
+          baoNapSauKhiVe(invoiceId ? "sua-hd" : "xuat-hang", batDau, { loi: loiNap, dong: soDongNap })
+        }
       }
     })()
     return () => { huy = true }

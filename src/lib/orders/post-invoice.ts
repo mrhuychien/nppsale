@@ -279,13 +279,19 @@ function firstRow<T>(data: unknown): T | null {
   return ((Array.isArray(data) ? data[0] : data) ?? null) as T | null
 }
 
+/**
+ * Dòng đơn để xuất hoá đơn (POS "Xuất hàng", sửa đơn, màn xuất hàng cũ).
+ *
+ * ⚠ GỌI BẰNG GET (chủ nhà 03/11/2026: "phần load đơn vào pos vẫn có hiện tượng chậm hoặc báo lỗi quá 10s"). Hàm chỉ ĐỌC,
+ *   nhưng gửi POST thì bộ hẹn giờ coi là câu GHI: máy chủ khựng quá 10 giây là báo hỏng ngay, KHÔNG thử lại, kèm câu
+ *   nhầm "thao tác có thể đã được ghi". GET: hết giờ thử lại một lần như mọi câu đọc. PostgREST 12 cho GET cả hàm
+ *   VOLATILE (chạy giao dịch chỉ đọc — đã thử thật 03/11/2026), nên sổ không cần migration nào.
+ */
 export async function loadInvoiceableLines(
   supabase: SupabaseClient,
   orderId: string
 ): Promise<InvoiceableLine[]> {
-  const { data, error } = await supabase.rpc("get_invoiceable_lines", {
-    p_order_id: orderId,
-  })
+  const { data, error } = await supabase.rpc("get_invoiceable_lines", { p_order_id: orderId }, { get: true })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))
 
   const rows = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>

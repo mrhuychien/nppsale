@@ -16,6 +16,7 @@
  */
 
 import { thuLaiKhiGiaoDichHong, type HamFetch } from "@/lib/supabase/thu-lai-giao-dich-hong"
+import { duongGon, ghiLuotMang } from "@/lib/supabase/do-mang"
 
 /** Một lượt chờ máy chủ. */
 export const HET_GIO_MS = 10_000
@@ -129,7 +130,34 @@ async function fetchHetGioMotCau(input: RequestInfo | URL, init?: RequestInit): 
 }
 
 /**
+ * Ghi thời gian mỗi câu vào sổ `do-mang` (trình duyệt; máy chủ thì bỏ qua) — để màn POS nạp chậm / hỏng báo được ĐÚNG câu
+ * nào chờ bao lâu (chủ nhà 03/11/2026: "…chậm hoặc báo lỗi quá 10s"). Không đổi gì ở câu: lỗi ném lại y nguyên.
+ */
+export function ghiThoiGian(f: HamFetch): HamFetch {
+  return async (input, init) => {
+    if (typeof window === "undefined" || typeof performance === "undefined") return f(input, init)
+    const bd = performance.now()
+    const m = (init?.method ?? (typeof Request !== "undefined" && input instanceof Request ? input.method : "GET")).toUpperCase()
+    const ghi = (tt: number | "het" | "loi") => {
+      try {
+        ghiLuotMang({ p: duongGon(input), m, bd: Math.round(bd), ms: Math.round(performance.now() - bd), tt })
+      } catch {
+        /* sổ đo không được làm hỏng câu thật */
+      }
+    }
+    try {
+      const res = await f(input, init)
+      ghi(res.status)
+      return res
+    } catch (err) {
+      ghi(laHetGio(err) ? "het" : "loi")
+      throw err
+    }
+  }
+}
+
+/**
  * fetch cho `createBrowserClient` (`global.fetch`): hẹn giờ như trên, và câu PostgREST trả 25P02 ("current transaction is
  * aborted…", chủ nhà 29/10/2026 — Báo cáo nhân viên) thì gửi lại — xem `thu-lai-giao-dich-hong.ts`.
  */
-export const fetchCoHetGio: HamFetch = thuLaiKhiGiaoDichHong(fetchHetGioMotCau)
+export const fetchCoHetGio: HamFetch = ghiThoiGian(thuLaiKhiGiaoDichHong(fetchHetGioMotCau))

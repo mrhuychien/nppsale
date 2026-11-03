@@ -168,6 +168,14 @@ vào chưa mở tab mới"*.
   lối vào POS cũ thành đích POS trên máy tính (`posTargetFor`) — `PosDesktopRedirect` chỉ là đường lùi cho dấu trang / gõ
   tay. Bài e2e lối POS phải ghi **mọi lượt điều hướng** của tab mới (`isNavigationRequest`), không chỉ địa chỉ cuối —
   kiểm địa chỉ cuối thì đi vòng vẫn xanh.
+- **Máy chủ nhận diện máy tính ngay lượt mở trang** (chủ nhà 03/11/2026: *"có cách gì xử lý nhận diện từ đầu là đang trên
+  máy tính để load pos luôn ko"*): trình duyệt ghi khổ màn vào cookie `npp_kho` (`GhiKhoMan` ở layout gốc — vào app + đổi cỡ
+  cửa sổ, ngưỡng `POS_MIN_WIDTH`); middleware thấy `rong` + lượt **mở trang** vào lối POS cũ thì trả **307** sang đích POS
+  trước khi dựng màn cũ (`dichPosMayChu`, `src/lib/nav/kho-man.ts`) — dấu trang, chuột giữa, link dán Zalo hết đi vòng (bản
+  build, CPU ×4: 3,0–3,5 s / 18–21 câu / ~1,7 MB → 2,3–2,7 s / 11–13 câu / 82 KB). Lượt mở trang = `GET` + `Accept: text/html`
+  + `Sec-Fetch-Dest: document`: Next **gỡ** header `RSC` / `Next-Router-Prefetch` trước middleware nên đừng dựa vào chúng —
+  chuyển câu RSC là kéo POS vào ngay tab cũ (ngược luật tab mới). Không cookie / `hep` thì để yên (đoán "rộng" ở máy chủ là
+  đẩy điện thoại vào POS 1.400 px); `PosDesktopRedirect` vẫn là đường lùi. E2E: `e2e/pos-nhan-dien-may-chu.spec.ts`.
 
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.
@@ -247,6 +255,14 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   POST (GET chạy giao dịch chỉ đọc). Hàm báo cáo một lượt `/rpc/bao_cao_*` (dòng thô cả kỳ) chờ **45 giây, một lượt**
   (`HET_GIO_BAO_CAO_MS`, `laBaoCaoMotLuot`) — chậm ở máy chủ, gửi lại là bắt máy đang bận làm lại từ đầu. Sổ giả e2e đọc
   tham số GET trên URL.
+- **Dòng đơn của POS đọc bằng GET** (chủ nhà 03/11/2026: *"rà soát kỹ phần load đơn vào pos vẫn có hiện tượng chậm hoặc báo
+  lỗi quá 10s"*): `get_invoiceable_lines` chỉ đọc (VOLATILE nhưng không ghi — PostgREST cho GET, chạy giao dịch chỉ đọc) →
+  `loadInvoiceableLines` gọi `{ get: true }`: hết giờ được thử lại một lần, không dặn nhầm "có thể đã ghi". Thêm câu ghi vào
+  hàm ấy thì phải về POST.
+- **Đo nạp POS ngoài thực tế**: `fetchCoHetGio` ghi mỗi câu vào vòng nhớ 80 lượt (`src/lib/supabase/do-mang.ts` — chỉ đường
+  dẫn + cách gọi + ms + kết quả, **không tham số / dữ liệu**); màn POS (Xuất hàng / Sửa HĐ / Sửa đơn) nạp xong gửi tóm tắt về
+  `/api/do-nap` (`baoNapSauKhiVe`, `src/lib/pos/bao-nap.ts`) → nhật ký Vercel dòng `[pos-nap]` (gói Hobby giữ 1 giờ — chậm thì
+  đọc ngay). Khám phía Postgres (chỉ đọc, chủ nhà chạy ở SQL Editor): `supabase/diagnostics/kham_cham_pos.sql`.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

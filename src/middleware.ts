@@ -4,6 +4,7 @@ import {
   MAINTENANCE_BYPASS_COOKIE,
   shouldBlockForMaintenance,
 } from "@/lib/maintenance"
+import { COOKIE_KHO, dichPosMayChu } from "@/lib/nav/kho-man"
 
 export async function middleware(request: NextRequest) {
   // Trang thông tin tĩnh công khai; không đọc phiên hoặc dữ liệu Supabase.
@@ -33,6 +34,24 @@ export async function middleware(request: NextRequest) {
       headers: { "Retry-After": "600" },
     })
   }
+
+  /**
+   * ⚠ MÁY TÍNH MỞ LỐI POS CŨ (dấu trang, chuột giữa, gõ địa chỉ, link dán) → CHUYỂN THẲNG SANG POS, trước khi dựng màn cũ
+   *   (chủ nhà 03/11/2026: "nhận diện từ đầu là đang trên máy tính để load pos luôn"). Khổ màn do trình duyệt ghi vào
+   *   cookie `npp_kho` — xem `@/lib/nav/kho-man`. Trước bước đọc phiên: màn cũ không cần, trang POS tự đọc.
+   */
+  const dichPos = dichPosMayChu({
+    method: request.method,
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    kho: request.cookies.get(COOKIE_KHO)?.value,
+    rsc: request.headers.get("rsc"),
+    prefetch: request.headers.get("next-router-prefetch") ?? request.headers.get("x-middleware-prefetch"),
+    purpose: request.headers.get("sec-purpose") ?? request.headers.get("purpose"),
+    dest: request.headers.get("sec-fetch-dest"),
+    accept: request.headers.get("accept"),
+  })
+  if (dichPos) return NextResponse.redirect(new URL(dichPos, request.url), 307)
 
   return await updateSession(request)
 }

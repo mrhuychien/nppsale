@@ -65,6 +65,10 @@ cùng đơn vị tính) x số lượng"*.
 Chủ nhà 24/09/2026 (SP001945: giá niêm yết theo đơn vị cơ sở × SL theo đơn vị trung gian).
 - Cộng / hiện số lượng qua nhiều dòng → quy về **đơn vị cơ sở** trước (`soLuongCoSo`,
   `heSoQuyDoi` trong `src/lib/analytics/units.ts`; ưu tiên hệ số chụp trên dòng).
+- SL gộp nhiều mặt hàng hiện **theo từng đơn vị cơ sở** ("640 hộp · 12 chai", `hienSLTheoDonVi`) — trừ **phần tổng hợp của
+  Hàng bán theo nhân viên** (chủ nhà 03/11/2026: *"cột số lượng bán tổng hợp số lượng và ghi 'đơn vị' ko cần diễn giải chi tiết
+  ở phần tổng hợp"*): dòng nhân viên, dòng tổng, dòng "(Tổng hợp)" của Excel là MỘT số Σ quy về đơn vị cơ sở (`hienTongSL` /
+  `tongSoSL`) + cột Đơn vị ghi `DON_VI_TONG` ("đơn vị"); chi tiết mở ra vẫn theo từng đơn vị tính của dòng.
 - Tiền = SL × giá thì giá phải là giá **của đúng đơn vị đó** (`giaNiemYetDonVi`).
 - `unit_cost` (kho) là giá **mỗi đơn vị cơ sở**.
 - Doanh số theo hóa đơn; báo cáo Đặt hàng theo đơn hàng.

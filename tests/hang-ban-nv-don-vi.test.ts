@@ -122,6 +122,7 @@ describe("màn Báo cáo nhân viên — bảng chi tiết và file Excel có ba
   it("Excel: mỗi mặt hàng × đơn vị một dòng, có ba cột mới", () => {
     for (const c of ['"Bảng giá (theo ĐVT)"', '"Giá bán (theo ĐVT)"', '"SL thực bán"']) expect(s).toContain(c)
     expect(s).toContain("for (const d of p.donVi) {")
-    expect(s).toContain("hienSLTheoDonVi(truSL(r.qtyTheoDv, r.returnQtyTheoDv))")
+    // Dòng "(Tổng hợp)": SL thực bán là MỘT số (chủ nhà 03/11/2026 — phần tổng hợp không diễn giải từng đơn vị).
+    expect(s).toContain("tongSoSL(truSL(r.qtyTheoDv, r.returnQtyTheoDv))")
   })
 })

@@ -43,7 +43,9 @@ import {
   type HangBanSanPham,
   type SanPhamHangBan,
 } from "@/lib/analytics/hang-ban-nhan-vien"
-import { congSL, hienSLTheoDonVi, tongSLTheoDonVi, truSL, type SLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
+import {
+  congSL, hienSLTheoDonVi, hienTongSL, tongSLTheoDonVi, tongSoSL, truSL, DON_VI_TONG, type SLTheoDonVi,
+} from "@/lib/analytics/sl-theo-don-vi"
 import { ReportLoadNotice } from "../_components/report-load-notice"
 import {
   type DateRange,
@@ -951,9 +953,10 @@ export default function EmployeesReportPage() {
           r.name,
           "",
           "(Tổng hợp)",
-          "",
-          // Dòng tổng nhiều mặt hàng: xuất "640 hộp · 12 chai", không cộng lẫn đơn vị.
-          hienSLTheoDonVi(r.qtyTheoDv),
+          /* Chủ nhà 03/11/2026: "cột số lượng bán tổng hợp số lượng và ghi 'đơn vị' ko cần diễn giải chi tiết ở phần tổng
+             hợp" — MỘT số (Σ quy về đơn vị cơ sở) + chữ "đơn vị"; dòng mặt hàng × đơn vị bên dưới giữ chi tiết. */
+          DON_VI_TONG,
+          tongSoSL(r.qtyTheoDv),
           "",
           "",
           r.listed,
@@ -961,10 +964,10 @@ export default function EmployeesReportPage() {
           Math.round(r.diff),
           Math.round(r.thueLamTron),
           -r.docDiscount,
-          hienSLTheoDonVi(r.returnQtyTheoDv),
+          tongSoSL(r.returnQtyTheoDv),
           -r.returnValue,
           Math.round(r.diffReturn),
-          hienSLTheoDonVi(truSL(r.qtyTheoDv, r.returnQtyTheoDv)),
+          tongSoSL(truSL(r.qtyTheoDv, r.returnQtyTheoDv)),
           r.netRevenue,
           Math.round(r.diffNet),
           Math.round(r.tongChenh),
@@ -1329,15 +1332,17 @@ export default function EmployeesReportPage() {
               render: (r) => <span className="font-medium text-primary">{r.name}</span>,
             },
             {
+              /* Chủ nhà 03/11/2026: "cột số lượng bán tổng hợp số lượng và ghi 'đơn vị' ko cần diễn giải chi tiết ở phần
+                 tổng hợp" — MỘT số (Σ quy về đơn vị cơ sở), cột Đơn vị ghi "đơn vị"; chi tiết theo đơn vị ở dòng mở ra. */
               key: "qty",
               label: "SL bán",
               align: "right",
-              render: (r) => hienSLTheoDonVi(r.qtyTheoDv),
+              render: (r) => hienTongSL(r.qtyTheoDv),
             },
             {
               key: "unit",
               label: "Đơn vị",
-              render: () => <span className="text-muted-foreground">—</span>,
+              render: () => DON_VI_TONG,
             },
             {
               key: "listed",
@@ -1376,7 +1381,7 @@ export default function EmployeesReportPage() {
               key: "rqty",
               label: "SL trả",
               align: "right",
-              render: (r) => hienSLTheoDonVi(r.returnQtyTheoDv),
+              render: (r) => hienTongSL(r.returnQtyTheoDv),
             },
             {
               key: "rval",
@@ -1424,8 +1429,8 @@ export default function EmployeesReportPage() {
             <TotalsRow
               cells={[
                 { content: `SL người bán: ${employeeSummaryRows.length}` },
-                { content: hienSLTheoDonVi(totalsSummaryQty), align: "right" },
-                { content: "" },
+                { content: hienTongSL(totalsSummaryQty), align: "right" },
+                { content: DON_VI_TONG },
                 {
                   content: formatCurrency(
                     employeeSummaryRows.reduce((s, r) => s + r.listed, 0)
@@ -1448,7 +1453,7 @@ export default function EmployeesReportPage() {
                   align: "right",
                   className: "text-error",
                 },
-                { content: hienSLTheoDonVi(totalsSummaryReturnQty), align: "right" },
+                { content: hienTongSL(totalsSummaryReturnQty), align: "right" },
                 {
                   content: (() => {
                     const v = employeeSummaryRows.reduce((s, r) => s + r.returnValue, 0)

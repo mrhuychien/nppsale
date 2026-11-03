@@ -7,8 +7,13 @@
  *   thành một số — vô nghĩa.
  *
  * Luật: SL cộng qua NHIỀU mặt hàng thì giữ `{ đơn vị cơ sở: SL }` và hiện
- *   "640 hộp · 120 chai · 55 gói". Không bao giờ hiện tổng lẫn đơn vị.
+ *   "640 hộp · 120 chai · 55 gói". Không hiện tổng lẫn đơn vị.
  *   Dòng một mặt hàng vẫn là "SL + đơn vị" (map chỉ có một khoá).
+ *
+ * ⚠ NGOẠI LỆ — CHỦ NHÀ 03/11/2026 (Báo cáo Nhân viên › Hàng bán theo nhân viên): "cột số lượng bán tổng hợp số lượng và
+ *   ghi 'đơn vị' ko cần diễn giải chi tiết ở phần tổng hợp". Phần TỔNG HỢP của màn ấy (dòng nhân viên, dòng tổng, dòng
+ *   "(Tổng hợp)" của Excel) hiện MỘT số — Σ SL đã quy về đơn vị cơ sở (`tongSoSL` / `hienTongSL`) — và cột Đơn vị ghi
+ *   `DON_VI_TONG`. Chi tiết từng nhân viên (mặt hàng × đơn vị tính) giữ nguyên; các màn khác vẫn theo luật trên.
  */
 
 /** `{ đơn vị cơ sở: SL đã quy về đơn vị đó }`. */
@@ -51,6 +56,24 @@ export function hienSLTheoDonVi(map: SLTheoDonVi | null | undefined, fmt: (n: nu
     .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], "vi"))
   if (ds.length === 0) return "0"
   return ds.map(([u, q]) => (u ? `${fmt(q)} ${u}` : fmt(q))).join(" · ")
+}
+
+/** Chữ ở cột "Đơn vị" khi SL là tổng nhiều đơn vị cơ sở (phần tổng hợp của Hàng bán theo nhân viên — xem đầu tệp). */
+export const DON_VI_TONG = "đơn vị"
+
+/**
+ * MỘT số = Σ mọi đơn vị cơ sở của map (vd { hộp: 640, chai: 12 } → 652). Chỉ dùng ở phần tổng hợp của Hàng bán theo nhân
+ * viên (chủ nhà 03/11/2026), cạnh chữ `DON_VI_TONG`. Làm tròn 6 chữ số lẻ — bỏ sai số cộng số thực (0,1 + 0,2) trong Excel.
+ */
+export function tongSoSL(map: SLTheoDonVi | null | undefined): number {
+  let s = 0
+  for (const q of Object.values(map || {})) if (Number.isFinite(q)) s += q
+  return Math.round(s * 1e6) / 1e6
+}
+
+/** `tongSoSL` định dạng vi-VN ("1.652") — chữ đơn vị ở cột riêng (`DON_VI_TONG`). */
+export function hienTongSL(map: SLTheoDonVi | null | undefined, fmt: (n: number) => string = soVN): string {
+  return fmt(tongSoSL(map))
 }
 
 /** Gộp map của nhiều dòng (dòng tổng). `pick` chọn map trên mỗi dòng. */

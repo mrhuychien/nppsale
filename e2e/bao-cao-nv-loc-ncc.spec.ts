@@ -91,9 +91,10 @@ test("lọc NCC: ô lọc NCC thay Thương hiệu; tiền mọi tab là phần 
   await expect(dongNv(page)).toContainText("792.000")
   await expect(dongNv(page)).toContainText("-80.000")
   await expect(dongNv(page)).not.toContainText("-100.000")
-  /* Dòng hàng đổi không phải hàng bán: SL bán 8 hộp (không phải 10), chênh lệch bán 0 (không phải −200.000). */
-  await expect(dongNv(page)).toContainText("8 hộp")
-  await expect(dongNv(page)).not.toContainText("10 hộp")
+  /* Dòng hàng đổi không phải hàng bán: SL bán 8 (không phải 10), chênh lệch bán 0 (không phải −200.000). Phần tổng hợp
+     là MỘT số + "đơn vị" (chủ nhà 03/11/2026) — ô 0 nút mở · 1 Người bán · 2 SL bán · 3 Đơn vị. */
+  await expect(dongNv(page).locator("td").nth(2)).toHaveText("8")
+  await expect(dongNv(page).locator("td").nth(3)).toHaveText("đơn vị")
   await expect(dongNv(page)).not.toContainText("200.000")
 
   /* Tab Lợi nhuận: doanh thu thuần cũng là phần của A. */

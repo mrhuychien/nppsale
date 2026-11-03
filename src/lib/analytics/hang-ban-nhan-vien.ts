@@ -8,7 +8,8 @@
  *     - SL cộng dồn / hiện cạnh `base_unit` → quy về đơn vị cơ sở.
  *     - Niêm yết = SL dòng × giá niêm yết CỦA ĐÚNG ĐƠN VỊ DÒNG.
  *   SL của nhân viên gộp nhiều mặt hàng → `qtyTheoDv` (theo từng đơn vị cơ
- *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
+ *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp. Màn hiện phần tổng hợp
+ *   bằng `hienTongSL(qtyTheoDv)` + chữ "đơn vị" (chủ nhà 03/11/2026).
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
 import { chenhDong, chenhThuan, chenhTraDong, giaBangCuaDong, thueLamTronNv, tongChenhLech } from "./chenh-lech"
@@ -98,13 +99,13 @@ export interface HangBanSanPham {
 
 export interface HangBanNhanVien {
   id: string
-  /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `qtyTheoDv`. */
+  /** Σ quy về đơn vị cơ sở (lẫn đơn vị) — để sắp xếp. Màn hiện `hienTongSL(qtyTheoDv)` + "đơn vị" (chủ nhà 03/11/2026). */
   qty: number
   qtyTheoDv: SLTheoDonVi
   listed: number
   revenue: number
   diff: number
-  /** ⚠ Tổng lẫn đơn vị — chỉ để sắp xếp. Hiện `returnQtyTheoDv`. */
+  /** Như `qty`, của hàng trả — màn hiện `hienTongSL(returnQtyTheoDv)`. */
   returnQty: number
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number

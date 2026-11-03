@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
-import { congSL, gopSL, hienSLTheoDonVi, tongSLTheoDonVi, type SLTheoDonVi } from "../src/lib/analytics/sl-theo-don-vi"
+import {
+  congSL, gopSL, hienSLTheoDonVi, hienTongSL, tongSLTheoDonVi, tongSoSL, truSL, DON_VI_TONG, type SLTheoDonVi,
+} from "../src/lib/analytics/sl-theo-don-vi"
 import { congHangBanNhanVien, type SanPhamHangBan } from "../src/lib/analytics/hang-ban-nhan-vien"
 
 /**
@@ -53,6 +55,29 @@ describe("congSL / gopSL / tongSLTheoDonVi", () => {
   })
 })
 
+/**
+ * ⚠ CHỦ NHÀ 03/11/2026 (Báo cáo Nhân viên › Hàng bán theo nhân viên): "cột số lượng bán tổng hợp số lượng và ghi 'đơn vị'
+ *   ko cần diễn giải chi tiết ở phần tổng hợp" — phần tổng hợp là MỘT số (Σ quy về đơn vị cơ sở) + chữ "đơn vị".
+ */
+describe("tongSoSL / hienTongSL — phần tổng hợp Hàng bán theo nhân viên", () => {
+  it("640 hộp + 12 chai → 652 (một số), hiện '652'; chữ đơn vị là 'đơn vị'", () => {
+    expect(tongSoSL({ hộp: 640, chai: 12 })).toBe(652)
+    expect(hienTongSL({ hộp: 640, chai: 12 })).toBe("652")
+    expect(hienTongSL({ gói: 55, hộp: 1640, chai: 120 })).toBe("1.815")
+    expect(DON_VI_TONG).toBe("đơn vị")
+  })
+  it("rỗng / null → 0; SL thực bán âm vẫn cộng đúng dấu", () => {
+    expect(tongSoSL({})).toBe(0)
+    expect(tongSoSL(null)).toBe(0)
+    expect(hienTongSL(undefined)).toBe("0")
+    expect(tongSoSL(truSL({ hộp: 2 }, { hộp: 5, chai: 1 }))).toBe(-4)
+  })
+  it("bỏ sai số cộng số thực (Excel không hiện 0,30000000000000004); bỏ giá trị không hữu hạn", () => {
+    expect(tongSoSL({ hộp: 0.1, chai: 0.2 })).toBe(0.3)
+    expect(tongSoSL({ hộp: 3, chai: Number.NaN })).toBe(3)
+  })
+})
+
 describe("congHangBanNhanVien — SL nhân viên theo từng đơn vị cơ sở", () => {
   const BANH: SanPhamHangBan = {
     id: "banh", sku: "SP001945", name: "Bánh lễ", base_unit: "hộp", sell_price: 13200,
@@ -77,6 +102,10 @@ describe("congHangBanNhanVien — SL nhân viên theo từng đơn vị cơ sở
     expect(hienSLTheoDonVi(nv.qtyTheoDv)).toBe("640 hộp · 12 chai")
     expect(hienSLTheoDonVi(nv.qtyTheoDv)).not.toContain("652")
     expect(nv.returnQtyTheoDv).toEqual({ chai: 6 })
+    // Phần tổng hợp (chủ nhà 03/11/2026): một số = Σ quy về đơn vị cơ sở, đúng bằng `qty` dùng để sắp xếp.
+    expect(tongSoSL(nv.qtyTheoDv)).toBe(652)
+    expect(tongSoSL(nv.qtyTheoDv)).toBe(nv.qty)
+    expect(tongSoSL(nv.returnQtyTheoDv)).toBe(nv.returnQty)
     const banh = nv.products.find((p) => p.productId === "banh")!
     expect(banh.qtyTheoDv).toEqual({ hộp: 640 })
     expect(hienSLTheoDonVi(banh.qtyTheoDv)).toBe("640 hộp")
@@ -85,21 +114,34 @@ describe("congHangBanNhanVien — SL nhân viên theo từng đơn vị cơ sở
 
 describe("các trang báo cáo hiện SL gộp qua hienSLTheoDonVi", () => {
   const E = code(read(`${D}/employees/page.tsx`))
-  it("Nhân viên: dòng NV, dòng khách, dòng tổng, SL trả, Excel", () => {
-    expect(E).toContain("hienSLTheoDonVi(r.qtyTheoDv)")
-    expect(E).toContain("hienSLTheoDonVi(r.returnQtyTheoDv)")
-    expect(E).toContain("hienSLTheoDonVi(c.qtyTheoDv)")
-    expect(E).toContain("hienSLTheoDonVi(totalsSummaryQty)")
-    expect(E).toContain("hienSLTheoDonVi(totalsSummaryReturnQty)")
-    expect(E).toContain("hienSLTheoDonVi(totalsProducts.qtyTheoDv)")
-    expect(E).toContain("hienSLTheoDonVi(totalsByCustomer.qtyTheoDv)")
-    // Không còn in số lẫn đơn vị của dòng tổng / dòng NV / dòng khách.
+  /** Bảng chính của "Hàng bán theo nhân viên": cột + dòng tổng (trước phần chi tiết mở ra). */
+  const dauTongHop = E.indexOf('variant === "summary" ? (')
+  const TONG_HOP = E.slice(dauTongHop, E.indexOf("expandable={(r) => (", dauTongHop))
+  const CON_LAI = E.slice(0, dauTongHop) + E.slice(dauTongHop + TONG_HOP.length)
+  it("Nhân viên › Theo mặt hàng / Theo khách: dòng NV, dòng khách, dòng tổng theo từng đơn vị", () => {
+    expect(CON_LAI).toContain("hienSLTheoDonVi(r.qtyTheoDv)")
+    expect(CON_LAI).toContain("hienSLTheoDonVi(c.qtyTheoDv)")
+    expect(CON_LAI).toContain("hienSLTheoDonVi(totalsProducts.qtyTheoDv)")
+    expect(CON_LAI).toContain("hienSLTheoDonVi(totalsByCustomer.qtyTheoDv)")
+    // Không in số lẫn đơn vị của dòng tổng / dòng NV / dòng khách.
     expect(E).not.toMatch(/\br\.qty\.toLocaleString/)
     expect(E).not.toMatch(/\br\.returnQty\.toLocaleString/)
     expect(E).not.toMatch(/totals\w*\.qty\.toLocaleString/)
     expect(E).not.toMatch(/reduce\(\(s, r\) => s \+ r\.(qty|returnQty)/)
-    // Excel dòng "(Tổng hợp)" xuất chuỗi theo đơn vị.
-    expect(E).toMatch(/"\(Tổng hợp\)",\s*"",\s*hienSLTheoDonVi\(r\.qtyTheoDv\)/)
+  })
+  it("Nhân viên › Hàng bán theo nhân viên: phần tổng hợp MỘT số + 'đơn vị' (chủ nhà 03/11/2026)", () => {
+    expect(dauTongHop).toBeGreaterThan(0)
+    expect(TONG_HOP).toContain("render: (r) => hienTongSL(r.qtyTheoDv)")
+    expect(TONG_HOP).toContain("render: () => DON_VI_TONG")
+    expect(TONG_HOP).toContain("render: (r) => hienTongSL(r.returnQtyTheoDv)")
+    expect(TONG_HOP).toMatch(/\{ content: hienTongSL\(totalsSummaryQty\), align: "right" \},\s*\{ content: DON_VI_TONG \},/)
+    expect(TONG_HOP).toContain("{ content: hienTongSL(totalsSummaryReturnQty), align: \"right\" }")
+    // Không còn diễn giải "640 hộp · 12 chai" ở phần tổng hợp.
+    expect(TONG_HOP).not.toContain("hienSLTheoDonVi(")
+    // Excel dòng "(Tổng hợp)": cột Đơn vị "đơn vị", SL bán / SL trả / SL thực bán là SỐ.
+    expect(E).toMatch(/"\(Tổng hợp\)",\s*DON_VI_TONG,\s*tongSoSL\(r\.qtyTheoDv\),/)
+    expect(E).toMatch(/tongSoSL\(r\.returnQtyTheoDv\),\s*-r\.returnValue,/)
+    expect(E).toContain("tongSoSL(truSL(r.qtyTheoDv, r.returnQtyTheoDv)),")
   })
 
   it("Khách hàng: Tổng SL theo khách + dòng tổng", () => {

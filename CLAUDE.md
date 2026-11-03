@@ -332,6 +332,17 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   chậm; Memory commitment 1,94 GB / sức chứa 1,4 GB — Supabase gắn SEVERE. CPU rảnh ~89% (IOWait ~7% do swap), đĩa 4 / 3.000
   IOPS, kết nối 8–25 / 60 — không nghẽn. App chỉ bớt được việc (mig 258–260); hết chậm hẳn phải nâng gói (Pro + cỡ máy
   ≥ 2 GB RAM — Micro 1 GB vẫn thiếu so với ~1,1 GB đang dùng) — việc của chủ nhà. Nâng xong thì Swap phải về ~0.
+- **Khám bộ nhớ máy sổ** (chủ nhà 03/11/2026: *"đéo phải, mày chưa nghĩ hết cách"*): `supabase/diagnostics/kham_bo_nho.sql` —
+  MỘT câu, chỉ đọc: kết nối theo dịch vụ, khe / bảng theo dõi / đăng ký của Realtime, lịch pg_cron + sổ lịch sử chạy, cài
+  đặt, câu gọi nhiều nhất, bảng lớn nhất mọi schema, tỉ lệ đọc trúng bộ đệm. Bảng Realtime / pg_cron đọc qua `query_to_xml`
+  SAU phép kiểm USAGE schema + SELECT bảng (`bang.doc_duoc`, tra qua catalog — `to_regclass('cron.job')` vẫn ném lỗi khi thiếu
+  USAGE): thiếu quyền một bảng là mất cả bảng kết quả. Bộ thử: `scripts/sql/thu-kham-bo-nho.sql` (vai đủ quyền + vai thường,
+  ROLLBACK). **Hạ `shared_buffers` không bớt RAM thật** khi sổ nhỏ hơn bộ đệm (sổ ~60–70 MB < 224 MB — trang bộ đệm chỉ chiếm
+  bộ nhớ khi đã đọc tới), chỉ đổi con số commitment: đừng đề xuất như cách chữa swap. **Gói Free không có sao lưu tự động**
+  (Pro: hằng ngày, giữ 7 ngày).
+- Chuông thông báo (`notification-bell.tsx`) và khoá sửa đơn (`use-entity-lock.ts`) nghe `postgres_changes`, nhưng chưa
+  migration nào thêm `notifications` / `entity_locks` vào publication `supabase_realtime` — trừ khi đã bật tay ở dashboard thì
+  chưa từng nhận thay đổi nào, mà Realtime vẫn giữ đăng ký trên máy sổ. Phần 3 / 6 / 9 của câu khám cho biết thật.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

@@ -327,8 +327,11 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   xếp tràn `work_mem`), không nới hẹn giờ ở app.
 - **Sổ thật chậm ~70 lần sổ thử cho CÙNG lệnh** (bảng khám 03/11/2026, đối chiếu sổ thử dựng lại cùng cỡ: 1.835 hàng, 598
   khách, ~2.000 đơn / 2.700 HĐ qua đúng RPC): Xuất hàng 1.294 ms / 19 ms, kể cả câu `set_config` rỗng việc của PostgREST
-  3 ms / 0,02 ms — máy chủ Supabase thiếu sức (Micro: 1 GB RAM, CPU dùng chung — xem Reports: CPU, bộ nhớ + swap, Disk IO),
-  không phải câu lệnh. App chỉ bớt được việc (mig 258); hết chậm hẳn phải nâng cỡ máy — việc của chủ nhà.
+  3 ms / 0,02 ms — máy chủ Supabase THIẾU RAM, không phải câu lệnh. Observability → Database chủ nhà gửi 03/11/2026: gói
+  **Free** (CPU dùng chung, RAM thật 409 MB), **Swap ~800 MB (≈196% RAM) suốt cả ngày**, đỉnh ~9h và ~18h đúng giờ khách kêu
+  chậm; Memory commitment 1,94 GB / sức chứa 1,4 GB — Supabase gắn SEVERE. CPU rảnh ~89% (IOWait ~7% do swap), đĩa 4 / 3.000
+  IOPS, kết nối 8–25 / 60 — không nghẽn. App chỉ bớt được việc (mig 258–260); hết chậm hẳn phải nâng gói (Pro + cỡ máy
+  ≥ 2 GB RAM — Micro 1 GB vẫn thiếu so với ~1,1 GB đang dùng) — việc của chủ nhà. Nâng xong thì Swap phải về ~0.
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

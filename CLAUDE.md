@@ -352,6 +352,19 @@ Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build 
   của cả NPP; khám sổ dòng 96 báo LỆCH nếu thiếu. View chốt cột lúc tạo (`i.*`): migration nào
   thêm cột cho `sales_invoices` thì dựng lại `v_hoa_don_con_lai` trong cùng tệp (quên thì lọc theo cột mới hỏng, danh sách
   lùi về cách chậm — khám sổ 96 cũng báo LỆCH).
+- **Đợt 6 — báo cáo Nhân viên** (chủ nhà 03/11/2026: *"Kiểm tra lại tại sao phần báo cáo lại load lâu thế"*; đo bản build + sổ
+  giả một tháng 3.000 HĐ, proxy giống production — trần 1.000 dòng, chỉ cột được chọn, nén gzip):
+  · Báo cáo › Nhân viên + Báo cáo tổng hợp › Nhân viên đọc **một lượt** `bao_cao_so_ban` qua `docSoBanMotLuot`
+  (`src/lib/bao-cao/nap-ban-hang.ts`, chung với Báo cáo tổng hợp — `tuMotLuot` ra đúng dòng thô của cách cũ) **cùng đợt** với danh
+  mục (nhân viên / khách / mặt hàng): 91 câu / 6,4–6,7 s → 15 câu / 4,3–4,5 s (CPU ×4). Cách cũ là hai đợt nối đuôi (21 lô dòng
+  HĐ + 22 lô dòng kho + 20 lô soát phiếu xuất của HĐ huỷ, mỗi câu `count: exact`) và giá vốn đọc cả khi không xem "Lợi nhuận".
+  Sổ chưa có hàm (`null`) → đọc từng bảng như cũ (`bao-cao-nv-25p02.spec.ts` tắt hàm để kiểm đường ấy). Hàm trả cả dòng hàng
+  đổi — `linesByInvoice` bỏ chúng. Sổ giả `bao_cao_so_ban` phải đúng bộ cột mig 256 (dòng trả có `unit_price`).
+  · **Chỉ tính bảng của mối quan tâm đang xem** (`if (variant !== "…") return []` + `variant` trong mảng phụ thuộc): cả 5
+  bảng từng tính cùng lúc (~0,8 s JS ở CPU ×4 → ~0,17 s).
+  · Đo thực tế: `baoNapSauKhiVe("bc-nhan-vien" | "bc-hang-ban-nv", …)` → nhật ký `[bao-cao-nap]` (`/api/do-nap`); màn bắt đầu nạp
+  sau `MO_TRANG_MS` (15 s) kể từ lúc mở trang thì tính từ lúc mở màn (báo cáo mở bằng menu, không tải lại trang).
+  · Các báo cáo cũ khác (`/reports/sales`, `customers`, `products`, `end-of-day`, `finance`, `/analytics/*`) vẫn đọc từng bảng.
 
 ### Ảnh + vị trí điểm bán
 Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm bán. chưa sửa, cập nhật lại, xoá ảnh + vị trí cũ"*.

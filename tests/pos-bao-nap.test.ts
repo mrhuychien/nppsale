@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
-import { dungBaoNap, baoNapPos, datLaiBaoNap } from "@/lib/pos/bao-nap"
+import { dungBaoNap, baoNapPos, datLaiBaoNap, MO_TRANG_MS } from "@/lib/pos/bao-nap"
 import { duongGon, luotMangTu, xoaLuotMang, type LuotMang } from "@/lib/supabase/do-mang"
 import { ghiThoiGian, HetGioError } from "@/lib/supabase/fetch-het-gio"
 
@@ -104,6 +104,29 @@ describe("gửi bản tóm tắt", () => {
     expect(gui.map((g) => g.url)).toEqual(["/api/do-nap", "/api/do-nap"])
     expect(gui[0].than).toMatchObject({ man: "xuat-hang", tuMoTrang: true, ms: 2500, dong: 3, trang: { ttfb: 150, dcl: 400 } })
     expect(gui[1].than).toMatchObject({ man: "sua-don", tuMoTrang: false, ms: 500, loi: "Máy chủ chưa trả lời sau 10 giây", trang: null })
+  })
+
+  it("báo cáo mở bằng chuyển trang trong app (màn đầu của module nhưng bắt đầu nạp muộn) → tính từ lúc mở màn, không gộp màn trước", async () => {
+    /* Chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế" — báo cáo cũng báo đo. Báo cáo thường mở bằng
+       menu (không tải lại trang): tính từ lúc mở trang là cộng cả lúc người dùng ngồi ở Đơn hàng trước đó. */
+    const gui: unknown[] = []
+    vi.stubGlobal("window", {})
+    vi.stubGlobal("navigator", { sendBeacon: (_u: string, blob: Blob) => { void blob.text().then((t) => gui.push(JSON.parse(t))); return true } })
+    vi.stubGlobal("performance", { now: () => 95_000, getEntriesByType: () => [{ responseStart: 150, domContentLoadedEventEnd: 400 }] })
+    baoNapPos("bc-hang-ban-nv", 92_000, { dong: 3002 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(gui[0]).toMatchObject({ man: "bc-hang-ban-nv", tuMoTrang: false, ms: 3000, dong: 3002, trang: null })
+  })
+
+  it("mở thẳng báo cáo (dấu trang / F5: bắt đầu nạp trong MO_TRANG_MS) → tính từ lúc mở trang", async () => {
+    const gui: unknown[] = []
+    vi.stubGlobal("window", {})
+    vi.stubGlobal("navigator", { sendBeacon: (_u: string, blob: Blob) => { void blob.text().then((t) => gui.push(JSON.parse(t))); return true } })
+    vi.stubGlobal("performance", { now: () => 4200, getEntriesByType: () => [{ responseStart: 300, domContentLoadedEventEnd: 900 }] })
+    expect(MO_TRANG_MS).toBe(15_000)
+    baoNapPos("bc-nhan-vien", 1800, {})
+    await new Promise((r) => setTimeout(r, 0))
+    expect(gui[0]).toMatchObject({ man: "bc-nhan-vien", tuMoTrang: true, ms: 4200, trang: { ttfb: 300, dcl: 900 } })
   })
 
   it("không có sendBeacon → fetch keepalive; mọi lỗi nuốt, không ném ra màn", () => {

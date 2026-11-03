@@ -23,6 +23,10 @@ const api = (p: string, method: string, body?: unknown) =>
 const tiem = (lan: number) =>
   fetch(`${FAKE}/__loi_25p02`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: DUONG, chua: NHAP, lan }) })
 const daTiem = async () => ((await (await fetch(`${FAKE}/__loi_25p02`)).json()) as Array<{ chua: string; con: number; daDung: number }>).filter((t) => t.chua === NHAP)
+/* Từ 03/11/2026 báo cáo Nhân viên đọc MỘT LƯỢT qua `bao_cao_so_ban` (chủ nhà: "…báo cáo lại load lâu thế") — câu dòng phiếu
+   nhập hàng trả chỉ còn ở đường lùi (sổ chưa có hàm). Tắt hàm giả để bài đi đúng đường ấy; bật lại sau mỗi bài. */
+const tatRpc = (fn: string[]) =>
+  fetch(`${FAKE}/__tat_rpc`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fn }) })
 
 test.beforeAll(async () => {
   await api("products", "POST", [{
@@ -53,8 +57,12 @@ test.beforeAll(async () => {
     id: "sel-gd-1", entry_id: NHAP, product_id: SP, quantity: 2, qty_in_base_uom: 2, conversion_factor_snapshot: 1, unit_cost: 15000,
   }])
 })
+test.beforeEach(async () => {
+  await tatRpc(["bao_cao_so_ban"])
+})
 test.afterEach(async () => {
   await fetch(`${FAKE}/__loi_25p02`, { method: "DELETE" })
+  await tatRpc([])
 })
 test.afterAll(async () => {
   await api(`stock_entry_lines?entry_id=eq.${NHAP}`, "DELETE")

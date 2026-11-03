@@ -10,9 +10,16 @@
 import { luotMangTu, type LuotMang } from "@/lib/supabase/do-mang"
 
 export type ManPos = "xuat-hang" | "sua-hd" | "sua-don"
+/** Màn báo cáo cũng báo (chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế") — nhật ký `[bao-cao-nap]`. */
+export type ManBaoCao = "bc-nhan-vien" | "bc-hang-ban-nv"
+export type ManDo = ManPos | ManBaoCao
+
+/** Màn bắt đầu nạp trong ngần này ms kể từ lúc mở trang mới coi là "màn đầu của lượt tải trang". Báo cáo thường mở bằng
+ *  chuyển trang trong app (không tải lại) — tính từ lúc mở trang thì gộp cả lúc người dùng ngồi ở màn trước. */
+export const MO_TRANG_MS = 15_000
 
 export interface BaoNap {
-  man: ManPos
+  man: ManDo
   /** ms: từ lúc MỞ TRANG nếu là màn đầu của trang (POS mở tab mới), không thì từ lúc mở màn. */
   ms: number
   tuMoTrang: boolean
@@ -29,7 +36,7 @@ export interface BaoNap {
 
 /** Bản tóm tắt — tách riêng để kiểm thử (không đụng `window`). */
 export function dungBaoNap(o: {
-  man: ManPos
+  man: ManDo
   batDau: number
   xong: number
   tuMoTrang: boolean
@@ -64,10 +71,11 @@ export function datLaiBaoNap() {
  * Gửi bản tóm tắt (không chặn, không ném). Gọi khi màn nạp xong / hỏng, sau lượt vẽ. Màn ĐẦU của trang tính từ lúc mở
  * trang (POS mở tab mới = tải cứng); màn sau (mở thêm tab trong POS) tính từ lúc mở màn.
  */
-export function baoNapPos(man: ManPos, batDau: number, kq: { loi?: string | null; dong?: number }) {
+export function baoNapPos(man: ManDo, batDau: number, kq: { loi?: string | null; dong?: number }) {
   if (typeof window === "undefined" || typeof performance === "undefined") return
   try {
-    const tuMoTrang = !daBaoTrangNay
+    // Màn đầu của LƯỢT TẢI TRANG (POS mở tab mới; báo cáo mở bằng dấu trang / F5) — chuyển trang trong app thì tính từ lúc mở màn.
+    const tuMoTrang = !daBaoTrangNay && batDau < MO_TRANG_MS
     daBaoTrangNay = true
     const nav = performance.getEntriesByType?.("navigation")?.[0] as PerformanceNavigationTiming | undefined
     const net = (navigator as Navigator & { connection?: { effectiveType?: string; rtt?: number; downlink?: number } }).connection
@@ -91,7 +99,7 @@ export function baoNapPos(man: ManPos, batDau: number, kq: { loi?: string | null
 }
 
 /** Gọi sau lượt vẽ kế tiếp (để thời gian gồm cả lúc dựng bảng hàng). */
-export function baoNapSauKhiVe(man: ManPos, batDau: number, kq: { loi?: string | null; dong?: number }) {
+export function baoNapSauKhiVe(man: ManDo, batDau: number, kq: { loi?: string | null; dong?: number }) {
   if (typeof window === "undefined") return
   const raf = window.requestAnimationFrame ?? ((f: FrameRequestCallback) => setTimeout(() => f(performance.now()), 16))
   raf(() => setTimeout(() => baoNapPos(man, batDau, kq), 0))

@@ -174,7 +174,7 @@ export async function docNguoiTaoPhieuTra(sb: SupabaseClient, ids: readonly stri
 }
 
 /** Dòng thô của số bán — đọc từng bảng (cách cũ) hoặc một lượt qua hàm máy chủ (mig 204). */
-interface SoBanTho {
+export interface SoBanTho {
   hd: RevenueInvoiceRow[]
   dongHd: InvoiceLineRow[]
   tra: ReturnSummaryRow[]
@@ -268,10 +268,20 @@ async function docTungBang(sb: SupabaseClient, orgId: string, a: string, b: stri
   }
 }
 
+/**
+ * Số bán cả kỳ MỘT LƯỢT qua hàm máy chủ `bao_cao_so_ban` (mig 204 / 256), ở đúng dạng dòng thô của cách đọc từng bảng
+ * (`tuMotLuot`) — `null` = sổ chưa có hàm, nơi gọi tự đọc từng bảng. Dùng chung cho Báo cáo tổng hợp và Báo cáo › Nhân viên
+ * (chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế" — báo cáo Nhân viên từng đọc ~90 câu / 2 đợt).
+ * Lỗi khác "chưa có hàm" thì NÉM (`goiMotLuot`).
+ */
+export async function docSoBanMotLuot(sb: SupabaseClient, a: string, b: string): Promise<SoBanTho | null> {
+  const mot = await goiMotLuot<SoBanMotLuot>(sb, "bao_cao_so_ban", { p_tu: a, p_den: b }, "đọc số bán")
+  return mot ? tuMotLuot(mot) : null
+}
+
 export async function napSoBan(sb: SupabaseClient, orgId: string, a: string, b: string, dmVao: DanhMucVao): Promise<SoBan> {
   // Một lượt qua hàm máy chủ (mig 204); sổ chưa chạy 204 thì đọc từng bảng như cũ.
-  const mot = await goiMotLuot<SoBanMotLuot>(sb, "bao_cao_so_ban", { p_tu: a, p_den: b }, "đọc số bán")
-  const tho = mot ? tuMotLuot(mot) : await docTungBang(sb, orgId, a, b)
+  const tho = (await docSoBanMotLuot(sb, a, b)) ?? (await docTungBang(sb, orgId, a, b))
   const dm = await dmVao
   const traCoMa: TraCoMa[] = tho.tra.map((r) => {
     const x = tho.traThem.get(r.id)

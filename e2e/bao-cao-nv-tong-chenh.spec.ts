@@ -87,9 +87,22 @@ test("Báo cáo › Nhân viên › Hàng bán theo nhân viên: chênh trả Â
 })
 
 test("Báo cáo tổng hợp › Nhân viên: mở từ menu, chỉ Hàng bán theo nhân viên, cùng số; bấm nhân viên ra chi tiết như báo cáo", async ({ page }) => {
+  /* Chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế" — báo cáo đọc MỘT LƯỢT (`bao_cao_so_ban`) và báo
+     thời gian nạp về /api/do-nap. Playwright không đọc được thân sendBeacon → tắt nó, app đi đường fetch(keepalive). */
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "sendBeacon", { value: undefined, configurable: true })
+  })
   await dangNhap(page)
   const cauKho: string[] = []
-  page.on("request", (r) => { if (/\/rest\/v1\/stock_entr/.test(r.url())) cauKho.push(r.url()) })
+  const cauDong: string[] = []
+  const motLuot: string[] = []
+  page.on("request", (r) => {
+    const u = r.url()
+    if (/\/rest\/v1\/stock_entr/.test(u)) cauKho.push(u)
+    if (/\/rest\/v1\/(sales_invoice_lines|sales_invoices|return_lines|returns)\?/.test(u)) cauDong.push(u)
+    if (u.includes("/rest/v1/rpc/bao_cao_so_ban")) motLuot.push(r.method())
+  })
+  const baoNap = page.waitForRequest((r) => r.url().endsWith("/api/do-nap") && r.method() === "POST" && (r.postData() ?? "").includes("bc-hang-ban-nv"))
   await page.getByRole("button", { name: /Báo cáo tổng hợp/ }).click()
   await page.locator('a[href="/bao-cao/nhan-vien"]').first().click()
   await expect(page).toHaveURL(/\/bao-cao\/nhan-vien$/)
@@ -110,8 +123,23 @@ test("Báo cáo tổng hợp › Nhân viên: mở từ menu, chỉ Hàng bán t
   await expect(thung.locator("td").nth(tdCt.indexOf("sl thực bán"))).toHaveText("2")
   await expect(thung.locator("td").nth(tdCt.indexOf("chênh lệch net"))).toHaveText("+20.000đ")
 
-  // Màn này không có giá vốn → không đọc phiếu kho.
+  // Một lượt: không đọc phiếu kho, không đọc từng bảng hoá đơn / dòng / phiếu trả; hàm đi GET (`next dev` chạy effect hai lần).
   expect(cauKho, "đọc phiếu kho thừa").toEqual([])
+  expect(cauDong, "còn đọc từng bảng").toEqual([])
+  expect(motLuot.length).toBeGreaterThan(0)
+  expect(Array.from(new Set(motLuot))).toEqual(["GET"])
+  // Bản tóm tắt thời gian nạp (nhật ký `[bao-cao-nap]`): đúng màn, có số hoá đơn, có các câu lâu nhất (chỉ đường dẫn bỏ tham số,
+  // cách gọi, ms) — không mang dữ liệu. (Câu nào lâu nhất tuỳ máy — sổ giả trả câu một lượt rất nhanh, không chốt thứ tự.)
+  const bao = JSON.parse((await baoNap).postData() ?? "{}")
+  expect(bao).toMatchObject({ man: "bc-hang-ban-nv", loi: null })
+  expect(bao.dong).toBeGreaterThan(0)
+  expect(bao.soCau).toBeGreaterThan(0)
+  expect(bao.cham.length).toBeGreaterThan(0)
+  for (const c of bao.cham as Array<{ p: string; m: string; ms: number }>) {
+    expect(c.p).toMatch(/^\/[^?]*$/)
+    expect(typeof c.ms).toBe("number")
+  }
+  expect(JSON.stringify(bao)).not.toContain("NV Tổng Chênh")
 })
 
 test.describe("điện thoại", () => {

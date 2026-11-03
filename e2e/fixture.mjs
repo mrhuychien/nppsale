@@ -376,9 +376,11 @@ function baoCaoSoBan({ p_tu, p_den }, { db }) {
   }
   return {
     hd,
-    dong_hd: (db.sales_invoice_lines || []).filter((l) => idHd.has(l.invoice_id)).map((l) => chon(l, ["id", "invoice_id", "product_id", "unit_name", "conversion_factor", "quantity", "unit_price", "line_total", "is_exchange"])),
+    // Đúng bộ cột của hàm thật (mig 256): dòng HĐ kèm line_discount / order_line_id; dòng trả kèm unit_price (chênh trả TRƯỚC thuế
+    // — `line_total` dòng trả gồm VAT; thiếu cột là chênh trả của sổ giả lệch với production, 03/11/2026).
+    dong_hd: (db.sales_invoice_lines || []).filter((l) => idHd.has(l.invoice_id)).map((l) => chon(l, ["id", "invoice_id", "product_id", "unit_name", "conversion_factor", "quantity", "unit_price", "line_total", "is_exchange", "line_discount", "order_line_id"])),
     tra,
-    dong_tra: (db.return_lines || []).filter((l) => idTra.has(l.return_id) && l.is_exchange === false).map((l) => chon(l, ["return_id", "product_id", "unit_name", "quantity", "line_total"])),
+    dong_tra: (db.return_lines || []).filter((l) => idTra.has(l.return_id) && l.is_exchange === false).map((l) => chon(l, ["return_id", "product_id", "unit_name", "quantity", "line_total", "unit_price"])),
     gv: Array.from(gv.values()),
     gv_tra: gvTra,
   }

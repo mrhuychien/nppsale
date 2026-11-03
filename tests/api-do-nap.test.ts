@@ -27,6 +27,15 @@ describe("/api/do-nap", () => {
     expect(JSON.parse(warn.mock.calls[0][1] as string)).toMatchObject({ user: "u-1", man: "xuat-hang", ms: 12000 })
   })
 
+  it("màn báo cáo (man 'bc-…') ghi nhãn '[bao-cao-nap]'; màn POS giữ '[pos-nap]' (chủ nhà 03/11/2026)", async () => {
+    const { POST } = await import("@/app/api/do-nap/route")
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    expect((await POST(goi(JSON.stringify({ man: "bc-hang-ban-nv", ms: 4200 })))).status).toBe(204)
+    expect((await POST(goi(JSON.stringify({ man: "xuat-hang", ms: 900 })))).status).toBe(204)
+    expect((await POST(goi(JSON.stringify({ man: 7 })))).status).toBe(204)
+    expect(warn.mock.calls.map((c) => c[0])).toEqual(["[bao-cao-nap]", "[pos-nap]", "[pos-nap]"])
+  })
+
   it("thân gửi khoá 'user' giả cũng không ghi đè người đăng nhập thật", async () => {
     const { POST } = await import("@/app/api/do-nap/route")
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})

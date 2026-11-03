@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { laManHangBanNv } from "@/lib/nav/bao-cao-tong-hop"
+import { docSoBanMotLuot } from "@/lib/bao-cao/nap-ban-hang"
+import { baoNapSauKhiVe } from "@/lib/pos/bao-nap"
 import { useAuth } from "@/hooks/use-auth"
 import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -143,6 +145,8 @@ export default function EmployeesReportPage() {
   const [returnLines, setReturnLines] = useState<ReturnLineRow[]>([])
   // Giá vốn hàng trả ĐÃ NHẬP LẠI KHO theo phiếu — trừ khỏi giá vốn (mig 192).
   const [returnCosts, setReturnCosts] = useState<Awaited<ReturnType<typeof fetchReturnCosts>>>(new Map())
+  // Giá vốn bình quân mỗi đơn vị cơ sở do hàm một lượt gộp sẵn; `null` = đọc từng bảng (tính từ `stockLines`).
+  const [giaVonMotLuot, setGiaVonMotLuot] = useState<Map<string, number> | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
 
@@ -159,31 +163,61 @@ export default function EmployeesReportPage() {
      *   dòng trông y hệt một báo cáo đúng. Nhưng ném mà không ai bắt là
      *   vòng quay không bao giờ dừng và không có chữ nào giải thích.
      */
+    const batDau = typeof performance !== "undefined" ? performance.now() : 0
+    let loiNap: string | null = null
+    let soHd = 0
     try {
       setLoading(true)
       setLoadError(null)
       const orgId = user.org_id
+      /* ⚠ MỘT LƯỢT QUA HÀM MÁY CHỦ — chủ nhà 03/11/2026: "Kiểm tra lại tại sao phần báo cáo lại load lâu thế". Đọc từng bảng
+         là ~90 câu, hai đợt nối đuôi (hoá đơn → 21 lô dòng hoá đơn + 22 lô dòng kho + 20 lô soát phiếu xuất của HĐ huỷ, mỗi
+         câu kèm đếm `count: exact`): sổ thử một tháng 3.000 HĐ mất 6,4–6,7 s. `bao_cao_so_ban` (mig 204/256 — cùng hàm Báo cáo
+         tổng hợp đọc) trả ĐÚNG các dòng thô ấy + giá vốn gộp sẵn theo mặt hàng trong MỘT câu, đi CÙNG ĐỢT với danh mục; số ra
+         y hệt (`tuMotLuot`). Sổ chưa có hàm → đọc từng bảng như cũ (nhánh dưới). Bảng tra cứu (khách, mặt hàng, người dùng)
+         vẫn đọc đủ theo trang. */
+      const [mot, usersRes, customersRes, productsRes] = await Promise.all([
+        docSoBanMotLuot(supabase, range.from, range.to),
+        fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role, is_active", "đọc nhân viên"),
+        fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
+        fetchOrgRows<ProductRow>(
+          supabase, "products", orgId,
+          `id, sku, name, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
+        ),
+      ])
+      const tranDanhMuc = usersRes.truncated || customersRes.truncated || productsRes.truncated
+      if (conMoi()) setUsers(usersRes.rows)
+      if (conMoi()) setCustomers(customersRes.rows)
+      if (conMoi()) setProducts(productsRes.rows)
+      if (mot) {
+        soHd = mot.hd.length
+        if (conMoi()) setTruncated(tranDanhMuc)
+        if (conMoi()) setInvoices(mot.hd)
+        // Hàm trả cả dòng HÀNG ĐỔI — `linesByInvoice` bỏ chúng (cách cũ lọc ngay ở câu hỏi `fetchInvoiceLines`).
+        if (conMoi()) setLines(mot.dongHd)
+        if (conMoi()) setReturns(mot.tra)
+        if (conMoi()) setReturnLines(mot.dongTra)
+        // Giá vốn bình quân mỗi đơn vị cơ sở đã gộp ở máy chủ (cùng luật phiếu xuất mig 228) — không tải dòng kho.
+        if (conMoi()) setGiaVonMotLuot(mot.giaVonCoSo)
+        if (conMoi()) setStockEntries([])
+        if (conMoi()) setStockLines([])
+        if (conMoi()) setReturnCosts(mot.giaVonTra)
+        return
+      }
       /* ⚠ PHIẾU XUẤT HỎNG THÌ NÉM. Bản cũ chỉ `console.error` rồi đọc
-         `rows` rỗng → giá vốn 0 → lợi nhuận và hoa hồng phồng lên. Bảng
-         tra cứu (khách, mặt hàng, người dùng) cũng đọc đủ theo trang. */
-      const [invoiceRes, returnsRes, usersRes, customersRes, productsRes, stockEntriesRes] =
+         `rows` rỗng → giá vốn 0 → lợi nhuận và hoa hồng phồng lên. */
+      const [invoiceRes, returnsRes, stockEntriesRes] =
         await Promise.all([
           fetchRevenueInvoicesDu(supabase, orgId, range),
           fetchReturnsRowsDu(supabase, orgId, range),
-          fetchOrgRows<UserRow>(supabase, "users", orgId, "id, full_name, role, is_active", "đọc nhân viên"),
-          fetchOrgRows<CustomerRow>(supabase, "customers", orgId, "id, store_name, group_id, channel", "đọc khách hàng"),
-          fetchOrgRows<ProductRow>(
-            supabase, "products", orgId,
-            `id, sku, name, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
-          ),
           // Màn riêng "Hàng bán theo nhân viên" không có giá vốn → không đọc phiếu xuất / dòng kho / giá vốn hàng trả.
           chiHangBan ? Promise.resolve(KHONG_PHIEU_KHO) : fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
       const invoiceList = invoiceRes.rows
       const returnsRows = returnsRes.rows
+      soHd = invoiceList.length
       if (conMoi()) setTruncated(
-        invoiceRes.truncated || returnsRes.truncated || usersRes.truncated ||
-          customersRes.truncated || productsRes.truncated || stockEntriesRes.truncated
+        invoiceRes.truncated || returnsRes.truncated || tranDanhMuc || stockEntriesRes.truncated
       )
       const invoiceIds = invoiceList.map((o) => o.id)
       const stockEntryIds = stockEntriesRes.rows.map((e) => e.id)
@@ -202,15 +236,14 @@ export default function EmployeesReportPage() {
       if (conMoi()) setInvoices(invoiceList)
       if (conMoi()) setLines(linesList)
       if (conMoi()) setReturns(returnsRows)
-      if (conMoi()) setUsers(usersRes.rows)
-      if (conMoi()) setCustomers(customersRes.rows)
-      if (conMoi()) setProducts(productsRes.rows)
+      if (conMoi()) setGiaVonMotLuot(null)
       if (conMoi()) setStockEntries(stockEntriesRes.rows)
       if (conMoi()) setStockLines(stockLinesList)
       if (conMoi()) setReturnLines(returnLinesList)
       if (conMoi()) setReturnCosts(returnCostMap)
     } catch (err) {
       if (conMoi()) setLoadError(errorMessage(err))
+      loiNap = errorMessage(err)
       toast({
         title: "Chưa dựng được báo cáo",
         description: errorMessage(err),
@@ -218,6 +251,8 @@ export default function EmployeesReportPage() {
       })
     } finally {
       if (conMoi()) setLoading(false)
+      // Đo ngoài thực tế (nhật ký `[bao-cao-nap]`): tổng thời gian + các câu lâu nhất — chỉ đường dẫn / ms, không dữ liệu.
+      if (conMoi()) baoNapSauKhiVe(chiHangBan ? "bc-hang-ban-nv" : "bc-nhan-vien", batDau, { loi: loiNap, dong: soHd })
     }
   }, [user?.org_id, range, supabase, batLuot, chiHangBan])
 
@@ -243,8 +278,8 @@ export default function EmployeesReportPage() {
     return m
   }, [products])
 
-  // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ.
-  const avgCostMap = useMemo(() => giaVonBinhQuanCoSo(stockLines), [stockLines])
+  // Giá vốn bình quân MỖI ĐƠN VỊ CƠ SỞ theo mặt hàng trong kỳ (một lượt: máy chủ đã gộp; từng bảng: từ dòng kho).
+  const avgCostMap = useMemo(() => giaVonMotLuot ?? giaVonBinhQuanCoSo(stockLines), [giaVonMotLuot, stockLines])
 
   // Map invoice_id -> [dòng hóa đơn]
   /* ⚠ BỎ DÒNG HÀNG ĐỔI (`is_exchange`) — không phải hàng bán (cùng luật Báo cáo tổng hợp, `dungDongBan`). Tính vào là
@@ -394,6 +429,8 @@ export default function EmployeesReportPage() {
   }
 
   const salesRows: SalesRow[] = useMemo(() => {
+    /* Chỉ tính bảng của MỐI QUAN TÂM ĐANG XEM (chủ nhà 03/11/2026: "…báo cáo lại load lâu thế") — trước đây cả 5 bảng tính cùng lúc. */
+    if (variant !== "sales") return []
     const m = new Map<string, SalesRow>()
     // doanh thu từ hóa đơn đã ghi sổ (đang lọc hàng: phần của hàng được lọc — `hoaDonTheoLoc`)
     for (const o of hoaDonTheoLoc) {
@@ -469,7 +506,7 @@ export default function EmployeesReportPage() {
           .sort((a, b) => b.date.localeCompare(a.date)),
       }))
       .sort((a, b) => b.netRevenue - a.netRevenue)
-  }, [hoaDonTheoLoc, returnsTheoNv, userMap, matchSearchUser, customerPasses])
+  }, [variant, hoaDonTheoLoc, returnsTheoNv, userMap, matchSearchUser, customerPasses])
 
   // ============== Lợi nhuận ==============
   type ProfitRow = {
@@ -489,6 +526,8 @@ export default function EmployeesReportPage() {
    *   dòng hóa đơn). Bản cũ lấy nguyên tiền hóa đơn — hoa hồng tính trên số phồng.
    */
   const profitRows: ProfitRow[] = useMemo(() => {
+    // Chỉ tính khi đang xem mối quan tâm này (xem salesRows).
+    if (variant !== "profit") return []
     const hoaDon = hoaDonTheoLoc.filter((o) => matchSearchUser(o.sales_user_id) && customerPasses(o.customer_id))
     const giaVonHoaDon = (invoiceId: string) => {
       let cogs = 0
@@ -524,7 +563,7 @@ export default function EmployeesReportPage() {
       })
       .sort((a, b) => b.profit - a.profit)
   }, [
-    hoaDonTheoLoc, linesByInvoice, avgCostMap, returnsTheoNv, returnCosts, userMap, productMap,
+    variant, hoaDonTheoLoc, linesByInvoice, avgCostMap, returnsTheoNv, returnCosts, userMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -549,6 +588,8 @@ export default function EmployeesReportPage() {
     }[]
   }
   const employeeProductRows: EmployeeProductRow[] = useMemo(() => {
+    // Chỉ tính khi đang xem mối quan tâm này (xem salesRows).
+    if (variant !== "products") return []
     const m = new Map<string, EmployeeProductRow>()
     for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
@@ -645,7 +686,7 @@ export default function EmployeesReportPage() {
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [
-    hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    variant, hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -669,6 +710,8 @@ export default function EmployeesReportPage() {
     }[]
   }
   const employeeCustomerRows: EmployeeCustomerRow[] = useMemo(() => {
+    // Chỉ tính khi đang xem mối quan tâm này (xem salesRows).
+    if (variant !== "by_customer") return []
     const m = new Map<string, EmployeeCustomerRow>()
     for (const o of hoaDonTheoLoc) {
       if (!matchSearchUser(o.sales_user_id)) continue
@@ -785,7 +828,7 @@ export default function EmployeesReportPage() {
     }
     return Array.from(m.values()).sort((a, b) => b.revenue - a.revenue)
   }, [
-    hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
+    variant, hoaDonTheoLoc, linesByInvoice, returnsTheoNv, returnLinesTheoNv, userMap, customerMap, productMap,
     matchSearchUser, customerPasses, productPasses,
   ])
 
@@ -795,6 +838,8 @@ export default function EmployeesReportPage() {
   type SummaryRow = Omit<HangBanNhanVien, "products"> & { name: string; role: string; products: SummaryProduct[] }
 
   const employeeSummaryRows: SummaryRow[] = useMemo(() => {
+    // Chỉ tính khi đang xem mối quan tâm này (xem salesRows).
+    if (variant !== "summary") return []
     const ban: { uid: string; line: InvoiceLineRow }[] = []
     const giamDon: { uid: string; tien: number }[] = []
     /* ⚠ Chủ nhà 26/09/2026: doanh thu thuần phải khớp công nợ — tiền CHỨNG TỪ (`chotTienChungTu`). Đang lọc hàng hoá /
@@ -834,7 +879,7 @@ export default function EmployeesReportPage() {
       const u = userMap.get(r.id)
       return { ...r, name: u?.full_name || "—", role: ROLE_LABEL[u?.role || ""] || u?.role || "—" }
     })
-  }, [hoaDonTheoLoc, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, coLocHang])
+  }, [variant, hoaDonTheoLoc, linesByInvoice, returnLinesTheoNv, returnsTheoNv, userMap, productMap, matchSearchUser, customerPasses, productPasses, coLocHang])
 
   const handleExport = () => {
     if (variant === "sales") {

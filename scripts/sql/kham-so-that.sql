@@ -1017,4 +1017,51 @@ SELECT 97, 'Mig 258 (Hàm phụ của Xuất hàng + khoá tìm viết plpgsql �
                              to_regprocedure('public.khoa_tim_ds(text[])'), to_regprocedure('public._da_xuat_cua_dong_don(uuid)'),
                              to_regprocedure('public._chuan_he_so_dong_hoa_don(jsonb, uuid)'))
                AND l.lanname <> 'plpgsql'), '')
+UNION ALL
+-- 98. Mig 259 — đợt 2: 11 hàm phụ của Tạo đơn / Xuất hàng / Sửa HĐ viết plpgsql (chủ nhà 03/11/2026: "làm cả 2"): quyền
+--     giảm giá, giảm giá đơn, thuế, mã chứng từ, điều khoản, hôm nay, vai trình duyệt. Kết quả y hệt, chỉ nhanh hơn.
+SELECT 98, 'Mig 259 (Hàm phụ đợt 2: quyền giảm giá, mã chứng từ, thuế… viết plpgsql)',
+  CASE WHEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+                     WHERE p.oid IN (to_regprocedure('public._quyen_giam_cua(uuid)'), to_regprocedure('public._giam_don_hien_tai(uuid)'),
+                                     to_regprocedure('public._thue_hop_le(text)'), to_regprocedure('public._la_trinh_duyet()'),
+                                     to_regprocedure('public._giam_gia_don(jsonb, numeric)'), to_regprocedure('public._wf2b_payment_terms_days(text)'),
+                                     to_regprocedure('public._so_chung_tu(integer)'), to_regprocedure('public._order_code(integer, integer)'),
+                                     to_regprocedure('public._inv_code(integer, integer)'), to_regprocedure('public._ma_phieu_tra(integer)'),
+                                     to_regprocedure('public.vn_today()'))
+                       AND l.lanname <> 'plpgsql')
+       THEN 'CHƯA — chạy migration 259 (Tạo đơn / Sửa HĐ chậm hơn ~10%)'
+       WHEN public._order_code(7, 2) IS DISTINCT FROM 'DH-0007-2' OR public._inv_code(12345, 0) IS DISTINCT FROM 'HD-12345'
+         OR public._ma_phieu_tra(1) IS DISTINCT FROM 'PT-0001' OR public._thue_hop_le(' 0.1 ') IS DISTINCT FROM 0.1000
+         OR public._wf2b_payment_terms_days('net30') IS DISTINCT FROM 30
+       THEN 'LỆCH — mã chứng từ / thuế / điều khoản ra sai mẫu — chạy lại mig 259'
+       ELSE 'OK — đã vá' END,
+  coalesce((SELECT 'còn LANGUAGE sql: ' || string_agg(p.proname, ', ' ORDER BY p.proname)
+              FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
+             WHERE p.oid IN (to_regprocedure('public._quyen_giam_cua(uuid)'), to_regprocedure('public._giam_don_hien_tai(uuid)'),
+                             to_regprocedure('public._thue_hop_le(text)'), to_regprocedure('public._la_trinh_duyet()'),
+                             to_regprocedure('public._giam_gia_don(jsonb, numeric)'), to_regprocedure('public._wf2b_payment_terms_days(text)'),
+                             to_regprocedure('public._so_chung_tu(integer)'), to_regprocedure('public._order_code(integer, integer)'),
+                             to_regprocedure('public._inv_code(integer, integer)'), to_regprocedure('public._ma_phieu_tra(integer)'),
+                             to_regprocedure('public.vn_today()'))
+               AND l.lanname <> 'plpgsql'), '')
+UNION ALL
+-- 99. Mig 260 — quyền xem khách tính một lần (chủ nhà 03/11/2026: "làm cả 2"): `customer_select` bỏ vế dò cột created_by trong
+--     information_schema (~1,5 ms lập kế hoạch ở MỌI câu đụng bảng khách), thay `user_sells_to_customer(id)` (gọi từng dòng) bằng
+--     tập `khach_toi_da_ban()`; phân công xét "của chính tôi" trước. Ai thấy khách nào giữ nguyên.
+SELECT 99, 'Mig 260 (Quyền xem khách tính một lần — ai thấy khách nào giữ nguyên)',
+  CASE WHEN q IS NULL THEN 'LỆCH — không thấy chính sách customer_select'
+       WHEN to_regprocedure('public.khach_toi_da_ban()') IS NULL OR position('user_sells_to_customer' IN q) > 0
+         OR position('information_schema' IN q) > 0
+       THEN 'CHƯA — chạy migration 260 (mọi câu đụng bảng khách tốn thêm ~1,5 ms lập kế hoạch; sổ khách của NVBH gọi hàm từng dòng)'
+       WHEN position('khach_toi_da_ban()' IN q) = 0 OR position('customer_assignments' IN q) = 0
+         OR position('created_by' IN q) = 0 OR position('user_has_permission' IN q) = 0
+       THEN 'LỆCH — customer_select thiếu vế (vai / xem hết / phân công / tự tạo / đã bán) — báo lại ngay'
+       WHEN coalesce(pc, '') NOT LIKE '((user_id = %'
+       THEN 'LỆCH nhẹ — "View assignments in org" chưa đảo vế (chỉ chậm hơn, quyền không sai)'
+       ELSE 'OK — đã vá' END,
+  ''
+  FROM (SELECT (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
+                 WHERE polname = 'customer_select' AND polrelid = 'public.customers'::regclass) AS q,
+               (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
+                 WHERE polname = 'View assignments in org' AND polrelid = 'public.customer_assignments'::regclass) AS pc) x
 ) t ORDER BY stt;

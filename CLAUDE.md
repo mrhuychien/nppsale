@@ -490,6 +490,14 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   sách khác"*): viết `org_id = (SELECT user_org_id())`, `(SELECT user_role()) = …`, `x = (SELECT auth.uid())` — gọi thẳng thì
   Postgres gọi lại cho TỪNG dòng (NVBH đếm công nợ 1,4 giây thay vì 8 ms). Hoặc cuối migration gọi
   `SELECT public._rls_tinh_mot_lan_ap();`. Hàm theo dòng (`customer_org_id(customer_id)`) để nguyên.
+- **Chính sách RLS: không tra `information_schema` / catalog, hàm gọi từng dòng thì đổi sang tập tính một lần** (chủ nhà
+  03/11/2026 *"làm cả 2"*, mig 260): vế dò cột `created_by` trong `information_schema.columns` của `customer_select` tốn ~1,5 ms
+  LẬP KẾ HOẠCH ở MỌI câu đụng bảng khách (mọi danh sách đơn / HĐ / phiếu thu kèm tên khách); `user_sells_to_customer(id)` gọi
+  cho từng khách NVBH không phụ trách → `id IN (SELECT khach_toi_da_ban())` (SECURITY DEFINER — không đệ quy RLS; tính một
+  lần, tra băm). Trong OR đặt vế rẻ trước (phân công "của chính tôi" trước `customer_org_id(...)`). Sổ khách màn bán của NVBH
+  35,9 → 1,6 ms. Vá trên **bản đang chạy** (`pg_get_expr` → `ALTER POLICY`, như mig 250), đừng chép lại trọn chính sách từ tệp
+  cũ (mig 154); kiểm bằng so TẬP DÒNG từng người thấy trước / sau (`scripts/sql/thu-260-rls-khach-tinh-mot-lan.sql`) — cắt
+  chuỗi sai một ngoặc là ai cũng thấy hết khách mà mọi bài khác vẫn xanh.
 - **JIT tắt cho vai `authenticated`** (mig 251): bật thì mỗi câu danh sách mất ~0,9 giây biên dịch, trang chủ 4,9 giây.
   Đừng bật lại; câu nào thật sự cần thì `ALTER FUNCTION … SET jit = on` riêng hàm ấy. **Mig 252 tắt thêm ở vai đăng nhập
   `authenticator` + `anon`** (chủ nhà 24/10/2026, bảng `pg_stat_statements`: danh sách hoá đơn ~3 s/câu; tái hiện trên sổ
@@ -506,7 +514,10 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   HĐ, `_chuan_he_so_dong_hoa_don` 1,7 ms / lần Xuất hàng. plpgsql giữ kế hoạch cả phiên: sổ thử cỡ thật Xuất hàng −27%, Sửa HĐ
   −25%, Tạo đơn −20%, khoá tìm ×25. Viết lại hàm có sẵn thì dựng lại bản cũ và so TỪNG kết quả trên kho mẫu (kể cả lỗi báo
   ra) như `scripts/sql/thu-258-ham-phu-plpgsql.sql`; khoá tìm vẫn phải trùng `viValueKey`. Đo trong vòng lặp `x := f(…)` thì
-  bản SQL không lộ chậm (biểu thức đơn giữ kế hoạch) — đo đúng cách gọi thật: mỗi lần một câu / một giao dịch.
+  bản SQL không lộ chậm (biểu thức đơn giữ kế hoạch) — đo đúng cách gọi thật: mỗi lần một câu / một giao dịch. Đợt 2 mig 259
+  (chủ nhà *"làm cả 2"*): 11 hàm nữa — quyền / giảm giá đơn, thuế, mã chứng từ, điều khoản, `vn_today`, `_la_trinh_duyet`
+  (tổng 123,6 → 32,5 ms / 100 lệnh; Tạo đơn −10%, Sửa HĐ −13%). Đổi ngôn ngữ hàm KHÔNG đổi PARALLEL / STRICT / search_path /
+  quyền — bộ thử so cả `proacl` (`scripts/sql/thu-259-ham-phu-plpgsql-dot2.sql`).
 
 ## 4. Trước mỗi commit
 `npx tsc --noEmit` · `npx next lint` · `npx vitest run` · `npx next build` · e2e **liên quan** tới chỗ sửa

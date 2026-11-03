@@ -42,7 +42,9 @@ const coLpadCoDinh = (sql: string) => {
 describe("mã chứng từ (mig 237)", () => {
   it("phiếu trả đánh số PT- qua _so_chung_tu", () => {
     const h = than("public._ma_phieu_tra(INTEGER)")
-    expect(h.file).toBe("237_ma_phieu_tra_pt.sql")
+    // Mig 259 viết lại bằng plpgsql (hết lập kế hoạch lại mỗi lần trigger gọi) — CÙNG luật, so từng kết quả ở
+    // scripts/sql/thu-259-ham-phu-plpgsql-dot2.sql.
+    expect(h.file).toBe("259_ham_phu_plpgsql_dot2.sql")
     expect(h.than).toContain("'PT-' || public._so_chung_tu(p_seq)")
   })
 
@@ -52,15 +54,16 @@ describe("mã chứng từ (mig 237)", () => {
   })
 
   it("không hàm sinh mã nào còn lpad độ rộng cố định", () => {
-    const sinhMa = [
-      "public._ma_phieu_tra(INTEGER)",
-      "public._inv_code(INTEGER,INTEGER)",
-      "public._order_code(INTEGER,INTEGER)",
-      "public.next_purchase_receipt_code(UUID)",
+    // Bản đang chạy: ba hàm mã chứng từ của mig 237 được mig 259 viết lại bằng plpgsql (cùng luật); mã phiếu nhập vẫn mig 237.
+    const sinhMa: Array<[string, string]> = [
+      ["public._ma_phieu_tra(INTEGER)", "259_ham_phu_plpgsql_dot2.sql"],
+      ["public._inv_code(INTEGER,INTEGER)", "259_ham_phu_plpgsql_dot2.sql"],
+      ["public._order_code(INTEGER,INTEGER)", "259_ham_phu_plpgsql_dot2.sql"],
+      ["public.next_purchase_receipt_code(UUID)", "237_ma_phieu_tra_pt.sql"],
     ]
-    for (const key of sinhMa) {
+    for (const [key, tep] of sinhMa) {
       const h = than(key)
-      expect(h.file, `${key} phải là bản mig 237`).toBe("237_ma_phieu_tra_pt.sql")
+      expect(h.file, `${key} phải là bản ${tep}`).toBe(tep)
       expect(coLpadCoDinh(h.than), `${key} còn lpad cố định — số qua 9999 sẽ bị cắt, trùng mã`).toBe(false)
       expect(h.than).toContain("_so_chung_tu(")
     }

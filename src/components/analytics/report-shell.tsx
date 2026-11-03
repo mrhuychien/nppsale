@@ -36,6 +36,8 @@ interface ReportShellProps<T extends string> {
   branchName?: string
   /** Additional toggles like "Gộp hàng cùng loại" */
   extraOptions?: React.ReactNode
+  /** Ẩn ô "Mối quan tâm" — màn chỉ có một mối quan tâm (Báo cáo tổng hợp › Nhân viên, chủ nhà 03/11/2026). */
+  anMoiQuanTam?: boolean
 }
 
 export function ReportShell<T extends string>({
@@ -51,6 +53,7 @@ export function ReportShell<T extends string>({
   children,
   branchName,
   extraOptions,
+  anMoiQuanTam,
 }: ReportShellProps<T>) {
   // On mobile the filter panel is collapsed by default so the report
   // data is visible immediately. Tapping "Bộ lọc" expands it.
@@ -95,18 +98,20 @@ export function ReportShell<T extends string>({
             </button>
           ) : null}
 
-          <div>
-            <p className="mb-1.5 text-xs font-semibold text-foreground">
-              Mối quan tâm <span className="text-primary">•</span>
-            </p>
-            <CompactSelect
-              ariaLabel="Mối quan tâm"
-              value={variant}
-              onChange={(v) => onVariantChange(v as T)}
-              options={variants.map((v) => ({ value: v.key, label: v.label }))}
-              className="h-9 w-full rounded-md border-border/60 bg-card px-2 text-sm"
-            />
-          </div>
+          {!anMoiQuanTam && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-foreground">
+                Mối quan tâm <span className="text-primary">•</span>
+              </p>
+              <CompactSelect
+                ariaLabel="Mối quan tâm"
+                value={variant}
+                onChange={(v) => onVariantChange(v as T)}
+                options={variants.map((v) => ({ value: v.key, label: v.label }))}
+                className="h-9 w-full rounded-md border-border/60 bg-card px-2 text-sm"
+              />
+            </div>
+          )}
 
           {extraOptions}
 

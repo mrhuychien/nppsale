@@ -1,11 +1,16 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
 import { dangNhap, FAKE } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn" và "chênh thuần = chênh bán +
- *   chênh trả" (chênh trả âm là phần NPP đã trả cho nhân viên, giờ thu hồi). HD-TC-1 của "NV Tổng Chênh": 3 thùng ×
- *   460.000 (bảng giá thùng 450.000) → chênh bán +30.000; tiền hàng 1.380.000, hoá đơn còn 1.360.000 → giảm giá đơn
- *   20.000. Khách trả 1 thùng, phiếu trả ghi 440.000 → chênh trả −10.000 → chênh thuần +20.000, tổng chênh lệch 0.
+ *   chênh trả" (chênh trả âm là phần NPP đã trả cho nhân viên, giờ thu hồi).
+ * ⚠ CHỦ NHÀ 03/11/2026: "phần chênh lệch trả tính sai: phải là giá trị âm" · "các cột doanh thu thuần, chênh lệch thuần ->
+ *   đổi tên thành doanh thu net, chênh lệch net" · "Lôi cho tao riêng báo cáo này ra ngoài menu BÁO CÁO TỔNG HỢP > Nhân viên
+ *   (Lưu ý khi bấm vào từng nhân viên xem được chi tiết như bên báo cáo)".
+ *   HD-TC-1 của "NV Tổng Chênh": 3 thùng × 460.000 (bảng giá thùng 450.000) → chênh bán +30.000; tiền hàng 1.380.000, hoá
+ *   đơn còn 1.360.000 → giảm giá đơn 20.000. Khách trả 1 thùng ĐÚNG GIÁ đã bán 460.000 → chênh trả (−1) × 10.000 = −10.000
+ *   (bản 12/10/2026 ra +10.000 — bài khi ấy dùng phiếu trả 440.000, dưới bảng giá, nên không thấy) → chênh lệch net
+ *   +20.000, tổng chênh lệch 0; doanh thu net 1.360.000 − 460.000 = 900.000.
  *   Dữ liệu RIÊNG của spec này. Logic: tests/tong-chenh-lech.test.ts.
  */
 const ORG = "00000000-0000-4000-8000-0000000000a1"
@@ -36,10 +41,10 @@ test.beforeAll(async () => {
     line_discount: 0, vat_rate: 0, line_total: 1380000, is_exchange: false, sort_order: 0, order_line_id: null,
   }])
   await api("returns", "POST", [{
-    id: TR, org_id: ORG, customer_id: KHACH, invoice_id: HD, credit_note_amount: 440000, created_at: "2026-09-26T04:00:00Z",
+    id: TR, org_id: ORG, customer_id: KHACH, invoice_id: HD, credit_note_amount: 460000, created_at: "2026-09-26T04:00:00Z",
     revenue_date: "2026-09-26", sales_user_id: NV, requested_by: OWNER, reason: "damaged", credit_with_invoice: false, status: "completed",
   }])
-  await api("return_lines", "POST", [{ id: "rl-tc-1", return_id: TR, product_id: SP, unit_name: "thùng", quantity: 1, unit_price: 440000, line_total: 440000, is_exchange: false }])
+  await api("return_lines", "POST", [{ id: "rl-tc-1", return_id: TR, product_id: SP, unit_name: "thùng", quantity: 1, unit_price: 460000, line_total: 460000, is_exchange: false }])
 })
 test.afterAll(async () => {
   await api(`return_lines?return_id=eq.${TR}`, "DELETE")
@@ -50,21 +55,89 @@ test.afterAll(async () => {
   await api(`products?id=eq.${SP}`, "DELETE")
 })
 
-test("Hàng bán theo nhân viên: chênh thuần = bán (+30.000) + trả (−10.000); tổng chênh lệch = thuần − giảm giá đơn (20.000) = 0", async ({ page }) => {
+/** Ô của dòng nhân viên theo TÊN cột (bảng có ô đầu mở chi tiết — đếm cột tay dễ lệch). */
+async function oCuaDong(page: Page) {
+  const dong = page.locator("tr", { hasText: "NV Tổng Chênh" }).first()
+  const tieuDe = (await dong.locator("xpath=ancestor::table[1]").locator("thead th").allInnerTexts()).map((t) => t.trim().toLowerCase())
+  return { dong, tieuDe, o: (ten: string) => dong.locator("td").nth(tieuDe.indexOf(ten.toLowerCase())) }
+}
+
+async function kiemSoCuaNv(page: Page) {
+  const { tieuDe, o } = await oCuaDong(page)
+  expect(tieuDe).not.toContain("doanh thu thuần")
+  expect(tieuDe).not.toContain("chênh lệch thuần")
+  expect(tieuDe.indexOf("tổng chênh lệch")).toBe(tieuDe.indexOf("chênh lệch net") + 1)
+  await expect(o("Chênh lệch bán")).toHaveText("+30.000đ")
+  await expect(o("Giảm giá đơn")).toHaveText("-20.000đ")
+  await expect(o("Giá trị trả")).toHaveText("-460.000đ")
+  // Trả đúng giá đã bán trên bảng giá → ÂM (thu hồi phần chênh của thùng ấy).
+  await expect(o("Chênh lệch trả")).toHaveText("−10.000đ")
+  await expect(o("Doanh thu net")).toHaveText("900.000đ")
+  await expect(o("Chênh lệch net")).toHaveText("+20.000đ")
+  await expect(o("Tổng chênh lệch")).toHaveText("0")
+}
+
+test("Báo cáo › Nhân viên › Hàng bán theo nhân viên: chênh trả ÂM khi trả đúng giá đã bán; cột Doanh thu net / Chênh lệch net", async ({ page }) => {
   await dangNhap(page)
   await page.goto("/reports/employees")
   await page.getByRole("combobox", { name: "Mối quan tâm" }).click()
   await page.getByRole("option", { name: "Hàng bán theo nhân viên", exact: true }).click()
   await expect(page.locator("th", { hasText: "Tổng chênh lệch" }).first()).toBeVisible()
+  await kiemSoCuaNv(page)
+})
 
-  const dong = page.locator("tr", { hasText: "NV Tổng Chênh" }).first()
-  // Ô theo TÊN cột (bảng có ô đầu mở chi tiết — đếm cột tay dễ lệch).
-  const tieuDe = (await dong.locator("xpath=ancestor::table[1]").locator("thead th").allInnerTexts()).map((t) => t.trim().toLowerCase())
-  const o = (ten: string) => dong.locator("td").nth(tieuDe.indexOf(ten.toLowerCase()))
-  expect(tieuDe.indexOf("tổng chênh lệch")).toBe(tieuDe.indexOf("chênh lệch thuần") + 1)
-  await expect(o("Chênh lệch bán")).toHaveText("+30.000đ")
-  await expect(o("Giảm giá đơn")).toHaveText("-20.000đ")
-  await expect(o("Chênh lệch trả")).toHaveText("−10.000đ")
-  await expect(o("Chênh lệch thuần")).toHaveText("+20.000đ")
-  await expect(o("Tổng chênh lệch")).toHaveText("0")
+test("Báo cáo tổng hợp › Nhân viên: mở từ menu, chỉ Hàng bán theo nhân viên, cùng số; bấm nhân viên ra chi tiết như báo cáo", async ({ page }) => {
+  await dangNhap(page)
+  const cauKho: string[] = []
+  page.on("request", (r) => { if (/\/rest\/v1\/stock_entr/.test(r.url())) cauKho.push(r.url()) })
+  await page.getByRole("button", { name: /Báo cáo tổng hợp/ }).click()
+  await page.locator('a[href="/bao-cao/nhan-vien"]').first().click()
+  await expect(page).toHaveURL(/\/bao-cao\/nhan-vien$/)
+  await expect(page.getByRole("heading", { name: "Hàng bán theo nhân viên", level: 1 })).toBeVisible()
+  // Một mối quan tâm duy nhất → không có ô chọn.
+  await expect(page.getByRole("combobox", { name: "Mối quan tâm" })).toHaveCount(0)
+  await expect(page.locator("th", { hasText: "Tổng chênh lệch" }).first()).toBeVisible()
+  await kiemSoCuaNv(page)
+
+  // Bấm nhân viên → chi tiết mặt hàng × đơn vị như bên báo cáo.
+  await page.locator("tr", { hasText: "NV Tổng Chênh" }).first().click()
+  const ct = page.getByTestId("nv-hang-ban-chi-tiet")
+  await expect(ct).toBeVisible()
+  const tdCt = (await ct.locator("thead th").allInnerTexts()).map((t) => t.trim().toLowerCase())
+  for (const c of ["bảng giá (theo đvt)", "giá bán (theo đvt)", "chênh lệch trả", "sl thực bán", "doanh thu net", "chênh lệch net"]) expect(tdCt).toContain(c)
+  const thung = ct.locator("tbody tr", { hasText: "thùng" }).first()
+  await expect(thung.locator("td").nth(tdCt.indexOf("chênh lệch trả"))).toHaveText("−10.000đ")
+  await expect(thung.locator("td").nth(tdCt.indexOf("sl thực bán"))).toHaveText("2")
+  await expect(thung.locator("td").nth(tdCt.indexOf("chênh lệch net"))).toHaveText("+20.000đ")
+
+  // Màn này không có giá vốn → không đọc phiếu kho.
+  expect(cauKho, "đọc phiếu kho thừa").toEqual([])
+})
+
+test.describe("điện thoại", () => {
+  test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true })
+
+  /* Các màn Báo cáo tổng hợp khác tự vẽ đầu trang xanh + ☰ nên ẩn app bar chuẩn; màn Nhân viên là báo cáo Nhân viên —
+     ẩn theo là mất cả menu lẫn nút lùi. */
+  test("Báo cáo tổng hợp › Nhân viên còn app bar có ☰, mở được menu; vẫn ra số của nhân viên", async ({ page }) => {
+    await dangNhap(page)
+    await page.goto("/bao-cao/nhan-vien")
+    const bar = page.locator("header").first()
+    await expect(bar.getByRole("button", { name: "Mở menu" })).toBeVisible()
+    await expect(page.getByText("NV Tổng Chênh").first()).toBeVisible()
+    await bar.getByRole("button", { name: "Mở menu" }).click()
+    await expect(page.getByRole("dialog")).toBeVisible()
+  })
+})
+
+test("NVBH không có quyền Báo cáo nhân viên: không thấy mục, gõ thẳng đường dẫn cũng bị đẩy ra", async ({ page }) => {
+  await dangNhap(page)
+  await api(`users?id=eq.${OWNER}`, "PATCH", { role: "sales" })
+  try {
+    await page.goto("/bao-cao/nhan-vien")
+    await expect(page).toHaveURL(/\/home$/)
+    await expect(page.locator('a[href="/bao-cao/nhan-vien"]')).toHaveCount(0)
+  } finally {
+    await api(`users?id=eq.${OWNER}`, "PATCH", { role: "owner" })
+  }
 })

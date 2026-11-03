@@ -7,8 +7,9 @@
  *   trên bảng giá (lưu ý phải cùng đơn vị tính) x số lượng".
  *
  *     chênh bán   = Σ SL × (đơn giá trên hoá đơn − giá bảng của ĐÚNG đơn vị dòng)
- *     chênh trả   = Σ SL × (đơn giá trên phiếu trả − giá bảng của đúng đơn vị dòng)   (cùng luật)
- *     chênh thuần = chênh bán + chênh trả            (chủ nhà 12/10/2026 — `chenhThuan`)
+ *     chênh trả   = Σ (−SL trả) × (đơn giá trên phiếu trả − giá bảng cùng đơn vị)   (hàng trả TÍNH ÂM, chủ nhà
+ *                   03/11/2026 — `chenhTraDong` / `chenhTra`)
+ *     chênh thuần = chênh bán + chênh trả            (chủ nhà 12/10/2026 — `chenhThuan`; màn gọi "Chênh lệch net")
  *     tổng chênh  = chênh thuần − giảm giá cả đơn   (chủ nhà 12/10/2026 — `tongChenhLech`)
  *
  * - Đơn giá TRƯỚC thuế (`unit_price`) — không lấy tiền gồm VAT (`return_lines.line_total` có VAT).
@@ -60,11 +61,32 @@ export function tongChenhLech(thuan: number, giamDon: number | null | undefined)
 /**
  * CHÊNH LỆCH THUẦN = chênh bán + chênh trả — chủ nhà 12/10/2026 (thay "bán − trả" của 01/10/2026): "trả mày đang tính là
  * âm, nên chênh trả ra giá trị âm. Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi, nên chênh thuần = chênh
- * bán + chênh trả". Chênh trả giữ nguyên cách tính (`chenhDong` trên dòng phiếu trả); trừ "bán − trả" là thu hồi ngược
- * dấu — chênh thuần đội lên.
+ * bán + chênh trả". Chênh trả đã mang dấu của hàng trả (âm — `chenhTra`), nên ở đây chỉ CỘNG.
  */
 export function chenhThuan(chenhBan: number, chenhTra: number): number {
   return chenhBan + chenhTra
+}
+
+/**
+ * CHÊNH TRẢ — chủ nhà 03/11/2026: "phần chênh lệch trả tính sai: phải là giá trị âm" (12/10/2026: "trả mày đang tính là
+ * âm, nên chênh trả ra giá trị âm"). Màn hiện hàng trả là số ÂM (Giá trị trả "-460.000"), nên hàng trả là hàng đi TÍNH ÂM:
+ *
+ *     chênh trả = (−SL trả) × (đơn giá phiếu trả − giá bảng cùng đơn vị) = giá bảng của hàng trả − tiền trả (trước thuế)
+ *
+ * Bán trên bảng giá rồi khách trả lại cùng giá → chênh trả ÂM, đúng bằng phần chênh đã tính cho số hàng ấy (NPP thu hồi);
+ * chênh net = chênh của SL thực bán. Bán dưới bảng giá rồi trả → chênh trả DƯƠNG (trả lại phần nhân viên đã chịu).
+ * ⚠ Bản 12/10/2026 giữ dấu của hàng đi (`chenhDong`): trả cùng giá bán trên bảng giá ra DƯƠNG, chênh net đội lên thay vì
+ *   giảm (bài kiểm khi ấy dùng phiếu trả giá DƯỚI bảng giá nên không thấy).
+ * Viết `niemYet − tien` (không `−chenh`): hai số bằng nhau ra 0, không ra "-0".
+ */
+export function chenhTra(tienTra: number, niemYetTra: number): number {
+  return (Number(niemYetTra) || 0) - (Number(tienTra) || 0)
+}
+
+/** Chênh trả của MỘT dòng phiếu trả: `tien` / `niemYet` vẫn là số dương (màn tự hiện dấu trừ), `chenh` theo `chenhTra`. */
+export function chenhTraDong(l: DongChenh, sp: SanPhamQuyDoi | null | undefined): ChenhDong {
+  const c = chenhDong(l, sp)
+  return { ...c, chenh: chenhTra(c.tien, c.niemYet) }
 }
 
 /**

@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { laManHangBanNv } from "@/lib/nav/bao-cao-tong-hop"
 import { useAuth } from "@/hooks/use-auth"
 import { useLuotNap } from "@/hooks/use-luot-nap"
 import { useRoleGuard } from "@/hooks/use-role-guard"
@@ -61,6 +63,10 @@ const VARIANTS = [
   { key: "products" as const, label: "Theo sản phẩm" },
   { key: "summary" as const, label: "Hàng bán theo nhân viên" },
 ] as const
+/** Màn riêng Báo cáo tổng hợp › Nhân viên — chỉ "Hàng bán theo nhân viên" (chủ nhà 03/11/2026). */
+const VARIANTS_HANG_BAN = VARIANTS.filter((v) => v.key === "summary")
+/** Phiếu kho rỗng — màn "Hàng bán theo nhân viên" không có cột giá vốn nên không đọc. */
+const KHONG_PHIEU_KHO: Awaited<ReturnType<typeof fetchPostedStockEntries>> = { rows: [], truncated: false }
 
 interface UserRow {
   id: string
@@ -106,7 +112,11 @@ export default function EmployeesReportPage() {
   const { loading: authLoading } = useRoleGuard("reports")
   const { user } = useAuth()
   const supabase = createClient()
-  const [variant, setVariant] = useState<Variant>("sales")
+  /* ⚠ BÁO CÁO TỔNG HỢP › NHÂN VIÊN (chủ nhà 03/11/2026: "Lôi cho tao riêng báo cáo này ra ngoài menu BÁO CÁO TỔNG HỢP >
+     Nhân viên … khi bấm vào từng nhân viên xem được chi tiết như bên báo cáo"): `/bao-cao/nhan-vien` dựng CHÍNH trang này,
+     chỉ "Hàng bán theo nhân viên" — không chép bảng sang màn khác (hai bản là hai con số lệch nhau). */
+  const chiHangBan = laManHangBanNv(usePathname())
+  const [variant, setVariant] = useState<Variant>(chiHangBan ? "summary" : "sales")
   const [preset, setPreset] = useState<PeriodPreset>("this_month")
   const [range, setRange] = useState<DateRange>(() => rangeFromPreset("this_month"))
   const [search, setSearch] = useState("")
@@ -166,7 +176,8 @@ export default function EmployeesReportPage() {
             supabase, "products", orgId,
             `id, sku, name, base_unit, sell_price, primary_supplier_id, ${COT_SP_QUY_DOI}`, "đọc mặt hàng"
           ),
-          fetchPostedStockEntries(supabase, orgId, range, "export"),
+          // Màn riêng "Hàng bán theo nhân viên" không có giá vốn → không đọc phiếu xuất / dòng kho / giá vốn hàng trả.
+          chiHangBan ? Promise.resolve(KHONG_PHIEU_KHO) : fetchPostedStockEntries(supabase, orgId, range, "export"),
         ])
       const invoiceList = invoiceRes.rows
       const returnsRows = returnsRes.rows
@@ -186,7 +197,7 @@ export default function EmployeesReportPage() {
         fetchInvoiceLines(supabase, invoiceIds),
         fetchStockEntryLines(supabase, stockEntryIds),
         fetchReturnLines(supabase, returnIds),
-        fetchReturnCosts(supabase, returnIds),
+        chiHangBan ? Promise.resolve(new Map() as Awaited<ReturnType<typeof fetchReturnCosts>>) : fetchReturnCosts(supabase, returnIds),
       ])
       if (conMoi()) setInvoices(invoiceList)
       if (conMoi()) setLines(linesList)
@@ -208,7 +219,7 @@ export default function EmployeesReportPage() {
     } finally {
       if (conMoi()) setLoading(false)
     }
-  }, [user?.org_id, range, supabase, batLuot])
+  }, [user?.org_id, range, supabase, batLuot, chiHangBan])
 
   useEffect(() => {
     load()
@@ -883,8 +894,9 @@ export default function EmployeesReportPage() {
           "Giá trị trả",
           "Chênh lệch trả",
           "SL thực bán",
-          "Doanh thu thuần",
-          "Chênh lệch thuần",
+          // Chủ nhà 03/11/2026: "các cột doanh thu thuần, chênh lệch thuần -> đổi tên thành doanh thu net, chênh lệch net".
+          "Doanh thu net",
+          "Chênh lệch net",
           "Tổng chênh lệch",
         ],
       ]
@@ -980,8 +992,9 @@ export default function EmployeesReportPage() {
 
   return (
     <ReportShell
-      title="Báo cáo nhân viên"
-      variants={VARIANTS}
+      title={chiHangBan ? "Hàng bán theo nhân viên" : "Báo cáo nhân viên"}
+      variants={chiHangBan ? VARIANTS_HANG_BAN : VARIANTS}
+      anMoiQuanTam={chiHangBan}
       variant={variant}
       onVariantChange={(v) => setVariant(v)}
       range={range}
@@ -1338,8 +1351,9 @@ export default function EmployeesReportPage() {
               render: (r) => hienChenh(r.diffReturn),
             },
             {
+              /* Chủ nhà 03/11/2026: "các cột doanh thu thuần, chênh lệch thuần -> đổi tên thành doanh thu net, chênh lệch net". */
               key: "net",
-              label: "Doanh thu thuần",
+              label: "Doanh thu net",
               align: "right",
               render: (r) => (
                 <span className="font-semibold text-primary">
@@ -1349,7 +1363,7 @@ export default function EmployeesReportPage() {
             },
             {
               key: "diffNet",
-              label: "Chênh lệch thuần",
+              label: "Chênh lệch net",
               align: "right",
               render: (r) => <span className="font-semibold">{hienChenh(r.diffNet)}</span>,
             },
@@ -1433,8 +1447,8 @@ export default function EmployeesReportPage() {
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Giá trị trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch trả</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase">SL thực bán</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">DT thuần</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh thuần</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Doanh thu net</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Chênh lệch net</th>
                   </tr>
                 </thead>
                 <tbody>

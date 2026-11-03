@@ -181,6 +181,8 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
   // Báo cáo tổng hợp — 6 màn mới, chạy song song báo cáo cũ (chủ nhà 26/09/2026).
   "/bao-cao": { module: "reports", feature: "reports.dashboard" },
   "/bao-cao/ban-hang": { module: "reports", feature: "reports.sales" },
+  // Chính báo cáo Nhân viên (chỉ "Hàng bán theo nhân viên") — cùng ô quyền với /reports/employees (chủ nhà 03/11/2026).
+  "/bao-cao/nhan-vien": { module: "reports", feature: "reports.employees" },
   "/bao-cao/cuoi-ngay": { module: "reports", feature: "reports.end_of_day" },
   "/bao-cao/kho": { module: "reports", feature: "reports.inventory" },
   "/bao-cao/cong-no": { module: "receivables", feature: "receivables" },

@@ -43,8 +43,17 @@ tính chênh lệch: Hàng đi: lấy số liệu trên hóa đơn. Giá trên h
 cùng đơn vị tính) x số lượng"*.
 - Chênh = SL × (đơn giá trên HĐ − giá bảng của **đúng đơn vị dòng**), **trước thuế**. Bán thùng so với giá
   thùng (`giaNiemYetDonVi`), không lấy giá lon × hệ số khi thùng có giá riêng.
-- Hàng trả cùng luật (đơn giá phiếu trả − giá bảng cùng đơn vị). **Chênh thuần = chênh bán + chênh trả** (chủ nhà
-  12/10/2026, thay "bán − trả": *"Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi"*) — `chenhThuan`.
+- Hàng trả là hàng đi **tính âm** (chủ nhà 03/11/2026: *"phần chênh lệch trả tính sai: phải là giá trị âm"*): chênh trả =
+  (−SL trả) × (đơn giá phiếu trả − giá bảng cùng đơn vị) = giá bảng hàng trả − tiền trả (`chenhTra` / `chenhTraDong`). Trả lại
+  đúng giá đã bán trên bảng giá → **âm** (thu hồi); bán dưới bảng giá rồi trả → dương. **Chênh thuần = chênh bán + chênh trả**
+  (chủ nhà 12/10/2026, thay "bán − trả": *"Giá trị này npp đã trả cho nhân viên nên giờ cần thu hồi"*) — `chenhThuan`. Bản 12/10
+  giữ dấu hàng đi (`chenhDong` cho dòng trả) nên trả cùng giá ra dương, chênh net đội lên — đừng quay lại.
+- Ở "Hàng bán theo nhân viên" cột thuần tên là **Doanh thu net / Chênh lệch net** (chủ nhà 03/11/2026) — bảng, chi tiết, Excel.
+- **Báo cáo tổng hợp › Nhân viên** (`/bao-cao/nhan-vien`, chủ nhà 03/11/2026: *"Lôi cho tao riêng báo cáo này ra ngoài menu BÁO
+  CÁO TỔNG HỢP > Nhân viên (Lưu ý khi bấm vào từng nhân viên xem được chi tiết như bên báo cáo)"*) là CHÍNH trang Báo cáo › Nhân
+  viên chạy ở đường dẫn khác: `laManHangBanNv(usePathname())` → chỉ "Hàng bán theo nhân viên", ẩn ô Mối quan tâm
+  (`anMoiQuanTam`), không đọc giá vốn. Đừng chép bảng sang màn khác (hai bản = hai con số). Cùng ô quyền `reports.employees`.
+  Màn này không có đầu trang xanh + ☰ riêng → `hidesMobileAppBar` chừa nó ra (ẩn là điện thoại mất menu lẫn nút lùi).
 - Giảm giá cả đơn là cột riêng. Một luật cho hai báo cáo: `chenhDong` trong `src/lib/analytics/chenh-lech.ts`.
 - **Tổng chênh lệch = chênh thuần − giảm giá đơn** (chủ nhà 12/10/2026), chỉ ở cấp nhân viên — `tongChenhLech`.
 - **Doanh thu dòng nhân viên là TIỀN HOÁ ĐƠN** (gồm VAT, sau giảm giá đơn, làm tròn — khớp công nợ, `chotTienChungTu`), chênh

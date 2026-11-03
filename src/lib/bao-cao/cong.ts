@@ -35,7 +35,8 @@ export interface DongBan {
   sl: number
   /**
    * Giá trị niêm yết LÚC BÁN của dòng (bán hoặc trả) — `chenh-lech.ts` (chủ nhà 30/09/2026).
-   * Chênh = `tienTT − niemYet`; dòng không có `niemYet` (HĐ không dòng) không tính chênh.
+   * Chênh bán = `tienTT − niemYet`; dòng trả tính ÂM: `niemYet − tienTT` (`chenhTra`, chủ nhà 03/11/2026). Dòng không có
+   * `niemYet` (HĐ không dòng) không tính chênh.
    */
   niemYet?: number
   /** Tiền theo đơn giá trên chứng từ, TRƯỚC thuế và TRƯỚC giảm giá cả đơn: SL × đơn giá dòng. */

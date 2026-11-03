@@ -15,10 +15,10 @@ const api = (path: string, method: string, body?: unknown) =>
   fetch(`${FAKE}/rest/v1/${path}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
 const doiVai = (role: string) => api(`users?id=eq.${OWNER}`, "PATCH", { role })
 
-test("menu: nhóm Báo cáo tổng hợp đủ 6 mục, chỉ mục đang mở sáng; báo cáo cũ vẫn còn", async ({ page }) => {
+test("menu: nhóm Báo cáo tổng hợp đủ 7 mục (thêm Nhân viên 03/11/2026), chỉ mục đang mở sáng; báo cáo cũ vẫn còn", async ({ page }) => {
   await dangNhap(page)
   await page.getByRole("button", { name: /Báo cáo tổng hợp/ }).click()
-  for (const h of ["/bao-cao", "/bao-cao/ban-hang", "/bao-cao/cuoi-ngay", "/bao-cao/kho", "/bao-cao/cong-no", "/bao-cao/tai-chinh"]) {
+  for (const h of ["/bao-cao", "/bao-cao/ban-hang", "/bao-cao/nhan-vien", "/bao-cao/cuoi-ngay", "/bao-cao/kho", "/bao-cao/cong-no", "/bao-cao/tai-chinh"]) {
     await expect(page.locator(`a[href="${h}"]`).first()).toBeVisible()
   }
   await page.locator('a[href="/bao-cao/kho"]').first().click()

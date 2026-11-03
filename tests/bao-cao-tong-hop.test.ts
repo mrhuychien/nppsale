@@ -12,17 +12,21 @@ import type { Role } from "../src/lib/permissions"
 const doc = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf-8")
 
 describe("menu Báo cáo tổng hợp", () => {
-  it("đúng 6 màn, đúng thứ tự, mỗi màn có trang + khai quyền + mục menu", () => {
-    expect(BAO_CAO_TONG_HOP.map((m) => m.label)).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
+  it("đúng 7 màn (6 màn 26/09 + Nhân viên 03/11/2026), đúng thứ tự, mỗi màn có trang + khai quyền + mục menu + biểu tượng", () => {
+    expect(BAO_CAO_TONG_HOP.map((m) => m.label)).toEqual(["Tổng quan", "Bán hàng", "Nhân viên", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
     const sb = doc("src/components/layout/sidebar.tsx")
     expect(sb).toContain('label: "Báo cáo tổng hợp"')
+    const khung = doc("src/components/bao-cao/khung.tsx")
     for (const m of BAO_CAO_TONG_HOP) {
       expect(NAV_PERMISSION[m.href], m.href).toBeDefined()
       expect(sb, m.href).toContain(`href: "${m.href}"`)
+      // Menu ☰ trong màn đọc biểu tượng theo đường dẫn — thiếu là sập (`b.mau` của undefined).
+      expect(khung, m.href).toContain(`"${m.href}": { icon:`)
       const f = `src/app/(dashboard)${m.href}/page.tsx`
       expect(existsSync(resolve(__dirname, "..", f)), f).toBe(true)
-      // Màn thật theo thiết kế 26/09/2026 (không còn cổng tạm).
-      const man = { "/bao-cao": "ManTongQuan", "/bao-cao/ban-hang": "ManBanHang", "/bao-cao/cuoi-ngay": "ManCuoiNgay", "/bao-cao/kho": "ManKho", "/bao-cao/cong-no": "ManCongNo", "/bao-cao/tai-chinh": "ManTaiChinh" }[m.href]
+      // Màn thật theo thiết kế 26/09/2026 (không còn cổng tạm); Nhân viên là chính báo cáo Nhân viên (03/11/2026).
+      const man = { "/bao-cao": "ManTongQuan", "/bao-cao/ban-hang": "ManBanHang", "/bao-cao/nhan-vien": "BaoCaoNhanVien", "/bao-cao/cuoi-ngay": "ManCuoiNgay", "/bao-cao/kho": "ManKho", "/bao-cao/cong-no": "ManCongNo", "/bao-cao/tai-chinh": "ManTaiChinh" }[m.href]
+      expect(man, m.href).toBeDefined()
       expect(doc(f)).toContain(`<${man} />`)
       // Báo cáo cũ dẫn tới đều là đường dẫn đã khai quyền (không dẫn vào ngõ cụt).
       for (const c of m.cu) expect(NAV_PERMISSION[c.href] ?? CUA_VAO[c.href], c.href).toBeDefined()
@@ -34,12 +38,17 @@ describe("menu Báo cáo tổng hợp", () => {
   })
   it("quyền theo spec mục 9", () => {
     const thay = (r: Role) => BAO_CAO_TONG_HOP.filter((m) => canSeeHref(r, m.href)).map((m) => m.label)
-    expect(thay("owner")).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
-    expect(thay("manager")).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
-    expect(thay("accountant")).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
+    expect(thay("owner")).toEqual(["Tổng quan", "Bán hàng", "Nhân viên", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
+    expect(thay("manager")).toEqual(["Tổng quan", "Bán hàng", "Nhân viên", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
+    expect(thay("accountant")).toEqual(["Tổng quan", "Bán hàng", "Nhân viên", "Cuối ngày", "Kho", "Công nợ", "Tài chính"])
     expect(thay("warehouse")).toEqual(["Tổng quan", "Bán hàng", "Cuối ngày", "Kho"])
     expect(thay("sales")).toEqual(["Bán hàng", "Công nợ"])
     expect(duocVaoTrang("sales", "/bao-cao/tai-chinh", "reports")).toBe(false)
+    // Nhân viên đi CÙNG ô quyền với Báo cáo › Nhân viên — ai xem được báo cáo cũ thì thấy màn này, không ai khác.
+    expect(NAV_PERMISSION["/bao-cao/nhan-vien"]).toEqual(NAV_PERMISSION["/reports/employees"])
+    for (const r of ["owner", "manager", "accountant", "warehouse", "sales", "driver"] as Role[]) {
+      expect(duocVaoTrang(r, "/bao-cao/nhan-vien", "reports"), r).toBe(duocVaoTrang(r, "/reports/employees", "reports"))
+    }
     // Menu ☰ trong màn (điện thoại) lọc theo cùng luật cửa vào.
     expect(doc("src/components/bao-cao/khung.tsx")).toContain('duocVaoTrang(role, m.href, "reports")')
   })

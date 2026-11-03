@@ -149,6 +149,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Tổng quan", href: "/bao-cao", icon: LayoutDashboard },
       { label: "Bán hàng", href: "/bao-cao/ban-hang", icon: Receipt },
+      // Chủ nhà 03/11/2026: "Hàng bán theo nhân viên" đứng riêng ở đây (bấm từng nhân viên xem chi tiết).
+      { label: "Nhân viên", href: "/bao-cao/nhan-vien", icon: UserCog },
       { label: "Cuối ngày", href: "/bao-cao/cuoi-ngay", icon: FileBarChart2 },
       { label: "Kho", href: "/bao-cao/kho", icon: Boxes },
       { label: "Công nợ", href: "/bao-cao/cong-no", icon: CreditCard },

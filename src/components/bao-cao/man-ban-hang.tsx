@@ -22,7 +22,7 @@ import { useNap, nhoTam, layDanhMuc, luaChonLoc, tenGiaTri, xuatExcel } from "./
 import { chiTietBan, chiTietDat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { createClient } from "@/lib/supabase/client"
 import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
-import { chenhThuan, thueLamTronNv, tongChenhLech } from "@/lib/analytics/chenh-lech"
+import { chenhThuan, chenhTra, thueLamTronNv, tongChenhLech } from "@/lib/analytics/chenh-lech"
 import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, cuaSoNap, type Ky } from "@/lib/bao-cao/ky"
 import { hieuLuc, MAC_DINH_MAN, type BuocDao } from "@/lib/bao-cao/trang-thai"
 import { congBan, gomBan, congDat, gomDat, quaLoc, maChuaCoGiaVon, hienSoLuong, chuaXuatDong, CHUA_CO, type DanhMucBC, type DongBan, type DongDat, type LoaiLoc, type NhomBan, type NhomDat } from "@/lib/bao-cao/cong"
@@ -344,12 +344,14 @@ export function ManBanHang() {
               { k: "giamDon", label: "Giảm giá đơn", f: "money", v: (x) => (x.giamDon ? -x.giamDon : 0) },
               { k: "slTra", label: "SL trả", f: "qty", v: (x) => ({ t: hienSLTheoDonVi(x.rqtyDv), sub: "" }), coTong: true, wrap: true },
               { ...M.ret, label: "Giá trị trả", v: (x: NhomBC) => (x.ret ? -x.ret : 0) },
-              { k: "diffTra", label: "Chênh lệch trả", f: "money", v: (x) => (x.retTT || 0) - (x.rlisted || 0) },
+              /* Chủ nhà 03/11/2026: "phần chênh lệch trả tính sai: phải là giá trị âm" — hàng trả tính ÂM (`chenhTra`): trả lại
+                 đúng giá đã bán trên bảng giá → âm (thu hồi). Một luật với Báo cáo › Nhân viên. */
+              { k: "diffTra", label: "Chênh lệch trả", f: "money", v: (x) => chenhTra(x.retTT || 0, x.rlisted || 0) },
               M.net,
               /* Chủ nhà 12/10/2026: chênh thuần = chênh bán + chênh trả (`chenhThuan`) — chênh trả âm là phần thu hồi. */
-              { k: "diffNet", label: "Chênh lệch thuần", f: "money", v: (x) => chenhThuan((x.revTT || 0) - (x.listed || 0), (x.retTT || 0) - (x.rlisted || 0)) },
+              { k: "diffNet", label: "Chênh lệch thuần", f: "money", v: (x) => chenhThuan((x.revTT || 0) - (x.listed || 0), chenhTra(x.retTT || 0, x.rlisted || 0)) },
               /* Chủ nhà 12/10/2026: "Thêm cột tổng chênh lệch = chênh lệch thuần - giảm giá đơn" — một luật với Báo cáo › Nhân viên. */
-              { k: "tongChenh", label: "Tổng chênh lệch", f: "money", v: (x) => tongChenhLech(chenhThuan((x.revTT || 0) - (x.listed || 0), (x.retTT || 0) - (x.rlisted || 0)), x.giamDon) },
+              { k: "tongChenh", label: "Tổng chênh lệch", f: "money", v: (x) => tongChenhLech(chenhThuan((x.revTT || 0) - (x.listed || 0), chenhTra(x.retTT || 0, x.rlisted || 0)), x.giamDon) },
               ...(chiTieu
                 ? [
                     { k: "target", label: "Chỉ tiêu", f: "money", v: (x: NhomBC) => (x.k ? chiTieu : null), noTot: true } as CotBang<NhomBC>,

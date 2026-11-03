@@ -12,6 +12,14 @@ export interface ManBaoCao {
   cu: ReadonlyArray<{ href: string; label: string }>
 }
 
+/** Báo cáo tổng hợp › Nhân viên — mở báo cáo Nhân viên chỉ với "Hàng bán theo nhân viên" (chủ nhà 03/11/2026). */
+export const HREF_HANG_BAN_NV = "/bao-cao/nhan-vien"
+
+/** Trang báo cáo Nhân viên đang chạy ở vai màn riêng "Hàng bán theo nhân viên" không (đọc theo đường dẫn — một mã cho hai lối). */
+export function laManHangBanNv(path: string | null | undefined): boolean {
+  return path === HREF_HANG_BAN_NV
+}
+
 export const BAO_CAO_TONG_HOP: readonly ManBaoCao[] = [
   {
     href: "/bao-cao",
@@ -37,6 +45,15 @@ export const BAO_CAO_TONG_HOP: readonly ManBaoCao[] = [
       { href: "/analytics/products/overview", label: "Phân tích hàng hóa" },
       { href: "/analytics/customers/overview", label: "Phân tích khách hàng" },
     ],
+  },
+  {
+    /* Chủ nhà 03/11/2026: "Lôi cho tao riêng báo cáo này ra ngoài menu BÁO CÁO TỔNG HỢP > Nhân viên (Lưu ý khi bấm vào
+       từng nhân viên xem được chi tiết như bên báo cáo)" — CHÍNH "Hàng bán theo nhân viên" của Báo cáo › Nhân viên
+       (`laManHangBanNv`), không dựng bảng thứ hai. */
+    href: "/bao-cao/nhan-vien",
+    label: "Nhân viên",
+    cauHoi: "Mỗi nhân viên bán gì, bao nhiêu, chênh lệch giá bao nhiêu?",
+    cu: [{ href: "/reports/employees", label: "Báo cáo nhân viên — Hàng bán theo nhân viên" }],
   },
   {
     href: "/bao-cao/cuoi-ngay",

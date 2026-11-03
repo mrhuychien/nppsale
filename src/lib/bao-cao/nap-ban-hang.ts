@@ -149,7 +149,7 @@ export function dungDongBan(p: {
       conLai -= t
       const gvSp = gv?.byProduct.get(x.l.product_id) || 0
       const tong = slTheoSp.get(x.l.product_id) || 0
-      // Chênh trả: cùng luật hàng đi — giá trên phiếu trả so với giá bảng cùng đơn vị (chenh-lech.ts).
+      // Giá bảng + tiền theo giá phiếu trả của dòng; chênh trả (hàng trả tính âm) tính lúc gộp — `chenhTra` (chenh-lech.ts).
       const c = chenhDong(x.l, quyDoiTuDanhMuc(dm, x.l.product_id))
       dong.push({
         ...base, sp: x.l.product_id, tien: t, giaVon: tong ? (gvSp * x.sl) / tong : 0, sl: x.sl, niemYet: c.niemYet, tienTT: c.tien,

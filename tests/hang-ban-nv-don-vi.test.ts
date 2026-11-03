@@ -63,10 +63,12 @@ describe("Hàng bán theo nhân viên — chi tiết theo đơn vị tính", () 
     expect(hop.netQty).toBe(6)
     expect(hop.returnValue).toBe(92400)
     expect(hop.netRevenue).toBe(210000 - 92400)
-    expect(hop.diffReturn).toBe(4 * (21000 - 20000))
-    // Chủ nhà 12/10/2026: chênh thuần = chênh bán + chênh trả. Trả đúng giá đã bán CAO hơn bảng giá → chênh trả dương
-    // → chênh thuần TĂNG (đã báo chủ nhà).
-    expect(hop.diffNet).toBe(10000 + 4000)
+    // Chủ nhà 03/11/2026: "phần chênh lệch trả tính sai: phải là giá trị âm" — hàng trả tính ÂM: trả 4 hộp đúng giá đã bán
+    // (21.000, trên bảng giá 20.000) → (−4) × 1.000. Bản 12/10/2026 ra +4.000 và chênh net TĂNG lên 14.000.
+    expect(hop.diffReturn).toBe(-4 * (21000 - 20000))
+    // Chênh net = chênh bán + chênh trả = chênh của 6 hộp thực bán.
+    expect(hop.diffNet).toBe(10000 - 4000)
+    expect(hop.diffNet).toBe(hop.netQty * (21000 - 20000))
   })
 
   it("dòng Cộng của mặt hàng quy về đơn vị cơ sở: 3 thùng + 10 hộp = 82 hộp, trả 4 → thực bán 78", () => {

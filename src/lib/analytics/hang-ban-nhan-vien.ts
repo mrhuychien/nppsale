@@ -11,7 +11,7 @@
  *   sở, `./sl-theo-don-vi`); `qty` chỉ để sắp xếp, KHÔNG hiện.
  */
 import { giaNiemYetDonVi, heSoQuyDoi, soLuongCoSo, type SanPhamQuyDoi } from "./units"
-import { chenhDong, chenhThuan, giaBangCuaDong, thueLamTronNv, tongChenhLech } from "./chenh-lech"
+import { chenhDong, chenhThuan, chenhTraDong, giaBangCuaDong, thueLamTronNv, tongChenhLech } from "./chenh-lech"
 import { congSL, type SLTheoDonVi } from "./sl-theo-don-vi"
 
 export type SanPhamHangBan = SanPhamQuyDoi & { id: string; sku: string; name: string }
@@ -85,7 +85,8 @@ export interface HangBanSanPham {
   returnQtyTheoDv: SLTheoDonVi
   returnValue: number
   netRevenue: number
-  /** Giá bảng của hàng trả · chênh trả · chênh thuần = diff + diffReturn (`chenhThuan`, chủ nhà 12/10/2026). */
+  /** Giá bảng của hàng trả · chênh trả (hàng trả tính ÂM — `chenhTra`, chủ nhà 03/11/2026) · chênh thuần ("Chênh lệch net")
+   *  = diff + diffReturn (`chenhThuan`, chủ nhà 12/10/2026). */
   returnListed: number
   diffReturn: number
   diffNet: number
@@ -232,8 +233,9 @@ export function congHangBanNhanVien(input: {
     const heSo = heSoQuyDoi(sp, line.unit_name || "")
     const qty = soLuongCoSo(line.quantity, heSo)
     const value = Number(line.line_total || 0)
-    // Chênh trả: cùng luật hàng đi — giá trên phiếu trả so với giá bảng cùng đơn vị.
-    const c = chenhDong(line, sp)
+    /* Chênh trả: hàng trả là hàng đi TÍNH ÂM — (−SL) × (giá phiếu trả − giá bảng cùng đơn vị) (chủ nhà 03/11/2026: "phải là
+       giá trị âm"). Trả lại đúng giá đã bán trên bảng giá → âm, thu hồi phần chênh của số hàng ấy. */
+    const c = chenhTraDong(line, sp)
     const r = dong(uid)
     r.returnQty += qty
     congSL(r.returnQtyTheoDv, sp?.base_unit, qty)

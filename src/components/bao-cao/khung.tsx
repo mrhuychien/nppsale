@@ -8,7 +8,7 @@
  *   `‹ bước trước` + ✕.
  */
 import { useState, type ReactNode } from "react"
-import { BarChart3, ChevronRight, CreditCard, Download, FileText, Menu, Package, Printer, Receipt, ShoppingCart, X, type LucideIcon } from "lucide-react"
+import { BarChart3, ChevronRight, CreditCard, Download, FileText, Menu, Package, Printer, Receipt, ShoppingCart, UserCog, X, type LucideIcon } from "lucide-react"
 import Link from "@/components/ui/link"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -20,6 +20,7 @@ import type { Role } from "@/lib/permissions"
 export const BIEU_TUONG_MAN: Record<string, { icon: LucideIcon; mau: string }> = {
   "/bao-cao": { icon: BarChart3, mau: "bg-blue-50 text-blue-600 dark:bg-blue-950/40" },
   "/bao-cao/ban-hang": { icon: ShoppingCart, mau: "bg-violet-50 text-violet-600 dark:bg-violet-950/40" },
+  "/bao-cao/nhan-vien": { icon: UserCog, mau: "bg-teal-50 text-teal-700 dark:bg-teal-950/40" },
   "/bao-cao/cuoi-ngay": { icon: Receipt, mau: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" },
   "/bao-cao/kho": { icon: Package, mau: "bg-amber-50 text-amber-700 dark:bg-amber-950/40" },
   "/bao-cao/cong-no": { icon: CreditCard, mau: "bg-pink-50 text-pink-700 dark:bg-pink-950/40" },
@@ -161,7 +162,7 @@ export function MenuBaoCao({ role, hienTai, onChon }: { role: Role | null | unde
           </Link>
         )
       })}
-      <div className="mt-2 border-t px-2.5 pt-3 text-xs leading-relaxed text-muted-foreground">Menu báo cáo cũ vẫn chạy song song, chỉ gỡ khi 6 màn mới đã dùng ổn.</div>
+      <div className="mt-2 border-t px-2.5 pt-3 text-xs leading-relaxed text-muted-foreground">Menu báo cáo cũ vẫn chạy song song, chỉ gỡ khi các màn mới đã dùng ổn.</div>
     </div>
   )
 }

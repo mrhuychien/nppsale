@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
-import { chenhDong, giaBangCuaDong } from "@/lib/analytics/chenh-lech"
+import { chenhDong, chenhTra, chenhTraDong, giaBangCuaDong } from "@/lib/analytics/chenh-lech"
 import { congHangBanNhanVien } from "@/lib/analytics/hang-ban-nhan-vien"
 import { dungDongBan } from "@/lib/bao-cao/nap-ban-hang"
 import { gomBan, type DanhMucBC } from "@/lib/bao-cao/cong"
@@ -37,8 +37,11 @@ describe("chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị)", () 
   it("mặt hàng chưa có giá bảng: chênh 0, không chênh cả doanh thu", () => {
     expect(chenhDong({ unit_name: "gói", quantity: 3, unit_price: 50, line_total: 150 }, { base_unit: "gói", sell_price: 0, price_lists: [] }).chenh).toBe(0)
   })
-  it("hàng trả: tiền trước thuế (line_total có VAT không dùng)", () => {
-    expect(chenhDong({ unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, SP)).toEqual({ tien: 450, niemYet: 500, chenh: -50 })
+  it("hàng trả: tiền trước thuế (line_total có VAT không dùng); hàng trả tính ÂM (chủ nhà 03/11/2026)", () => {
+    // Trả 5 lon giá 90 (dưới bảng giá 100): (−5) × (90 − 100) = +50.
+    expect(chenhTraDong({ unit_name: "lon", quantity: 5, unit_price: 90, line_total: 486 }, SP)).toEqual({ tien: 450, niemYet: 500, chenh: 50 })
+    // Trả 5 lon giá 110 (trên bảng giá): (−5) × (110 − 100) = −50 — "phải là giá trị âm".
+    expect(chenhTraDong({ unit_name: "lon", quantity: 5, unit_price: 110, line_total: 594 }, SP).chenh).toBe(-50)
   })
   it("congHangBanNhanVien: chênh thuần = chênh bán + chênh trả (chủ nhà 12/10/2026); giảm giá đơn cột riêng", () => {
     const [r] = congHangBanNhanVien({
@@ -50,9 +53,10 @@ describe("chênh = SL × (giá trên HĐ − giá bảng cùng đơn vị)", () 
     expect(r.listed).toBe(8000)
     expect(r.diff).toBe(-800)
     expect(r.returnListed).toBe(500)
-    expect(r.diffReturn).toBe(-50)
-    // Trả 5 lon giá 90 (dưới bảng giá 100) → chênh trả −50 là phần thu hồi: −800 + (−50).
-    expect(r.diffNet).toBe(-850)
+    // Bán 80 lon giá 90 (dưới bảng giá 100), khách trả 5 lon cùng giá → chênh trả +50 (trả lại phần NV đã chịu cho 5 lon
+    // ấy): net = −800 + 50 = −750 = 75 lon thực bán × (90 − 100).
+    expect(r.diffReturn).toBe(50)
+    expect(r.diffNet).toBe(-750)
     expect(r.docDiscount, "giảm giá đơn cột riêng").toBe(720)
   })
 })
@@ -77,12 +81,12 @@ describe("Báo cáo tổng hợp › Theo nhân viên dùng cùng luật", () =>
     expect(g.listed).toBe(8000)
     expect(g.revTT - g.listed, "chênh bán = 80 × (90 − 100)").toBe(-800)
     expect(g.giamDon, "giảm giá đơn = 7.200 − 6.480, tính riêng").toBe(720)
-    expect(g.retTT - g.rlisted, "chênh trả = 5 × (90 − 100)").toBe(-50)
+    expect(chenhTra(g.retTT, g.rlisted), "chênh trả = (−5) × (90 − 100) — hàng trả tính âm").toBe(50)
   })
   it("màn hiện đủ cột chênh bán / trả / thuần", () => {
     const s = readFileSync("src/components/bao-cao/man-ban-hang.tsx", "utf8")
     expect(s).toContain('label: "Chênh lệch bán", f: "money", v: (x) => (x.revTT || 0) - (x.listed || 0)')
-    expect(s).toContain('label: "Chênh lệch trả", f: "money", v: (x) => (x.retTT || 0) - (x.rlisted || 0)')
+    expect(s).toContain('label: "Chênh lệch trả", f: "money", v: (x) => chenhTra(x.retTT || 0, x.rlisted || 0)')
     expect(s).toContain('label: "Chênh lệch thuần"')
     expect(s).toContain('label: "Giảm giá đơn"')
   })

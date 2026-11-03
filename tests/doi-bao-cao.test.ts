@@ -10,7 +10,7 @@
  *  - invoice_date là DATE: so ngày theo giờ VN; công nợ không kẹp 0.
  */
 import { describe, it, expect } from "vitest"
-import { chenhDong, giaBangCuaDong } from "../src/lib/analytics/chenh-lech"
+import { chenhDong, chenhThuan, chenhTraDong, giaBangCuaDong } from "../src/lib/analytics/chenh-lech"
 import { heSoQuyDoi, soLuongCoSo, giaNiemYetDonVi, type SanPhamQuyDoi } from "../src/lib/analytics/units"
 import { dungDongBan, tuMotLuot } from "../src/lib/bao-cao/nap-ban-hang"
 import { congBan, gomBan, danhMucRong, type DanhMucBC } from "../src/lib/bao-cao/cong"
@@ -117,10 +117,11 @@ describe("chenhDong — SL × (đơn giá chứng từ − giá bảng cùng đ�
   it("đơn vị Loc 6 không có giá riêng: so với 6 × 10.000", () => {
     expect(chenhDong({ unit_name: "Loc 6", conversion_factor: 6, quantity: 2, unit_price: 55000, line_total: 110000 }, P1).chenh).toBe(-10000)
   })
-  it("chênh thuần = chênh bán − chênh trả (cùng luật)", () => {
+  it("chênh thuần = chênh bán + chênh trả, hàng trả tính âm (chủ nhà 12/10 + 03/11/2026)", () => {
     const ban = chenhDong({ unit_name: "Thung 24", conversion_factor: 24, quantity: 2, unit_price: 240000, line_total: 480000 }, P1).chenh
-    const tra = chenhDong({ unit_name: "Thung 24", quantity: 1, unit_price: 240000, line_total: 264000 }, P1).chenh
-    expect(ban - tra).toBe(12000)
+    const tra = chenhTraDong({ unit_name: "Thung 24", quantity: 1, unit_price: 240000, line_total: 264000 }, P1).chenh
+    expect(tra).toBe(-12000)
+    expect(chenhThuan(ban, tra)).toBe(12000)
   })
 })
 

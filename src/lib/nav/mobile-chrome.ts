@@ -1,3 +1,5 @@
+import { laManHangBanNv } from "./bao-cao-tong-hop"
+
 /**
  * Màn nào được có thanh nav dưới màn hình.
  *
@@ -126,7 +128,9 @@ export function hidesMobileAppBar(pathname: string): boolean {
     pathname === "/returns/new" ||
     laSuaPhieuNcc(pathname) ||
     pathname === "/bao-cao" ||
-    pathname.startsWith("/bao-cao/")
+    /* ⚠ TRỪ Báo cáo tổng hợp › Nhân viên (chủ nhà 03/11/2026): màn ấy là báo cáo Nhân viên (khung `ReportShell`), KHÔNG có
+       đầu trang xanh + ☰ riêng — ẩn app bar chuẩn là điện thoại mất cả menu lẫn nút quay lại. */
+    (pathname.startsWith("/bao-cao/") && !laManHangBanNv(pathname))
   )
 }
 

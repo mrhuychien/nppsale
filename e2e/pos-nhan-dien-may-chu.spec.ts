@@ -62,6 +62,12 @@ test("câu RSC / fetch của Next KHÔNG bị chuyển (POS vẫn mở tab mới
   })
   expect(moTrang.status()).toBe(307)
   expect(moTrang.headers()["location"]).toMatch(/\/pos\/hoa-don\/moi\?order=o-e2e-1$/)
+  // Service worker tự gửi lượt mở trang (không có tải trước điều hướng): Chromium gắn dest "empty" + mode "navigate"
+  // (đo bản build 03/11/2026). `next dev` không đăng ký SW nên giả đúng bộ header ấy.
+  const quaSW = await page.request.get("/sales-invoices/new?order=o-e2e-1", {
+    headers: { Accept: "text/html,application/xhtml+xml", "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "navigate" }, maxRedirects: 0,
+  })
+  expect(quaSW.status()).toBe(307)
 })
 
 test.describe("điện thoại", () => {

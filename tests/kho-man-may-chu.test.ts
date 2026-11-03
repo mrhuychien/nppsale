@@ -75,6 +75,20 @@ describe("middleware: máy tính mở lối POS cũ → chuyển thẳng đích 
     expect(dichPosMayChu({ method: "GET", pathname: u.pathname, search: u.search, kho: "rong", accept: HTML })).toBe("/pos/hoa-don/moi?order=o-1")
   })
 
+  it("service worker tự gửi lượt mở trang (không có tải trước): dest 'empty' + mode 'navigate' vẫn là mở trang", () => {
+    const duong = "/sales-invoices/new?order=o-1"
+    // Header thật đo trên bản build 03/11/2026 (Chromium, SW `fetch(event.request)`).
+    expect(moTrang(duong, "rong", { dest: "empty", mode: "navigate" })).toBe("/pos/hoa-don/moi?order=o-1")
+    // Câu RSC / fetch của Next: mode cors / same-origin / no-cors — không bao giờ navigate (script không tạo được).
+    for (const mode of ["cors", "same-origin", "no-cors", null]) {
+      expect(moTrang(duong, "rong", { dest: "empty", mode }), String(mode)).toBeNull()
+    }
+    // Khung con điều hướng (mode navigate, dest iframe) vẫn để yên.
+    expect(moTrang(duong, "rong", { dest: "iframe", mode: "navigate" })).toBeNull()
+    // Tải trước điều hướng của SW / trình duyệt mở thẳng: dest document.
+    expect(moTrang(duong, "rong", { dest: "document", mode: "navigate" })).toBe("/pos/hoa-don/moi?order=o-1")
+  })
+
   it("đường không phải lối POS → để yên (kể cả /sell?mode=return, /sales-invoices/new không kèm đơn, chính /pos)", () => {
     for (const d of ["/orders", "/sell?mode=return", "/sales-invoices/new", "/pos/hoa-don/moi?order=o-1", "/sell/cart"]) {
       expect(moTrang(d, "rong"), d).toBeNull()
@@ -88,6 +102,7 @@ describe("middleware: máy tính mở lối POS cũ → chuyển thẳng đích 
     expect(i).toBeGreaterThan(-1)
     expect(j).toBeGreaterThan(i)
     expect(mw).toContain("NextResponse.redirect(new URL(dichPos, request.url), 307)")
+    expect(mw).toContain('mode: request.headers.get("sec-fetch-mode"),')
     expect(readFileSync(resolve(__dirname, "..", "src/app/layout.tsx"), "utf-8")).toContain("<GhiKhoMan />")
   })
 })

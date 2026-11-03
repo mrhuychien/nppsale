@@ -173,9 +173,12 @@ vào chưa mở tab mới"*.
   cửa sổ, ngưỡng `POS_MIN_WIDTH`); middleware thấy `rong` + lượt **mở trang** vào lối POS cũ thì trả **307** sang đích POS
   trước khi dựng màn cũ (`dichPosMayChu`, `src/lib/nav/kho-man.ts`) — dấu trang, chuột giữa, link dán Zalo hết đi vòng (bản
   build, CPU ×4: 3,0–3,5 s / 18–21 câu / ~1,7 MB → 2,3–2,7 s / 11–13 câu / 82 KB). Lượt mở trang = `GET` + `Accept: text/html`
-  + `Sec-Fetch-Dest: document`: Next **gỡ** header `RSC` / `Next-Router-Prefetch` trước middleware nên đừng dựa vào chúng —
-  chuyển câu RSC là kéo POS vào ngay tab cũ (ngược luật tab mới). Không cookie / `hep` thì để yên (đoán "rộng" ở máy chủ là
-  đẩy điện thoại vào POS 1.400 px); `PosDesktopRedirect` vẫn là đường lùi. E2E: `e2e/pos-nhan-dien-may-chu.spec.ts`.
+  + `Sec-Fetch-Dest: document` — **hoặc `empty` kèm `Sec-Fetch-Mode: navigate`**: service worker tự `fetch(event.request)` khi
+  không có tải trước điều hướng thì Chromium gắn thế (đo bản build; thiếu nhánh này đường ấy dựng trọn màn cũ, 1,3 s thay vì
+  0,6 s). Next **gỡ** header `RSC` / `Next-Router-Prefetch` trước middleware nên đừng dựa vào chúng — câu RSC là `fetch`
+  (mode `cors` / `same-origin`, Accept `*/*`); chuyển nó là kéo POS vào ngay tab cũ (ngược luật tab mới). Không cookie / `hep`
+  thì để yên (đoán "rộng" ở máy chủ là đẩy điện thoại vào POS 1.400 px); `PosDesktopRedirect` vẫn là đường lùi. E2E (không có
+  SW — `next dev`): `e2e/pos-nhan-dien-may-chu.spec.ts`; đường SW chỉ thử được trên bản build.
 
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.

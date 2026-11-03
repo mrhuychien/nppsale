@@ -49,6 +49,7 @@ export async function middleware(request: NextRequest) {
     prefetch: request.headers.get("next-router-prefetch") ?? request.headers.get("x-middleware-prefetch"),
     purpose: request.headers.get("sec-purpose") ?? request.headers.get("purpose"),
     dest: request.headers.get("sec-fetch-dest"),
+    mode: request.headers.get("sec-fetch-mode"),
     accept: request.headers.get("accept"),
   })
   if (dichPos) return NextResponse.redirect(new URL(dichPos, request.url), 307)

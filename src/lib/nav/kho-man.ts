@@ -44,8 +44,10 @@ export interface YeuCauMoTrang {
   prefetch?: string | null
   /** Header `Purpose` / `Sec-Purpose` (trình duyệt tải trước). */
   purpose?: string | null
-  /** Header `Sec-Fetch-Dest` — có thì phải là `document`. */
+  /** Header `Sec-Fetch-Dest` — có thì phải là `document` (hoặc `empty` kèm mode `navigate`, xem `dichPosMayChu`). */
   dest?: string | null
+  /** Header `Sec-Fetch-Mode` — `navigate` chỉ có ở lượt mở trang: script không tạo được câu `fetch` mode `navigate`. */
+  mode?: string | null
   /** Header `Accept` — lượt mở trang của trình duyệt luôn xin `text/html`; câu `fetch` (RSC của Next) thì `*\/*`. */
   accept?: string | null
 }
@@ -59,12 +61,15 @@ export interface YeuCauMoTrang {
  *   `Accept` + `Sec-Fetch-Dest` do trình duyệt gắn; hai header của Next chỉ là chặn thêm nếu bản Next sau còn để lại.
  * ⚠ CHỈ KHI COOKIE NÓI "rong". Không cookie (lần đầu trên máy) / "hep" (điện thoại, cửa sổ hẹp) → để màn cũ tự lo — đoán
  *   "rộng" ở máy chủ là đẩy điện thoại sang màn POS 1.400 px không dùng được.
+ * ⚠ SERVICE WORKER TỰ GỬI lượt mở trang (`fetch(event.request)` khi không có tải trước điều hướng) thì Chromium gắn
+ *   `Sec-Fetch-Dest: empty` + `Sec-Fetch-Mode: navigate` (đo bản build 03/11/2026 — chỉ nhận `document` là đường ấy dựng
+ *   trọn màn cũ). Nhận `empty` khi mode là `navigate`; câu RSC của Next là `fetch` → mode `cors` / `same-origin`, không lọt.
  */
 export function dichPosMayChu(y: YeuCauMoTrang): string | null {
   if (y.method !== "GET" || y.kho !== "rong") return null
   if (!/text\/html/i.test(y.accept ?? "")) return null
   if (y.rsc || y.prefetch) return null
   if (/prefetch|prerender/i.test(y.purpose ?? "")) return null
-  if (y.dest && y.dest !== "document") return null
+  if (y.dest && y.dest !== "document" && !(y.dest === "empty" && y.mode === "navigate")) return null
   return posTargetFor(`${y.pathname}${y.search}`)
 }

@@ -55,7 +55,14 @@ c5 AS (  -- 5. Cài đặt bộ nhớ của Postgres
                     'effective_cache_size', 'max_worker_processes', 'autovacuum_max_workers', 'autovacuum_work_mem',
                     'max_wal_senders', 'max_replication_slots', 'huge_pages', 'temp_buffers', 'wal_buffers',
                     'shared_preload_libraries', 'max_parallel_workers_per_gather', 'idle_session_timeout',
-                    'cron.max_running_jobs', 'cron.use_background_workers', 'pg_net.batch_size')
+                    'cron.max_running_jobs', 'cron.use_background_workers', 'pg_net.batch_size',
+                    -- huge_pages_status = on (Postgres 17+): bộ đệm khoá cứng trong RAM, không đẩy ra swap được
+                    'server_version', 'huge_pages_status', 'huge_page_size', 'shared_memory_size',
+                    'shared_memory_size_in_huge_pages',
+                    -- phần nạp sẵn có thể đo / ghi log MỌI câu (tốn thêm nếu bật)
+                    'auto_explain.log_min_duration', 'auto_explain.log_analyze', 'pgaudit.log', 'plpgsql_check.mode',
+                    'plpgsql_check.profiler', 'log_min_duration_statement', 'log_statement', 'track_io_timing',
+                    'pg_stat_statements.track', 'pg_stat_statements.max')
 ),
 c6 AS (  -- 6. Câu được gọi NHIỀU NHẤT (hỏi định kỳ, câu nhỏ lặp lại) — cộng dồn từ lần đặt lại thống kê gần nhất
   SELECT '6. GỌI NHIỀU NHẤT', row_number() OVER (ORDER BY s.calls DESC),
@@ -63,6 +70,7 @@ c6 AS (  -- 6. Câu được gọi NHIỀU NHẤT (hỏi định kỳ, câu nh�
          'TB ' || round(s.mean_exec_time::numeric, 1) || ' ms · tổng ' || round(s.total_exec_time::numeric / 1000) || ' s · '
            || coalesce((SELECT r.rolname::text FROM pg_roles r WHERE r.oid = s.userid), '?')
     FROM extensions.pg_stat_statements s
+   WHERE s.query NOT LIKE '%binary_upgrade%'  -- câu của bước nâng Postgres (pg_upgrade), không phải của app
    ORDER BY s.calls DESC
    LIMIT 20
 ),
@@ -79,6 +87,9 @@ c8 AS (  -- 8. Tổng quát: số tiến trình Postgres, cỡ sổ, đọc trú
   SELECT '8. TỔNG QUÁT', 1::bigint, 'tiến trình Postgres đang có', (SELECT count(*) FROM pg_stat_activity)::numeric,
          'trong đó kết nối của app (authenticator): ' || (SELECT count(*) FROM pg_stat_activity WHERE usename = 'authenticator')
   UNION ALL SELECT '8. TỔNG QUÁT', 2, 'cỡ sổ', round(pg_database_size(current_database()) / 1048576.0, 1), 'MB'
+  UNION ALL SELECT '8. TỔNG QUÁT', 8, 'máy sổ khởi động lúc (giờ VN)', NULL::numeric,
+         to_char(pg_postmaster_start_time() AT TIME ZONE 'Asia/Ho_Chi_Minh', 'DD/MM/YYYY HH24:MI')
+           || ' · đã chạy ' || round(extract(epoch FROM now() - pg_postmaster_start_time()) / 3600, 1) || ' giờ'
   UNION ALL SELECT '8. TỔNG QUÁT', 3, 'đọc trúng bộ đệm (shared_buffers)',
          (SELECT round(100.0 * d.blks_hit / nullif(d.blks_hit + d.blks_read, 0), 2) FROM pg_stat_database d
            WHERE d.datname = current_database())::numeric,

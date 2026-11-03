@@ -337,12 +337,22 @@ không ai huỷ, chính bộ hẹn giờ 10 giây của app cắt câu.
   đặt, câu gọi nhiều nhất, bảng lớn nhất mọi schema, tỉ lệ đọc trúng bộ đệm. Bảng Realtime / pg_cron đọc qua `query_to_xml`
   SAU phép kiểm USAGE schema + SELECT bảng (`bang.doc_duoc`, tra qua catalog — `to_regclass('cron.job')` vẫn ném lỗi khi thiếu
   USAGE): thiếu quyền một bảng là mất cả bảng kết quả. Bộ thử: `scripts/sql/thu-kham-bo-nho.sql` (vai đủ quyền + vai thường,
-  ROLLBACK). **Hạ `shared_buffers` không bớt RAM thật** khi sổ nhỏ hơn bộ đệm (sổ ~60–70 MB < 224 MB — trang bộ đệm chỉ chiếm
-  bộ nhớ khi đã đọc tới), chỉ đổi con số commitment: đừng đề xuất như cách chữa swap. **Gói Free không có sao lưu tự động**
-  (Pro: hằng ngày, giữ 7 ngày).
-- Chuông thông báo (`notification-bell.tsx`) và khoá sửa đơn (`use-entity-lock.ts`) nghe `postgres_changes`, nhưng chưa
-  migration nào thêm `notifications` / `entity_locks` vào publication `supabase_realtime` — trừ khi đã bật tay ở dashboard thì
-  chưa từng nhận thay đổi nào, mà Realtime vẫn giữ đăng ký trên máy sổ. Phần 3 / 6 / 9 của câu khám cho biết thật.
+  ROLLBACK). **Hạ `shared_buffers` không bớt RAM thật** khi sổ nhỏ hơn bộ đệm (sổ 56,6 MB < 224 MB, đọc trúng 99,3% — trang
+  bộ đệm chỉ chiếm bộ nhớ khi đã đọc tới), chỉ đổi con số commitment: đừng đề xuất như cách chữa swap — TRỪ KHI
+  `huge_pages_status = on` (bộ đệm nằm trên huge pages là khoá cứng trong RAM, không ra swap được; câu khám phần 5 có dòng
+  này từ Postgres 17). **Gói Free không có sao lưu tự động** (Pro: hằng ngày, giữ 7 ngày).
+- **Sổ thật từ 04/11/2026: Postgres 17 + PostgREST 14** (câu khám 0h40: `walsummarizer`, pg_stat_statements 1.11, câu
+  `binary_upgrade_*` của pg_upgrade lúc ~0h03; cỡ máy vẫn Nano — effective_cache_size 384 MB, max_connections 60). Sổ thử /
+  e2e ở máy dev vẫn PG16 + PostgREST 12.2.3. Đã soát luật search_path an toàn lúc bảo trì của PG17: chỉ mục gọi hàm tự viết
+  duy nhất là `normalize_phone` (mig 104, toàn hàm có sẵn), không có materialized view — không vướng.
+- **pg_cron CHƯA bật** trên sổ thật (không có schema `cron`, chỉ có tiến trình launcher nạp sẵn): lịch dọn khoá mỗi phút của
+  mig 053 chưa từng chạy — khoá treo chỉ được dọn lúc có người mở khoá (mig 046). Đừng tính nó là chỗ tốn.
+- **Chuông thông báo + khoá sửa đơn: Realtime chưa từng nhận gì** (câu khám 04/11/2026: publication `supabase_realtime`
+  không có bảng nào — chỉ `supabase_realtime_messages_publication` → `realtime.messages_*` nội bộ; 0 đăng ký, không có khe):
+  `notification-bell.tsx` / `use-entity-lock.ts` nghe `postgres_changes` trên `notifications` / `entity_locks` nên số trên
+  chuông chỉ đổi khi tải lại trang hoặc bấm mở chuông (`khoTB.daDoc` giữ qua các lần chuyển màn), màn sửa đơn không tự biết
+  người kia đã nhả khoá. Sửa thì đổi sang hỏi lại (quay lại tab / định
+  kỳ khi tab đang mở) — đừng "bật Realtime cho bảng" (mỗi lần ghi bảng là máy sổ giải nhật ký cho Realtime).
 
 ### Tải trang: hồ sơ gửi kèm, không hỏi nối đuôi
 Chủ nhà 23/10/2026: *"tốc độ load trang chậm lắm"* (đo bản build production, điện thoại 4G + CPU ×4).

@@ -204,10 +204,16 @@ Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi
 ### Thêm khách hàng: TÌM khách đã có trước khi tạo
 Chủ nhà 06/06/2026: *"trước khi NV sale thêm KH mới, cần check trùng (theo SĐT, địa chỉ, tên). Nếu KH đã tồn tại — kể
 cả do NV khác phụ trách — cho phép sale 'thêm vào danh sách của tôi' thay vì tạo trùng"*; 14/10/2026: *"…trên điện thoại
-của nhân viên mất phần tìm khách hàng đã có trước khi tạo rồi"*.
-- `/customers/new` máy tính **và điện thoại**: bước "Tìm khách hàng đã có" trước (`CustomerDupeFinder` /
-  `TimKhachTruocKhiTao`, một đường tìm `useDoTrungKhach` → `search_customer_dupes`, thấy cả khách NV khác). Tới bằng
-  `?sdt=` (đã tìm số không ra, chủ nhà 01/10/2026) thì vào thẳng form gán sẵn số. "Thêm khách khác" về bước tìm.
+của nhân viên mất phần tìm khách hàng đã có trước khi tạo rồi"*; 03/11/2026: *"em rà soát luôn tất cả các chỗ tạo khách
+hàng đều phải qua bước lọc trùng nhé"*.
+- **MỌI lối tạo khách qua bước lọc trùng SĐT** — không có đường tắt vào thẳng form: `/customers/new` (máy tính + điện
+  thoại, kể cả `?sdt=`), khung tạo nhanh `TaoNhanhKhach` (đơn /sell, phiếu thu, trả hàng, tuyến — cả hai khổ), nhập Excel.
+  POS không có nút tạo khách. Thêm lối tạo khách mới thì đi qua bước này — ô tìm của phiếu / danh sách chỉ thấy khách CỦA
+  MÌNH (RLS), không ra ≠ số chưa có khách.
+- `/customers/new`: bước "Tìm khách hàng đã có" trước (`CustomerDupeFinder` / `TimKhachTruocKhiTao`, một đường tìm
+  `useDoTrungKhach` → `search_customer_dupes`, thấy cả khách NV khác). Tới bằng `?sdt=` (đã tìm số không ra ở danh sách,
+  chủ nhà 01/10/2026) thì số **điền sẵn ở bước tìm** (dò ngay) rồi đi theo sang form — luật 01/10 "vào thẳng form" đã bỏ
+  (03/11/2026). "Thêm khách khác" về bước tìm.
 - **Tìm ra khách thì KHOÁ nút "Tạo khách hàng mới"** (chủ nhà 20/10/2026: *"khi tìm kiếm ở màn tạo khách hàng này đã có
   kết quả thì nút tạo khách hàng mới không bấm được để ngăn tạo trùng khi đã có, khi không có kết quả tìm kiếm mới bấm
   được"*): số đủ mà kết quả chưa về cũng khoá; chưa gõ / số chưa đủ thì bấm được (form vẫn chặn trùng số). Một luật cho
@@ -217,6 +223,18 @@ của nhân viên mất phần tìm khách hàng đã có trước khi tạo r�
   Đừng nới lại thành tìm từng phần — hàm SECURITY DEFINER, tìm từng phần là lộ khách của nhân viên khác.
 - Nhận khách: `nhanKhachVeDanhSach` (`claim_customer_for_me`, chỉ vai sales). NVBH chưa nhận thì **không** đưa link
   mở khách (RLS — trang trống). Form điện thoại trùng SĐT → nút "Thêm vào DS của tôi" (tạo nhanh: nhận xong chọn luôn).
+- **Tạo nhanh hai bước** (chủ nhà 03/11/2026: *"tạo đơn hàng trên điện thoại bấm Tạo khách hàng -> vẫn phải qua bước lọc
+  trùng số điện thoại chứ ko được đến thẳng màn tạo khách hàng"*): `TaoNhanhKhach` = bước tìm rồi mới form — điện thoại
+  `TimKhachTruocKhiTao` → `TaoKhachDienThoai` (`HaiBuocDienThoai`: lùi ở bước tìm = đóng khung, lùi ở form = về bước tìm),
+  máy tính `CustomerDupeFinder` → `CustomerForm` (`HaiBuocMayTinh`: "Hủy" ở form đóng hộp thoại như cũ). Chữ đang tìm là số
+  thì điền sẵn ở bước tìm (dò ngay), là tên thì mang sang ô tên. Tìm ra khách dùng được → "Chọn khách này"; NVBH chưa nhận
+  → "Thêm vào DS của tôi và chọn…" (`onChon`). Link "Xem" khách chỉ khi mở được (NVBH đã nhận / không phải NVBH — RLS).
+- **Nhập Excel lọc trùng TRƯỚC khi nhập** (`kiemTrungSdtHangLoat`, `src/lib/customers/kiem-trung-hang-loat.ts`): đọc file xong
+  hỏi `search_customer_dupes` (GET — hàm STABLE) từng số đủ, 8 lệnh cùng lúc; dòng trùng hiện "Trùng SĐT: đã có “…”" và
+  bị bỏ qua; chưa lọc xong / lọc hỏng thì **không cho nhập** (nút "Kiểm lại"). Đừng quay lại đối chiếu bằng đọc thẳng
+  `customers.phone`: dưới RLS NVBH chỉ thấy khách của mình. Số lưu chuẩn hoá như tạo tay (`sdtDeLuu` → `chuanHoaSdt`) —
+  UNIQUE(org_id, phone) so NGUYÊN VĂN, "0911.111.111" lưu thô là khách thứ hai cùng số. Lô bị từ chối vì trùng (số vừa
+  được tạo ở nơi khác) thì ghi lại từng dòng, dòng trùng bỏ qua.
 
 ### Bàn giao khách giữa nhân viên + hàng khách đã lấy
 Chủ nhà 15/10/2026 (mig 246): *"Gán cho toàn bộ khách hàng của nv A cho nv B (làm chung khách hàng) Hoặc là như kiểu bàn

@@ -121,11 +121,15 @@ describe("nhắc khách chưa gán tuyến", () => {
 
 describe("nối dây", () => {
   const read = (f: string) => readFileSync(f, "utf8")
-  it("điện thoại vào màn mới, SĐT từ ?sdt=; máy tính gán SĐT vào form", () => {
+  it("?sdt= điền sẵn số ở BƯỚC LỌC TRÙNG (cả hai khổ), số đi theo sang form", () => {
     const s = read("src/app/(dashboard)/customers/new/page.tsx")
     expect(s).toContain('sdtTuTimKiem(params.get("sdt"))')
-    // ?sdt= vào thẳng form gán sẵn số; không có thì bước tìm khách đã có trước (chủ nhà 14/10/2026).
-    expect(s).toContain("<TaoKhachDienThoai groups={groups} nextHref={next} sdtBanDau={sdtTim} onThemKhachKhac={veBuocTim} />")
+    /* ⚠ Chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng" — bỏ luật 01/10/2026 "?sdt= vào
+       thẳng form": ô tìm của danh sách chỉ thấy khách của mình (RLS), không ra ≠ số chưa có khách. */
+    expect(s).toContain("const [chuTim, setChuTim] = useState(sdtTim)")
+    expect(s).toContain("initialQuery={sdtTim}")
+    expect(s).not.toContain("vaoThangForm")
+    expect(s).not.toContain("showForm || sdtTim")
     expect(s).toContain("initialPhone={sdtDaTim}")
   })
   it("tìm không ra → nút tạo khách mới kèm số (danh sách khách + chọn khách /sell)", () => {

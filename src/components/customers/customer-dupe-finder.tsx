@@ -11,20 +11,29 @@ import { Badge } from "@/components/ui/badge"
 import { Search, UserPlus, CheckCircle2, MapPin, Phone, User as UserIcon } from "lucide-react"
 import Link from "@/components/ui/link"
 import { errorMessage } from "@/lib/errors"
-import { cauNhanKhach, dinhDangSdt, nhanKhachVeDanhSach, type KhachTrung } from "@/lib/customers/tao-khach"
+import {
+  cauNhanKhach, dinhDangSdt, khachChoPhieu, nhanKhachVeDanhSach, type KhachTrung, type KhachVuaTao,
+} from "@/lib/customers/tao-khach"
 
 interface CustomerDupeFinderProps {
   /** Gọi khi user khẳng định không trùng — tiếp tục tạo mới. */
   onConfirmCreateNew: (initialQuery: string) => void
+  /** Số điền sẵn (`?sdt=`, chữ đang tìm ở phiếu) — đủ số là dò ngay. */
+  initialQuery?: string
+  /**
+   * Khung tạo nhanh (chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng"): khách tìm ra dùng
+   * được thì "Chọn khách này" vào phiếu đang làm; NVBH nhận về danh sách xong là chọn luôn.
+   */
+  onChon?: (khach: KhachVuaTao) => void
 }
 
 /** Máy tính: tìm khách đã có trước khi tạo. Điện thoại: `TimKhachTruocKhiTao` — cùng `useDoTrungKhach`. */
-export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderProps) {
+export function CustomerDupeFinder({ onConfirmCreateNew, initialQuery = "", onChon }: CustomerDupeFinderProps) {
   const { user } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const { toast } = useToast()
 
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(initialQuery)
   const { tim: debounced, ketQua: results, dangTim: searching, loi, daNhan, chuaDuSo, khoaTaoMoi } = useDoTrungKhach(query)
   const [claimingId, setClaimingId] = useState<string | null>(null)
 
@@ -38,7 +47,8 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
     setClaimingId(row.id)
     try {
       toast({ title: cauNhanKhach(await nhanKhachVeDanhSach(supabase, row.id)) })
-      daNhan(row.id)
+      if (onChon) onChon(khachChoPhieu(row))
+      else daNhan(row.id)
     } catch (err) {
       toast({ title: "Lỗi", description: errorMessage(err), variant: "destructive" })
     } finally {
@@ -82,7 +92,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
           {searching ? (
             <p className="text-xs text-muted-foreground italic">Đang tìm...</p>
           ) : results.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-3 text-sm">
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-3 text-sm" data-testid="dupe-khong-trung">
               <p className="font-medium">Chưa có khách hàng nào dùng số {dinhDangSdt(debounced)}.</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Bạn có thể tạo khách hàng mới với thông tin đầy đủ ở bên dưới.
@@ -97,6 +107,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
                 {results.map((r) => (
                   <div
                     key={r.id}
+                    data-testid="dupe-trung"
                     className="rounded-lg border bg-background p-3 space-y-2 hover:bg-muted/30 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -134,19 +145,30 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
                           <Button
                             size="sm"
                             variant="outline"
+                            data-testid="dupe-nhan"
                             onClick={() => handleClaim(r)}
                             disabled={claimingId === r.id}
                           >
                             <UserPlus className="h-3.5 w-3.5 mr-1" />
-                            {claimingId === r.id ? "Đang thêm..." : "Thêm vào DS của tôi"}
+                            {claimingId === r.id ? "Đang thêm..." : onChon ? "Thêm vào DS của tôi và chọn" : "Thêm vào DS của tôi"}
                           </Button>
                         )}
-                        <Link
-                          href={`/customers/${r.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent"
-                        >
-                          Xem chi tiết
-                        </Link>
+                        {/* Khung tạo nhanh: chọn luôn vào phiếu — không rời phiếu đang làm. */}
+                        {onChon && (r.has_my_assignment || !isSales) && (
+                          <Button size="sm" data-testid="dupe-chon" onClick={() => onChon(khachChoPhieu(r))}>
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Chọn khách này
+                          </Button>
+                        )}
+                        {/* NVBH chỉ mở được khách của mình (RLS) — chưa nhận thì link là trang trống (như bản điện thoại). */}
+                        {!onChon && (r.has_my_assignment || !isSales) && (
+                          <Link
+                            href={`/customers/${r.id}`}
+                            data-testid="dupe-xem"
+                            className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent"
+                          >
+                            Xem chi tiết
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -169,6 +191,7 @@ export function CustomerDupeFinder({ onConfirmCreateNew }: CustomerDupeFinderPro
         <Button
           onClick={() => { if (!khoaTaoMoi) onConfirmCreateNew(query) }}
           size="sm"
+          data-testid="dupe-tao-moi"
           disabled={khoaTaoMoi}
           title={khoaTaoMoi ? (results.length > 0 ? "Số này đã có khách hàng — không tạo trùng" : "Đang kiểm tra số điện thoại") : undefined}
         >

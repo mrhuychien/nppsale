@@ -152,9 +152,13 @@ describe("Bảng tồn kho phải đọc ĐỦ", () => {
    * tạo khách trùng chứ không bỏ qua.
    */
   it("nhập khách hàng đối chiếu SĐT trùng cũng đọc đủ", () => {
-    expect(CUSTIMPORT).toContain('fetchAllForAggregate<{ phone: string | null }>')
+    /* Chủ nhà 03/11/2026 ("tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng"): không còn đọc cả bảng khách (trần
+       1.000 dòng, và dưới RLS NVBH chỉ thấy khách của mình) — hỏi sổ TỪNG số (`kiemTrungSdtHangLoat`, thấy cả khách NV
+       khác). Vẫn cùng luật: kiểm không trọn thì DỪNG, không nhập tiếp. Chi tiết: tests/nhap-khach-loc-trung.test.ts. */
+    expect(CUSTIMPORT).toContain("kiemTrungSdtHangLoat(")
     expect(CUSTIMPORT).not.toContain('.select("phone")\n        .eq("org_id", user.org_id)')
-    expect(CUSTIMPORT).toContain("dừng, vì nhập tiếp sẽ tạo khách trùng")
+    expect(CUSTIMPORT).not.toContain('.select("phone", { count: "exact" })')
+    expect(CUSTIMPORT).toContain("chưa nhập, vì nhập tiếp có thể tạo khách trùng")
   })
 })
 

@@ -117,7 +117,8 @@ describe("trang tạo khách nhận đường quay về", () => {
 
   it("truyền đường quay về xuống form", () => {
     expect(NEWPAGE).toContain("<CustomerForm groups={groups} nextHref={next}")
-    expect(NEWPAGE).toContain("<TaoKhachDienThoai groups={groups} nextHref={next}")
+    // Điện thoại: form chỉ dựng SAU bước lọc trùng (chủ nhà 03/11/2026) — vẫn mang đường quay về.
+    expect(NEWPAGE).toMatch(/<TaoKhachDienThoai\s+groups=\{groups\}\s+nextHref=\{next\}/)
   })
 
   /**

@@ -13,6 +13,8 @@ const OWNER = "00000000-0000-4000-8000-0000000000b1"
 const api = (p: string, init?: RequestInit) => fetch(`${FAKE}/rest/v1/${p}`, { headers: { "content-type": "application/json" }, ...init })
 const doiVai = (role: string) => api(`users?id=eq.${OWNER}`, { method: "PATCH", body: JSON.stringify({ role }) })
 const KHACH = "Cô Tám Mới"
+/** "Tạp hoá Cô Ba" — SĐT 0911111111 trong dữ liệu mẫu. */
+const KHACH_CO_BA = "00000000-0000-4000-8000-0000000000c1"
 const HANG = "Kẹo Mới Z"
 
 test.beforeEach(async () => {
@@ -26,8 +28,8 @@ test.afterEach(async () => {
 
 const gio = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem("npp.sell.cart.v1") || "{}"))
 
-test("chọn khách: tìm tên chưa có → tạo tại chỗ → về đơn với khách vừa tạo", async ({ page }) => {
-  await dangNhap(page)
+/** Từ màn đơn /sell sang màn chọn khách (lối thật: router.back() của màn chọn khách về lại đơn). */
+async function moChonKhach(page: Page) {
   await page.goto("/sell")
   // Bấm trước lúc màn kịp nạp xong thì nút chưa có sự kiện — bấm lại tới khi sang màn chọn khách. Đã sang thì thôi bấm:
   // lần đầu `next dev` dịch màn chọn khách chậm (URL đổi trễ cả chục giây), màn mới không còn nút ấy — bấm không hẹn giờ
@@ -36,6 +38,11 @@ test("chọn khách: tìm tên chưa có → tạo tại chỗ → về đơn v�
     if (!/\/sell\/customer$/.test(page.url())) await page.getByRole("button", { name: /Chọn khách hàng/ }).click({ timeout: 2000 })
     await expect(page).toHaveURL(/\/sell\/customer$/, { timeout: 2000 })
   }).toPass({ timeout: 60_000 })
+}
+
+test("chọn khách: tìm tên chưa có → bước tìm SĐT → tạo tại chỗ → về đơn với khách vừa tạo", async ({ page }) => {
+  await dangNhap(page)
+  await moChonKhach(page)
   await page.getByLabel("Tìm khách hàng").fill(KHACH)
   // Tìm không ra → nút tạo mang đúng chữ đang tìm.
   const tao = page.getByTestId("tao-khach-voi-sdt")
@@ -44,10 +51,16 @@ test("chọn khách: tìm tên chưa có → tạo tại chỗ → về đơn v�
 
   const khung = page.getByTestId("tao-nhanh-khach")
   await expect(khung).toBeVisible()
+  /* ⚠ Chủ nhà 03/11/2026: "vẫn phải qua bước lọc trùng số điện thoại chứ ko được đến thẳng màn tạo khách hàng". */
+  await expect(khung.getByText("Tìm khách hàng đã có")).toBeVisible()
+  await expect(khung.getByTestId("tk-shop"), "vào thẳng form tạo khách").toHaveCount(0)
+  await khung.getByTestId("tk-tim").fill("0987650008")
+  await expect(khung.getByTestId("tk-khong-trung")).toContainText("Chưa có khách nào dùng số 0987 650 008")
+  await khung.getByTestId("tk-tao-moi").click()
+  // Tên đang tìm ở đơn + số vừa dò mang sang form.
   await expect(khung.getByTestId("tk-shop")).toHaveValue(KHACH)
-  await expect(khung.getByTestId("tk-phone")).toHaveValue("")
+  await expect(khung.getByTestId("tk-phone")).toHaveValue("0987 650 008")
   await khung.getByTestId("tk-owner").fill("Lê Thị Tám")
-  await khung.getByTestId("tk-phone").fill("0987650008")
   await khung.getByTestId("tk-street").fill("8 Cầu Đất")
   await khung.locator("#tk-route").click()
   await khung.locator("#tk-route").fill("STN")
@@ -60,6 +73,57 @@ test("chọn khách: tìm tên chưa có → tạo tại chỗ → về đơn v�
   const ghi = await (await api(`customers?store_name=eq.${encodeURIComponent(KHACH)}&select=id`)).json()
   expect(ghi).toHaveLength(1)
   expect((await gio(page)).customerId).toBe(ghi[0].id)
+})
+
+test("chọn khách → Khách mới: số ĐÃ có khách thì khoá Tạo mới, chọn khách ấy luôn vào đơn; lùi là đóng khung", async ({ page }) => {
+  await dangNhap(page)
+  await moChonKhach(page)
+  const khung = page.getByTestId("tao-nhanh-khach")
+  // Lùi ở bước tìm = đóng khung, vẫn ở màn chọn khách.
+  await page.getByTestId("sell-khach-moi").click()
+  await expect(khung.getByText("Tìm khách hàng đã có")).toBeVisible()
+  await khung.getByRole("button", { name: "Quay lại" }).click()
+  await expect(khung).toHaveCount(0)
+  await expect(page).toHaveURL(/\/sell\/customer$/)
+
+  await page.getByTestId("sell-khach-moi").click()
+  await expect(khung.getByTestId("tk-shop"), "vào thẳng form tạo khách").toHaveCount(0)
+  await khung.getByTestId("tk-tim").fill("0911 111 111")
+  await expect(khung.getByTestId("tk-trung")).toContainText("Tạp hoá Cô Ba")
+  await expect(khung.getByTestId("tk-tao-moi"), "số đã có khách mà vẫn tạo mới được").toBeDisabled()
+  await khung.getByTestId("tk-chon").click()
+
+  await expect(khung).toHaveCount(0)
+  await expect(page).toHaveURL(/\/sell$/)
+  await expect(page.getByRole("button", { name: /Tạp hoá Cô Ba.*Đổi khách/ })).toBeVisible()
+  expect((await gio(page)).customerId).toBe(KHACH_CO_BA)
+})
+
+test("NVBH: số của khách chưa trong DS của mình → 'Thêm vào DS của tôi và chọn khách này' → về đơn với khách ấy", async ({ page }) => {
+  await dangNhap(page)
+  await doiVai("sales")
+  try {
+    await moChonKhach(page)
+    // Chữ đang tìm ở đơn là số → điền sẵn ở bước tìm, dò ngay.
+    await page.getByLabel("Tìm khách hàng").fill("0911111111")
+    await page.getByTestId("sell-khach-moi").click()
+    const khung = page.getByTestId("tao-nhanh-khach")
+    await expect(khung.getByTestId("tk-tim")).toHaveValue("0911111111")
+    await expect(khung.getByTestId("tk-trung")).toContainText("Tạp hoá Cô Ba")
+    await expect(khung.getByTestId("tk-tao-moi")).toBeDisabled()
+    await expect(khung.getByTestId("tk-chon"), "NVBH chưa nhận khách thì chưa chọn được").toHaveCount(0)
+    await khung.getByTestId("tk-nhan").filter({ hasText: "Thêm vào DS của tôi và chọn khách này" }).click()
+
+    await expect(khung).toHaveCount(0)
+    await expect(page).toHaveURL(/\/sell$/)
+    await expect(page.getByRole("button", { name: /Tạp hoá Cô Ba.*Đổi khách/ })).toBeVisible()
+    expect((await gio(page)).customerId).toBe(KHACH_CO_BA)
+    const pc = (await (await api(`customer_assignments?customer_id=eq.${KHACH_CO_BA}&select=user_id,role`)).json()) as Array<{ user_id: string; role: string }>
+    expect(pc).toContainEqual(expect.objectContaining({ user_id: OWNER, role: "primary" }))
+  } finally {
+    await doiVai("owner")
+    await api(`customer_assignments?customer_id=eq.${KHACH_CO_BA}&user_id=eq.${OWNER}`, { method: "DELETE" })
+  }
 })
 
 test("chọn khách: có kết quả gần giống vẫn có dòng tạo mới ở cuối danh sách", async ({ page }) => {

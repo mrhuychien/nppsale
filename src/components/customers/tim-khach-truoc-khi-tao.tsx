@@ -13,6 +13,9 @@
  * Nhập đủ số → thẻ khách (Thêm vào DS của tôi / Xem khách) → nút đáy "Tạo khách hàng mới" mang số sang form.
  * ⚠ CHỦ NHÀ 20/10/2026: "khi tìm kiếm … đã có kết quả thì nút tạo khách hàng mới không bấm được để ngăn tạo trùng khi
  *   đã có, khi không có kết quả tìm kiếm mới bấm được" — `khoaTaoMoi` (số đủ mà kết quả chưa về cũng khoá).
+ * ⚠ CHỦ NHÀ 03/11/2026: "tạo đơn hàng trên điện thoại bấm Tạo khách hàng -> vẫn phải qua bước lọc trùng số điện thoại chứ
+ *   ko được đến thẳng màn tạo khách hàng" — khung tạo nhanh (`TaoNhanhKhach`) cũng đi qua bước này. Trong khung (`onChon`):
+ *   khách tìm ra dùng được thì "Chọn khách này"; NVBH nhận khách về danh sách xong là chọn luôn vào phiếu đang làm.
  */
 import { useMemo, useState } from "react"
 import { Search, UserPlus, CheckCircle2 } from "lucide-react"
@@ -24,20 +27,28 @@ import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { useDoTrungKhach } from "@/hooks/use-do-trung-khach"
 import { errorMessage } from "@/lib/errors"
-import { cauNhanKhach, dinhDangSdt, nhanKhachVeDanhSach, type KhachTrung } from "@/lib/customers/tao-khach"
+import {
+  cauNhanKhach, dinhDangSdt, khachChoPhieu, nhanKhachVeDanhSach, type KhachTrung, type KhachVuaTao,
+} from "@/lib/customers/tao-khach"
 
 export function TimKhachTruocKhiTao({
   chu,
   onChu,
   onTaoMoi,
   backHref,
+  onLui,
+  onChon,
 }: {
   /** Chữ đang gõ — nằm ở màn cha để bấm lùi từ form về vẫn còn. */
   chu: string
   onChu: (v: string) => void
   /** Không thấy khách phù hợp → sang form tạo mới, mang chữ đang gõ. */
   onTaoMoi: (chu: string) => void
-  backHref: string
+  backHref?: string
+  /** Nút lùi khi nằm trong khung tạo nhanh — đóng khung, không điều hướng. */
+  onLui?: () => void
+  /** Khung tạo nhanh: chọn khách tìm ra vào phiếu đang làm (NVBH: nhận về danh sách rồi chọn luôn). */
+  onChon?: (khach: KhachVuaTao) => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -50,7 +61,8 @@ export function TimKhachTruocKhiTao({
     setDangNhan(k.id)
     try {
       toast({ title: cauNhanKhach(await nhanKhachVeDanhSach(supabase, k.id)) })
-      daNhan(k.id)
+      if (onChon) onChon(khachChoPhieu(k))
+      else daNhan(k.id)
     } catch (e) {
       toast({ title: "Không thêm được vào danh sách", description: errorMessage(e), variant: "destructive" })
     } finally {
@@ -60,7 +72,7 @@ export function TimKhachTruocKhiTao({
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-surface-container-low">
-      <DauTrangTrang title="Thêm khách hàng" subtitle="Tìm khách đã có trước khi tạo" backHref={backHref} />
+      <DauTrangTrang title="Thêm khách hàng" subtitle="Tìm khách đã có trước khi tạo" backHref={backHref} onBack={onLui} />
       <div className="flex flex-col gap-3.5 p-3.5 pb-32">
         <section className="flex flex-col gap-2.5 rounded-2xl border border-outline-variant/60 bg-card p-3.5">
           <h2 className="text-[15px] font-bold text-on-surface">Tìm khách hàng đã có</h2>
@@ -138,11 +150,22 @@ export function TimKhachTruocKhiTao({
                           className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary/10 text-sm font-semibold text-primary disabled:opacity-60"
                         >
                           <UserPlus className="h-4 w-4" />
-                          {dangNhan === k.id ? "Đang thêm…" : "Thêm vào DS của tôi"}
+                          {dangNhan === k.id ? "Đang thêm…" : onChon ? "Thêm vào DS của tôi và chọn khách này" : "Thêm vào DS của tôi"}
+                        </button>
+                      )}
+                      {/* Khung tạo nhanh: khách dùng được thì chọn luôn vào phiếu — không rời phiếu đang làm. */}
+                      {onChon && (cuaToi || !laNv) && (
+                        <button
+                          type="button"
+                          data-testid="tk-chon"
+                          onClick={() => onChon(khachChoPhieu(k))}
+                          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-semibold text-primary-foreground"
+                        >
+                          <CheckCircle2 className="h-4 w-4" /> Chọn khách này
                         </button>
                       )}
                       {/* NVBH chỉ mở được khách của mình (RLS) — chưa nhận thì không đưa link dẫn tới trang trống. */}
-                      {(cuaToi || !laNv) && (
+                      {!onChon && (cuaToi || !laNv) && (
                         <Link
                           href={`/customers/${k.id}`}
                           data-testid="tk-xem"

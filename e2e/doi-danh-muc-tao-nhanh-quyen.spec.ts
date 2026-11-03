@@ -19,6 +19,14 @@ const api = (p: string, init?: RequestInit) => fetch(`${FAKE}/rest/v1/${p}`, { h
 const doiVai = (role: string) => api(`users?id=eq.${OWNER}`, { method: "PATCH", body: JSON.stringify({ role }) })
 const xo = (page: Page) => page.getByTestId("search-select-xo").filter({ visible: true })
 
+/** `/customers/new?sdt=` → bước lọc trùng (số điền sẵn, dò ngay — chủ nhà 03/11/2026: mọi lối tạo khách đều qua bước này). */
+async function moFormKhachMoi(page: Page, sdt = "0911222333") {
+  await page.goto(`/customers/new?sdt=${sdt}`)
+  await expect(page.getByTestId("dupe-khong-trung")).toBeVisible()
+  await page.getByTestId("dupe-tao-moi").click()
+  await expect(page.locator("#cf-store")).toBeVisible()
+}
+
 const DANG_LAM = { id: "00000000-0000-4000-8000-0000000000f1", org_id: ORG, full_name: "Đỗ Đang Làm", role: "sales", phone: "0911000071", is_active: true, left_at: null }
 const DA_NGHI = { id: "00000000-0000-4000-8000-0000000000f2", org_id: ORG, full_name: "Ngô Đã Nghỉ", role: "sales", phone: "0911000072", is_active: false, left_at: "2026-09-20T03:00:00Z" }
 const TAM_KHOA = { id: "00000000-0000-4000-8000-0000000000f3", org_id: ORG, full_name: "Lý Tạm Khoá", role: "sales", phone: "0911000073", is_active: false, left_at: null }
@@ -35,7 +43,7 @@ test.afterEach(async () => {
 
 test("khách mới: chủ NPP gõ 't9' ở ô tuyến → '+ Tạo tuyến mới' → mã T9 điền sẵn, tạo xong tự chọn, form giữ nguyên", async ({ page }) => {
   await dangNhap(page)
-  await page.goto("/customers/new?sdt=0911222333")
+  await moFormKhachMoi(page)
   await page.locator("#cf-store").fill("Tạp hoá Thử Quyền")
   const o = page.locator("#customer-route")
   await o.click()
@@ -52,7 +60,7 @@ test("khách mới: chủ NPP gõ 't9' ở ô tuyến → '+ Tạo tuyến mới
 
   await expect(page).toHaveURL(/\/customers\/new\?sdt=0911222333$/)
   await expect(page.locator("#cf-store")).toHaveValue("Tạp hoá Thử Quyền")
-  // Bỏ qua bước dò trùng bằng ?sdt= — SĐT tìm được gán sẵn (chủ nhà 01/10/2026).
+  // SĐT của bước lọc trùng đi theo sang form (chủ nhà 01/10/2026: gán sẵn số đã tìm).
   await expect(page.locator("#cf-phone")).toHaveValue("0911222333")
   await expect(o).toHaveValue(/T9/)
   const ds = await (await api("sales_routes?code=eq.T9&select=*")).json()
@@ -62,7 +70,7 @@ test("khách mới: chủ NPP gõ 't9' ở ô tuyến → '+ Tạo tuyến mới
 
 test("khách mới: gõ tên tuyến có dấu 'Thứ Chín' → tên điền sẵn, mã để trống", async ({ page }) => {
   await dangNhap(page)
-  await page.goto("/customers/new?sdt=0911222333")
+  await moFormKhachMoi(page)
   const o = page.locator("#customer-route")
   await o.click()
   await o.fill("Thứ Chín")
@@ -78,8 +86,7 @@ test("khách mới: gõ tên tuyến có dấu 'Thứ Chín' → tên điền s�
 test("NVBH: vào được form khách mới nhưng KHÔNG có dòng '+ Tạo tuyến mới' (RLS sales_routes chỉ chủ / quản lý)", async ({ page }) => {
   await dangNhap(page)
   await doiVai("sales")
-  await page.goto("/customers/new?sdt=0911222333")
-  await expect(page.locator("#cf-store")).toBeVisible()
+  await moFormKhachMoi(page)
   const o = page.locator("#customer-route")
   await o.click()
   await o.fill("t9")

@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
@@ -11,8 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
 import { readSheetAsRows } from "@/lib/xlsx-safe"
-import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
-import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react"
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Copy } from "lucide-react"
 import {
   parseCustomerSheet,
   TEMPLATE_CUSTOMER_HEADERS,
@@ -20,6 +19,12 @@ import {
   type ParsedCustomerRow,
 } from "@/lib/customers/import-parse"
 import { errorMessage } from "@/lib/errors"
+import { kiemTrungSdtHangLoat, sdtDeLuu, trungCuaDong } from "@/lib/customers/kiem-trung-hang-loat"
+import type { KhachTrung } from "@/lib/customers/tao-khach"
+
+/** Lỗi trùng khoá UNIQUE(org_id, phone) — số vừa được người khác tạo giữa lúc xem trước và lúc nhập. */
+const laLoiTrungSdt = (e: { code?: string; message?: string } | null) =>
+  e?.code === "23505" || /duplicate key|customers_org_id_phone/i.test(e?.message ?? "")
 
 interface CustomerImportDialogProps {
   open: boolean
@@ -45,14 +50,54 @@ export function CustomerImportDialog({
   const [rows, setRows] = useState<ParsedCustomerRow[]>([])
   const [headerError, setHeaderError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  /**
+   * BƯỚC LỌC TRÙNG (chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng"): đọc file xong là
+   * hỏi sổ từng số (`kiemTrungSdtHangLoat` — thấy cả khách NV khác). `null` = chưa kiểm xong → chưa cho nhập.
+   */
+  const [trung, setTrung] = useState<Map<string, KhachTrung> | null>(null)
+  const [tienDoKiem, setTienDoKiem] = useState<{ xong: number; tong: number } | null>(null)
+  const [loiKiem, setLoiKiem] = useState<string | null>(null)
+  /** Lượt kiểm mới nhất — chọn file khác giữa chừng thì kết quả lượt cũ bỏ. */
+  const luotKiem = useRef(0)
 
   const validRows = rows.filter((r) => r.errors.length === 0)
   const errorRows = rows.filter((r) => r.errors.length > 0)
+  const trungRows = useMemo(
+    () => (trung ? validRows.filter((r) => trungCuaDong(r.phone, trung)) : []),
+    [validRows, trung]
+  )
+  const moiRows = useMemo(
+    () => (trung ? validRows.filter((r) => !trungCuaDong(r.phone, trung)) : []),
+    [validRows, trung]
+  )
+  const daKiemXong = trung !== null && !loiKiem
+
+  const kiemTrung = async (ds: ParsedCustomerRow[]) => {
+    const luot = ++luotKiem.current
+    setTrung(null)
+    setLoiKiem(null)
+    try {
+      const kq = await kiemTrungSdtHangLoat(
+        supabase,
+        ds.filter((r) => r.errors.length === 0).map((r) => r.phone),
+        { onTienDo: (xong, tong) => { if (luot === luotKiem.current) setTienDoKiem({ xong, tong }) } }
+      )
+      if (luot === luotKiem.current) setTrung(kq)
+    } catch (e) {
+      if (luot === luotKiem.current) setLoiKiem(errorMessage(e))
+    } finally {
+      if (luot === luotKiem.current) setTienDoKiem(null)
+    }
+  }
 
   const reset = () => {
+    luotKiem.current += 1
     setFileName(null)
     setRows([])
     setHeaderError(null)
+    setTrung(null)
+    setLoiKiem(null)
+    setTienDoKiem(null)
     if (fileRef.current) fileRef.current.value = ""
   }
 
@@ -86,6 +131,8 @@ export function CustomerImportDialog({
       setRows(result.rows)
       if (result.headerError) {
         toast({ title: "File chưa đúng định dạng", description: result.headerError, variant: "destructive" })
+      } else {
+        void kiemTrung(result.rows)
       }
     } catch {
       setHeaderError("Không đọc được file. Chỉ hỗ trợ .xlsx, .xls, .csv.")
@@ -95,39 +142,12 @@ export function CustomerImportDialog({
   }
 
   const handleImport = async () => {
-    if (!user?.org_id || validRows.length === 0) return
+    if (!user?.org_id || !trung || loiKiem || moiRows.length === 0) return
     setImporting(true)
     try {
-      // Dedupe theo SĐT trong DB hiện có (case stripped khoảng trắng).
-      //
-      // ⚠ PHẢI PHÂN TRANG. Câu này từng là `.select("phone")` trần:
-      // Supabase chặn 1.000 dòng và trả 200 KHÔNG kèm lỗi. Quá 1.000
-      // khách hàng thì số còn lại không lọt vào danh sách "đã có", nên
-      // nhập lại file cũ là TẠO TRÙNG chứ không bỏ qua — đúng lỗi đã gặp
-      // ở màn nhập sản phẩm.
-      //
-      // Danh sách này quyết định tạo hay bỏ qua, nên thiếu một phần là
-      // sai theo hướng nguy hiểm.
-      const existingRes = await fetchAllForAggregate<{ phone: string | null }>((from, to) =>
-        supabase
-          .from("customers")
-          .select("phone", { count: "exact" })
-          .eq("org_id", user.org_id)
-          .range(from, to)
-      )
-      if (existingRes.error || existingRes.truncated) {
-        throw new Error(
-          existingRes.error
-            ? `Không đọc được danh sách khách hàng hiện có (${existingRes.error}) — dừng, vì nhập tiếp sẽ tạo khách trùng.`
-            : "Danh sách khách hàng quá lớn để đối chiếu trùng trong một lần. Dừng lại thay vì tạo ra khách trùng."
-        )
-      }
-      const existingPhones = new Set(
-        existingRes.rows
-          .map((r) => (r.phone || "").replace(/\s+/g, ""))
-          .filter(Boolean)
-      )
-
+      /* ⚠ KHÔNG đối chiếu với `customers.phone` đọc thẳng nữa: dưới RLS NVBH chỉ thấy khách của mình — số của khách NV khác
+         lọt qua (xem `kiem-trung-hang-loat.ts`). Bước lọc trùng đã hỏi sổ từng số; ở đây chỉ còn chống trùng TRONG lần ghi. */
+      const soTrongLanNay = new Set<string>()
       type Payload = {
         org_id: string
         /** Nhân viên nhập file — người tạo của mọi dòng trong lần nhập này. */
@@ -153,12 +173,13 @@ export function CustomerImportDialog({
       let skipped = 0
 
       for (const r of validRows) {
-        const pk = r.phone.replace(/\s+/g, "")
-        if (pk && existingPhones.has(pk)) {
+        // Số GHI chuẩn hoá như khi tạo tay — UNIQUE(org_id, phone) so nguyên văn (xem `sdtDeLuu`).
+        const pk = sdtDeLuu(r.phone)
+        if (trungCuaDong(r.phone, trung) || (pk && soTrongLanNay.has(pk))) {
           skipped++
           continue
         }
-        if (pk) existingPhones.add(pk)
+        if (pk) soTrongLanNay.add(pk)
         payloads.push({
           org_id: user.org_id,
           // ⚠ Trước đây màn này KHÔNG đóng dấu người tạo, nên mọi điểm bán
@@ -168,7 +189,7 @@ export function CustomerImportDialog({
           created_by: user.id,
           store_name: r.store_name,
           owner_name: r.owner_name,
-          phone: r.phone,
+          phone: pk,
           address: r.address,
           ward: r.ward,
           channel: r.channel,
@@ -203,6 +224,19 @@ export function CustomerImportDialog({
           .from("customers")
           .insert(slice)
           .select("id")
+        if (error && laLoiTrungSdt(error)) {
+          /* Số vừa được tạo ở nơi khác giữa lúc xem trước và lúc nhập — cả lô bị từ chối. Ghi lại TỪNG dòng: dòng trùng
+             bỏ qua (đếm vào "bỏ qua"), dòng còn lại vẫn vào. */
+          for (const dong of slice) {
+            const r1 = await supabase.from("customers").insert(dong).select("id").single()
+            if (r1.error) {
+              if (laLoiTrungSdt(r1.error)) { skipped++; continue }
+              throw r1.error
+            }
+            insertedIds.push((r1.data as { id: string }).id)
+          }
+          continue
+        }
         if (error) throw error
         for (const row of (data as { id: string }[]) || []) {
           insertedIds.push(row.id)
@@ -248,7 +282,8 @@ export function CustomerImportDialog({
           <DialogTitle>Nhập khách hàng từ Excel</DialogTitle>
           <DialogDescription>
             Tải file mẫu, điền dữ liệu rồi tải lên. Cột bắt buộc: <b>Tên cửa hàng</b>.
-            KH trùng SĐT với hệ thống sẽ bị bỏ qua.
+            Đọc file xong hệ thống <b>lọc trùng số điện thoại</b> với mọi khách đã có (kể cả khách NV khác phụ trách) —
+            dòng trùng bị bỏ qua.
           </DialogDescription>
         </DialogHeader>
 
@@ -288,20 +323,42 @@ export function CustomerImportDialog({
 
         {rows.length > 0 && !headerError && (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge variant="success" className="gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {validRows.length} hợp lệ
-              </Badge>
+            <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="nhap-khach-tom-tat">
+              {daKiemXong ? (
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {moiRows.length} khách mới
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="gap-1">{validRows.length} hợp lệ</Badge>
+              )}
+              {trungRows.length > 0 && (
+                <Badge variant="warning" className="gap-1" data-testid="nhap-khach-so-trung">
+                  <Copy className="h-3.5 w-3.5" /> {trungRows.length} trùng SĐT — bỏ qua
+                </Badge>
+              )}
               {errorRows.length > 0 && (
                 <Badge variant="danger" className="gap-1">
                   <AlertCircle className="h-3.5 w-3.5" /> {errorRows.length} lỗi
                 </Badge>
               )}
               <span className="text-xs text-muted-foreground">
-                KH trùng SĐT với hệ thống sẽ tự động bỏ qua.
+                {tienDoKiem
+                  ? `Đang lọc trùng số điện thoại… ${tienDoKiem.xong}/${tienDoKiem.tong}`
+                  : daKiemXong
+                    ? "Đã lọc trùng số điện thoại với mọi khách đã có."
+                    : ""}
                 {autoAssignToSelf && " KH mới sẽ tự gán vào danh sách của bạn."}
               </span>
             </div>
+            {loiKiem && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive" data-testid="nhap-khach-loi-kiem">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  Chưa lọc được trùng số điện thoại ({loiKiem}) — chưa nhập, vì nhập tiếp có thể tạo khách trùng.
+                </span>
+                <Button size="sm" variant="outline" onClick={() => void kiemTrung(rows)}>Kiểm lại</Button>
+              </div>
+            )}
 
             <div className="overflow-x-auto rounded-xl border bg-card max-h-[40vh] overflow-y-auto">
               <table className="w-full text-sm">
@@ -319,8 +376,9 @@ export function CustomerImportDialog({
                 <tbody>
                   {rows.slice(0, 100).map((r, idx) => {
                     const ok = r.errors.length === 0
+                    const kh = ok && trung ? trungCuaDong(r.phone, trung) : null
                     return (
-                      <tr key={idx} className={!ok ? "bg-destructive/5" : ""}>
+                      <tr key={idx} className={!ok ? "bg-destructive/5" : kh ? "bg-amber-50" : ""} data-testid={kh ? "nhap-khach-dong-trung" : undefined}>
                         <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{idx + 1}</td>
                         <td className="px-2 py-1.5 font-medium truncate max-w-[200px]">
                           {r.store_name || "—"}
@@ -341,6 +399,11 @@ export function CustomerImportDialog({
                         <td className="px-2 py-1.5">
                           {!ok ? (
                             <span className="text-xs text-destructive">{r.errors.join("; ")}</span>
+                          ) : kh ? (
+                            <span className="text-xs font-medium text-amber-600">
+                              Trùng SĐT: đã có “{kh.store_name}”
+                              {kh.primary_user_name ? ` (${kh.primary_user_name} phụ trách)` : ""} — bỏ qua
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs text-tertiary">
                               <CheckCircle2 className="h-3 w-3" /> {r.payment_terms}
@@ -363,8 +426,19 @@ export function CustomerImportDialog({
           <Button variant="outline" onClick={() => handleClose(false)} disabled={importing}>
             Huỷ
           </Button>
-          <Button onClick={handleImport} disabled={importing || validRows.length === 0}>
-            {importing ? "Đang nhập..." : `Nhập ${validRows.length} khách hàng`}
+          <Button
+            onClick={handleImport}
+            data-testid="nhap-khach-nut"
+            disabled={importing || !daKiemXong || moiRows.length === 0}
+            title={!daKiemXong ? "Chờ lọc trùng số điện thoại xong" : moiRows.length === 0 ? "Không có khách mới để nhập" : undefined}
+          >
+            {importing
+              ? "Đang nhập..."
+              : loiKiem
+                ? "Chưa lọc được trùng"
+                : !daKiemXong && rows.length > 0
+                  ? "Đang lọc trùng…"
+                  : `Nhập ${moiRows.length} khách hàng`}
           </Button>
         </div>
       </DialogContent>

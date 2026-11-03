@@ -34,6 +34,12 @@ test("tìm SĐT không ra → tạo khách gán sẵn số; tuyến bắt buộc
   await page.locator('input[type="search"]').filter({ visible: true }).fill("0912 345 678")
   await page.getByTestId("tao-khach-voi-sdt").filter({ visible: true }).click()
   await expect(page).toHaveURL(/\/customers\/new\?sdt=0912345678/)
+  /* Chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng" — ô tìm của danh sách chỉ thấy khách
+     của mình, nên `?sdt=` không vào thẳng form nữa: số điền sẵn ở bước tìm, dò ngay, không trùng mới sang form. */
+  await expect(page.getByTestId("tk-tim")).toHaveValue(SDT)
+  await expect(page.getByTestId("tk-shop")).toHaveCount(0)
+  await expect(page.getByTestId("tk-khong-trung")).toBeVisible()
+  await page.getByTestId("tk-tao-moi").click()
   await expect(page.getByTestId("tk-phone")).toHaveValue("0912 345 678")
 
   // Thiếu tuyến (và tên…) → báo lỗi, chưa ghi gì.
@@ -63,10 +69,20 @@ test("tìm SĐT không ra → tạo khách gán sẵn số; tuyến bắt buộc
   await expect(page.getByTestId("tk-shop")).toHaveCount(0)
 })
 
-test("SĐT đã có khách → báo 'đã có khách hàng' tại chỗ, không ghi, không chuyển trang", async ({ page }) => {
+test("SĐT đã có khách → bước tìm khoá tạo mới; đổi sang số ấy ngay trong form cũng báo 'đã có' tại chỗ, không ghi", async ({ page }) => {
   await dangNhap(page)
+  // Tới bằng ?sdt= của số đã có: bước tìm hiện khách, nút tạo mới khoá — không vào được form.
   await page.goto("/customers/new?sdt=0911111111")
-  await expect(page.getByTestId("tk-phone")).toHaveValue("0911 111 111")
+  await expect(page.getByTestId("tk-trung")).toContainText("Tạp hoá Cô Ba")
+  await expect(page.getByTestId("tk-tao-moi")).toBeDisabled()
+  await expect(page.getByTestId("tk-shop")).toHaveCount(0)
+
+  // Lớp chặn thứ hai: qua bước tìm bằng số khác rồi sửa SĐT trong form thành số đã có → form vẫn chặn.
+  await page.goto("/customers/new")
+  await page.getByTestId("tk-tim").fill(SDT)
+  await expect(page.getByTestId("tk-khong-trung")).toBeVisible()
+  await page.getByTestId("tk-tao-moi").click()
+  await page.getByTestId("tk-phone").fill("0911111111")
   await expect(page.getByText(/Đã có khách hàng dùng số 0911 111 111: Tạp hoá Cô Ba/)).toBeVisible()
   await expect(page.getByTestId("tk-mo-khach-trung")).toBeVisible()
   await page.getByTestId("tk-shop").fill("Trùng")
@@ -74,7 +90,7 @@ test("SĐT đã có khách → báo 'đã có khách hàng' tại chỗ, không 
   await page.getByTestId("tk-street").fill("1 Trùng")
   await chon(page, "tk-route", "T2", /T2 · Thứ Hai/)
   await page.getByTestId("tk-luu").click()
-  await expect(page).toHaveURL(/\/customers\/new\?sdt=0911111111/)
+  await expect(page).toHaveURL(/\/customers\/new$/)
   await expect(page.getByTestId("tk-xong")).toHaveCount(0)
   const ghi = await (await api("customers?phone=eq.0911111111&select=id")).json()
   expect(ghi).toHaveLength(1)
@@ -86,7 +102,12 @@ test("chọn khách ở /sell: tìm SĐT không ra → tạo khách mới TẠI 
   await page.getByLabel("Tìm khách hàng").fill(SDT)
   await page.getByTestId("tao-khach-voi-sdt").click()
   await expect(page).toHaveURL(/\/sell\/customer$/)
-  await expect(page.getByTestId("tao-nhanh-khach").getByTestId("tk-phone")).toHaveValue("0912 345 678")
+  /* Chủ nhà 03/11/2026: vẫn qua bước dò trùng SĐT (ô tìm của đơn chỉ thấy khách của mình) — số điền sẵn, dò ngay. */
+  const khung = page.getByTestId("tao-nhanh-khach")
+  await expect(khung.getByTestId("tk-tim")).toHaveValue(SDT)
+  await expect(khung.getByTestId("tk-khong-trung")).toBeVisible()
+  await khung.getByTestId("tk-tao-moi").click()
+  await expect(khung.getByTestId("tk-phone")).toHaveValue("0912 345 678")
 })
 
 test.describe("máy tính", () => {
@@ -94,6 +115,10 @@ test.describe("máy tính", () => {
   test("form máy tính: SĐT gán sẵn từ ô tìm; thiếu tuyến không lưu", async ({ page }) => {
     await dangNhap(page)
     await page.goto(`/customers/new?sdt=${SDT}`)
+    // Bước lọc trùng trước (chủ nhà 03/11/2026) — số điền sẵn, dò ngay; không trùng mới sang form, số đi theo.
+    await expect(page.getByLabel("Số điện thoại khách")).toHaveValue(SDT)
+    await expect(page.getByTestId("dupe-khong-trung")).toBeVisible()
+    await page.getByTestId("dupe-tao-moi").click()
     await expect(page.getByPlaceholder("0901000001")).toHaveValue(SDT)
     await page.getByPlaceholder("VD: Tạp hóa Bà Hai").fill("Tạp hoá Bà Ba")
     await page.locator("form input[required]").nth(1).fill("Bà Ba")

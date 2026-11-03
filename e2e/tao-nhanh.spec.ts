@@ -38,10 +38,15 @@ test("phiếu thu: gõ tên khách chưa có → + Tạo khách hàng mới → 
 
   const khung = page.getByTestId("tao-nhanh-khach")
   await expect(khung).toBeVisible()
+  /* Chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng" — bước tìm theo SĐT trước. */
+  await expect(khung.getByText("Tìm khách hàng đã có")).toBeVisible()
+  await expect(khung.locator("#cf-store"), "vào thẳng form tạo khách").toHaveCount(0)
+  await khung.getByLabel("Số điện thoại khách").fill("0987654321")
+  await expect(khung.getByTestId("dupe-khong-trung")).toBeVisible()
+  await khung.getByTestId("dupe-tao-moi").click()
   await expect(khung.locator("#cf-store")).toHaveValue("Cô Bảy Mới")
-  await expect(khung.locator("#cf-phone")).toHaveValue("")
+  await expect(khung.locator("#cf-phone")).toHaveValue("0987654321")
   await khung.locator("#cf-owner").fill("Trần Thị Bảy")
-  await khung.locator("#cf-phone").fill("0987654321")
   await khung.locator("#cf-address").fill("5 Cầu Đất")
   await khung.locator("#customer-route").click()
   await khung.locator("#customer-route").fill("TN")
@@ -66,6 +71,10 @@ test("ô tìm khách: mũi tên xuống tới dòng tạo mới, Enter mở khun
   await page.locator("#cr-customer").press("ArrowDown")
   await page.locator("#cr-customer").press("Enter")
   const khung = page.getByTestId("tao-nhanh-khach")
+  // Số đang gõ điền sẵn ở bước lọc trùng (dò ngay), không trùng mới sang form — số đi theo.
+  await expect(khung.getByLabel("Số điện thoại khách")).toHaveValue("0987654321")
+  await expect(khung.getByTestId("dupe-khong-trung")).toBeVisible()
+  await khung.getByTestId("dupe-tao-moi").click()
   await expect(khung.locator("#cf-phone")).toHaveValue("0987654321")
   await expect(khung.locator("#cf-store")).toHaveValue("")
   // Huỷ: khung đóng, không ghi gì.
@@ -201,9 +210,14 @@ test.describe("điện thoại", () => {
 
     const khung = page.getByTestId("tao-nhanh-khach")
     await expect(khung).toBeVisible()
+    /* Chủ nhà 03/11/2026: tạo khách trên điện thoại đi qua bước dò trùng SĐT trước — không vào thẳng form. */
+    await expect(khung.getByTestId("tk-shop")).toHaveCount(0)
+    await khung.getByTestId("tk-tim").fill("0987654321")
+    await expect(khung.getByTestId("tk-khong-trung")).toBeVisible()
+    await khung.getByTestId("tk-tao-moi").click()
     await expect(khung.getByTestId("tk-shop")).toHaveValue("Cô Bảy Mới")
+    await expect(khung.getByTestId("tk-phone")).toHaveValue("0987 654 321")
     await khung.getByTestId("tk-owner").fill("Trần Thị Bảy")
-    await khung.getByTestId("tk-phone").fill("0987654321")
     await khung.getByTestId("tk-street").fill("5 Cầu Đất")
     await khung.locator("#tk-route").click()
     await khung.locator("#tk-route").fill("TN")

@@ -104,14 +104,34 @@ describe("nối dây", () => {
   const FORM = read("src/components/customers/tao-khach-dien-thoai.tsx")
   const MAY = read("src/components/customers/customer-dupe-finder.tsx")
 
-  it("điện thoại: bước TÌM trước; ?sdt= mới vào thẳng form; Huỷ về bước tìm; Thêm khách khác về bước tìm", () => {
+  it("điện thoại: bước TÌM trước (kể cả ?sdt= — chủ nhà 03/11/2026); Huỷ về bước tìm; Thêm khách khác về bước tìm", () => {
     const dt = PAGE.slice(PAGE.indexOf("if (laMay === false) {"), PAGE.indexOf("return (\n    <div className=\"space-y-4\">"))
     expect(dt).toContain("<TimKhachTruocKhiTao")
     expect(dt).toContain("onTaoMoi={(q) => setMangSang(chuBanDauKhach(q))}")
     expect(dt).toContain("onHuy={() => setMangSang(null)}")
-    expect((dt.match(/onThemKhachKhac=\{veBuocTim\}/g) ?? []).length).toBe(2)
-    expect(PAGE).toContain("const [vaoThangForm, setVaoThangForm] = useState(!!sdtTim)")
+    // Form chỉ một chỗ dựng — sau bước tìm; "Thêm khách khác" về bước tìm.
+    expect((dt.match(/<TaoKhachDienThoai/g) ?? []).length).toBe(1)
+    expect((dt.match(/onThemKhachKhac=\{veBuocTim\}/g) ?? []).length).toBe(1)
+    expect(PAGE).not.toContain("vaoThangForm")
     expect(PAGE).not.toContain("if (laMay === false) return <TaoKhachDienThoai")
+  })
+  /* ⚠ Chủ nhà 03/11/2026: "tạo đơn hàng trên điện thoại bấm Tạo khách hàng -> vẫn phải qua bước lọc trùng số điện thoại chứ
+     ko được đến thẳng màn tạo khách hàng". Bấm thật: e2e/sell-tao-nhanh.spec.ts, e2e/tao-nhanh.spec.ts (phiếu thu). */
+  it("khung tạo nhanh trên điện thoại (đơn, phiếu thu, trả hàng, tuyến): bước TÌM trước rồi mới form; tìm ra thì chọn luôn", () => {
+    const TN = read("src/components/tao-nhanh/tao-nhanh-khach.tsx")
+    const dt = TN.slice(TN.indexOf("function HaiBuocDienThoai"))
+    // Nhánh điện thoại của khung không dựng form thẳng nữa.
+    expect(TN).toContain("<HaiBuocDienThoai groups={groups} dau={dau} onXong={xong} onDong={dong} />")
+    expect(TN.slice(0, TN.indexOf("function HaiBuocDienThoai"))).not.toContain("<TaoKhachDienThoai")
+    expect(dt).toContain("const [mangSang, setMangSang] = useState<{ store_name: string; phone: string } | null>(null)")
+    expect(dt).toContain("<TimKhachTruocKhiTao")
+    expect(dt).toContain("onChon={onXong}")
+    expect(dt).toContain("onLui={onDong}")
+    expect(dt).toContain("onHuy={() => setMangSang(null)}")
+    // Bước tìm trong khung: chọn khách dùng được, NVBH nhận xong chọn luôn; lùi là đóng khung.
+    expect(TIM).toContain("if (onChon) onChon(khachChoPhieu(k))")
+    expect(TIM).toContain("{onChon && (cuaToi || !laNv) && (")
+    expect(TIM).toContain("onBack={onLui}")
   })
   it("máy tính và điện thoại cùng một đường tìm + một đường nhận khách; ô nhập kiểu số điện thoại; nhắc nhập đủ số", () => {
     for (const s of [TIM, MAY]) {
@@ -140,7 +160,9 @@ describe("nối dây", () => {
   })
   it("bước tìm: NVBH chưa nhận thì có nút nhận, không có link Xem (RLS — trang trống)", () => {
     expect(TIM).toContain("{laNv && !cuaToi && (")
-    expect(TIM).toContain("{(cuaToi || !laNv) && (")
+    // Link Xem chỉ khi mở được (RLS); trong khung tạo nhanh thay bằng "Chọn khách này" — cùng điều kiện.
+    expect(TIM).toContain("{!onChon && (cuaToi || !laNv) && (")
+    expect(TIM).toContain("{onChon && (cuaToi || !laNv) && (")
   })
   it("form: trùng SĐT với khách NV khác → nút nhận thay link Mở khách; tạo nhanh thì nhận xong chọn luôn", () => {
     expect(FORM).toContain('const phaiNhan = !!trung?.khach && user?.role === "sales" && !trung.khach.has_my_assignment')

@@ -1,8 +1,10 @@
 /**
  * Parse + validate bảng khách hàng import từ Excel/CSV (client-side).
  * Mỗi dòng = 1 KH. Cột bắt buộc: Tên cửa hàng. Phone không bắt buộc
- * nhưng nếu có thì cần unique (theo phone-không-khoảng-trắng).
+ * nhưng nếu có thì cần unique (theo số đã chuẩn hoá — `sdtDeLuu`). Trùng với khách ĐÃ CÓ trong sổ do màn nhập
+ * kiểm riêng (`kiemTrungSdtHangLoat`, chủ nhà 03/11/2026).
  */
+import { sdtDeLuu } from "@/lib/customers/kiem-trung-hang-loat"
 
 export type CustomerField =
   | "store_name"
@@ -141,8 +143,9 @@ function str(raw: unknown): string {
   return String(raw ?? "").trim()
 }
 
+/** Khoá so trùng SĐT trong file — CÙNG cách chuẩn hoá khi ghi (`sdtDeLuu`): "0911.111.111" = "+84 911 111 111". */
 function phoneKey(raw: string): string {
-  return raw.replace(/\s+/g, "")
+  return sdtDeLuu(raw).replace(/\s+/g, "")
 }
 
 export function parseCustomerSheet(aoa: unknown[][]): ParseCustomerResult {

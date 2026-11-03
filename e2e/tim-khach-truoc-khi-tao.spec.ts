@@ -22,7 +22,10 @@ const doiVai = (role: string) => api(`users?id=eq.${OWNER}`, { method: "PATCH", 
 const phanCong = async () => (await (await api(`customer_assignments?customer_id=eq.${KHACH}&select=*`)).json()) as Array<Record<string, unknown>>
 /** Mọi chữ app đã gửi đi dò trùng — phải toàn là SỐ ĐỦ, không có tên / địa chỉ / số dở. */
 const daGuiTim = async () =>
-  (await nhatKy()).filter((r) => r.path.endsWith("/rpc/search_customer_dupes")).map((r) => String((r.body as { p_q?: string })?.p_q ?? ""))
+  (await nhatKy())
+    .filter((r) => r.path.endsWith("/rpc/search_customer_dupes"))
+    // POST (màn tìm) mang số trong thân; GET (lọc trùng khi nhập Excel — hàm chỉ đọc) mang trên địa chỉ.
+    .map((r) => String((r.body as { p_q?: string } | null)?.p_q ?? new URLSearchParams(r.query ?? "").get("p_q") ?? ""))
 
 test.beforeEach(async () => {
   await api("users", { method: "POST", body: JSON.stringify([{ id: NV_KHAC, org_id: ORG, full_name: "Nguyễn Văn Khác", role: "sales", phone: "0911000099", is_active: true }]) })
@@ -96,20 +99,24 @@ test("NVBH: bước TÌM trước; gõ địa chỉ / tên / số dở KHÔNG ra
   expect(gui.every((q) => /^0\d{9,10}$/.test(q)), `đã gửi đi tìm: ${gui.join(" | ")}`).toBe(true)
 })
 
-test("NVBH vào bằng ?sdt= (tìm số ở danh sách không ra) → form gán sẵn số; số trùng khách NV khác → Thêm vào DS của tôi, không còn ngõ cụt", async ({ page }) => {
+test("NVBH vào bằng ?sdt= (tìm số ở danh sách không ra) → vẫn qua bước lọc trùng: số của khách NV khác → Thêm vào DS của tôi, không tạo trùng", async ({ page }) => {
   await dangNhap(page)
   await doiVai("sales")
+  /* Chủ nhà 03/11/2026: "tất cả các chỗ tạo khách hàng đều phải qua bước lọc trùng" — ?sdt= không vào thẳng form. */
   await page.goto("/customers/new?sdt=0911111111")
-  await expect(page.getByTestId("tk-phone")).toHaveValue("0911 111 111")
-  await expect(page.getByText(/Đã có khách hàng dùng số 0911 111 111: Tạp hoá Cô Ba/)).toBeVisible()
-  await expect(page.getByTestId("tk-mo-khach-trung"), "NVBH chưa nhận khách thì 'Mở khách' là trang trống").toHaveCount(0)
-  await expect(page.getByText("Phụ trách chính: Nguyễn Văn Khác")).toBeVisible()
-  await page.getByTestId("tk-nhan-khach-trung").click()
+  await expect(page.getByTestId("tk-tim")).toHaveValue("0911111111")
+  await expect(page.getByTestId("tk-shop")).toHaveCount(0)
+  const the = page.getByTestId("tk-trung").filter({ hasText: "Tạp hoá Cô Ba" })
+  await expect(the).toContainText("Phụ trách chính: Nguyễn Văn Khác")
+  await expect(the.getByTestId("tk-xem"), "NVBH chưa nhận khách thì 'Xem khách' là trang trống").toHaveCount(0)
+  await expect(page.getByTestId("tk-tao-moi")).toBeDisabled()
+  await the.getByTestId("tk-nhan").click()
   await expect(page.getByText("Đã thêm vào danh sách của bạn (phụ trách phụ)").first()).toBeVisible()
-  await expect(page.getByTestId("tk-mo-khach-trung")).toBeVisible()
+  await expect(the.getByTestId("tk-xem")).toBeVisible()
   expect((await phanCong()).filter((a) => a.user_id === OWNER)).toHaveLength(1)
   // Vẫn không tạo được khách trùng số.
-  await expect(page.getByTestId("tk-nhan-khach-trung")).toHaveCount(0)
+  await expect(the.getByTestId("tk-nhan")).toHaveCount(0)
+  await expect(page.getByTestId("tk-tao-moi")).toBeDisabled()
 })
 
 test("Chủ NPP trên điện thoại: cũng chỉ tìm đúng số — số dở không ra; đúng số có nút Xem khách (không có nút nhận)", async ({ page }) => {

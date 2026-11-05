@@ -85,7 +85,7 @@ import { posTotals } from "@/lib/pos/totals"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosSettings } from "@/store/pos/settings"
 import { usePosRefData } from "@/store/pos/ref-data"
-import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty, usePosKetThuc } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocBanner } from "@/components/pos/doc-sub-header"
 import {
@@ -139,6 +139,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     usePosRefData()
   const { toast } = useToast()
   const router = useRouter()
+  /* Tác vụ đơn: gửi đơn xong thì in phiếu đặt rồi đóng POS (chủ nhà 05/11/2026 "In xong đóng luôn"). */
+  const ketThuc = usePosKetThuc()
 
   const [lines, setLines] = useState<PosLine[]>([])
   const [retLines, setRetLines] = useState<PosLine[]>([])
@@ -1085,6 +1087,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
          */
         toast({ title: `Đã gửi đơn ${r.orderCode}`, description: "Đơn đang ở Phiếu tạm — xuất hàng ở màn Xuất hàng." })
         router.replace(`/pos/don-hang/${r.orderId}`)
+        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026): gửi đơn / lưu đơn đã gửi là xong việc — in phiếu đặt, hộp in đóng là đóng
+           POS; muốn xuất hàng ngay thì mở lại đơn ở danh sách. Tắt công tắc = ở lại màn In · Tạo hoá đơn · Lưu (24/09). */
+        ketThuc({ docType: "SO", docId: r.orderId, loiBao: `Đã gửi đơn ${r.orderCode}` })
       } catch (e) {
         /* ⚠ `errorMessage` — lỗi PostgREST là OBJECT THƯỜNG, không phải
            `Error`. `err instanceof Error ? … : "Lỗi không xác định"` nuốt
@@ -1098,7 +1103,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
        là `luuDon` giữ bản `totals` của lần vẽ trước: thêm một dòng
        hàng trả rồi bấm F9 ngay là đơn ghi xuống bằng con số CŨ — sai
        tiền, và sai đúng kiểu không ai nhìn ra. */
-    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.gross, totals.returnCredit, vuotHanMuc, giamDonGoc, quyenGiam]
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.gross, totals.returnCredit, vuotHanMuc, giamDonGoc, quyenGiam, ketThuc]
   )
 
   /**

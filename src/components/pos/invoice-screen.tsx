@@ -54,7 +54,7 @@ import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { timXepHang } from "@/lib/search"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
-import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty, usePosKetThuc } from "@/store/pos/tabs"
 import { posPrintHref } from "@/lib/pos/tabs"
 import { DocBanner, SubHeaderDate, homNay } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, LineTableHeader, QtyStepper, DiscountCell, VatChip, TrashButton, UnitCycleButton, LineDetailToggle, LineDetailPanel, LineDetailField, tomTatChiTiet, useCuonToiDong } from "@/components/pos/line-table"
@@ -143,6 +143,8 @@ const keyMoi = () => `iv${++dem}`
 export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }: InvoiceScreenProps) {
   const sua = !!invoiceId
   const router = useRouter()
+  /* Tác vụ đơn: xuất / lập lại xong thì in rồi đóng POS (chủ nhà 05/11/2026 "In xong đóng luôn"). */
+  const ketThuc = usePosKetThuc()
   const { toast } = useToast()
   const { products, stockByProduct, warnings, productById, customerById, capNhatKhach } = usePosRefData()
   const { user } = useAuth()
@@ -743,6 +745,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         }))
       /** Phần sau khi tờ đã ghi sổ — chung cho trả lời bình thường và trả lời CHẬM đã kiểm lại sổ (`cham`). */
       const xong = async (r: PostInvoiceResult, cham: boolean) => {
+        /** Gán người phụ trách hỏng — phải đọc câu báo trên màn này, nên tác vụ đơn KHÔNG tự đóng. */
+        let ganLoi = false
         /**
          * ⚠ XUẤT HÀNG MÀ ĐỔI NGƯỜI ĐƯỢC GÁN: `post_invoice` đứng tên người của
          *   ĐƠN, nên gán lại ngay sau khi có tờ. Hai lệnh, không một giao dịch
@@ -753,6 +757,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           try {
             await assignDocSeller(createClient(), "invoice", r.invoiceId, nguoi.ganId)
           } catch (e) {
+            ganLoi = true
             toast({
               title: `Đã xuất ${r.invoiceCode ?? ""} nhưng chưa gán được người phụ trách`,
               description: `${errorMessage(e)} — gán lại ở màn hóa đơn, KHÔNG xuất lại.`,
@@ -761,17 +766,22 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           }
         }
         setMocChuaLuu(chuKy)
+        const tieuDe = invoiceId
+          ? `Đã lập lại: ${invoiceCode ?? ""} → ${r.invoiceCode ?? ""}`
+          : `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`
         toast({
-          title: invoiceId
-            ? `Đã lập lại: ${invoiceCode ?? ""} → ${r.invoiceCode ?? ""}`
-            : `Đã xuất hóa đơn ${r.invoiceCode ?? ""}`,
+          title: tieuDe,
           ...(cham ? { description: "Máy chủ trả lời chậm — đã kiểm lại sổ: hoá đơn ĐÃ ghi. Đang mở lệnh in." } : {}),
         })
         const w = invoiceWarnings(r)
         if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
         if (r.invoiceId) {
-          /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in. */
-          inTaiCho(trangInHoaDon(r.invoiceId))
+          /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in.
+             ⚠ TÁC VỤ ĐƠN (chủ nhà 05/11/2026 "In xong đóng luôn"): `ketThuc` tự bật in và đóng POS khi hộp in đóng. Có cảnh
+             báo phải đọc (xuất thiếu, chưa gán được người phụ trách) hoặc tắt công tắc → in như cũ, ở lại trên tờ. */
+          if (!ketThuc({ docType: "INV", docId: r.invoiceId, loiBao: tieuDe, coCanhBao: !!w || ganLoi })) {
+            inTaiCho(trangInHoaDon(r.invoiceId))
+          }
           router.replace(`/pos/hoa-don/${r.invoiceId}`)
         }
       }
@@ -826,7 +836,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       setKiemLai(false)
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc])
+  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc, ketThuc])
 
   /* ⚠ ĐANG GHI SỔ MÀ ĐÓNG TAB / TẢI LẠI = mất câu trả lời và lệnh in đi kèm (chủ nhà 03/11/2026, khách NPP: "khi loát kém a
      thoát máy rồi vào lại thì nó đã ra hoàn thành"). Trình duyệt hỏi lại trước khi rời trang; chờ quá `CHO_LAU_MS` thì nút

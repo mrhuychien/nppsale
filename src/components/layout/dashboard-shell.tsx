@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { PosNewTab } from "@/components/sell/pos-new-tab"
+import { ThongBaoTuPos } from "@/components/sell/thong-bao-tu-pos"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -87,6 +88,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
         <OrderSyncProvider>
           <PermissionsLoader />
           <PosNewTab />
+          <ThongBaoTuPos />
           <div className="flex min-h-screen bg-surface">
             {coMenuTrai && <Sidebar role={role} />}
             <div className="min-w-0 flex-1">{children}</div>
@@ -103,6 +105,7 @@ export function DashboardShell({ role, children }: DashboardShellProps) {
     <div className="flex min-h-screen bg-surface">
       <PermissionsLoader />
       <PosNewTab />
+      <ThongBaoTuPos />
       {coMenuTrai && <Sidebar role={role} />}
 
       {menuSheet}

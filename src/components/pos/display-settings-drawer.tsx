@@ -191,6 +191,18 @@ export function DisplaySettingsDrawer({ open, onClose }: { open: boolean; onClos
                   <option value="ma">Theo mã hàng</option>
                 </select>
               </div>
+              {/* ⚠ TÁC VỤ ĐƠN — chủ nhà 04–05/11/2026: "sau khi hoàn thành 1 đơn thì tự đóng pos" · "In xong đóng luôn".
+                  Mặc định bật; ai làm nhiều chứng từ liên tục trong một tab POS thì tắt. Luật: `src/lib/pos/tac-vu-don.ts`. */}
+              <p className="mb-1 mt-4 border-t border-[var(--pos-line-soft)] pt-3 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--pos-muted)]">
+                Sau khi hoàn thành
+              </p>
+              <Toggle
+                id="s-tacvudon"
+                label="Tác vụ đơn — in xong tự đóng POS"
+                note="Xuất hàng, gửi đơn, hoàn thành phiếu: bật in (loại có mẫu in), hộp in đóng là đóng tab POS. Tắt nếu làm nhiều chứng từ liên tục trong một tab."
+                checked={nhap.tacVuDon}
+                onChange={(v) => set({ tacVuDon: v })}
+              />
             </>
           )}
 

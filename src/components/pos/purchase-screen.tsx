@@ -53,7 +53,7 @@ import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay } from "@/components/pos/doc-sub-header"
-import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty, usePosKetThuc } from "@/store/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell,
   LineAmountCell, LineMenu,
@@ -112,6 +112,8 @@ export function PurchaseScreen({
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
+  /* Tác vụ đơn: ghi nhận xong thì đóng POS — loại này chưa có mẫu in (chủ nhà 05/11/2026). */
+  const ketThuc = usePosKetThuc()
   const [slipCode, setSlipCode] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
   const [loiNap, setLoiNap] = useState<string | null>(null)
@@ -417,13 +419,16 @@ export function PurchaseScreen({
         setTrangThai((cu) => (complete || cu === "completed" ? "completed" : "draft"))
         toast({ title: complete ? "Đã hoàn thành — nhập kho và ghi công nợ NCC" : "Đã lưu phiếu tạm" })
         if (!receiptId) router.replace(`/pos/nhap-hang/${r.receiptId}`)
+        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026): ghi nhận là xong việc — loại này chưa có mẫu in (`posPrintHref` = null) nên
+           đóng POS ngay. Lưu tạm / nháp không phải xong việc. */
+        if (complete) ketThuc({ docType: "PUR", docId: r.receiptId, loiBao: "Đã hoàn thành phiếu nhập — nhập kho và ghi công nợ NCC" })
       } catch (e) {
         toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
       } finally {
         setDangLuu(false)
       }
     },
-    [user, ncc, lines, receiptId, soHdDauVao, thoiDiem, kho, ghiChu, t, chuKy, router, toast]
+    [user, ncc, lines, receiptId, soHdDauVao, thoiDiem, kho, ghiChu, t, chuKy, router, toast, ketThuc]
   )
 
   /**

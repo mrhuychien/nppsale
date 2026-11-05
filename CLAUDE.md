@@ -199,6 +199,29 @@ vào chưa mở tab mới"*.
   thì để yên (đoán "rộng" ở máy chủ là đẩy điện thoại vào POS 1.400 px); `PosDesktopRedirect` vẫn là đường lùi. E2E (không có
   SW — `next dev`): `e2e/pos-nhan-dien-may-chu.spec.ts`; đường SW chỉ thử được trên bản build.
 
+### POS tác vụ đơn: in xong đóng luôn
+Chủ nhà 04/11/2026: *"tao muốn tác vụ đơn nghĩa là sau khi hoàn thành 1 đơn thì tự đóng pos, cần thì mở lại sau"*; 05/11/2026
+(sau khi trao đổi ưu / nhược điểm): *"In xong đóng luôn"*.
+- Xong việc = chứng từ ghi xong: Xuất hàng & lập HĐ / Lập lại HĐ, Gửi đơn / Lưu đơn đã gửi, Hoàn thành phiếu trả / phiếu nhập,
+  Ghi nhận trả NCC → màn gọi `ketThuc` (`usePosKetThuc`, `src/store/pos/tabs.tsx`; luật `src/lib/pos/tac-vu-don.ts`). Loại có
+  mẫu in (`posPrintHref`: HĐ, đơn, phiếu trả) bật in rồi đóng **sau khi hộp in đóng** (`inTaiCho(…, khiXong)`); phiếu nhập /
+  trả NCC chưa có mẫu in → đóng ngay. Lưu nháp / lưu tạm không gọi.
+- Không đóng (in vẫn bật như cũ): công tắc tắt, hoặc có cảnh báo phải đọc trên màn (`coCanhBao`: xuất thiếu hàng, chưa gán được
+  người phụ trách). Đơn đã có HĐ từ lần bấm trước (`?daXuat=1`, dải nhắc In) không phải xong việc ở cửa sổ này.
+- Cửa sổ còn tab con khác thì chỉ đóng tab con (`dongGi`). Trình duyệt chỉ cho script đóng tab do script mở: POS mở từ nút
+  trong app đi `window.open` (`openInNewTab`) nên đóng được; mở bằng dấu trang / gõ địa chỉ thì `close()` bị lờ → về `/pos` +
+  `CAU_KHONG_TU_DONG` (`dongCuaSo`). Bài e2e phải mở POS từ nút trong app (popup) — `page.goto` thẳng là đi đường lùi.
+- Câu báo ("Đã xuất hóa đơn HD-…") mất theo tab → ghi `localStorage` `npp.pos.xong` (`goiLoiBao`) ngay trước khi đóng; tab danh
+  sách hiện qua `ThongBaoTuPos` (sự kiện `storage`; tab đang ẩn thì chờ quay về, quá 2 phút bỏ). Danh sách Đơn hàng / Hoá đơn /
+  Phiếu nhập đã tự tải lại khi quay về (`useRefreshOnFocus`).
+- Bật tác vụ đơn thì mỗi tab trình duyệt chỉ giữ tab con CỦA NÓ: không đọc / ghi bản lưu chung `npp.pos.tabs.v1` (dùng chung
+  mọi tab trình duyệt — mở POS mới từng kéo theo tab con cũ tới trần 8, và cửa sổ còn tab thừa thì không bao giờ đóng cả cửa
+  sổ). Kho tab chờ `PosSettingsProvider` đọc xong (`caiDatSan`) — effect của con chạy trước effect của cha.
+- Công tắc `tacVuDon` ở Thiết lập hiển thị › Sau khi hoàn thành, **mặc định bật**. Trình duyệt bắn `afterprint` cả khi bấm Huỷ
+  → huỷ in vẫn đóng (đã nói chủ nhà). Chromium không giao diện (e2e) bắn `beforeprint` / `afterprint` ngay khi gọi `print()` →
+  bài e2e cũ cần ở lại màn sau khi xong thì tắt công tắc (`tatTacVuDon`, `e2e/helpers.ts`); bài của luật này:
+  `e2e/pos-tac-vu-don.spec.ts`.
+
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.
 - Tờ in hoá đơn (POS `/in/hoa-don`, màn quản lý, Excel "như mẫu in") in **mọi dòng đổi / trả của phiếu đã trừ vào tờ**

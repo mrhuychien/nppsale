@@ -18,6 +18,23 @@ export async function dangNhap(page: Page) {
   await page.waitForURL(/\/orders/)
 }
 
+/**
+ * TẮT "TÁC VỤ ĐƠN" CỦA POS cho bài cần ở lại màn sau khi xong (chủ nhà 05/11/2026 "In xong đóng luôn" — mặc định BẬT).
+ * Chromium không giao diện bắn `beforeprint` / `afterprint` ngay khi gọi `print()`, nên bật là xuất hàng xong POS đóng (tab
+ * mở từ app) hoặc về `/pos` (tab mở bằng `page.goto`). Ghi ở cấp context để cả tab POS mở ra (popup) cũng tắt.
+ */
+export async function tatTacVuDon(page: Page) {
+  await page.context().addInitScript(() => {
+    try {
+      const k = "npp.pos.settings.v1"
+      const cu = JSON.parse(window.localStorage.getItem(k) || "{}") as Record<string, unknown>
+      window.localStorage.setItem(k, JSON.stringify({ ...cu, tacVuDon: false }))
+    } catch {
+      /* không có localStorage thì thôi */
+    }
+  })
+}
+
 /** Nhật ký yêu cầu của máy chủ giả (để đọc tải trọng app gửi đi). */
 /** `client`: X-Client-Info của @supabase/ssr — "…createBrowserClient" (trình duyệt) hay "…createServerClient" (máy chủ Next). */
 export async function nhatKy(): Promise<Array<{ method: string; path: string; body: unknown; query?: string; client?: string }>> {

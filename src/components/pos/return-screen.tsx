@@ -40,7 +40,7 @@ import { returnTotals, debtAfterReturn, warehouseSentence } from "@/lib/pos/retu
 import { RETURN_ZONES, type ReturnZone } from "@/lib/returns/complete-return"
 import type { PosBadge, PosLine } from "@/lib/pos/types"
 import { usePosRefData } from "@/store/pos/ref-data"
-import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty, usePosKetThuc } from "@/store/pos/tabs"
 import { usePosKeys } from "@/components/pos/pos-shell"
 import { DocSubHeader, SubHeaderDate, DocBanner, homNay } from "@/components/pos/doc-sub-header"
 import { LineTableFrame, QtyStepper, TrashButton, UnitCycleButton } from "@/components/pos/line-table"
@@ -109,6 +109,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
+  /* Tác vụ đơn: hoàn thành phiếu trả thì in phiếu rồi đóng POS (chủ nhà 05/11/2026 "In xong đóng luôn"). */
+  const ketThuc = usePosKetThuc()
 
   const [traLines, setTraLines] = useState<PosLine[]>([])
   const [doiLines, setDoiLines] = useState<PosLine[]>([])
@@ -466,10 +468,12 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         })
         /* ⚠ Phiếu MỚI có người được gán chọn trước: gán sau khi có mã phiếu.
            Hai lệnh, không một giao dịch — gán hỏng thì phiếu VẪN đã lưu, nói rõ. */
+        let ganLoi = false
         if (!returnId && nguoi.ganId) {
           try {
             await assignDocSeller(createClient(), "return", r.returnId, nguoi.ganId)
           } catch (e) {
+            ganLoi = true
             toast({
               title: "Đã lưu phiếu nhưng chưa gán được người phụ trách",
               description: `${errorMessage(e)} — mở lại phiếu để gán, KHÔNG lưu lại.`,
@@ -482,13 +486,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
           title: complete ? `Đã ghi nhận — hàng vào ${tenKhoNhan}` : "Đã lưu phiếu nháp",
         })
         if (!returnId) router.replace(`/pos/tra-hang/${r.returnId}`)
+        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 05/11/2026 "In xong đóng luôn"): hoàn thành = xong việc — in phiếu trả, hộp in đóng là đóng
+           POS. Lưu nháp không phải xong việc; gán người phụ trách hỏng thì ở lại để đọc câu báo. */
+        if (complete) {
+          ketThuc({ docType: "RET", docId: r.returnId, loiBao: `Đã ghi nhận phiếu trả — hàng vào ${tenKhoNhan}`, coCanhBao: ganLoi })
+        }
       } catch (e) {
         toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
       } finally {
         setDangLuu(false)
       }
     },
-    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, thoiDiem, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId]
+    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, thoiDiem, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId, ketThuc]
   )
 
   /**

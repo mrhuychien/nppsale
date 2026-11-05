@@ -43,6 +43,18 @@ import {
   type PosDocType,
   type PosTab,
 } from "@/lib/pos/tabs"
+import { usePosSettings } from "@/store/pos/settings"
+import { inTaiCho } from "@/lib/pos/print-window"
+import {
+  CAU_KHONG_TU_DONG,
+  CHO_DONG_MS,
+  KHOA_XONG_POS,
+  dongCuaSo,
+  dongGi,
+  goiLoiBao,
+  ketThucTacVu,
+  type ChungTuXong,
+} from "@/lib/pos/tac-vu-don"
 
 const KEY = "npp.pos.tabs.v1"
 
@@ -65,6 +77,13 @@ interface Value {
    * gọi. Không có tab nào khớp thì thôi.
    */
   label: (docType: PosDocType, docId: string, label: string) => void
+  /**
+   * TÁC VỤ ĐƠN — màn gọi khi một chứng từ vừa ghi XONG (không gọi cho lưu nháp / lưu tạm). Bật công tắc thì in (loại có
+   * mẫu in) rồi đóng tab POS sau khi hộp in đóng — xem `src/lib/pos/tac-vu-don.ts`.
+   *
+   * @returns `true` = đã nhận việc (đã bật in nếu loại có mẫu in — nơi gọi ĐỪNG in thêm); `false` = ở lại như cũ.
+   */
+  ketThuc: (x: ChungTuXong) => boolean
 }
 
 const Ctx = createContext<Value | null>(null)
@@ -91,6 +110,19 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
   useEffect(() => { activeKeyRef.current = activeKey }, [activeKey])
 
   /**
+   * TÁC VỤ ĐƠN (`settings.tacVuDon`, mặc định bật — chủ nhà 05/11/2026). Bật thì mỗi tab trình duyệt chỉ giữ tab con CỦA
+   * CHÍNH NÓ: không đọc, không ghi bản lưu chung `KEY`. Bản lưu ấy dùng chung cho MỌI tab trình duyệt, nên mở POS mới là
+   * kéo theo tab con của các lần trước tới trần 8 tab — và cửa sổ còn tab con thừa thì `dongGi` không bao giờ đóng cả
+   * cửa sổ. F5 vẫn về đúng chứng từ: URL đã ghi nó (`dongBoUrl`).
+   *
+   * ⚠ CHỜ ĐỌC XONG CÀI ĐẶT. `PosSettingsProvider` là cha: effect của con chạy TRƯỚC effect của cha, nên lúc khôi phục tab
+   * chạy, cài đặt còn là mặc định chưa đọc bản lưu.
+   */
+  const { settings, ready: caiDatSan } = usePosSettings()
+  const tacVuDonRef = useRef(settings.tacVuDon)
+  useEffect(() => { tacVuDonRef.current = settings.tacVuDon }, [settings.tacVuDon])
+
+  /**
    * ⚠ KHÔI PHỤC QUA CƠ CHẾ LƯU SẴN CÓ (spec §3 mục 4). `localStorage`
    * là đúng chỗ `/sell` đang lưu giỏ; không dựng thêm cơ chế nào.
    *
@@ -98,7 +130,15 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
    * (đổi phiên bản, người dùng nghịch DevTools) mà làm cả màn trắng
    * thì người dùng không có đường nào tự gỡ.
    */
+  const daKhoiPhuc = useRef(false)
   useEffect(() => {
+    if (!caiDatSan || daKhoiPhuc.current) return
+    daKhoiPhuc.current = true
+    if (settings.tacVuDon) {
+      /* Tác vụ đơn: bắt đầu rỗng — tab của chứng từ trên URL do `dongBoUrl` mở. */
+      setReady(true)
+      return
+    }
     try {
       const raw = window.localStorage.getItem(KEY)
       if (raw) {
@@ -119,13 +159,15 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
       /* bản lưu hỏng — bắt đầu rỗng, xem chú thích trên */
     }
     setReady(true)
-  }, [])
+  }, [caiDatSan, settings.tacVuDon])
 
   const daNap = useRef(false)
   useEffect(() => {
     if (!ready) return
     // ⚠ Đừng ghi đè bản lưu bằng state rỗng ở lần vẽ đầu.
     if (!daNap.current) { daNap.current = true; return }
+    /* ⚠ Tác vụ đơn: không ghi đè bản lưu chung bằng tab của riêng cửa sổ này — xem trên. */
+    if (tacVuDonRef.current) return
     try {
       window.localStorage.setItem(KEY, JSON.stringify({ tabs, activeKey }))
     } catch {
@@ -205,6 +247,51 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   /**
+   * Đóng sau khi xong — xem `dongGi` / `dongCuaSo`. `daIn` chỉ để câu báo ở tab danh sách nói đúng chuyện đã xảy ra.
+   *
+   * ⚠ LỜI BÁO GHI TRONG `khiDong`: chỉ khi tab ĐÓNG ĐƯỢC (cùng lượt gọi `close()`, trước khi trang bị gỡ) — tab mở bằng tay
+   *   bị chặn đóng thì tab danh sách không được báo "POS đã tự đóng".
+   */
+  const dongSauKhiXong = useCallback(
+    (x: ChungTuXong, daIn: boolean) => {
+      const d = dongGi(tabsRef.current, x, activeKeyRef.current)
+      if (d.loai === "tab") {
+        close(d.key)
+        setNotice(`${x.loiBao} — đã đóng tab của chứng từ này.`)
+        return
+      }
+      dongCuaSo(window, {
+        khiDong: () => {
+          try {
+            window.localStorage.setItem(KHOA_XONG_POS, goiLoiBao(x.loiBao, daIn, Date.now()))
+          } catch {
+            /* không ghi được thì tab danh sách không có câu báo — POS vẫn đóng */
+          }
+        },
+        duongLui: () => {
+          /* Tab mở bằng tay: về trang "Mở chứng từ mới", nói ra là đã xong và vì sao tab còn đó. */
+          if (d.key) close(d.key)
+          else router.push("/pos")
+          setNotice(`${x.loiBao}. ${CAU_KHONG_TU_DONG}`)
+        },
+      })
+    },
+    [close, router]
+  )
+
+  const ketThuc = useCallback<Value["ketThuc"]>(
+    (x) => {
+      const kt = ketThucTacVu(tacVuDonRef.current, x)
+      if (!kt.dong) return false
+      /* ⚠ "In xong đóng luôn": có mẫu in thì đóng SAU khi hộp in đóng — đóng trước là cắt ngang lệnh in. */
+      if (kt.trangIn) inTaiCho(kt.trangIn, document, () => dongSauKhiXong(x, true))
+      else setTimeout(() => dongSauKhiXong(x, false), CHO_DONG_MS)
+      return true
+    },
+    [dongSauKhiXong]
+  )
+
+  /**
    * ĐỒNG BỘ TỪ URL VỀ TAB — xem đầu tệp.
    *
    * Ba trường hợp, theo thứ tự:
@@ -255,8 +342,8 @@ export function PosTabsProvider({ children }: { children: ReactNode }) {
   const clearNotice = useCallback(() => setNotice(null), [])
 
   const value = useMemo<Value>(
-    () => ({ tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label }),
-    [tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label]
+    () => ({ tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label, ketThuc }),
+    [tabs, activeKey, ready, notice, clearNotice, open, openNew, close, activate, setDirty, setCount, label, ketThuc]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
@@ -306,4 +393,9 @@ export function usePosDirty(signature: string, baseline: string | null) {
     if (!activeKey) return
     setDirty(activeKey, baseline != null && signature !== baseline)
   }, [activeKey, signature, baseline, setDirty])
+}
+
+/** Hàm kết thúc tác vụ cho màn chứng từ — xem `ketThuc` ở trên và `src/lib/pos/tac-vu-don.ts`. */
+export function usePosKetThuc(): Value["ketThuc"] {
+  return usePosTabs().ketThuc
 }

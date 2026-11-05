@@ -28,7 +28,12 @@ export function voiAuto(url: string): string {
   return /[?&]auto=1\b/.test(url) ? url : `${url}${url.includes("?") ? "&" : "?"}auto=1`
 }
 
-export function inTaiCho(url: string, doc: Document = document): HTMLIFrameElement {
+/**
+ * @param khiXong chạy SAU khi hộp in đóng (in hoặc huỷ) — tác vụ đơn đóng POS ở đây (chủ nhà 05/11/2026 "In xong đóng
+ *   luôn", `src/lib/pos/tac-vu-don.ts`). Trang in không nạp được thì không bao giờ báo về → không chạy: POS ở lại, đúng hơn
+ *   là đóng khi tờ chưa in.
+ */
+export function inTaiCho(url: string, doc: Document = document, khiXong?: () => void): HTMLIFrameElement {
   doc.getElementById(KHUNG_IN_ID)?.remove()
   const f = doc.createElement("iframe")
   f.id = KHUNG_IN_ID
@@ -41,7 +46,10 @@ export function inTaiCho(url: string, doc: Document = document): HTMLIFrameEleme
     if (e.source !== f.contentWindow || (e.data as { type?: string } | null)?.type !== "npp:in-xong") return
     win?.removeEventListener("message", nghe)
     /* Gỡ sau một nhịp — gỡ ngay trong `afterprint` của khung là cắt ngang nó. */
-    setTimeout(() => f.remove(), 0)
+    setTimeout(() => {
+      f.remove()
+      khiXong?.()
+    }, 0)
   }
   win?.addEventListener("message", nghe)
   doc.body.appendChild(f)

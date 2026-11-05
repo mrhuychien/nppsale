@@ -47,9 +47,12 @@ test("đơn hàng: đổi đơn vị ở dòng bán và dòng hàng trả đều
   await expect(page.getByLabel("Lý do trả dòng 1")).toContainText("Sai hàng")
 
   // Lưu nháp → tải trọng gửi xuống máy chủ mang đúng đơn vị và giá
+  /* ⚠ Nhật ký máy chủ giả là CHUNG cả lượt chạy: chỉ đọc lời gọi sinh ra SAU cú bấm này — đọc "lời gọi cuối" của cả nhật
+     ký thì lúc máy chậm (câu của bài này chưa về) là đọc nhầm đơn của bài chạy trước (05/11/2026: 405.000 thay vì 450.000). */
+  const moc = (await nhatKy()).length
   await page.getByRole("button", { name: /Lưu nháp/ }).click()
-  await expect.poll(async () => (await nhatKy()).some((r) => r.path.endsWith("/rpc/create_order_with_lines"))).toBe(true)
-  const goi = (await nhatKy()).filter((r) => r.path.endsWith("/rpc/create_order_with_lines")).at(-1)!
+  await expect.poll(async () => (await nhatKy()).slice(moc).some((r) => r.path.endsWith("/rpc/create_order_with_lines"))).toBe(true)
+  const goi = (await nhatKy()).slice(moc).filter((r) => r.path.endsWith("/rpc/create_order_with_lines")).at(-1)!
   const p = (goi.body as { p: { lines: Array<Record<string, unknown>>; return_lines: Array<Record<string, unknown>> } }).p
   expect(p.lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 450_000, conversion_factor: 24 })
   expect(p.return_lines[0]).toMatchObject({ unit_name: "thùng", unit_price: 220_000, line_total: 220_000, reason: "wrong_item" })

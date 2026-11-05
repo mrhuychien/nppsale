@@ -62,7 +62,7 @@ import { usePosKeys } from "@/components/pos/pos-shell"
 import {
   DocSubHeader, SubHeaderDate, SubHeaderSelect, DocBanner, homNay,
 } from "@/components/pos/doc-sub-header"
-import { usePosDocLabel, usePosDocCount, usePosDirty } from "@/store/pos/tabs"
+import { usePosDocLabel, usePosDocCount, usePosDirty, usePosKetThuc } from "@/store/pos/tabs"
 import {
   LineTableFrame, LineTableHeader, POS_GRID, QtyStepper, DiscountCell, LineAmountCell, LineMenu,
 } from "@/components/pos/line-table"
@@ -138,6 +138,8 @@ export function SupplierReturnScreen({
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
+  /* Tác vụ đơn: ghi nhận xong thì đóng POS — loại này chưa có mẫu in (chủ nhà 05/11/2026). */
+  const ketThuc = usePosKetThuc()
 
   const [slipCode, setSlipCode] = useState<string | null>(null)
   const [dangLuu, setDangLuu] = useState(false)
@@ -484,6 +486,9 @@ export function SupplierReturnScreen({
         setTrangThai(complete ? "completed" : "draft")
         toast({ title: complete ? "Đã ghi nhận — xuất kho và giảm công nợ NCC" : "Đã lưu phiếu nháp" })
         if (!returnId) router.replace(`/pos/tra-ncc/${r.returnId}`)
+        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026): ghi nhận là xong việc — loại này chưa có mẫu in (`posPrintHref` = null) nên
+           đóng POS ngay. Lưu tạm / nháp không phải xong việc. */
+        if (complete) ketThuc({ docType: "PRET", docId: r.returnId, loiBao: "Đã ghi nhận phiếu trả NCC — xuất kho và giảm công nợ NCC" })
       } catch (e) {
         toast({ title: "Chưa lưu được", description: errorMessage(e), variant: "destructive" })
         /* Sửa phiếu đã xuất là huỷ rồi xuất lại (hai bước) — xuất lại hỏng thì phiếu đã về Nháp: đọc lại trạng thái. */
@@ -495,7 +500,7 @@ export function SupplierReturnScreen({
         setDangLuu(false)
       }
     },
-    [user, ncc, lines, returnId, thoiDiem, kho, lyDo, ghiChu, t, chuKy, router, toast]
+    [user, ncc, lines, returnId, thoiDiem, kho, lyDo, ghiChu, t, chuKy, router, toast, ketThuc]
   )
 
   const deltaCells = useMemo<DeltaCell[]>(

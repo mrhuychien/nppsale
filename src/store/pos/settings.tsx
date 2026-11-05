@@ -40,6 +40,14 @@ export interface PosSettings {
   /** ⚠ Bán sỉ thì ghi nợ là mặc định — spec §6, không copy POS bán lẻ. */
   defaultCreditAll: boolean
   sortBy: "moi-nhat" | "ten" | "ma"
+
+  /* --- SAU KHI HOÀN THÀNH --- */
+  /**
+   * TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026: "sau khi hoàn thành 1 đơn thì tự đóng pos" · "In xong đóng luôn"): xong một chứng từ
+   * thì in (loại có mẫu in) rồi đóng tab POS; mỗi tab POS chỉ giữ tab con của chính nó. Tắt = như cũ (nhiều chứng từ trong
+   * một tab, tab con lưu chung). Luật: `src/lib/pos/tac-vu-don.ts`.
+   */
+  tacVuDon: boolean
 }
 
 /**
@@ -64,6 +72,8 @@ export const POS_SETTINGS_DEFAULT: PosSettings = {
   mergeDuplicateLines: true,
   defaultCreditAll: true,
   sortBy: "moi-nhat",
+  /* ⚠ MẶC ĐỊNH BẬT (chủ nhà chốt 05/11/2026). Bản lưu cũ không có khoá này → trộn lên mặc định → bật. */
+  tacVuDon: true,
 }
 
 interface Value {

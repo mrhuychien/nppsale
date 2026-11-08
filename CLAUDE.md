@@ -131,6 +131,19 @@ Chủ nhà 08/11/2026: *"Phần công nợ NCC : Công nợ chưa có cột dư 
 - `/payables` cộng từ chính sổ khoản chưa xong của bốn ô tổng (`gopNoTheoNcc(allOpen)` → `duNoHienTaiCuaNcc`,
   `src/lib/payables/so-no-ncc.ts`), không hỏi máy chủ thêm. Chưa đọc xong → khung chờ; đọc hỏng / chạm trần → "—" (số
   thiếu trông y như số thật). Cột không xếp được (cộng ở trình duyệt).
+- **Tab Công nợ ở chi tiết NCC là SỔ CHI TIẾT** (chủ nhà 08/11/2026: *"phần chi tiết công nợ từng ncc chưa có dư nợ sau mỗi giao
+  dịch, kiểm tra xem phần tiền thanh toán cho ncc cũng chưa có trong công nợ"*): mỗi giao dịch một dòng — phiếu nhập / nợ đầu kỳ /
+  công nợ lập tay (tăng), phiếu trả NCC (giảm), phiếu chi trả NCC (**MỘT dòng cả phiếu**, gom phần `payable_payments` theo
+  `supplier_payment_id`, kể cả phần trả trước), trả thẳng (Ghi trả NCC, mỗi lần một dòng) — kèm **dư nợ sau giao dịch**, mới trước;
+  nợ đầu kỳ đứng đầu sổ. Luật: `soChiTietNoNcc` (`src/lib/payables/so-chi-tiet-ncc.ts`). Tiền trả lấy từ `payable_payments`
+  (tiền thật), dòng "Trả trước NCC" của phiếu chi KHÔNG là dòng sổ (đếm hai lần); `paid` lớn hơn tổng phiếu của khoản (nợ đầu kỳ
+  nhập sẵn, dữ liệu cũ) → dòng "Đã thanh toán — không có phiếu chi" — nhờ vậy dư nợ cuối sổ = `tongNoNcc`. Đọc lần trả hỏng /
+  dư cuối lệch đầu tab → báo đỏ / vàng.
+- Ba đường trả NCC đều trừ nợ: Phiếu chi loại "Trả NCC" + nút "Chi trả NCC" (`chi_tra_ncc`, mig 242), "Ghi trả" một khoản
+  (`record_payable_payment`, mig 167). Phiếu chi loại **"Chi phí" KHÔNG trừ nợ NCC** — trả tiền hàng mà lập nhầm loại ấy thì nợ
+  không giảm. Khám trên sổ thật (chỉ đọc, MỘT câu): `supabase/diagnostics/kham_tra_tien_ncc.sql` — dư nợ + tiền trả theo đường
+  ghi, khoản đã trả không phiếu, phiếu chi phí nghi là trả NCC (tên NCC / từ khoá), phiếu chi NCC lệch. Bộ thử:
+  `scripts/sql/thu-kham-tra-tien-ncc.sql`.
 
 ### Thêm hàng ở POS
 Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách luôn"* · *"phần đổi trả dài quá ko có scroll

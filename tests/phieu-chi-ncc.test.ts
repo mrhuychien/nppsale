@@ -356,7 +356,7 @@ describe("màn hình: lập / xem / huỷ phiếu chi trả NCC", () => {
   it("chi tiết NCC: nút Chi trả NCC + hộp lập phiếu chỉ cho vai được chi; phần tiền của phiếu không hiện lặp thành từng lần trả", () => {
     const s = doc("src/app/(dashboard)/suppliers/[id]/page.tsx")
     expect(s.match(/\{duocChiTraNcc\(user\?\.role\) && \(/g)?.length).toBe(3)
-    expect(s).toContain("setPhieuChi(chi.filter((c) => !phanCuaPhieu.has(c.id)))")
+    expect(s).toContain("setPhieuChi(chi.filter((c) => !phieuCuaPhan.has(c.id)))")
     expect(s).toContain("lichSuGiaoDich(phieuNhap, phieuTra, phieuChi, phieuChiNcc)")
     expect(s).toMatch(/<PhieuChiNccDialog\s+open=\{moChiNcc\}[\s\S]*?coDinh=\{\{ id: supplier\.id, name: supplier\.name \}\}/)
   })

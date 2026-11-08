@@ -83,7 +83,11 @@ test("chi tiết NCC (máy tính): thẻ đầu, 4 ô số, 5 tab, hai cột ≥
   await expect(gia).toContainText("400.000đ")
 
   await page.getByRole("tab", { name: "Công nợ" }).click()
-  await expect(page.getByTestId("dong-no-ncc")).toHaveCount(1)
+  /* Sổ chi tiết: phiếu nhập 300.000 rồi lần trả 100.000 (22/09) là hai dòng; dư nợ sau lần trả 200.000. */
+  const no = page.getByTestId("dong-no-ncc")
+  await expect(no).toHaveCount(2)
+  await expect(no.first()).toContainText("Trả tiền NCC")
+  await expect(no.first().getByTestId("du-no-sau")).toHaveText("200.000đ")
 
   await page.getByRole("tab", { name: "Thông tin pháp lý" }).click()
   const pl = page.getByTestId("ncc-phap-ly")

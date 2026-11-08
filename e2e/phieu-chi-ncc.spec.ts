@@ -165,10 +165,18 @@ test("chi tiết NCC: nút Chi trả NCC (NCC chọn sẵn) → phiếu hiện M
   await expect(page.getByText("0 phiếu trả · 2 lần trả tiền")).toBeVisible()
 
   await page.getByRole("tab", { name: /Công nợ/ }).click()
-  await expect(page.getByText("Còn phải trả -50.000đ")).toBeVisible()
-  const truoc = page.getByRole("row").filter({ hasText: "PCNCC-0002" })
-  await expect(truoc).toContainText("Tiền trả trước")
+  await expect(page.getByTestId("ncc-du-no-hien-tai")).toHaveText("-50.000đ")
+  /* Sổ chi tiết (chủ nhà 08/11/2026): phiếu chi là MỘT dòng giảm nợ đủ 400.000 (gồm phần trả trước), phiếu đã huỷ không có
+     dòng; dư nợ: đầu kỳ 50.000 → PN-PC1 350.000 → PCNCC-0002 −50.000. */
+  const pc = page.getByRole("row").filter({ hasText: "PCNCC-0002" })
+  await expect(pc).toHaveCount(1)
+  await expect(pc).toContainText("Phiếu chi trả NCC")
+  await expect(pc.getByTestId("giam-no")).toHaveText("400.000đ")
+  await expect(pc.getByTestId("du-no-sau")).toHaveText("-50.000đ")
+  await expect(pc).toContainText("trả trước 50.000đ")
+  await expect(page.getByRole("row").filter({ hasText: "PCNCC-0001" })).toHaveCount(0)
   await expect(page.getByRole("row").filter({ hasText: "PN-PC1" })).toContainText("Đã thanh toán")
+  await expect(page.getByRole("row").filter({ hasText: "PN-PC1" }).getByTestId("du-no-sau")).toHaveText("350.000đ")
 })
 
 test("Quản lý: không có loại phiếu Trả NCC, không có nút Chi trả NCC / Huỷ phiếu chi (Chủ NPP, Kế toán mới chi)", async ({ page }) => {

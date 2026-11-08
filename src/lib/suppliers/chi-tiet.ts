@@ -223,7 +223,7 @@ const NHAN_TRANG_THAI: Record<string, { nhan: string; tone: ToneGiaoDich }> = {
 }
 const trangThai = (s: string | null) => NHAN_TRANG_THAI[s ?? ""] ?? { nhan: s || "—", tone: "secondary" as ToneGiaoDich }
 
-const NHAN_HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", offset: "Cấn trừ" }
+export const NHAN_HINH_THUC: Record<string, string> = { cash: "Tiền mặt", transfer: "Chuyển khoản", offset: "Cấn trừ" }
 
 /**
  * ⚠ `chi` là các lần trả THẲNG vào từng khoản nợ (Ghi trả NCC). Phần tiền của phiếu chi NCC đã chia vào khoản nợ thì

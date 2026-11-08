@@ -33,8 +33,11 @@ describe("công nợ theo NCC: cột hàng trả lại", () => {
     expect(s).toContain(">Đã thanh toán<")
     expect(s).not.toMatch(/>Đã trả</)
     expect(s).toContain("raw.map(dongCongNoTheoNcc)")
+    /* Tab Công nợ ở chi tiết NCC là sổ chi tiết (chủ nhà 08/11/2026) — không còn cột "Đã thanh toán"; khoản trả xong và
+       khoản đã trả không phiếu ghi "Đã thanh toán", không ghi "Đã trả". */
     const ncc = readFileSync("src/app/(dashboard)/suppliers/[id]/page.tsx", "utf8")
-    expect(ncc).toContain(">Đã thanh toán</TableHead>")
-    expect(ncc).not.toMatch(/"Đã trả"/)
+    const so = readFileSync("src/lib/payables/so-chi-tiet-ncc.ts", "utf8")
+    expect(so).toContain('if (r.status === "paid") return { nhan: "Đã thanh toán", tone: "success" }')
+    expect(ncc + so).not.toMatch(/"Đã trả"/)
   })
 })

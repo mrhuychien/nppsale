@@ -34,11 +34,17 @@ test("chi tiết NCC: còn phải trả tính từ sổ công nợ (phiếu nh�
   await dangNhap(page)
   await page.goto(`/suppliers/${NCC}?tab=debt`)
   await expect(page.getByTestId("ncc-con-no")).toHaveText("150.000đ")
+  /* Sổ chi tiết (chủ nhà 08/11/2026): mỗi giao dịch một dòng + dư nợ sau giao dịch. Hai khoản mẫu có số đã trả mà không có
+     phiếu chi (dữ liệu nhập sẵn) → mỗi khoản thêm dòng "Đã thanh toán — không có phiếu chi". Mới trước:
+     TN-NCC-1 −50.000 → 150.000 · PN-1 đã trả −100.000 → 200.000 · PN-1 +300.000 → 300.000 · HD-CU đã trả −200.000 → 0 ·
+     HD-CU +200.000 → 200.000. */
   const dong = page.getByTestId("dong-no-ncc")
-  await expect(dong).toHaveCount(3)
-  await expect(dong.filter({ hasText: "PN-1" })).toContainText("Phiếu nhập")
-  await expect(dong.filter({ hasText: "TN-NCC-1" })).toContainText("Trả NCC")
-  await dong.filter({ hasText: "PN-1" }).click()
+  await expect(dong).toHaveCount(5)
+  await expect(dong.getByTestId("du-no-sau")).toHaveText(["150.000đ", "200.000đ", "300.000đ", "0đ", "200.000đ"])
+  await expect(dong.first()).toContainText("TN-NCC-1")
+  await expect(dong.first()).toContainText("Trả hàng NCC")
+  await expect(page.getByTestId("ncc-du-no-hien-tai")).toHaveText("150.000đ")
+  await dong.filter({ hasText: "Phiếu nhập hàng" }).click()
   await expect(page).toHaveURL(/\/purchasing\/receipts\/pi1$/)
 })
 

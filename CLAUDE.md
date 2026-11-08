@@ -122,6 +122,16 @@ Chủ nhà 13/10/2026: *"Sao sửa phiếu nháp -> ra màn post lại hiện tr
   nút "Sửa" của phiếu nháp cũng đi đường ấy. Nháp: NHÁP + Lưu nháp / Lưu tạm. Đã ghi nhận: **không** có nút lưu nháp
   (trả NCC: lưu nháp = huỷ phiếu, rút hàng về kho). Sửa phiếu trả NCC đã xuất giữ nguyên số phiếu (huỷ rồi xuất lại).
 
+### Công nợ NCC: dư nợ hiện tại
+Chủ nhà 08/11/2026: *"Phần công nợ NCC : Công nợ chưa có cột dư nợ hiện tại"*.
+- Dư nợ hiện tại của một NCC = Σ(`amount − paid`) trên các khoản `status <> 'paid'`, **không kẹp dòng âm** (phiếu trả NCC, tiền
+  trả trước — mig 231 / 242): âm = NCC còn nợ lại mình. Một số ở ba nơi: cột "Dư nợ hiện tại" của `/payables` (mỗi dòng là
+  MỘT chứng từ — cột này là tổng của cả NCC dòng ấy, không theo ô tìm / lọc / trang), cột cùng tên ở Theo NCC
+  (`payables_by_supplier.remaining`, trước là "Còn lại") và ô Công nợ NCC ở chi tiết NCC (`tongNoNcc`).
+- `/payables` cộng từ chính sổ khoản chưa xong của bốn ô tổng (`gopNoTheoNcc(allOpen)` → `duNoHienTaiCuaNcc`,
+  `src/lib/payables/so-no-ncc.ts`), không hỏi máy chủ thêm. Chưa đọc xong → khung chờ; đọc hỏng / chạm trần → "—" (số
+  thiếu trông y như số thật). Cột không xếp được (cộng ở trình duyệt).
+
 ### Thêm hàng ở POS
 Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách luôn"* · *"phần đổi trả dài quá ko có scroll
 … chỉ hiện hàng đổi trả không hiện phiếu đi"*.

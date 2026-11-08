@@ -118,7 +118,8 @@ export default function PayablesBySupplierPage() {
                       <TableHead className="text-right">Tổng nợ</TableHead>
                       <TableHead className="text-right">Hàng trả lại</TableHead>
                       <TableHead className="text-right">Đã thanh toán</TableHead>
-                      <TableHead className="text-right">Còn lại</TableHead>
+                      {/* Cùng tên, cùng số với cột "Dư nợ hiện tại" ở màn Theo khoản nợ (chủ nhà 08/11/2026). */}
+                      <TableHead className="text-right">Dư nợ hiện tại</TableHead>
                       <TableHead className="text-right">QH</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -135,7 +136,7 @@ export default function PayablesBySupplierPage() {
                         <TableCell className="text-right tabular-nums">{formatCurrency(row.totalDebt)}</TableCell>
                         <TableCell className="text-right tabular-nums" data-testid="ncc-hang-tra">{tienTra(row.totalReturned)}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatCurrency(row.totalPaid)}</TableCell>
-                        <TableCell className="text-right font-bold tabular-nums">{formatCurrency(row.remaining)}</TableCell>
+                        <TableCell className="text-right font-bold tabular-nums" data-testid="ncc-du-no">{formatCurrency(row.remaining)}</TableCell>
                         <TableCell className="text-right">
                           {row.overdueCount > 0 ? (
                             <Badge variant="danger">{row.overdueCount}</Badge>
@@ -192,7 +193,7 @@ export default function PayablesBySupplierPage() {
                       <p className="font-medium tabular-nums">{formatCurrency(row.totalPaid)}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Còn lại</p>
+                      <p className="text-muted-foreground">Dư nợ hiện tại</p>
                       <p className="font-bold text-destructive tabular-nums">{formatCurrency(row.remaining)}</p>
                     </div>
                   </div>

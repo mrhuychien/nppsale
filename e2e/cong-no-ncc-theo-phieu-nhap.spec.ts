@@ -56,6 +56,10 @@ test("công nợ theo NCC: thanh chuyển ở màn Công nợ NCC, bấm NCC m�
   await expect(dau).toContainText("Hàng trả lại")
   await expect(dau).toContainText("Đã thanh toán")
   await expect(dau).not.toContainText("Đã trả")
+  /* Chủ nhà 08/11/2026: "Còn lại" ở đây chính là dư nợ hiện tại của NCC — cùng tên với cột mới ở màn Theo khoản nợ. */
+  await expect(dau).toContainText("Dư nợ hiện tại")
+  await expect(dau).not.toContainText("Còn lại")
+  await expect(hang.getByTestId("ncc-du-no")).toHaveText("150.000đ")
   const o = hang.getByRole("cell")
   await expect(o.nth(3)).toHaveText(/300\.000/)
   await expect(o.nth(4)).toHaveText(/50\.000/)
@@ -83,4 +87,40 @@ test("công nợ NCC theo khoản nợ: cột Chứng từ hiện mã phiếu nh
   await expect(nhap, "gõ một mã không có thì phải lọc mất").toHaveCount(0)
   await o.fill("PN-1")
   await expect(nhap).toHaveCount(1)
+})
+
+/**
+ * Chủ nhà 08/11/2026: "Phần công nợ NCC : Công nợ chưa có cột dư nợ hiện tại". Mỗi dòng là MỘT chứng từ ("Còn lại" của
+ * riêng nó); cột mới = tổng đang nợ NCC của dòng: 300.000 − 100.000 − 50.000 = 150.000 — ở mọi dòng của NCC ấy, kể cả dòng
+ * phiếu trả NCC và khoản đã trả xong, không đổi theo ô tìm.
+ */
+test("công nợ NCC theo khoản nợ: cột Dư nợ hiện tại = tổng đang nợ NCC của dòng (máy tính, xem nhanh, điện thoại)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await dangNhap(page)
+  await page.goto("/payables")
+  await expect(page.getByRole("row").first()).toContainText("Dư nợ hiện tại")
+  const dong = (ma: string) => page.getByRole("row").filter({ hasText: ma })
+  for (const ma of ["PN-1", "TN-NCC-1", "HD-CU"]) {
+    await expect(dong(ma).getByTestId("du-no-ncc"), `dòng ${ma}`).toHaveText("150.000đ")
+  }
+  // "Còn lại" vẫn là của riêng chứng từ.
+  await expect(dong("PN-1")).toContainText("200.000đ")
+
+  // Lọc còn một dòng thì dư nợ vẫn là của cả NCC, không phải của phần đang hiện.
+  const o = page.getByPlaceholder("Tìm theo NCC, mã phiếu nhập, số HĐ…").first()
+  await o.fill("PN-1")
+  await expect(page.getByRole("row").filter({ hasText: "TN-NCC-1" })).toHaveCount(0)
+  await expect(dong("PN-1").getByTestId("du-no-ncc")).toHaveText("150.000đ")
+
+  // Xem nhanh (sổ giả không nhúng tên NCC vào dòng — bấm ô trạng thái)
+  await dong("PN-1").getByText("Trả một phần").click()
+  const xem = page.getByRole("dialog")
+  await expect(xem.getByText("Dư nợ hiện tại của NCC")).toBeVisible()
+  await expect(xem.getByTestId("du-no-ncc")).toHaveText("150.000đ")
+  await page.keyboard.press("Escape")
+
+  // Điện thoại: thẻ ghi dư nợ ở dòng tóm tắt.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/payables")
+  await expect(page.getByText(/Dư nợ hiện tại 150\.000đ/).first()).toBeVisible()
 })

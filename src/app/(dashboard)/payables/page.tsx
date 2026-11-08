@@ -29,12 +29,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
-import { formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel } from "@/lib/utils"
+import { cn, formatCurrency, formatDate, getAgingStatus, daysOverdueOf, agingLabel } from "@/lib/utils"
 import { useListSearch } from "@/hooks/use-list-search"
 import { Factory, Plus } from "lucide-react"
 import Link from "@/components/ui/link"
 import type { Payable, PayableStatus } from "@/types"
-import { docChungTuNoNcc, type ChungTuNo } from "@/lib/payables/so-no-ncc"
+import { docChungTuNoNcc, duNoHienTaiCuaNcc, gopNoTheoNcc, type ChungTuNo } from "@/lib/payables/so-no-ncc"
 
 type StatusFilter = "all" | "open" | "partial" | "overdue" | "paid"
 
@@ -69,6 +69,8 @@ export default function PayablesPage() {
   const [statsError, setStatsError] = useState<string | null>(null)
   const [statsTruncated, setStatsTruncated] = useState(false)
   const [allOpen, setAllOpen] = useState<Array<Pick<Payable, "amount" | "paid" | "due_date" | "supplier_id" | "status">>>([])
+  /** Sổ khoản chưa xong đã đọc xong — trước đó cột "Dư nợ hiện tại" chưa có số (0 lúc chờ trông như "hết nợ"). */
+  const [statsReady, setStatsReady] = useState(false)
   const [loading, setLoading] = useState(true)
   /** Vị trí lần tải trước — để "Tải thêm" không vẽ lại 20 dòng đầu (tải hai nhịp, 26/09/2026). */
   const khoaTaiRef = useRef<KhoaTai>(null)
@@ -113,9 +115,19 @@ export default function PayablesPage() {
       setStatsError(res.error)
       setStatsTruncated(res.truncated)
       setAllOpen(res.rows)
+      setStatsReady(true)
     }
     loadOpen()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * DƯ NỢ HIỆN TẠI theo NCC (chủ nhà 08/11/2026: "Công nợ chưa có cột dư nợ hiện tại") — cộng từ chính sổ khoản chưa
+   * xong của bốn ô tổng, không hỏi máy chủ thêm câu nào. Chưa đọc xong / hỏng / chạm trần → `null`: ô hiện "—".
+   */
+  const duNoNcc = useMemo(
+    () => (statsReady && !statsError && !statsTruncated ? gopNoTheoNcc(allOpen) : null),
+    [statsReady, statsError, statsTruncated, allOpen]
+  )
 
   // Reset page khi filter đổi.
   useEffect(() => {
@@ -174,7 +186,7 @@ export default function PayablesPage() {
       }
       const res = await taiHaiNhip<Payable, ResilientResult<Payable>>(
         (from, to, dem) => selectResilient<Payable>((sel) => build(sel, from, to, dem),
-        "id, invoice_number, amount, paid, due_date, status, opening_balance, supplier:suppliers(name, code)",
+        "id, supplier_id, invoice_number, amount, paid, due_date, status, opening_balance, supplier:suppliers(name, code)",
         // eslint-disable-next-line no-restricted-syntax
         "*, supplier:suppliers(name, code)"),
         pg.from,
@@ -271,6 +283,11 @@ export default function PayablesPage() {
       { k: "paid", key: "paid", label: "Đã trả", width: "130px", align: "right", render: (p) => formatCurrency(p.paid) },
       /* ⚠ "Còn lại" KHÔNG XẾP: amount − paid tính ở trình duyệt, sổ không có cột ấy. */
       { k: "remaining", key: "remaining", label: "Còn lại", width: "140px", align: "right", render: (p) => formatCurrency(p.amount - p.paid) },
+      /* Tổng đang nợ NCC của dòng — KHÔNG XẾP: cộng ở trình duyệt. Mọi dòng cùng NCC cùng một số. */
+      {
+        k: "duNo", key: "duNo", label: "Dư nợ hiện tại", width: "150px", align: "right",
+        render: (p) => <ODuNo v={duNoHienTaiCuaNcc(duNoNcc, p.supplier_id)} cho={!statsReady} />,
+      },
       {
         k: "dueDate", key: "dueDate", label: "Hạn trả", width: "110px",
         sortable: xepDuoc(SAP_XEP_CONG_NO_NCC, "dueDate"),
@@ -294,7 +311,7 @@ export default function PayablesPage() {
       },
     ]
     return cols.filter((c) => !c.k || visibleColumns.includes(c.k))
-  }, [visibleColumns, chungTu])
+  }, [visibleColumns, chungTu, duNoNcc, statsReady])
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -447,6 +464,7 @@ export default function PayablesPage() {
               const aging = p.due_date ? getAgingStatus(p.due_date) : "current"
               const statusCfg = nhanTrangThaiNo(p, chungTu)
               const traTruoc = chungTu.get(p.id)?.loai === "tra-truoc"
+              const duNo = duNoHienTaiCuaNcc(duNoNcc, p.supplier_id)
               return {
                 accent: p.status === "paid" ? "#22c55e" : aging === "current" ? "#b9c4d6" : "#ef5350",
                 title: p.supplier?.name || "-",
@@ -458,7 +476,8 @@ export default function PayablesPage() {
                 ].filter(Boolean).join(" · "),
                 payment: p.status !== "paid" && p.due_date ? agingLabel(daysOverdueOf(p.due_date)) : "",
                 paymentCredit: p.status !== "paid" && aging !== "current",
-                summary: `Số tiền ${formatCurrency(p.amount)} · Đã trả ${formatCurrency(p.paid)}`,
+                summary: `Số tiền ${formatCurrency(p.amount)} · Đã trả ${formatCurrency(p.paid)}`
+                  + (duNo === null ? "" : ` · Dư nợ hiện tại ${formatCurrency(duNo)}`),
                 badge: traTruoc
                   ? { label: statusCfg.label, bg: "#ecfdf3", fg: "#067647" }
                   : statusCfg && p.status !== "paid" ? { label: statusCfg.label, bg: p.status === "overdue" ? "#fdecec" : "#fff4e0", fg: p.status === "overdue" ? "#b00020" : "#8a5a00" } : null,
@@ -487,11 +506,26 @@ export default function PayablesPage() {
           { label: "Đã trả", value: formatCurrency(xem.paid) },
           { label: "Hạn trả", value: xem.due_date ? formatDate(xem.due_date) : null },
           { label: "Tuổi nợ", value: xem.status !== "paid" && xem.due_date ? agingLabel(daysOverdueOf(xem.due_date)) : null },
+          { label: "Dư nợ hiện tại của NCC", value: <ODuNo v={duNoHienTaiCuaNcc(duNoNcc, xem.supplier_id)} cho={!statsReady} />, wide: true },
         ] : []}
         total={xem ? { label: "Còn lại", value: formatCurrency(xem.amount - xem.paid) } : undefined}
         detailHref={xem ? `/payables/${xem.id}` : undefined}
       />
     </div>
+  )
+}
+
+/** Ô "Dư nợ hiện tại": đang đọc sổ → khung chờ; không có số tin được → "—"; âm (NCC còn nợ lại mình) tô xanh. */
+function ODuNo({ v, cho }: { v: number | null; cho: boolean }) {
+  if (v === null) {
+    return cho
+      ? <Skeleton className="ml-auto h-4 w-20" />
+      : <span className="text-muted-foreground" title="Không tính được dư nợ — xem thông báo phía trên" data-testid="du-no-ncc">—</span>
+  }
+  return (
+    <span className={cn("font-bold tabular-nums", v < 0 && "text-[#067647]")} data-testid="du-no-ncc">
+      {formatCurrency(v)}
+    </span>
   )
 }
 

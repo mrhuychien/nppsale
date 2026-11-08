@@ -90,6 +90,20 @@ export function gopNoTheoNcc(
   return m
 }
 
+/**
+ * DƯ NỢ HIỆN TẠI của NCC một dòng — chủ nhà 08/11/2026: "Phần công nợ NCC : Công nợ chưa có cột dư nợ hiện tại".
+ * Màn Công nợ NCC mỗi dòng là MỘT chứng từ, "Còn lại" chỉ là phần của chứng từ ấy; dư nợ hiện tại là tổng mình đang nợ
+ * NCC của dòng ấy lúc này — `gopNoTheoNcc` trên MỌI khoản chưa xong của NCC (không theo ô tìm / bộ lọc / trang), cùng số
+ * với "Dư nợ hiện tại" của màn Theo NCC (`payables_by_supplier`) và ô Công nợ NCC ở chi tiết NCC (`tongNoNcc`). Âm = NCC
+ * còn nợ lại mình (phiếu trả NCC, tiền trả trước) — không kẹp.
+ * ⚠ `duNo` = `null` khi sổ chưa đọc xong / đọc hỏng / chạm trần → `null` (ô hiện "—"): số thiếu trông y như số thật.
+ *   NCC không còn khoản nào chưa xong → 0.
+ */
+export function duNoHienTaiCuaNcc(duNo: ReadonlyMap<string, NoTheoNcc> | null, supplierId: string | null | undefined): number | null {
+  if (!duNo || !supplierId) return null
+  return duNo.get(supplierId)?.conNo ?? 0
+}
+
 type PhieuNhapCuaNo = { id: string; payable_id: string | null; receipt_code: string | null }
 type PhieuTraCuaNo = { id: string; payable_credit_id: string | null; return_code: string | null }
 /** Phiếu chi trả NCC còn tiền trả trước — dòng nợ `prepay_payable_id` (mig 242). */

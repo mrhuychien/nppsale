@@ -11,6 +11,44 @@ test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
 
 const goiRpc = async (fn: string) => (await nhatKy()).filter((r) => r.method === "POST" && r.path.endsWith(`/rpc/${fn}`))
 
+/* Chủ nhà 09/11/2026: "khi chọn khách trong danh sách hiển thị thêm thông tin địa chỉ, phần số lượng dùng bàn phím numpad và gõ
+   được, ngoài việc +/-". */
+test("phiếu trả trên điện thoại: danh sách khách có địa chỉ; số lượng gõ được bằng bàn phím số", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/returns/new")
+  await page.getByTestId("chon-khach-tra").click()
+  // Tìm được theo địa chỉ, dòng khách ghi địa chỉ dưới tên chủ · SĐT.
+  await page.getByLabel("Tìm khách hàng").fill("lê lợi")
+  const dongKhach = page.getByTestId("dong-chon-khach-tra").filter({ hasText: "Tạp hoá Cô Ba" })
+  await expect(dongKhach.getByTestId("dia-chi-khach")).toHaveText("1 Lê Lợi")
+  await dongKhach.click()
+  await expect(page.getByTestId("dia-chi-khach-tra")).toHaveText("1 Lê Lợi")
+
+  await page.getByTestId("the-san-pham").filter({ hasText: "Sữa hộp" }).getByRole("button", { name: "thùng", exact: true }).click()
+  await expect(page.getByTestId("tien-tra-khach")).toHaveText("450.000đ")
+  const sl = page.getByLabel("Số lượng Sữa hộp")
+  await expect(sl).toHaveAttribute("inputmode", "decimal")
+  // Chạm vào là chọn cả số → gõ là thay.
+  await sl.click()
+  await expect.poll(() => sl.evaluate((o: HTMLInputElement) => o.selectionStart === 0 && o.selectionEnd === o.value.length)).toBe(true)
+  await sl.pressSequentially("7")
+  await expect(sl).toHaveValue("7")
+  await expect(page.getByTestId("tien-tra-khach")).toHaveText("3.150.000đ")
+  // Xoá trắng rồi gõ số mới (bản cũ: xoá là ô tự hiện lại số cũ).
+  await sl.press("Backspace")
+  await expect(sl).toHaveValue("")
+  await sl.pressSequentially("12")
+  await expect(sl).toHaveValue("12")
+  await expect(page.getByTestId("tien-tra-khach")).toHaveText("5.400.000đ")
+  // Bỏ trống rồi rời ô → về số đã chốt; nút +/- vẫn chạy.
+  await sl.fill("")
+  await sl.blur()
+  await expect(sl).toHaveValue("12")
+  await page.getByRole("button", { name: "Tăng Sữa hộp" }).click()
+  await expect(sl).toHaveValue("13")
+  await expect(page.getByTestId("tien-tra-khach")).toHaveText("5.850.000đ")
+})
+
 test("lập phiếu trả trên điện thoại kiểu /sell: chọn thùng trên thẻ, đổi hàng một dòng, lưu đúng dòng", async ({ page }) => {
   const truoc = (await goiRpc("create_return_with_lines")).length
   await dangNhap(page)

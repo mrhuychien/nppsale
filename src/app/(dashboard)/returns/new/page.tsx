@@ -123,7 +123,7 @@ export default function NewReturnPage() {
    *   Đây đúng bộ ba mà ô tìm ở màn Đơn hàng đang dùng.
    */
   const [customers, setCustomers] = useState<
-    Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id">[]
+    Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id" | "address" | "ward" | "district" | "province">[]
   >([])
   const [dangNap, setDangNap] = useState(true)
   const [products, setProducts] = useState<ProductLite[]>([])
@@ -183,10 +183,10 @@ export default function NewReturnPage() {
       const [custRes, prodRes] = await Promise.all([
         // ⚠ Phân trang: hơn 1.000 khách là chuyện thường, mà server cắt ở
         // 1.000 dòng và KHÔNG báo — khách nằm sau đó thì không lập được phiếu.
-        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id">>((from, to) =>
+        fetchAllForAggregate<Pick<Customer, "id" | "store_name" | "owner_name" | "phone" | "group_id" | "address" | "ward" | "district" | "province">>((from, to) =>
           createClient()
             .from("customers")
-            .select("id, store_name, owner_name, phone, group_id", { count: "exact" })
+            .select("id, store_name, owner_name, phone, group_id, address, ward, district, province", { count: "exact" })
             .eq("status", "active")
             // ⚠ Khoá phụ `id`: trùng tên cửa hàng là chuyện thường, các
             //   trang song song thiếu khoá duy nhất là lặp / sót khách.
@@ -505,7 +505,7 @@ export default function NewReturnPage() {
         chuBanDau={taoKhach?.chu}
         onDaTao={(k) => {
           setCustomers((ds) =>
-            gopVuaTao(ds, [{ id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? "", phone: k.phone ?? "", group_id: null }])
+            gopVuaTao(ds, [{ id: k.id, store_name: k.store_name, owner_name: k.owner_name ?? "", phone: k.phone ?? "", group_id: null, address: k.address ?? "", ward: null, district: null, province: null }])
           )
           setCustomerId(k.id)
         }}

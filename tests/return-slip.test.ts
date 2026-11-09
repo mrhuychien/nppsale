@@ -243,9 +243,9 @@ describe("chọn khách ở phiếu trả: gõ để tìm", () => {
   /**
    * ⚠ TÌM ĐƯỢC NGHĨA LÀ TÌM ĐƯỢC BẰNG THỨ NGƯỜI TA NHỚ — tên chủ cửa hàng, số điện thoại, không chỉ `store_name`.
    */
-  it("đọc cả tên chủ và số điện thoại để tìm theo", () => {
+  it("đọc cả tên chủ và số điện thoại để tìm theo (và địa chỉ — chủ nhà 09/11/2026)", () => {
     expect(NEW).toContain("id, store_name, owner_name, phone")
-    expect(NEW).toContain("viMatchAllWords(q, c.store_name, c.owner_name, c.phone)")
+    expect(NEW).toContain("viMatchAllWords(q, c.store_name, c.owner_name, c.phone, diaChi)")
   })
 
   /** ⚠ KHÔNG CHO GÕ TỰ DO: `customer_id` đi thẳng vào công nợ — chỉ chọn được khách có trong sổ (hoặc tạo mới). */

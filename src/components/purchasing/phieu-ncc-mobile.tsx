@@ -50,6 +50,7 @@ import type { Product } from "@/types"
 import { docSanPhamVuaTao, gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { useBangGiaNhap } from "@/hooks/use-bang-gia-nhap"
 import { ganGiaNhap } from "@/lib/purchasing/bang-gia-nhap"
+import { OSoLuong } from "@/components/ui/o-so-luong"
 
 /** Trần số thẻ vẽ một lúc — như /sell. */
 const RENDER_CAP = 60
@@ -782,16 +783,12 @@ function BoSoLuong({ ten, qty, unit, onChange }: { ten: string; qty: number; uni
         <button type="button" aria-label={`Bớt ${ten}`} disabled={qty <= 1} onClick={() => onChange(qty - 1)} className="h-9 w-9 text-[18px] disabled:opacity-30">
           −
         </button>
-        <input
-          aria-label={`Số lượng ${ten}`}
-          inputMode="decimal"
-          value={String(qty)}
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => {
-            const n = Number(e.target.value.replace(",", "."))
-            if (Number.isFinite(n) && n > 0) onChange(n)
-          }}
-          className="h-9 w-12 bg-transparent text-center text-[14px] font-bold tabular-data outline-none"
+        {/* Cùng ô gõ được của phiếu trả hàng (chủ nhà 09/11/2026) — bản cũ không xoá trắng được để gõ số mới. */}
+        <OSoLuong
+          ariaLabel={`Số lượng ${ten}`}
+          value={qty}
+          onChange={onChange}
+          className="h-9 w-14 bg-transparent text-center text-[15px] font-bold tabular-data outline-none"
         />
         <button type="button" aria-label={`Tăng ${ten}`} onClick={() => onChange(qty + 1)} className="h-9 w-9 text-[18px]">
           +

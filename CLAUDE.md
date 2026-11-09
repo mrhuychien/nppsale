@@ -153,6 +153,16 @@ Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đ�
 - Khối **hàng đổi trả** (màn đơn, hoá đơn) có trần `max-h-[42vh]`, dòng cuộn trong khối — không được che bảng hàng đi.
   Màn **xem** hoá đơn / đơn: khối chứng từ liên quan (`RelatedDocs`, kèm hàng đổi trả) bọc trong `cuon-lien-quan` có trần.
 
+### Ô số lượng gõ được + địa chỉ khách (điện thoại)
+Chủ nhà 09/11/2026 (phiếu trả hàng trên điện thoại): *"khi chọn khách trong danh sách hiển thị thêm thông tin địa chỉ, phần số
+lượng dùng bàn phím numpad và gõ được, ngoài việc +/-"*.
+- Ô số lượng giữa −/+ là `OSoLuong` (`src/components/ui/o-so-luong.tsx`, luật chữ `docSoLuongGo`): bàn phím số (`inputMode`),
+  chạm vào chọn cả số (đặt vùng chọn sau một nhịp — iOS bỏ qua `select()` trong `focus`), **giữ chữ đang gõ** (trống / "0" / "1."
+  không đẩy số), rời ô khi trống → về số đã chốt. Đừng quay lại `value={String(qty)}` + bỏ qua chữ không ra số > 0: xoá trắng là
+  ô tự hiện lại số cũ, không gõ được. Dùng ở phiếu trả hàng + phiếu nhập / trả NCC điện thoại (`BoSoLuong`).
+- Danh sách chọn khách của phiếu trả (`ChonKhachSheet`, `phieu-tra-khach-mobile.tsx`) hiện địa chỉ (`fullCustomerAddress` — một
+  chỗ ghép số nhà · phường · quận · tỉnh) dưới tên chủ · SĐT, tìm được theo địa chỉ; trang `/returns/new` đọc thêm 4 cột địa chỉ.
+
 ### Giá bán gần nhất ở POS
 - `loadLastPrices` (`src/lib/pos/load.ts`): `SO_TO_GIA_GAN_NHAT` tờ ghi sổ gần nhất của khách (ngày HĐ rồi lúc tạo) → dòng
   của các tờ ấy, xếp theo thứ tự tờ, bỏ dòng hàng đổi. ⚠ `sales_invoice_lines` KHÔNG có `created_at` (mig 124) — bản cũ sắp

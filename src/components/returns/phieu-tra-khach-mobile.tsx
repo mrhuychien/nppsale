@@ -12,7 +12,7 @@
  * Dữ liệu, trần giá và cách lưu vẫn ở trang `/returns/new` — đây chỉ là phần vẽ.
  */
 import { useEffect, useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, ListChecks, Plus, Search, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, ListChecks, MapPin, Plus, Search, X } from "lucide-react"
 import { ProductCard } from "@/components/sell/product-card"
 import { SellBottomBar } from "@/components/sell/bottom-bar"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -24,10 +24,13 @@ import { sellableUnits, unitPriceFor, type PricedProduct } from "@/lib/sell/pric
 import { RETURN_REASONS, findReturnLine, type ReturnCartLine } from "@/lib/sell/returns"
 import { timXepHang, viMatchAllWords } from "@/lib/search"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import { fullCustomerAddress, type CustomerAddressParts } from "@/lib/customers/address"
+import { OSoLuong } from "@/components/ui/o-so-luong"
 
 const RENDER_CAP = 60
 
-export interface KhachTra {
+/** Địa chỉ (số nhà · phường · quận · tỉnh) — chủ nhà 09/11/2026: chọn khách trong danh sách thì hiện thêm địa chỉ. */
+export interface KhachTra extends CustomerAddressParts {
   id: string
   store_name: string
   owner_name?: string | null
@@ -445,6 +448,9 @@ function NutKhach({ khach, onClick }: { khach: KhachTra | null; onClick: () => v
         {khach && (khach.owner_name || khach.phone) && (
           <span className="truncate text-[12px] text-muted-foreground">{[khach.owner_name, khach.phone].filter(Boolean).join(" · ")}</span>
         )}
+        {khach && fullCustomerAddress(khach) && (
+          <span className="truncate text-[12px] text-muted-foreground" data-testid="dia-chi-khach-tra">{fullCustomerAddress(khach)}</span>
+        )}
       </span>
       <ChevronRight className="h-5 w-5 text-muted-foreground" />
     </button>
@@ -461,9 +467,11 @@ function ChonKhachSheet({
   onTao?: (chu: string) => void
 }) {
   const [q, setQ] = useState("")
+  /* Địa chỉ ghép một lần cho cả sổ khách (không ghép lại mỗi lần gõ) — hiện dưới tên và tìm được theo tên đường / phường. */
+  const coDiaChi = useMemo(() => customers.map((c) => ({ c, diaChi: fullCustomerAddress(c) })), [customers])
   const ds = useMemo(
-    () => customers.filter((c) => viMatchAllWords(q, c.store_name, c.owner_name, c.phone)).slice(0, RENDER_CAP),
-    [customers, q]
+    () => coDiaChi.filter(({ c, diaChi }) => viMatchAllWords(q, c.store_name, c.owner_name, c.phone, diaChi)).slice(0, RENDER_CAP),
+    [coDiaChi, q]
   )
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -474,16 +482,29 @@ function ChonKhachSheet({
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Tên cửa hàng, tên chủ, số điện thoại…"
+          placeholder="Tên cửa hàng, tên chủ, số điện thoại, địa chỉ…"
           aria-label="Tìm khách hàng"
           className="h-11 rounded-xl border border-border px-3 text-[15px] outline-none focus:border-primary"
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {ds.map((c) => (
-            <button key={c.id} type="button" onClick={() => onPick(c.id)} className="flex flex-col border-b border-border/60 py-2.5 text-left">
+          {ds.map(({ c, diaChi }) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onPick(c.id)}
+              data-testid="dong-chon-khach-tra"
+              className="flex flex-col gap-0.5 border-b border-border/60 py-2.5 text-left"
+            >
               <span className="text-[14px] font-semibold">{c.store_name}</span>
               {(c.owner_name || c.phone) && (
                 <span className="text-[12px] text-muted-foreground">{[c.owner_name, c.phone].filter(Boolean).join(" · ")}</span>
+              )}
+              {/* Chủ nhà 09/11/2026: chọn khách trong danh sách thì hiện thêm địa chỉ (nhiều cửa hàng trùng tên / chung chủ). */}
+              {diaChi && (
+                <span className="flex items-start gap-1 text-[12px] text-muted-foreground" data-testid="dia-chi-khach">
+                  <MapPin className="mt-[2px] h-3 w-3 shrink-0" aria-hidden />
+                  <span>{diaChi}</span>
+                </span>
               )}
             </button>
           ))}
@@ -588,16 +609,12 @@ function DongTra({
             <button type="button" aria-label={`Bớt ${ten}`} disabled={line.qty <= 1} onClick={() => onPatch({ qty: line.qty - 1 })} className="h-9 w-9 text-[18px] disabled:opacity-30">
               −
             </button>
-            <input
-              aria-label={`Số lượng ${ten}`}
-              inputMode="decimal"
-              value={String(line.qty)}
-              onFocus={(e) => e.currentTarget.select()}
-              onChange={(e) => {
-                const n = Number(e.target.value.replace(",", "."))
-                if (Number.isFinite(n) && n > 0) onPatch({ qty: n })
-              }}
-              className="h-9 w-12 bg-transparent text-center text-[14px] font-bold tabular-data outline-none"
+            {/* Gõ được bằng bàn phím số (chủ nhà 09/11/2026) — xoá trắng rồi gõ, rời ô khi trống thì về số cũ. */}
+            <OSoLuong
+              ariaLabel={`Số lượng ${ten}`}
+              value={line.qty}
+              onChange={(n) => onPatch({ qty: n })}
+              className="h-9 w-14 bg-transparent text-center text-[15px] font-bold tabular-data outline-none"
             />
             <button type="button" aria-label={`Tăng ${ten}`} onClick={() => onPatch({ qty: line.qty + 1 })} className="h-9 w-9 text-[18px]">
               +

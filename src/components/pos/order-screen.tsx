@@ -1087,8 +1087,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
          */
         toast({ title: `Đã gửi đơn ${r.orderCode}`, description: "Đơn đang ở Phiếu tạm — xuất hàng ở màn Xuất hàng." })
         router.replace(`/pos/don-hang/${r.orderId}`)
-        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026): gửi đơn / lưu đơn đã gửi là xong việc — in phiếu đặt, hộp in đóng là đóng
-           POS; muốn xuất hàng ngay thì mở lại đơn ở danh sách. Tắt công tắc = ở lại màn In · Tạo hoá đơn · Lưu (24/09). */
+        /* ⚠ TÁC VỤ ĐƠN (chủ nhà 04–05/11/2026): gửi đơn / lưu đơn đã gửi là xong việc — đóng POS NGAY, KHÔNG in phiếu đặt
+           (chủ nhà 09/11/2026: "Sửa để khi đặt đơn hàng k hiện ra màn in đơn đặt hàng nữa" — `IN_KHI_XONG`); muốn in / xuất
+           hàng thì mở lại đơn ở danh sách. Tắt công tắc = ở lại màn In · Tạo hoá đơn · Lưu (24/09). */
         ketThuc({ docType: "SO", docId: r.orderId, loiBao: `Đã gửi đơn ${r.orderCode}` })
       } catch (e) {
         /* ⚠ `errorMessage` — lỗi PostgREST là OBJECT THƯỜNG, không phải

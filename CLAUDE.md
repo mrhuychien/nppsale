@@ -226,9 +226,10 @@ vào chưa mở tab mới"*.
 Chủ nhà 04/11/2026: *"tao muốn tác vụ đơn nghĩa là sau khi hoàn thành 1 đơn thì tự đóng pos, cần thì mở lại sau"*; 05/11/2026
 (sau khi trao đổi ưu / nhược điểm): *"In xong đóng luôn"*.
 - Xong việc = chứng từ ghi xong: Xuất hàng & lập HĐ / Lập lại HĐ, Gửi đơn / Lưu đơn đã gửi, Hoàn thành phiếu trả / phiếu nhập,
-  Ghi nhận trả NCC → màn gọi `ketThuc` (`usePosKetThuc`, `src/store/pos/tabs.tsx`; luật `src/lib/pos/tac-vu-don.ts`). Loại có
-  mẫu in (`posPrintHref`: HĐ, đơn, phiếu trả) bật in rồi đóng **sau khi hộp in đóng** (`inTaiCho(…, khiXong)`); phiếu nhập /
-  trả NCC chưa có mẫu in → đóng ngay. Lưu nháp / lưu tạm không gọi.
+  Ghi nhận trả NCC → màn gọi `ketThuc` (`usePosKetThuc`, `src/store/pos/tabs.tsx`; luật `src/lib/pos/tac-vu-don.ts`). HĐ, phiếu
+  trả (`IN_KHI_XONG`) bật in rồi đóng **sau khi hộp in đóng** (`inTaiCho(…, khiXong)`); phiếu nhập / trả NCC chưa có mẫu in →
+  đóng ngay. **Đơn đặt hàng KHÔNG in** (chủ nhà 09/11/2026: *"Sửa để khi đặt đơn hàng k hiện ra màn in đơn đặt hàng nữa"*) —
+  Gửi đơn / Lưu đơn đã gửi xong đóng ngay như phiếu nhập; in phiếu đặt bằng nút In ở màn đơn. Lưu nháp / lưu tạm không gọi.
 - Không đóng (in vẫn bật như cũ): công tắc tắt, hoặc có cảnh báo phải đọc trên màn (`coCanhBao`: xuất thiếu hàng, chưa gán được
   người phụ trách). Đơn đã có HĐ từ lần bấm trước (`?daXuat=1`, dải nhắc In) không phải xong việc ở cửa sổ này.
 - Cửa sổ còn tab con khác thì chỉ đóng tab con (`dongGi`). Trình duyệt chỉ cho script đóng tab do script mở: POS mở từ nút

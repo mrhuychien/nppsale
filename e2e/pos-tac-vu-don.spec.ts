@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test"
-import { dangNhap, FAKE, mocDonDep, tatTacVuDon, theoDoiIn } from "./helpers"
+import { chonKhach, dangNhap, FAKE, mocDonDep, tatTacVuDon, theoDoiIn } from "./helpers"
 import { HOA_DON, KHACH, NCC, ORG, OWNER, SUA } from "./fixture.mjs"
 
 /**
@@ -166,6 +166,32 @@ test("phiếu nhập (chưa có mẫu in): Hoàn thành xong POS đóng ngay, kh
   expect(khung.filter((u) => u.includes("/in/")), "loại chưa có mẫu in mà vẫn bật khung in").toEqual([])
   await page.bringToFront()
   await expect(page.getByText("Đã hoàn thành phiếu nhập — nhập kho và ghi công nợ NCC")).toBeVisible()
+  await expect(page.getByText("POS đã tự đóng.", { exact: true })).toBeVisible()
+})
+
+/* Chủ nhà 09/11/2026: "Sửa để khi đặt đơn hàng k hiện ra màn in đơn đặt hàng nữa". */
+test("đặt đơn: Gửi đơn xong POS đóng ngay, KHÔNG nạp trang in phiếu đặt; tab danh sách báo đã gửi", async ({ page }) => {
+  await dangNhap(page)
+  await page.goto("/orders")
+  const [pos] = await Promise.all([
+    page.context().waitForEvent("page"),
+    page.getByRole("button", { name: "Tạo đơn", exact: true }).click(),
+  ])
+  await pos.waitForLoadState()
+  await expect(pos).toHaveURL(/\/pos\/don-hang\/moi$/)
+  await chonKhach(pos, "Tạp hoá Cô Ba")
+  const tim = pos.getByPlaceholder(/Tên hàng, mã SKU|KHÁCH TRẢ LẠI/i)
+  await tim.fill("Sữa")
+  await tim.press("Enter")
+  await expect(pos.getByLabel("Đơn giá dòng 1")).toBeVisible()
+  const trangIn: string[] = []
+  page.context().on("request", (r) => { if (r.url().includes("/in/")) trangIn.push(r.url()) })
+  const dong = pos.waitForEvent("close")
+  await pos.getByRole("button", { name: /Gửi đơn \(F9\)/ }).click()
+  await dong
+  expect(trangIn, "gửi đơn mà vẫn nạp trang in phiếu đặt").toEqual([])
+  await page.bringToFront()
+  await expect(page.getByText("Đã gửi đơn DH-E2E-1")).toBeVisible()
   await expect(page.getByText("POS đã tự đóng.", { exact: true })).toBeVisible()
 })
 

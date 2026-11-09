@@ -8,9 +8,10 @@
  *   tab vẫn nằm đó — cuối ngày hàng chục tab POS, và tab con của POS (lưu CHUNG cho mọi tab trình duyệt) kéo theo tới
  *   trần 8 tab ("Đóng bớt tab để mở thêm"). Tác vụ đơn: một tab POS một việc, xong việc là đóng.
  *
- * ⚠ "IN XONG ĐÓNG LUÔN": loại có mẫu in (hoá đơn, đơn hàng, phiếu trả — `posPrintHref`) thì bật hộp in, HỘP IN ĐÓNG mới
- *   đóng POS (đóng trước là cắt ngang lệnh in). Phiếu nhập / trả NCC chưa có mẫu in thì đóng ngay. Trình duyệt bắn
- *   `afterprint` cả khi người dùng bấm Huỷ — không phân biệt được in thật hay huỷ (đã nói với chủ nhà).
+ * ⚠ "IN XONG ĐÓNG LUÔN": hoá đơn, phiếu trả (`IN_KHI_XONG`) thì bật hộp in, HỘP IN ĐÓNG mới đóng POS (đóng trước là cắt
+ *   ngang lệnh in). Đơn đặt hàng KHÔNG in (chủ nhà 09/11/2026: "Sửa để khi đặt đơn hàng k hiện ra màn in đơn đặt hàng nữa")
+ *   — đóng ngay như phiếu nhập / trả NCC; muốn in phiếu đặt thì mở đơn, bấm In. Trình duyệt bắn `afterprint` cả khi người
+ *   dùng bấm Huỷ — không phân biệt được in thật hay huỷ (đã nói với chủ nhà).
  *
  * ⚠ KHÔNG ĐÓNG khi có điều người dùng PHẢI đọc ngay trên màn ấy (xuất thiếu hàng, chưa gán được người phụ trách): vẫn in,
  *   nhưng ở lại. Lưu nháp / lưu tạm không phải xong việc — không qua đây.
@@ -32,10 +33,16 @@ export type KetThuc =
   /** `trangIn` = trang in bật trước, đóng SAU khi hộp in đóng; `null` = loại chưa có mẫu in, đóng ngay. */
   | { dong: true; trangIn: string | null }
 
+/**
+ * Loại chứng từ xong việc thì IN rồi mới đóng. ⚠ KHÔNG có đơn đặt hàng (`SO`) — chủ nhà 09/11/2026: "Sửa để khi đặt đơn
+ *   hàng k hiện ra màn in đơn đặt hàng nữa". Nút In ở màn đơn (`inTaiCho`) vẫn in được khi cần.
+ */
+export const IN_KHI_XONG: ReadonlySet<PosDocType> = new Set<PosDocType>(["INV", "RET"])
+
 /** Quyết định sau khi một chứng từ ghi xong: tắt công tắc hoặc có cảnh báo thì ở lại (như cũ). */
 export function ketThucTacVu(bat: boolean, x: Pick<ChungTuXong, "docType" | "docId" | "coCanhBao">): KetThuc {
   if (!bat || x.coCanhBao) return { dong: false }
-  return { dong: true, trangIn: posPrintHref(x.docType, x.docId) }
+  return { dong: true, trangIn: IN_KHI_XONG.has(x.docType) ? posPrintHref(x.docType, x.docId) : null }
 }
 
 export type DongGi =

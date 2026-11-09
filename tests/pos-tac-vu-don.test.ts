@@ -19,12 +19,18 @@ const tab = (key: string, docType: PosTab["docType"], docId: string | null): Pos
   ({ key, docType, docId, label: key, dirty: false, count: 0 })
 
 describe("ketThucTacVu — xong việc thì in (loại có mẫu in) rồi đóng", () => {
-  it("bật: hoá đơn / đơn hàng / phiếu trả in trước rồi đóng; phiếu nhập / trả NCC chưa có mẫu in thì đóng ngay", () => {
+  it("bật: hoá đơn / phiếu trả in trước rồi đóng; phiếu nhập / trả NCC chưa có mẫu in thì đóng ngay", () => {
     expect(ketThucTacVu(true, { docType: "INV", docId: "i1" })).toEqual({ dong: true, trangIn: "/in/hoa-don/i1" })
-    expect(ketThucTacVu(true, { docType: "SO", docId: "o1" })).toEqual({ dong: true, trangIn: "/in/don-hang/o1" })
     expect(ketThucTacVu(true, { docType: "RET", docId: "r1" })).toEqual({ dong: true, trangIn: "/in/tra-hang/r1" })
     expect(ketThucTacVu(true, { docType: "PUR", docId: "p1" })).toEqual({ dong: true, trangIn: null })
     expect(ketThucTacVu(true, { docType: "PRET", docId: "n1" })).toEqual({ dong: true, trangIn: null })
+  })
+  /* Chủ nhà 09/11/2026: "Sửa để khi đặt đơn hàng k hiện ra màn in đơn đặt hàng nữa". */
+  it("đặt đơn (gửi đơn / lưu đơn đã gửi): KHÔNG in phiếu đặt — đóng POS ngay; nút In ở màn đơn vẫn in", () => {
+    expect(ketThucTacVu(true, { docType: "SO", docId: "o1" })).toEqual({ dong: true, trangIn: null })
+    expect(ketThucTacVu(false, { docType: "SO", docId: "o1" })).toEqual({ dong: false })
+    const man = read("src/components/pos/order-screen.tsx")
+    expect(man).toContain("onClick={() => { if (orderId) inTaiCho(`/in/don-hang/${orderId}`) }}")
   })
   it("tắt công tắc, hoặc có cảnh báo phải đọc (xuất thiếu, chưa gán người phụ trách) → ở lại như cũ", () => {
     expect(ketThucTacVu(false, { docType: "INV", docId: "i1" })).toEqual({ dong: false })

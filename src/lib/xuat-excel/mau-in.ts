@@ -14,6 +14,7 @@ import { dateVN, longDateVN, stampVN } from "@/lib/printing/doc-stamp"
 import { grossUpLines, noteBlocksOf, type SalesInvoiceLine, type SalesInvoiceReturnLine } from "@/components/printing/sales-invoice"
 import { soAm, type ReturnSlipLine } from "@/components/printing/return-slip"
 import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
+import { tachNhanLuuY } from "@/lib/printing/luu-y-in"
 import type { DoanChu, KieuO, OXlsx, SheetDinhDang } from "./xlsx-dinh-dang"
 
 type Canh = "trai" | "giua" | "phai"
@@ -51,6 +52,8 @@ export interface MauIn {
   thongTin: DoanChu[][]
   cot: CotMau[]
   dong: OMau[][]
+  /** Câu "Lưu ý" của NPP ngay dưới bảng hàng (hoá đơn / đơn hàng — `settings.print_note`, như tờ in). */
+  luuY?: string | null
   /** Chân trái (theo đơn…, cảnh báo huỷ, người lập). */
   chanTrai?: string | null
   /** "Ngày 05 tháng 10 năm 2026" — chân phải. */
@@ -130,6 +133,9 @@ export function dungMauIn(m: MauIn): SheetDinhDang {
     for (; c < n; c++) o[c] = { v: null, k: { vien: true } }
     dong.push({ o })
   }
+  /* "Lưu ý" của NPP ngay dưới bảng hàng, nhãn đậm (chủ nhà 10/11/2026) — như `SalesInvoice`. */
+  const luuY = tachNhanLuuY(m.luuY)
+  if (luuY) ca({ v: null, doan: [...(luuY.nhan ? [{ t: `${luuY.nhan} `, dam: true }] : []), { t: luuY.than }], k: { xuong: true } })
   dong.push({ o: [] })
 
   /* Chân: trái = ghi chú cuối tờ, phải = ngày dài. */
@@ -229,6 +235,8 @@ export interface MauBanHang {
   so: string
   ngay: Date | null
   coGio?: boolean
+  /** Chữ sau "Ngày" dựng sẵn — thay `ngay` / `coGio` ở dòng dưới tiêu đề (hoá đơn: `ngayGioHoaDon`, như tờ in). */
+  ngayChu?: string
   khach: string
   diaChi?: string | null
   lienHe?: string | null
@@ -291,7 +299,7 @@ export function mauBanHang(p: MauBanHang): MauIn {
     org: p.org,
     tieuDe: p.tieuDe,
     duoiTieuDe: [
-      { v: `Ngày ${p.coGio === false ? dateVN(p.ngay) : stampVN(p.ngay)}`, dam: true },
+      { v: `Ngày ${p.ngayChu ?? (p.coGio === false ? dateVN(p.ngay) : stampVN(p.ngay))}`, dam: true },
       { v: `${p.nhanSo}: ${p.so || "—"}` },
     ],
     thongTin: [

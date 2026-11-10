@@ -250,7 +250,8 @@ export default function OrderPrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          org={{ name: org.name, address: org.address, phone: org.phone }}
+          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng, như hoá đơn (chủ nhà 10/11/2026: "đơn hàng/hóa đơn"). */
+          org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}
           title="ĐƠN ĐẶT HÀNG"
           numberLabel="Số ĐH"
           invoiceNumber={order.order_code}

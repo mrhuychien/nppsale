@@ -148,20 +148,20 @@ describe("Tờ hoá đơn có đủ ô như mẫu", () => {
    */
   it("mốc thời gian lấy từ lib đã ghim giờ Việt Nam, không tự tính", () => {
     expect(TPL).toContain('from "@/lib/printing/doc-stamp"')
-    expect(TPL).toContain("dateVN(issuedAt) : stampVN(issuedAt)}")
+    expect(TPL).toContain("dateVN(issuedAt) : stampVN(issuedAt))}")
     expect(TPL).toContain("{longDateVN(issuedAt)}")
     // Tự đọc giờ máy là quay lại đúng lỗi vừa sửa.
     expect(TPL_CODE).not.toContain("getHours()")
     expect(TPL_CODE).not.toContain("getFullYear()")
   })
 
-  /** Chủ nhà 01/10/2026: hoá đơn chỉ in NGÀY hoá đơn, bỏ hẳn giờ. */
-  it("mốc dưới tiêu đề là ngày hoá đơn, không giờ", () => {
-    expect(TPL).toContain("Ngày {issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt)}")
+  /** Chủ nhà 01/10/2026: chỉ in NGÀY hoá đơn; 10/11/2026: "Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn". */
+  it("mốc dưới tiêu đề là ngày hoá đơn + giờ tạo hoá đơn", () => {
+    expect(TPL).toContain("Ngày {issuedText ?? (issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt))}")
     const SALES_PAGE = read("src/app/(dashboard)/sales-invoices/[id]/print/page.tsx")
-    // ⚠ `invoice_date` là cột kiểu `date` — in kèm giờ từ nó là bịa "07:00".
+    // ⚠ `invoice_date` là cột kiểu `date` — dựng giờ từ nó là bịa "07:00"; giờ thật từ `created_at` (`ngayGioHoaDon`).
     expect(SALES_PAGE).toContain("issuedAt={ngayChungTu(inv.invoice_date)}")
-    expect(SALES_PAGE).toContain("issuedHasTime={false}")
+    expect(SALES_PAGE).toContain("issuedText={ngayGioHoaDon(inv.invoice_date, inv.created_at)}")
   })
 
   /**

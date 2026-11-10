@@ -264,6 +264,18 @@ Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi
 - "Tổng cộng" giữ tiền hoá đơn; "Trừ hàng trả" / "Còn phải thu" là dòng thêm khi có trừ. Dòng đổi xuất đi (0đ) vẫn bỏ
   khỏi bảng hàng — món đổi hiện ở dòng "(Hàng đổi) … không trừ".
 
+### Tờ in hoá đơn / đơn đặt hàng: câu "Lưu ý" + giờ tạo hoá đơn
+Chủ nhà 10/11/2026: *"thêm cho tao vào dưới bảng đơn hàng/hóa đơn : Lưu ý: Khách hàng thanh toán bằng tiền mặt và chỉ chuyển
+khoản vào số tài khoản của NPP: … Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn."*
+- Câu "Lưu ý" là **cài đặt của NPP** (`organizations.settings.print_note`, Cài đặt → Cấu hình tổ chức; đọc qua `loadOrgHeader`
+  → `printNote`), in nguyên văn **ngay dưới bảng hàng** của hoá đơn bán + đơn đặt hàng (`SalesInvoice`, kể cả `/in/*` của POS)
+  và Excel "như mẫu in" (`CO_LUU_Y_IN`); nhãn đầu câu ("Lưu ý:") in đậm (`tachNhanLuuY`, `src/lib/printing/luu-y-in.ts`). Trống
+  → không in. **Không ghi cứng số tài khoản vào mã / migration**: `schema_full.sql` cài cho NPP khác, tài khoản của NPP này lên
+  tờ của NPP khác là khách chuyển tiền nhầm chỗ (bài test quét `src/` + `supabase/`).
+- Dòng "Ngày …" của tờ in hoá đơn = ngày HĐ + **giờ tạo** (`ngayGioHoaDon`, `src/lib/printing/doc-stamp.ts` — thay luật 01/10
+  "chỉ in ngày"): giờ là `created_at` của tờ, giờ VN; ngày HĐ khác ngày lập (chọn "Ngày hóa đơn" ở POS, Sửa HĐ giữ ngày tờ cũ —
+  mig 213) → "08/11/2026 (lập 10/11/2026 09:15)" — giờ trần cạnh một ngày khác là bịa. Đơn đặt hàng vẫn **chỉ ngày đơn**.
+
 ### Thêm khách hàng: TÌM khách đã có trước khi tạo
 Chủ nhà 06/06/2026: *"trước khi NV sale thêm KH mới, cần check trùng (theo SĐT, địa chỉ, tên). Nếu KH đã tồn tại — kể
 cả do NV khác phụ trách — cho phép sale 'thêm vào danh sách của tôi' thay vì tạo trùng"*; 14/10/2026: *"…trên điện thoại

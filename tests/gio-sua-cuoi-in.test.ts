@@ -1,7 +1,7 @@
 /**
  * Mốc trên tờ in. Chủ nhà 01/10/2026: "Thời gian trên phiếu là ngày giờ tạo chứ ko phải ngày giờ in" → "Giờ sửa
  * cuối" → "Sao không lấy luôn trường ngày trên hoá đơn" (chọn: chỉ in ngày hoá đơn, bỏ hẳn giờ).
- * - Hoá đơn / đơn hàng: NGÀY chứng từ (`invoice_date` / `order_date`), không giờ.
+ * - Hoá đơn / đơn hàng: NGÀY chứng từ (`invoice_date` / `order_date`); hoá đơn kèm GIỜ TẠO (chủ nhà 10/11/2026).
  * - Phiếu trả: giờ sửa cuối (mig 220) nếu cùng ngày trả, khác ngày thì chỉ ngày (`mocInPhieuTra`).
  * Kịch bản SQL: scripts/sql/thu-220-gio-sua-cuoi.sql. Bấm thật: e2e/in-gio-sua-cuoi.spec.ts.
  */
@@ -32,13 +32,16 @@ describe("mốc trên tờ in", () => {
     expect(ngayChungTu(null)).toBeNull()
     expect(ngayChungTu("hỏng")).toBeNull()
   })
-  it("hoá đơn / đơn hàng in ngày chứng từ, không giờ, không còn lấy giờ tạo", () => {
-    expect(MAU).toContain("Ngày {issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt)}")
+  /* Chủ nhà 10/11/2026: "Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn" — hoá đơn in NGÀY HĐ + GIỜ TẠO (`ngayGioHoaDon`,
+     tests/luu-y-in-gio-tao-hd.test.ts); đơn hàng vẫn chỉ ngày đơn. Không lấy giờ sửa cuối cho hai tờ này. */
+  it("hoá đơn: ngày chứng từ + giờ tạo; đơn hàng: chỉ ngày chứng từ; không lấy giờ sửa cuối", () => {
+    expect(MAU).toContain("Ngày {issuedText ?? (issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt))}")
     for (const [ten, s, cot] of [["hoá đơn", HD, "inv.invoice_date"], ["đơn hàng", DON, "order.order_date"]] as const) {
       expect(s, ten).toContain(`issuedAt={ngayChungTu(${cot})}`)
-      expect(s, ten).toContain("issuedHasTime={false}")
       expect(s, ten).not.toMatch(/docStampAt\(|gioSuaCuoi\(/)
     }
+    expect(HD).toContain("issuedText={ngayGioHoaDon(inv.invoice_date, inv.created_at)}")
+    expect(DON).toContain("issuedHasTime={false}")
   })
   it("phiếu trả: giờ sửa cuối, lùi về giờ tạo; chờ đọc xong mới tắt loading (in tự động ?auto=1)", () => {
     expect(gioSuaCuoi("2026-10-01T15:42:00+07:00", "2026-09-30T08:00:00+07:00")).toBe("2026-10-01T15:42:00+07:00")

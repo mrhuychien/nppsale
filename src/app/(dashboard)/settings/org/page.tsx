@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
@@ -32,6 +33,7 @@ export default function OrgSettingsPage() {
   const [address, setAddress] = useState("")
   const [phone, setPhone] = useState("")
   const [taxCode, setTaxCode] = useState("")
+  const [printNote, setPrintNote] = useState("")
   const [allowOversell, setAllowOversell] = useState(false)
   const [loading, setLoading] = useState(false)
   const [header, setHeader] = useState<OrgHeader>(EMPTY_ORG_HEADER)
@@ -56,6 +58,7 @@ export default function OrgSettingsPage() {
       setAddress(h.address ?? "")
       setPhone(h.phone ?? "")
       setTaxCode(h.taxCode ?? "")
+      setPrintNote(h.printNote ?? "")
     })()
     return () => { cancelled = true }
   }, [org?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -93,11 +96,14 @@ export default function OrgSettingsPage() {
             address: trimmed(address),
             phone: trimmed(phone),
             tax_code: trimmed(taxCode),
+            print_note: trimmed(printNote),
           },
         })
         .eq("id", org.id)
       if (error) throw error
-      setHeader({ name, address: trimmed(address), phone: trimmed(phone), taxCode: trimmed(taxCode) })
+      setHeader({
+        name, address: trimmed(address), phone: trimmed(phone), taxCode: trimmed(taxCode), printNote: trimmed(printNote),
+      })
       clearOrgCache()
       toast({ title: "Đã cập nhật thông tin tổ chức" })
     } catch (err) {
@@ -155,6 +161,26 @@ export default function OrgSettingsPage() {
                 Hiện chưa có địa chỉ và điện thoại — tờ in đang thiếu phần đầu.
               </b>
             )}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Chủ nhà 10/11/2026: "thêm cho tao vào dưới bảng đơn hàng/hóa đơn : Lưu ý: Khách hàng thanh toán bằng tiền mặt và
+          chỉ chuyển khoản vào số tài khoản của NPP …" — câu của từng NPP, không ghi cứng vào mã (`lib/printing/luu-y-in`). */}
+      <Card>
+        <CardHeader><CardTitle>Tờ in hóa đơn / đơn đặt hàng</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="luu-y-in">Lưu ý in dưới bảng hàng</Label>
+          <Textarea
+            id="luu-y-in"
+            value={printNote}
+            onChange={(e) => setPrintNote(e.target.value)}
+            rows={3}
+            placeholder="VD: Lưu ý: Khách hàng chỉ chuyển khoản vào số tài khoản của NPP: Ngân hàng … - số tài khoản … - tên chủ tài khoản …"
+          />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            In nguyên văn ngay dưới bảng hàng của mỗi tờ <b>hóa đơn bán</b> và <b>đơn đặt hàng</b> (cả tệp Excel
+            &ldquo;như mẫu in&rdquo;); chữ trước dấu hai chấm đầu câu (&ldquo;Lưu ý:&rdquo;) in đậm. Bỏ trống thì không in.
           </p>
         </CardContent>
       </Card>

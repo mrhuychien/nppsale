@@ -25,7 +25,7 @@ import { hangDoiTraTrenBanIn, type InvoiceReturnRow } from "@/lib/orders/invoice
 import { Skeleton } from "@/components/ui/skeleton"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
-import { ngayChungTu } from "@/lib/printing/doc-stamp"
+import { ngayChungTu, ngayGioHoaDon } from "@/lib/printing/doc-stamp"
 
 interface InvoiceRow {
   id: string
@@ -230,12 +230,14 @@ export default function SalesInvoicePrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          org={{ name: org.name, address: org.address, phone: org.phone }}
+          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng (chủ nhà 10/11/2026). */
+          org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}
           invoiceNumber={inv.invoice_code}
-          /* ⚠ CHỈ IN NGÀY HOÁ ĐƠN, không giờ (chủ nhà 01/10/2026). `invoice_date` là
-             DATE — không có giờ thật; in kèm giờ từ nó là bịa "07:00". Xem `ngayChungTu`. */
+          /* NGÀY HOÁ ĐƠN + GIỜ TẠO HOÁ ĐƠN (chủ nhà 10/11/2026: "Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn"). Ngày từ
+             `invoice_date` (DATE — dựng giờ từ nó là bịa "07:00"), giờ từ `created_at`; khác ngày thì ghi "(lập …)" —
+             xem `ngayGioHoaDon`. `issuedAt` còn là ngày ký ở chân tờ. */
           issuedAt={ngayChungTu(inv.invoice_date)}
-          issuedHasTime={false}
+          issuedText={ngayGioHoaDon(inv.invoice_date, inv.created_at)}
           customerName={inv.customer?.billing_name || inv.customer?.store_name || ""}
           customerAddress={invoiceAddressOf(inv.customer ?? {})}
           customerPhone={inv.customer?.phone}

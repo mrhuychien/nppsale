@@ -1,5 +1,6 @@
 /**
- * PHẦN ĐẦU CHỨNG TỪ — tên · địa chỉ · điện thoại · mã số thuế của NPP.
+ * PHẦN ĐẦU CHỨNG TỪ — tên · địa chỉ · điện thoại · mã số thuế của NPP (kèm câu "Lưu ý" in dưới bảng hàng — cùng nằm
+ * trong `settings`, cùng một chỗ đọc).
  *
  * ⚠ VÌ SAO CÓ FILE NÀY. Hai màn in (`/sales-invoices/[id]/print` và
  * `/invoices/[id]/print`) đều hỏi `organizations.select("name, address,
@@ -23,6 +24,12 @@ export interface OrgHeader {
   address: string | null
   phone: string | null
   taxCode: string | null
+  /**
+   * Câu "Lưu ý" in DƯỚI BẢNG HÀNG của hoá đơn bán / đơn đặt hàng (`settings.print_note`, sửa ở Cài đặt → Cấu hình tổ
+   * chức) — chủ nhà 10/11/2026: "thêm cho tao vào dưới bảng đơn hàng/hóa đơn : Lưu ý: Khách hàng thanh toán bằng tiền
+   * mặt và chỉ chuyển khoản vào số tài khoản của NPP …". Xem `src/lib/printing/luu-y-in.ts`.
+   */
+  printNote: string | null
 }
 
 export const EMPTY_ORG_HEADER: OrgHeader = {
@@ -30,6 +37,7 @@ export const EMPTY_ORG_HEADER: OrgHeader = {
   address: null,
   phone: null,
   taxCode: null,
+  printNote: null,
 }
 
 /**
@@ -54,7 +62,7 @@ export function orgHeaderFrom(
     return t === "" ? null : t
   }
   const name = typeof row.name === "string" && row.name.trim() !== "" ? row.name.trim() : null
-  return { name, address: pick("address"), phone: pick("phone"), taxCode: pick("tax_code") }
+  return { name, address: pick("address"), phone: pick("phone"), taxCode: pick("tax_code"), printNote: pick("print_note") }
 }
 
 /**

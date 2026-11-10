@@ -36,7 +36,8 @@ describe("màn in đơn đặt hàng", () => {
   it("đọc phần đầu NPP đúng chỗ", () => {
     expect(PAGE).toContain("loadOrgHeader(supabase, row.org_id)")
     expect(code(PAGE)).not.toContain('select("name, address, phone")')
-    expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone }}")
+    // Chủ nhà 10/11/2026: kèm câu "Lưu ý" của NPP dưới bảng hàng (tests/luu-y-in-gio-tao-hd.test.ts).
+    expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}")
   })
 
   /** ⚠ Chủ nhà 01/10/2026: chỉ in NGÀY đơn (`order_date`, kiểu `date`), không giờ. */

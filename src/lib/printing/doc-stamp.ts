@@ -157,3 +157,22 @@ export function ngayChungTu(docDate: string | null | undefined): Date | null {
   const d = new Date(`${docDate}T12:00:00+07:00`)
   return Number.isNaN(d.getTime()) ? null : d
 }
+
+/**
+ * NGÀY HOÁ ĐƠN + GIỜ TẠO HOÁ ĐƠN — chữ sau "Ngày" dưới tiêu đề tờ in hoá đơn. Chủ nhà 10/11/2026: "Thêm vào cạnh ngày hóa
+ * đơn giờ tạo hóa đơn" (thay luật 01/10/2026 "chỉ in ngày hoá đơn, bỏ hẳn giờ").
+ * - Ngày là `invoice_date` (DATE — `ngayChungTu`), giờ là `created_at` của TỜ NÀY theo giờ VN: "10/11/2026 09:15".
+ * - Ngày hoá đơn KHÁC ngày lập (chọn "Ngày hóa đơn" khác hôm nay ở POS; Sửa HĐ giữ ngày tờ cũ — mig 213 — mà tờ mới lập
+ *   hôm nay): "08/11/2026 (lập 10/11/2026 09:15)". Đặt giờ trần cạnh một ngày khác là bịa ra lúc lập không có thật.
+ * - Thiếu `created_at` → chỉ ngày như trước; ngày hoá đơn hỏng → ngày giờ lập; không có gì → "—".
+ */
+export function ngayGioHoaDon(invoiceDate: string | null | undefined, createdAt: string | null | undefined): string {
+  const ngay = ngayChungTu(invoiceDate)
+  const lap = docStampAt(createdAt, null).at
+  if (!ngay) return stampVN(lap)
+  if (!lap) return dateVN(ngay)
+  const p = partsVN(lap)
+  return `${pad(p.day)}/${pad(p.m)}/${p.y}` === dateVN(ngay)
+    ? `${dateVN(ngay)} ${p.hh}:${p.mm}`
+    : `${dateVN(ngay)} (lập ${stampVN(lap)})`
+}

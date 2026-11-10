@@ -171,7 +171,7 @@ export default function InvoicePrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          org={{ name: org.name, address: org.address, phone: org.phone }}
+          org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}
           invoiceNumber={invoice.invoice_number || ""}
           issuedAt={issuedAt}
           customerName={invoice.customer_name}

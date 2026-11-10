@@ -62,6 +62,7 @@ import { formatCurrency } from "@/lib/utils"
 import { stampVN, longDateVN, dateVN } from "@/lib/printing/doc-stamp"
 import { bangChuCoAm } from "@/lib/utils/number-to-vn-words"
 import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
+import { tachNhanLuuY } from "@/lib/printing/luu-y-in"
 
 export interface SalesInvoiceLine {
   id: string
@@ -96,7 +97,11 @@ export interface SalesInvoiceReturnLine {
 }
 
 export interface SalesInvoiceProps {
-  org: { name?: string | null; address?: string | null; phone?: string | null }
+  /**
+   * `printNote` — câu "Lưu ý" của NPP in NGAY DƯỚI BẢNG HÀNG (chủ nhà 10/11/2026, `settings.print_note` — xem
+   * `lib/printing/luu-y-in`). Cả hoá đơn bán lẫn đơn đặt hàng; trống thì không in.
+   */
+  org: { name?: string | null; address?: string | null; phone?: string | null; printNote?: string | null }
   /**
    * Tiêu đề giữa trang. Mặc định là hóa đơn bán; màn in ĐƠN ĐẶT HÀNG
    * truyền "ĐƠN ĐẶT HÀNG".
@@ -113,6 +118,11 @@ export interface SalesInvoiceProps {
   issuedAt: Date | null
   /** false = chỉ in ngày (ngày chứng từ, không có giờ). */
   issuedHasTime?: boolean
+  /**
+   * Chữ sau "Ngày" dựng sẵn — có thì dùng thay `issuedAt` / `issuedHasTime` ở dòng dưới tiêu đề (`issuedAt` vẫn là ngày
+   * ký ở chân tờ). Hoá đơn: `ngayGioHoaDon` — ngày hoá đơn + giờ tạo (chủ nhà 10/11/2026).
+   */
+  issuedText?: string
   customerName: string
   customerAddress?: string | null
   customerPhone?: string | null
@@ -273,11 +283,12 @@ export function noteBlocksOf(
 export function SalesInvoice(props: SalesInvoiceProps) {
   const {
     org, title = "HÓA ĐƠN BÁN HÀNG", numberLabel = "Số HĐ",
-    invoiceNumber, issuedAt, issuedHasTime, customerName, customerAddress, customerPhone,
+    invoiceNumber, issuedAt, issuedHasTime, issuedText, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines,
     total, invoiceDiscount = 0, returnCredit = 0, returnLines = [], notes = [], footerNote,
   } = props
   const chietKhauHD = Math.max(0, Math.round(Number(invoiceDiscount) || 0))
+  const luuY = tachNhanLuuY(org.printNote)
 
   const noteBlocks = noteBlocksOf(notes)
 
@@ -309,7 +320,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         <h1 className="text-xl font-bold leading-tight">{title}</h1>
         {/* ⚠ NGÀY KÈM GIỜ (chủ nhà chốt) — xem `docStampAt`: giờ thật nằm
             ở `created_at`, không nằm ở cột ngày kiểu `date`. */}
-        <p className="font-bold leading-tight">Ngày {issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt)}</p>
+        <p className="font-bold leading-tight">Ngày {issuedText ?? (issuedHasTime === false ? dateVN(issuedAt) : stampVN(issuedAt))}</p>
         <p className="leading-tight">{numberLabel}: {invoiceNumber || "—"}</p>
       </div>
 
@@ -494,6 +505,14 @@ export function SalesInvoice(props: SalesInvoiceProps) {
           </tr>
         </tbody>
       </table>
+
+      {/* "Lưu ý" của NPP ngay dưới bảng hàng (chủ nhà 10/11/2026) — cùng cỡ chữ cả tờ, nhãn đậm như "Bằng chữ:". */}
+      {luuY && (
+        <p className="mt-1 whitespace-pre-wrap leading-tight" data-testid="luu-y-in">
+          {luuY.nhan && <span className="font-bold">{luuY.nhan} </span>}
+          {luuY.than}
+        </p>
+      )}
 
       <div className="mt-1.5 grid grid-cols-2 items-start gap-4">
         <p className="leading-tight">{footerNote || ""}</p>

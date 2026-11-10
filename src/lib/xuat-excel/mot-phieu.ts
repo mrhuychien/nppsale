@@ -11,9 +11,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
-import { loadOrgHeader } from "@/lib/org/header"
+import { EMPTY_ORG_HEADER, loadOrgHeader } from "@/lib/org/header"
 import { invoiceAddressOf, type CustomerAddressParts } from "@/lib/customers/address"
-import { docGioSuaCuoi, gioSuaCuoi, mocInPhieuTra, ngayChungTu } from "@/lib/printing/doc-stamp"
+import { docGioSuaCuoi, gioSuaCuoi, mocInPhieuTra, ngayChungTu, ngayGioHoaDon } from "@/lib/printing/doc-stamp"
 import { hangDoiTraTrenBanIn, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
@@ -79,7 +79,7 @@ export const CHON_MOT_PHIEU: Record<LoaiPhieuXuat, { bang: string; chon: string;
   },
   "hoa-don": {
     bang: "sales_invoices",
-    chon: `id, org_id, invoice_code, invoice_date, status, subtotal, total, notes, ${KHACH_IN}, sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code)`,
+    chon: `id, org_id, invoice_code, invoice_date, created_at, status, subtotal, total, notes, ${KHACH_IN}, sales_user:users!sales_invoices_sales_user_id_fkey(full_name, phone), order:sales_orders(order_code)`,
     ten: "hóa đơn",
   },
 }
@@ -186,7 +186,8 @@ async function mauCua(sb: SupabaseClient, loai: LoaiPhieuXuat, id: string, p: R,
           nhanSo: "Số HĐ",
           so: ma,
           ngay: ngayChungTu(chu(p.invoice_date)),
-          coGio: false,
+          /* Ngày hoá đơn + giờ tạo hoá đơn — như tờ in (chủ nhà 10/11/2026). */
+          ngayChu: ngayGioHoaDon(chu(p.invoice_date), chu(p.created_at)),
           khach: kh.billing_name || kh.store_name || "",
           diaChi: invoiceAddressOf(kh),
           lienHe: kh.phone,
@@ -428,6 +429,9 @@ async function mauCua(sb: SupabaseClient, loai: LoaiPhieuXuat, id: string, p: R,
   }
 }
 
+/** Loại có câu "Lưu ý" của NPP dưới bảng hàng — đúng hai tờ in `SalesInvoice` (chủ nhà 10/11/2026: "đơn hàng/hóa đơn"). */
+export const CO_LUU_Y_IN: ReadonlySet<LoaiPhieuXuat> = new Set<LoaiPhieuXuat>(["hoa-don", "don"])
+
 export async function xuatMotPhieu(
   supabase: SupabaseClient,
   loai: LoaiPhieuXuat,
@@ -441,9 +445,13 @@ export async function xuatMotPhieu(
   const p = data as unknown as R
   /* Đầu công ty qua `loadOrgHeader` (địa chỉ / điện thoại nằm trong `settings`), như mọi tờ in. */
   const [org, kq] = await Promise.all([
-    p.org_id ? loadOrgHeader(supabase, p.org_id as string) : Promise.resolve({ name: "", address: "", phone: "" }),
+    p.org_id ? loadOrgHeader(supabase, p.org_id as string) : Promise.resolve(EMPTY_ORG_HEADER),
     mauCua(supabase, loai, id, p, {}, !!o.giaVon),
   ])
-  const mau = { ...kq.mau, org: { name: org.name, address: org.address, phone: org.phone } }
+  const mau = {
+    ...kq.mau,
+    org: { name: org.name, address: org.address, phone: org.phone },
+    luuY: CO_LUU_Y_IN.has(loai) ? org.printNote : null,
+  }
   return { sheets: [dungMauIn(mau)], ma: maCua(loai, p, kq.maTra) }
 }

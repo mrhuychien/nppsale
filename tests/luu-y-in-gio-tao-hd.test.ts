@@ -194,7 +194,7 @@ describe("Excel \"như mẫu in\" giống tờ in", () => {
     expect(ly).toBeLessThan(g.findIndex((r) => r.startsWith("Theo đơn") || r.includes("tháng 10 năm 2026")))
   })
   it("đơn đặt hàng có câu Lưu ý; phiếu trả khách thì không (chủ nhà chỉ nói đơn hàng / hoá đơn)", async () => {
-    expect([...CO_LUU_Y_IN].sort()).toEqual(["don", "hoa-don"])
+    expect(Array.from(CO_LUU_Y_IN).sort()).toEqual(["don", "hoa-don"])
     expect(luoi((await xuatMotPhieu(soGia(so), "don", "d")).sheets[0])).toContain(CAU)
     expect(luoi((await xuatMotPhieu(soGia(so), "tra-khach", "r1")).sheets[0])).not.toContain(CAU)
   })

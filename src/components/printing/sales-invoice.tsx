@@ -63,6 +63,8 @@ import { stampVN, longDateVN, dateVN } from "@/lib/printing/doc-stamp"
 import { bangChuCoAm } from "@/lib/utils/number-to-vn-words"
 import { netDueOnInvoice } from "@/lib/orders/invoice-credit"
 import { tachNhanLuuY } from "@/lib/printing/luu-y-in"
+import { chuoiVietQr, NOI_DUNG_QR_HOA_DON, type TaiKhoanNhan } from "@/lib/thanh-toan/vietqr"
+import { QrSvg } from "@/components/printing/qr-svg"
 
 export interface SalesInvoiceLine {
   id: string
@@ -173,6 +175,12 @@ export interface SalesInvoiceProps {
   notes?: { label: string; text: string | null | undefined }[]
   /** Dòng ghi chú nhỏ dưới bảng — ví dụ nhắc số tài khoản. */
   footerNote?: string | null
+  /**
+   * Tài khoản nhận tiền → MÃ QR CHUYỂN KHOẢN (VietQR) đúng SỐ CÒN PHẢI THU, đặt cạnh khu vực ký, song song ba ô ký (chủ nhà
+   * 10/11/2026). Chỉ hoá đơn đã ghi sổ truyền vào (đơn đặt hàng "chưa phải chứng từ thanh toán", hoá đơn huỷ thì không);
+   * vắng / không còn gì phải thu → không có mã. Nội dung chuyển khoản: `NOI_DUNG_QR_HOA_DON`.
+   */
+  paymentQr?: TaiKhoanNhan | null
 }
 
 /** Một dòng đã quy về giá gồm thuế, kèm đơn giá tính ngược lại. */
@@ -285,7 +293,7 @@ export function SalesInvoice(props: SalesInvoiceProps) {
     org, title = "HÓA ĐƠN BÁN HÀNG", numberLabel = "Số HĐ",
     invoiceNumber, issuedAt, issuedHasTime, issuedText, customerName, customerAddress, customerPhone,
     salesPersonName, salesPersonPhone, lines,
-    total, invoiceDiscount = 0, returnCredit = 0, returnLines = [], notes = [], footerNote,
+    total, invoiceDiscount = 0, returnCredit = 0, returnLines = [], notes = [], footerNote, paymentQr,
   } = props
   const chietKhauHD = Math.max(0, Math.round(Number(invoiceDiscount) || 0))
   const luuY = tachNhanLuuY(org.printNote)
@@ -296,6 +304,11 @@ export function SalesInvoice(props: SalesInvoiceProps) {
 
   const { rows, goodsTotal } = grossUpLines(lines, total, chietKhauHD)
   const netDue = netDueOnInvoice(total, returnCredit)
+  /* Mã QR trả đúng số CÒN PHẢI THU (`netDue` — số dòng đọc thành chữ cuối bảng); âm / 0 là không còn gì để chuyển khoản. */
+  const maQr =
+    paymentQr && netDue > 0
+      ? chuoiVietQr({ ...paymentQr, soTien: Math.round(netDue), noiDung: NOI_DUNG_QR_HOA_DON })
+      : null
 
   /**
    * ⚠ CỠ CHỮ ĐẶT MỘT CHỖ DUY NHẤT — ở gốc tờ giấy, không rải trên từng
@@ -519,8 +532,17 @@ export function SalesInvoice(props: SalesInvoiceProps) {
         <p className="text-right leading-tight">{longDateVN(issuedAt)}</p>
       </div>
 
-      {/* Ba ô ký — mẫu cũ chỉ có hai. */}
-      <div className="mt-1.5 grid grid-cols-3 gap-4 text-center">
+      {/* Ba ô ký — mẫu cũ chỉ có hai. Có mã QR chuyển khoản thì mã đứng cột đầu, song song ba ô ký (chủ nhà 10/11/2026);
+          cạnh mã tính theo `em` nên giãn theo cỡ chữ của khổ giấy (A5 ≈ 26 mm). */}
+      <div
+        className={`mt-1.5 grid items-start text-center ${maQr ? "grid-cols-[auto_1fr_1fr_1fr] gap-3" : "grid-cols-3 gap-4"}`}
+      >
+        {maQr && (
+          <div className="flex flex-col items-center" data-testid="qr-thanh-toan" data-vietqr={maQr}>
+            <QrSvg value={maQr} className="h-[7em] w-[7em]" nhan="Mã QR chuyển khoản" />
+            <p className="font-bold leading-tight">Quét mã thanh toán</p>
+          </div>
+        )}
         {[
           "Người nhận hàng",
           "Kế toán",

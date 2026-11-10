@@ -18,6 +18,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { taiKhoanNhanTu, type TaiKhoanNhan } from "@/lib/thanh-toan/vietqr"
 
 export interface OrgHeader {
   name: string | null
@@ -30,6 +31,11 @@ export interface OrgHeader {
    * mặt và chỉ chuyển khoản vào số tài khoản của NPP …". Xem `src/lib/printing/luu-y-in.ts`.
    */
   printNote: string | null
+  /**
+   * Tài khoản nhận tiền cho MÃ QR CHUYỂN KHOẢN trên tờ in hoá đơn (`settings.bank_bin` + `settings.bank_account_no`, Cấu
+   * hình tổ chức) — chủ nhà 10/11/2026. Thiếu / sai một trong hai → null, tờ in không có mã. Xem `lib/thanh-toan/vietqr`.
+   */
+  bank: TaiKhoanNhan | null
 }
 
 export const EMPTY_ORG_HEADER: OrgHeader = {
@@ -38,6 +44,7 @@ export const EMPTY_ORG_HEADER: OrgHeader = {
   phone: null,
   taxCode: null,
   printNote: null,
+  bank: null,
 }
 
 /**
@@ -62,7 +69,10 @@ export function orgHeaderFrom(
     return t === "" ? null : t
   }
   const name = typeof row.name === "string" && row.name.trim() !== "" ? row.name.trim() : null
-  return { name, address: pick("address"), phone: pick("phone"), taxCode: pick("tax_code"), printNote: pick("print_note") }
+  return {
+    name, address: pick("address"), phone: pick("phone"), taxCode: pick("tax_code"), printNote: pick("print_note"),
+    bank: taiKhoanNhanTu(pick("bank_bin"), pick("bank_account_no")),
+  }
 }
 
 /**

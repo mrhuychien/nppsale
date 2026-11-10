@@ -266,6 +266,9 @@ export default function SalesInvoicePrintPage() {
                 : null
               : "⚠ HÓA ĐƠN ĐÃ HUỶ — không có giá trị thanh toán."
           }
+          /* Mã QR chuyển khoản số còn phải thu, cạnh khu vực ký (chủ nhà 10/11/2026) — tài khoản ở Cấu hình tổ chức. Hoá đơn
+             huỷ "không có giá trị thanh toán" → không có mã. */
+          paymentQr={inv.status === "posted" ? org.bank : null}
         />
       </div>
     </div>

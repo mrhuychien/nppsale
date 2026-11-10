@@ -264,7 +264,7 @@ Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi
 - "Tổng cộng" giữ tiền hoá đơn; "Trừ hàng trả" / "Còn phải thu" là dòng thêm khi có trừ. Dòng đổi xuất đi (0đ) vẫn bỏ
   khỏi bảng hàng — món đổi hiện ở dòng "(Hàng đổi) … không trừ".
 
-### Tờ in hoá đơn / đơn đặt hàng: câu "Lưu ý" + giờ tạo hoá đơn
+### Tờ in hoá đơn / đơn đặt hàng: câu "Lưu ý" + giờ tạo hoá đơn + mã QR chuyển khoản
 Chủ nhà 10/11/2026: *"thêm cho tao vào dưới bảng đơn hàng/hóa đơn : Lưu ý: Khách hàng thanh toán bằng tiền mặt và chỉ chuyển
 khoản vào số tài khoản của NPP: … Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn."*
 - Câu "Lưu ý" là **cài đặt của NPP** (`organizations.settings.print_note`, Cài đặt → Cấu hình tổ chức; đọc qua `loadOrgHeader`
@@ -275,6 +275,16 @@ khoản vào số tài khoản của NPP: … Thêm vào cạnh ngày hóa đơn
 - Dòng "Ngày …" của tờ in hoá đơn = ngày HĐ + **giờ tạo** (`ngayGioHoaDon`, `src/lib/printing/doc-stamp.ts` — thay luật 01/10
   "chỉ in ngày"): giờ là `created_at` của tờ, giờ VN; ngày HĐ khác ngày lập (chọn "Ngày hóa đơn" ở POS, Sửa HĐ giữ ngày tờ cũ —
   mig 213) → "08/11/2026 (lập 10/11/2026 09:15)" — giờ trần cạnh một ngày khác là bịa. Đơn đặt hàng vẫn **chỉ ngày đơn**.
+- **Mã QR chuyển khoản (VietQR)** (chủ nhà 10/11/2026: *"em thêm cho a mã QR thanh toán số tiền trên hóa đơn, nội dung Thanh
+  toán đến tài khoản. mã để cạnh khu vực ký (song song)"*): tờ in hoá đơn **đã ghi sổ** có mã chuyển khoản đúng **số còn phải
+  thu** (số "Bằng chữ" đọc), nội dung `NOI_DUNG_QR_HOA_DON` ("Thanh toan den tai khoan"), đứng cột đầu hàng ô ký (`paymentQr`
+  của `SalesInvoice`, cạnh 7em — A5 ≈ 26 mm). Đơn đặt hàng / HĐ huỷ / không còn phải thu / NPP chưa đặt tài khoản → không có
+  mã; Excel "như mẫu in" chưa có mã. Tài khoản = cài đặt NPP (`settings.bank_bin` + `bank_account_no`, Cấu hình tổ chức: chọn
+  ngân hàng theo BIN NAPAS `NGAN_HANG_VIETQR`, có mã xem thử để quét kiểm tên chủ tài khoản; đủ cả hai hoặc trống cả hai —
+  `loiTaiKhoanNhan`). Chuỗi dựng TẠI CHỖ (`chuoiVietQr`, `src/lib/thanh-toan/vietqr.ts`: EMVCo/NAPAS, CRC-16/CCITT-FALSE, chỉ
+  ASCII — chữ có dấu là app ngân hàng đọc lệch); mã vẽ SVG **đồng bộ** (`QrSvg`, `QRCode.create`, mức sửa lỗi M) — dựng bất đồng
+  bộ như `QrCode` là tờ in tự động (`?auto=1`) ra không có mã. Test giải ngược bằng ZXing: `tests/vietqr-hoa-don.test.ts` (đáp án
+  tính bằng Python), e2e chụp mã trên trang rồi giải (`e2e/qr-thanh-toan-hoa-don.spec.ts`).
 
 ### Thêm khách hàng: TÌM khách đã có trước khi tạo
 Chủ nhà 06/06/2026: *"trước khi NV sale thêm KH mới, cần check trùng (theo SĐT, địa chỉ, tên). Nếu KH đã tồn tại — kể

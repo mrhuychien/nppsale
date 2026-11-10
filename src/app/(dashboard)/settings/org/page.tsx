@@ -15,6 +15,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { mucCanDung } from "@/lib/ui/muc-chon"
+import { QrSvg } from "@/components/printing/qr-svg"
+import {
+  chuoiVietQr, loiTaiKhoanNhan, NGAN_HANG_VIETQR, NOI_DUNG_QR_HOA_DON, taiKhoanNhanTu,
+} from "@/lib/thanh-toan/vietqr"
+
+/** Giá trị của lựa chọn "Không in mã QR" (Radix không nhận chuỗi rỗng làm giá trị). */
+const KHONG_IN_QR = "khong"
 
 /**
  * ⚠ ĐỊA CHỈ · ĐIỆN THOẠI · MST NẰM TRONG `organizations.settings` JSONB,
@@ -34,6 +43,9 @@ export default function OrgSettingsPage() {
   const [phone, setPhone] = useState("")
   const [taxCode, setTaxCode] = useState("")
   const [printNote, setPrintNote] = useState("")
+  const [bankBin, setBankBin] = useState("")
+  const [bankAccount, setBankAccount] = useState("")
+  const [moNganHang, setMoNganHang] = useState(false)
   const [allowOversell, setAllowOversell] = useState(false)
   const [loading, setLoading] = useState(false)
   const [header, setHeader] = useState<OrgHeader>(EMPTY_ORG_HEADER)
@@ -59,14 +71,25 @@ export default function OrgSettingsPage() {
       setPhone(h.phone ?? "")
       setTaxCode(h.taxCode ?? "")
       setPrintNote(h.printNote ?? "")
+      setBankBin(h.bank?.bin ?? "")
+      setBankAccount(h.bank?.soTaiKhoan ?? "")
     })()
     return () => { cancelled = true }
   }, [org?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (authLoading) return <Skeleton className="h-96" />
 
+  /* Mã xem thử (không ghi số tiền) — quét bằng app ngân hàng phải ra đúng tên chủ tài khoản của NPP. */
+  const qrXemThu = chuoiVietQr({ bin: bankBin, soTaiKhoan: bankAccount })
+
   const handleSave = async () => {
     if (!org) return
+    const loiTk = loiTaiKhoanNhan(bankBin, bankAccount)
+    if (loiTk) {
+      toast({ title: "Chưa lưu", description: loiTk, variant: "destructive" })
+      return
+    }
+    const nhanTien = taiKhoanNhanTu(bankBin, bankAccount)
     setLoading(true)
     try {
       /**
@@ -97,12 +120,15 @@ export default function OrgSettingsPage() {
             phone: trimmed(phone),
             tax_code: trimmed(taxCode),
             print_note: trimmed(printNote),
+            bank_bin: nhanTien?.bin ?? null,
+            bank_account_no: nhanTien?.soTaiKhoan ?? null,
           },
         })
         .eq("id", org.id)
       if (error) throw error
       setHeader({
         name, address: trimmed(address), phone: trimmed(phone), taxCode: trimmed(taxCode), printNote: trimmed(printNote),
+        bank: nhanTien,
       })
       clearOrgCache()
       toast({ title: "Đã cập nhật thông tin tổ chức" })
@@ -182,6 +208,55 @@ export default function OrgSettingsPage() {
             In nguyên văn ngay dưới bảng hàng của mỗi tờ <b>hóa đơn bán</b> và <b>đơn đặt hàng</b> (cả tệp Excel
             &ldquo;như mẫu in&rdquo;); chữ trước dấu hai chấm đầu câu (&ldquo;Lưu ý:&rdquo;) in đậm. Bỏ trống thì không in.
           </p>
+
+          {/* Chủ nhà 10/11/2026: "mã QR thanh toán số tiền trên hóa đơn … mã để cạnh khu vực ký (song song)" — tài khoản của
+              từng NPP, không ghi cứng vào mã (`lib/thanh-toan/vietqr`). */}
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-sm font-semibold">Mã QR chuyển khoản trên hóa đơn</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="ngan-hang-qr">Ngân hàng nhận tiền</Label>
+                <Select
+                  value={bankBin || KHONG_IN_QR}
+                  onValueChange={(v) => setBankBin(v === KHONG_IN_QR ? "" : v)}
+                  onOpenChange={setMoNganHang}
+                >
+                  <SelectTrigger id="ngan-hang-qr" aria-label="Ngân hàng nhận tiền"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={KHONG_IN_QR}>Không in mã QR</SelectItem>
+                    {mucCanDung(NGAN_HANG_VIETQR, bankBin, moNganHang, (b) => b.bin).map((b) => (
+                      <SelectItem key={b.bin} value={b.bin}>{b.ten} — {b.tenDayDu}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="so-tk-qr">Số tài khoản</Label>
+                <Input
+                  id="so-tk-qr"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={bankAccount}
+                  onChange={(e) => setBankAccount(e.target.value)}
+                  placeholder="VD: 0123456789"
+                />
+              </div>
+            </div>
+            {qrXemThu && (
+              <div className="flex items-center gap-3 rounded-xl border bg-background p-3" data-testid="qr-xem-thu">
+                <QrSvg value={qrXemThu} className="h-28 w-28 shrink-0" nhan="Mã QR xem thử" />
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  <b>Quét thử bằng app ngân hàng:</b> phải ra đúng tên chủ tài khoản của NPP. Mã xem thử không ghi số tiền;
+                  trên tờ hóa đơn mã ghi sẵn <b>số còn phải thu</b>, nội dung &ldquo;{NOI_DUNG_QR_HOA_DON}&rdquo;.
+                </p>
+              </div>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Có đủ ngân hàng + số tài khoản thì mỗi tờ <b>hóa đơn bán</b> đã ghi sổ (còn tiền phải thu) in mã QR chuyển khoản
+              đúng số tiền, đặt cạnh khu vực ký. Đơn đặt hàng và hóa đơn đã huỷ không in mã. Chọn &ldquo;Không in mã QR&rdquo;
+              để bỏ.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

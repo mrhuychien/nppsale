@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
 import { loadOrgHeader, EMPTY_ORG_HEADER, type OrgHeader } from "@/lib/org/header"
+import { luuYTrenTo } from "@/lib/printing/luu-y-in"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { mucCanDung } from "@/lib/ui/muc-chon"
 import { QrSvg } from "@/components/printing/qr-svg"
@@ -45,6 +46,7 @@ export default function OrgSettingsPage() {
   const [printNote, setPrintNote] = useState("")
   const [bankBin, setBankBin] = useState("")
   const [bankAccount, setBankAccount] = useState("")
+  const [bankName, setBankName] = useState("")
   const [moNganHang, setMoNganHang] = useState(false)
   const [allowOversell, setAllowOversell] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -73,6 +75,7 @@ export default function OrgSettingsPage() {
       setPrintNote(h.printNote ?? "")
       setBankBin(h.bank?.bin ?? "")
       setBankAccount(h.bank?.soTaiKhoan ?? "")
+      setBankName(h.bank?.tenChuTk ?? "")
     })()
     return () => { cancelled = true }
   }, [org?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -81,6 +84,9 @@ export default function OrgSettingsPage() {
 
   /* Mã xem thử (không ghi số tiền) — quét bằng app ngân hàng phải ra đúng tên chủ tài khoản của NPP. */
   const qrXemThu = chuoiVietQr({ bin: bankBin, soTaiKhoan: bankAccount })
+  /* Ô Lưu ý trống mà có tài khoản nhận tiền → tờ in tự ghi câu mặc định (chủ nhà 11/11/2026: "vẫn thêm dòng Lưu ý khi có
+     mã qr") — hiện trước đúng câu ấy. Một luật với tờ in: `luuYTrenTo`. */
+  const luuYTuDong = luuYTrenTo({ printNote, bank: taiKhoanNhanTu(bankBin, bankAccount, bankName) })
 
   const handleSave = async () => {
     if (!org) return
@@ -89,7 +95,7 @@ export default function OrgSettingsPage() {
       toast({ title: "Chưa lưu", description: loiTk, variant: "destructive" })
       return
     }
-    const nhanTien = taiKhoanNhanTu(bankBin, bankAccount)
+    const nhanTien = taiKhoanNhanTu(bankBin, bankAccount, bankName)
     setLoading(true)
     try {
       /**
@@ -122,6 +128,7 @@ export default function OrgSettingsPage() {
             print_note: trimmed(printNote),
             bank_bin: nhanTien?.bin ?? null,
             bank_account_no: nhanTien?.soTaiKhoan ?? null,
+            bank_account_name: nhanTien?.tenChuTk ?? null,
           },
         })
         .eq("id", org.id)
@@ -206,8 +213,14 @@ export default function OrgSettingsPage() {
           />
           <p className="text-xs leading-relaxed text-muted-foreground">
             In nguyên văn ngay dưới bảng hàng của mỗi tờ <b>hóa đơn bán</b> và <b>đơn đặt hàng</b> (cả tệp Excel
-            &ldquo;như mẫu in&rdquo;); chữ trước dấu hai chấm đầu câu (&ldquo;Lưu ý:&rdquo;) in đậm. Bỏ trống thì không in.
+            &ldquo;như mẫu in&rdquo;); chữ trước dấu hai chấm đầu câu (&ldquo;Lưu ý:&rdquo;) in đậm. Bỏ trống mà có tài khoản
+            nhận tiền (mã QR, bên dưới) thì tờ in <b>tự ghi câu Lưu ý theo tài khoản ấy</b>; không có cả hai thì không in.
           </p>
+          {!printNote.trim() && luuYTuDong && (
+            <p className="rounded-xl bg-surface-container-low px-3 py-2.5 text-xs leading-relaxed" data-testid="luu-y-tu-dong">
+              Ô đang trống — tờ in sẽ ghi: <b>{luuYTuDong}</b>
+            </p>
+          )}
 
           {/* Chủ nhà 10/11/2026: "mã QR thanh toán số tiền trên hóa đơn … mã để cạnh khu vực ký (song song)" — tài khoản của
               từng NPP, không ghi cứng vào mã (`lib/thanh-toan/vietqr`). */}
@@ -241,6 +254,16 @@ export default function OrgSettingsPage() {
                   placeholder="VD: 0123456789"
                 />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ten-tk-qr">Tên chủ tài khoản (in trong câu Lưu ý tự động)</Label>
+              <Input
+                id="ten-tk-qr"
+                autoComplete="off"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="VD: CONG TY TNHH … (đúng tên app ngân hàng hiện khi quét)"
+              />
             </div>
             {qrXemThu && (
               <div className="flex items-center gap-3 rounded-xl border bg-background p-3" data-testid="qr-xem-thu">

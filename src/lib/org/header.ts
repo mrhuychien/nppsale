@@ -32,8 +32,9 @@ export interface OrgHeader {
    */
   printNote: string | null
   /**
-   * Tài khoản nhận tiền cho MÃ QR CHUYỂN KHOẢN trên tờ in hoá đơn (`settings.bank_bin` + `settings.bank_account_no`, Cấu
-   * hình tổ chức) — chủ nhà 10/11/2026. Thiếu / sai một trong hai → null, tờ in không có mã. Xem `lib/thanh-toan/vietqr`.
+   * Tài khoản nhận tiền cho MÃ QR CHUYỂN KHOẢN trên tờ in hoá đơn (`settings.bank_bin` + `settings.bank_account_no`, tuỳ
+   * chọn `bank_account_name` cho câu Lưu ý mặc định; Cấu hình tổ chức) — chủ nhà 10/11/2026. Thiếu / sai BIN hay số tài
+   * khoản → null, tờ in không có mã. Xem `lib/thanh-toan/vietqr`, `lib/printing/luu-y-in` (`luuYTrenTo`).
    */
   bank: TaiKhoanNhan | null
 }
@@ -71,7 +72,7 @@ export function orgHeaderFrom(
   const name = typeof row.name === "string" && row.name.trim() !== "" ? row.name.trim() : null
   return {
     name, address: pick("address"), phone: pick("phone"), taxCode: pick("tax_code"), printNote: pick("print_note"),
-    bank: taiKhoanNhanTu(pick("bank_bin"), pick("bank_account_no")),
+    bank: taiKhoanNhanTu(pick("bank_bin"), pick("bank_account_no"), pick("bank_account_name")),
   }
 }
 

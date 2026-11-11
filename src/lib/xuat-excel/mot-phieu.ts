@@ -12,6 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { docMaPhieuTra } from "@/lib/returns/ma-phieu"
 import { EMPTY_ORG_HEADER, loadOrgHeader } from "@/lib/org/header"
+import { luuYTrenTo } from "@/lib/printing/luu-y-in"
 import { invoiceAddressOf, type CustomerAddressParts } from "@/lib/customers/address"
 import { docGioSuaCuoi, gioSuaCuoi, mocInPhieuTra, ngayChungTu, ngayGioHoaDon } from "@/lib/printing/doc-stamp"
 import { hangDoiTraTrenBanIn, type InvoiceReturnRow } from "@/lib/orders/invoice-credit"
@@ -451,7 +452,7 @@ export async function xuatMotPhieu(
   const mau = {
     ...kq.mau,
     org: { name: org.name, address: org.address, phone: org.phone },
-    luuY: CO_LUU_Y_IN.has(loai) ? org.printNote : null,
+    luuY: CO_LUU_Y_IN.has(loai) ? luuYTrenTo(org) : null,
   }
   return { sheets: [dungMauIn(mau)], ma: maCua(loai, p, kq.maTra) }
 }

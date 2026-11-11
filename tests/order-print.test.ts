@@ -36,8 +36,9 @@ describe("màn in đơn đặt hàng", () => {
   it("đọc phần đầu NPP đúng chỗ", () => {
     expect(PAGE).toContain("loadOrgHeader(supabase, row.org_id)")
     expect(code(PAGE)).not.toContain('select("name, address, phone")')
-    // Chủ nhà 10/11/2026: kèm câu "Lưu ý" của NPP dưới bảng hàng (tests/luu-y-in-gio-tao-hd.test.ts).
-    expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}")
+    // Chủ nhà 10/11/2026: kèm câu "Lưu ý" của NPP dưới bảng hàng; 11/11/2026: có tài khoản mã QR mà chưa viết câu thì câu
+    // mặc định (`luuYTrenTo` — tests/vietqr-hoa-don.test.ts).
+    expect(PAGE).toContain("org={{ name: org.name, address: org.address, phone: org.phone, printNote: luuYTrenTo(org) }}")
   })
 
   /** ⚠ Chủ nhà 01/10/2026: chỉ in NGÀY đơn (`order_date`, kiểu `date`), không giờ. */

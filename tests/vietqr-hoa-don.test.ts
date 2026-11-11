@@ -19,6 +19,7 @@ import {
 import { duongQr, LE_QR, maTranQr } from "@/components/printing/qr-svg"
 import { SalesInvoice, type SalesInvoiceProps } from "@/components/printing/sales-invoice"
 import { orgHeaderFrom } from "@/lib/org/header"
+import { cauLuuYMacDinh, luuYTrenTo } from "@/lib/printing/luu-y-in"
 
 /* Đáp án tính bằng Python (xem khối đầu tệp). */
 const TCB_900K =
@@ -197,8 +198,9 @@ describe("tờ in hoá đơn: mã QR song song ba ô ký", () => {
       expect(html).toContain("grid-cols-3")
     }
   })
-  it("cạnh mã tính theo em (giãn theo cỡ chữ khổ giấy: A5 ≈ 26 mm)", () => {
-    expect(veTo({ paymentQr: TCB })).toMatch(/<svg[^>]*class="h-\[7em\] w-\[7em\]"/)
+  /* Chủ nhà 11/11/2026: "Thu nhỏ mã qr" — 7em (A5 ≈ 26 mm) → 5,5em (≈ 20 mm; ~0,45 mm / mô-đun, ≥ 3 điểm ở 203 dpi). */
+  it("cạnh mã 5,5em (giãn theo cỡ chữ khổ giấy: A5 ≈ 20 mm)", () => {
+    expect(veTo({ paymentQr: TCB })).toMatch(/<svg[^>]*class="h-\[5\.5em\] w-\[5\.5em\]"/)
   })
   it("lề trắng ĐỀU bốn phía (LE_QR mô-đun) — thiếu lề phải / dưới là mã dính sát chữ bên cạnh, khó quét", () => {
     const html = veTo({ paymentQr: TCB })
@@ -229,5 +231,59 @@ describe("nối dây", () => {
     expect(s).toContain("const loiTk = loiTaiKhoanNhan(bankBin, bankAccount)")
     expect(s).toMatch(/settings: \{\s*\.\.\.existing,[\s\S]*bank_bin: nhanTien\?\.bin \?\? null,\s*bank_account_no: nhanTien\?\.soTaiKhoan \?\? null,/)
     expect(s).toContain("mucCanDung(NGAN_HANG_VIETQR, bankBin, moNganHang, (b) => b.bin)")
+  })
+})
+
+/* ------------------------------------------------------------------ Có mã QR thì luôn có dòng Lưu ý */
+
+/** Câu chủ nhà gửi 10/11/2026 — nguyên văn. */
+const CAU_CHU_NHA =
+  "Lưu ý: Khách hàng thanh toán bằng tiền mặt và chỉ chuyển khoản vào số tài khoản của NPP: Ngân hàng Techcombank - " +
+  "666888696 - CONG TY TNHH THUONG MAI GIA HIEU."
+
+describe("có mã QR thì luôn có dòng Lưu ý (chủ nhà 11/11/2026: \"vẫn thêm dòng Lưu ý khi có mã qr\")", () => {
+  it("câu mặc định điền từ tài khoản của mã TRÙNG TỪNG CHỮ câu chủ nhà gửi", () => {
+    expect(cauLuuYMacDinh({ ...TCB, tenChuTk: "CONG TY TNHH THUONG MAI GIA HIEU" })).toBe(CAU_CHU_NHA)
+    // Tên gõ thừa khoảng trắng / dấu chấm cuối → vẫn một câu sạch.
+    expect(cauLuuYMacDinh(taiKhoanNhanTu("970407", "666 888 696", "  CONG TY TNHH  THUONG MAI GIA HIEU. ")!)).toBe(CAU_CHU_NHA)
+    // Chưa điền tên chủ tài khoản → câu dừng ở số tài khoản.
+    expect(cauLuuYMacDinh(TCB)).toBe(
+      "Lưu ý: Khách hàng thanh toán bằng tiền mặt và chỉ chuyển khoản vào số tài khoản của NPP: Ngân hàng Techcombank - 666888696."
+    )
+  })
+  it("câu NPP tự viết luôn thắng; trống mà có tài khoản → câu mặc định; không có gì → không in", () => {
+    expect(luuYTrenTo({ printNote: "Lưu ý: chỉ nhận tiền mặt", bank: TCB })).toBe("Lưu ý: chỉ nhận tiền mặt")
+    expect(luuYTrenTo({ printNote: "  ", bank: { ...TCB, tenChuTk: "CONG TY TNHH THUONG MAI GIA HIEU" } })).toBe(CAU_CHU_NHA)
+    expect(luuYTrenTo({ printNote: null, bank: null })).toBeNull()
+    expect(luuYTrenTo({})).toBeNull()
+  })
+  it("tên chủ tài khoản đọc từ cài đặt (bank_account_name), không vào chuỗi mã QR", () => {
+    const h = orgHeaderFrom({
+      name: "NPP",
+      settings: { bank_bin: "970407", bank_account_no: "666888696", bank_account_name: "CONG TY TNHH THUONG MAI GIA HIEU" },
+    })
+    expect(h.bank).toEqual({ ...TCB, tenChuTk: "CONG TY TNHH THUONG MAI GIA HIEU" })
+    expect(luuYTrenTo(h)).toBe(CAU_CHU_NHA)
+    expect(chuoiVietQr({ ...h.bank!, soTien: 900000, noiDung: NOI_DUNG_QR_HOA_DON })).toBe(TCB_900K)
+  })
+  it("tờ in hoá đơn có mã QR + câu Lưu ý cùng lúc (câu ngay dưới bảng, mã ở hàng ô ký)", () => {
+    const bank = { ...TCB, tenChuTk: "CONG TY TNHH THUONG MAI GIA HIEU" }
+    const html = veTo({ org: { name: "NPP Thử", printNote: luuYTrenTo({ bank }) }, paymentQr: bank })
+    const ly = html.indexOf('data-testid="luu-y-in"')
+    expect(ly).toBeGreaterThan(html.indexOf("</table>"))
+    expect(ly).toBeLessThan(html.indexOf('data-testid="qr-thanh-toan"'))
+    expect(html).toContain(`<span class="font-bold">Lưu ý: </span>${CAU_CHU_NHA.slice("Lưu ý: ".length)}`)
+  })
+  it("ba màn in + Excel lấy câu qua MỘT luật (luuYTrenTo); màn cài đặt lưu tên chủ tài khoản", () => {
+    for (const p of [
+      "src/app/(dashboard)/sales-invoices/[id]/print/page.tsx",
+      "src/app/(dashboard)/orders/[id]/print/page.tsx",
+      "src/app/(dashboard)/invoices/[id]/print/page.tsx",
+    ]) expect(readFileSync(p, "utf8"), p).toContain("printNote: luuYTrenTo(org)")
+    expect(readFileSync("src/lib/xuat-excel/mot-phieu.ts", "utf8")).toContain("luuY: CO_LUU_Y_IN.has(loai) ? luuYTrenTo(org) : null,")
+    const s = readFileSync("src/app/(dashboard)/settings/org/page.tsx", "utf8")
+    expect(s).toContain("const nhanTien = taiKhoanNhanTu(bankBin, bankAccount, bankName)")
+    expect(s).toContain("bank_account_name: nhanTien?.tenChuTk ?? null,")
+    expect(s).toContain("const luuYTuDong = luuYTrenTo({ printNote, bank: taiKhoanNhanTu(bankBin, bankAccount, bankName) })")
   })
 })

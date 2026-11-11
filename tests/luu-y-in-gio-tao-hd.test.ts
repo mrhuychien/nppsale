@@ -129,10 +129,10 @@ describe("hai màn in dùng đúng luật", () => {
     expect(HD).toContain("issuedText={ngayGioHoaDon(inv.invoice_date, inv.created_at)}")
     expect(HD).toContain("issuedAt={ngayChungTu(inv.invoice_date)}")
     expect(HD).toMatch(/\.from\("sales_invoices"\)\s*\.select\(\s*"[^"]*\bcreated_at\b/)
-    expect(HD).toContain("printNote: org.printNote")
+    expect(HD).toContain("printNote: luuYTrenTo(org)")
   })
   it("đơn đặt hàng: câu Lưu ý của NPP; ngày vẫn chỉ NGÀY đơn (chủ nhà chỉ nói giờ tạo HÓA ĐƠN)", () => {
-    expect(DON).toContain("printNote: org.printNote")
+    expect(DON).toContain("printNote: luuYTrenTo(org)")
     expect(DON).toContain("issuedAt={ngayChungTu(order.order_date)}")
     expect(DON).toContain("issuedHasTime={false}")
     expect(DON).not.toContain("issuedText")
@@ -197,6 +197,19 @@ describe("Excel \"như mẫu in\" giống tờ in", () => {
     expect(Array.from(CO_LUU_Y_IN).sort()).toEqual(["don", "hoa-don"])
     expect(luoi((await xuatMotPhieu(soGia(so), "don", "d")).sheets[0])).toContain(CAU)
     expect(luoi((await xuatMotPhieu(soGia(so), "tra-khach", "r1")).sheets[0])).not.toContain(CAU)
+  })
+  /* Chủ nhà 11/11/2026: "vẫn thêm dòng Lưu ý khi có mã qr" — chưa viết câu mà có tài khoản nhận tiền → câu mặc định. */
+  it("chưa viết câu mà có tài khoản nhận tiền (mã QR) → Excel hoá đơn + đơn hàng vẫn có đúng câu của chủ nhà", async () => {
+    const coTk = {
+      ...so,
+      organizations: [{
+        id: "o1", name: "NPP Thử",
+        settings: { bank_bin: "970407", bank_account_no: "666888696", bank_account_name: "CONG TY TNHH THUONG MAI GIA HIEU" },
+      }],
+    }
+    expect(luoi((await xuatMotPhieu(soGia(coTk), "hoa-don", "hd")).sheets[0])).toContain(CAU)
+    expect(luoi((await xuatMotPhieu(soGia(coTk), "don", "d")).sheets[0])).toContain(CAU)
+    expect(luoi((await xuatMotPhieu(soGia(coTk), "tra-khach", "r1")).sheets[0])).not.toContain(CAU)
   })
   it("NPP chưa đặt câu → tệp không có dòng Lưu ý", async () => {
     const g = luoi(dungMauIn(mauBanHang({

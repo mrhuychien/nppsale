@@ -35,6 +35,7 @@ import {
 } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
 import { ngayChungTu } from "@/lib/printing/doc-stamp"
+import { luuYTrenTo } from "@/lib/printing/luu-y-in"
 import { ORDER_STATUS_MAP } from "@/lib/constants"
 import { giamCuaHoaDon } from "@/lib/pos/invoice-discount"
 
@@ -250,8 +251,9 @@ export default function OrderPrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng, như hoá đơn (chủ nhà 10/11/2026: "đơn hàng/hóa đơn"). */
-          org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}
+          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng, như hoá đơn (chủ nhà 10/11/2026: "đơn hàng/hóa đơn"); chưa viết
+             câu mà có tài khoản nhận tiền thì câu mặc định — `luuYTrenTo`. */
+          org={{ name: org.name, address: org.address, phone: org.phone, printNote: luuYTrenTo(org) }}
           title="ĐƠN ĐẶT HÀNG"
           numberLabel="Số ĐH"
           invoiceNumber={order.order_code}

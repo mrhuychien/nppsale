@@ -53,7 +53,12 @@ async function quetMa(page: Page, svg: Locator): Promise<string | null> {
 /* Ảnh chụp nét (mã 7em ở chữ 12px = 84px CSS → ×3). */
 test.use({ deviceScaleFactor: 3 })
 
-test("tài khoản nhận tiền ở Cấu hình tổ chức → tờ in hoá đơn có mã QR đúng số tiền, song song ô ký; đơn hàng không có", async ({ page }) => {
+/* Chủ nhà 11/11/2026: "Thu nhỏ mã qr. vẫn thêm dòng Lưu ý khi có mã qr" — chỉ đặt tài khoản (ô câu Lưu ý để trống) thì tờ in
+   vẫn có dòng Lưu ý theo đúng câu của chủ nhà; mã 5,5em. */
+const LUU_Y_TU_DONG =
+  "Lưu ý: Khách hàng thanh toán bằng tiền mặt và chỉ chuyển khoản vào số tài khoản của NPP: Ngân hàng Vietcombank - 0123456789 - NPP THU NGHIEM."
+
+test("tài khoản nhận tiền ở Cấu hình tổ chức → tờ in hoá đơn có mã QR đúng số tiền song song ô ký + dòng Lưu ý; đơn hàng chỉ có Lưu ý", async ({ page }) => {
   try {
     await dangNhap(page)
     const docXong = page.waitForResponse((r) => r.url().includes("/rest/v1/organizations") && r.url().includes("settings"))
@@ -73,6 +78,10 @@ test("tài khoản nhận tiền ở Cấu hình tổ chức → tờ in hoá đ
     const xemThu = page.getByTestId("qr-xem-thu").locator("svg")
     await expect(xemThu).toBeVisible()
     expect(await quetMa(page, xemThu)).toBe(QR_XEM_THU)
+    // Ô câu Lưu ý để trống → màn báo trước câu tờ in sẽ tự ghi.
+    await page.getByLabel("Tên chủ tài khoản (in trong câu Lưu ý tự động)").fill("NPP THU NGHIEM")
+    await expect(page.getByLabel("Lưu ý in dưới bảng hàng")).toHaveValue("")
+    await expect(page.getByTestId("luu-y-tu-dong")).toContainText(LUU_Y_TU_DONG)
     await page.getByRole("button", { name: "Lưu thay đổi" }).click()
     await expect(page.getByText("Đã cập nhật thông tin tổ chức").first()).toBeVisible()
 
@@ -87,12 +96,18 @@ test("tài khoản nhận tiền ở Cấu hình tổ chức → tờ in hoá đ
       const bKy = (await page.getByText("Người nhận hàng", { exact: true }).boundingBox())!
       expect(Math.abs(bQr.y - bKy.y), url).toBeLessThan(4)
       expect(bQr.x + bQr.width, url).toBeLessThanOrEqual(bKy.x)
+      // Thu nhỏ: cạnh mã 5,5em (chữ xem trước 12px → 66px; bản 7em cũ là 84px).
+      const bMa = (await khoi.locator("svg").boundingBox())!
+      expect(Math.round(bMa.width), url).toBe(66)
+      // Có mã thì vẫn có dòng Lưu ý, ngay dưới bảng hàng.
+      await expect(page.getByTestId("luu-y-in"), url).toHaveText(LUU_Y_TU_DONG)
     }
 
     // Đơn đặt hàng "chưa phải chứng từ thanh toán" — không có mã.
     await page.goto(`/orders/${DON}/print`)
     await expect(page.getByText("Người nhận hàng", { exact: true })).toBeVisible()
     await expect(page.getByTestId("qr-thanh-toan")).toHaveCount(0)
+    await expect(page.getByTestId("luu-y-in")).toHaveText(LUU_Y_TU_DONG)
 
     // Mở lại cài đặt: đã lưu (số tài khoản lưu gọn, không khoảng trắng).
     const docLai = page.waitForResponse((r) => r.url().includes("/rest/v1/organizations") && r.url().includes("settings"))
@@ -100,6 +115,7 @@ test("tài khoản nhận tiền ở Cấu hình tổ chức → tờ in hoá đ
     await docLai
     await expect(page.getByLabel("Số tài khoản")).toHaveValue("0123456789")
     await expect(page.getByRole("combobox", { name: "Ngân hàng nhận tiền" })).toContainText("Vietcombank")
+    await expect(page.getByLabel("Tên chủ tài khoản (in trong câu Lưu ý tự động)")).toHaveValue("NPP THU NGHIEM")
   } finally {
     /* Sổ giả dùng chung cả lượt chạy — trả cài đặt về như cũ để bài in khác không thấy mã. */
     await fetch(`${FAKE}/rest/v1/organizations?id=eq.${ORG}`, {

@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { SalesInvoice, type SalesInvoiceLine } from "@/components/printing/sales-invoice"
 import { invoiceAddressOf } from "@/lib/customers/address"
 import { ngayChungTu, ngayGioHoaDon } from "@/lib/printing/doc-stamp"
+import { luuYTrenTo } from "@/lib/printing/luu-y-in"
 
 interface InvoiceRow {
   id: string
@@ -230,8 +231,9 @@ export default function SalesInvoicePrintPage() {
 
       <div className="rounded-lg border border-border/40 bg-white p-8 print:border-none print:p-0">
         <SalesInvoice
-          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng (chủ nhà 10/11/2026). */
-          org={{ name: org.name, address: org.address, phone: org.phone, printNote: org.printNote }}
+          /* `printNote` — câu "Lưu ý" của NPP dưới bảng hàng (chủ nhà 10/11/2026); có mã QR mà chưa viết câu thì câu mặc định
+             theo tài khoản (11/11/2026: "vẫn thêm dòng Lưu ý khi có mã qr") — `luuYTrenTo`. */
+          org={{ name: org.name, address: org.address, phone: org.phone, printNote: luuYTrenTo(org) }}
           invoiceNumber={inv.invoice_code}
           /* NGÀY HOÁ ĐƠN + GIỜ TẠO HOÁ ĐƠN (chủ nhà 10/11/2026: "Thêm vào cạnh ngày hóa đơn giờ tạo hóa đơn"). Ngày từ
              `invoice_date` (DATE — dựng giờ từ nó là bịa "07:00"), giờ từ `created_at`; khác ngày thì ghi "(lập …)" —

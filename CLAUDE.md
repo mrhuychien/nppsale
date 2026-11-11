@@ -270,16 +270,21 @@ khoản vào số tài khoản của NPP: … Thêm vào cạnh ngày hóa đơn
 - Câu "Lưu ý" là **cài đặt của NPP** (`organizations.settings.print_note`, Cài đặt → Cấu hình tổ chức; đọc qua `loadOrgHeader`
   → `printNote`), in nguyên văn **ngay dưới bảng hàng** của hoá đơn bán + đơn đặt hàng (`SalesInvoice`, kể cả `/in/*` của POS)
   và Excel "như mẫu in" (`CO_LUU_Y_IN`); nhãn đầu câu ("Lưu ý:") in đậm (`tachNhanLuuY`, `src/lib/printing/luu-y-in.ts`). Trống
-  → không in. **Không ghi cứng số tài khoản vào mã / migration**: `schema_full.sql` cài cho NPP khác, tài khoản của NPP này lên
-  tờ của NPP khác là khách chuyển tiền nhầm chỗ (bài test quét `src/` + `supabase/`).
+  → không in — TRỪ KHI có tài khoản nhận tiền (mã QR): chủ nhà 11/11/2026 *"Thu nhỏ mã qr. vẫn thêm dòng Lưu ý khi có mã qr"* →
+  ô câu trống mà có tài khoản thì in **câu mặc định đúng lời chủ nhà** điền ngân hàng · số TK · tên chủ TK (`cauLuuYMacDinh`,
+  tên chủ TK tuỳ chọn `settings.bank_account_name`); câu tự viết luôn thắng. Một luật cho ba màn in + Excel + màn cài đặt (báo
+  trước câu sẽ in): `luuYTrenTo` — đừng truyền thẳng `org.printNote`. **Không ghi cứng số tài khoản vào mã / migration**:
+  `schema_full.sql` cài cho NPP khác, tài khoản của NPP này lên tờ của NPP khác là khách chuyển tiền nhầm chỗ (bài test quét
+  `src/` + `supabase/`).
 - Dòng "Ngày …" của tờ in hoá đơn = ngày HĐ + **giờ tạo** (`ngayGioHoaDon`, `src/lib/printing/doc-stamp.ts` — thay luật 01/10
   "chỉ in ngày"): giờ là `created_at` của tờ, giờ VN; ngày HĐ khác ngày lập (chọn "Ngày hóa đơn" ở POS, Sửa HĐ giữ ngày tờ cũ —
   mig 213) → "08/11/2026 (lập 10/11/2026 09:15)" — giờ trần cạnh một ngày khác là bịa. Đơn đặt hàng vẫn **chỉ ngày đơn**.
 - **Mã QR chuyển khoản (VietQR)** (chủ nhà 10/11/2026: *"em thêm cho a mã QR thanh toán số tiền trên hóa đơn, nội dung Thanh
   toán đến tài khoản. mã để cạnh khu vực ký (song song)"*): tờ in hoá đơn **đã ghi sổ** có mã chuyển khoản đúng **số còn phải
   thu** (số "Bằng chữ" đọc), nội dung `NOI_DUNG_QR_HOA_DON` ("Thanh toan den tai khoan"), đứng cột đầu hàng ô ký (`paymentQr`
-  của `SalesInvoice`, cạnh 7em — A5 ≈ 26 mm). Đơn đặt hàng / HĐ huỷ / không còn phải thu / NPP chưa đặt tài khoản → không có
-  mã; Excel "như mẫu in" chưa có mã. Tài khoản = cài đặt NPP (`settings.bank_bin` + `bank_account_no`, Cấu hình tổ chức: chọn
+  của `SalesInvoice`, cạnh **5,5em — A5 ≈ 20 mm**: chủ nhà 11/11/2026 "thu nhỏ mã qr" từ 7em / 26 mm; mã 41 + 4 mô-đun nên
+  dưới ~17 mm là mỗi mô-đun < 3 điểm ở máy in nhiệt 203 dpi — đừng thu thêm). Đơn đặt hàng / HĐ huỷ / không còn phải thu /
+  NPP chưa đặt tài khoản → không có mã; Excel "như mẫu in" chưa có mã. Tài khoản = cài đặt NPP (`settings.bank_bin` + `bank_account_no`, Cấu hình tổ chức: chọn
   ngân hàng theo BIN NAPAS `NGAN_HANG_VIETQR`, có mã xem thử để quét kiểm tên chủ tài khoản; đủ cả hai hoặc trống cả hai —
   `loiTaiKhoanNhan`). Chuỗi dựng TẠI CHỖ (`chuoiVietQr`, `src/lib/thanh-toan/vietqr.ts`: EMVCo/NAPAS, CRC-16/CCITT-FALSE, chỉ
   ASCII — chữ có dấu là app ngân hàng đọc lệch); mã vẽ SVG **đồng bộ** (`QrSvg`, `QRCode.create`, mức sửa lỗi M) — dựng bất đồng

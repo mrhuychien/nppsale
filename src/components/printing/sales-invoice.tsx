@@ -533,13 +533,14 @@ export function SalesInvoice(props: SalesInvoiceProps) {
       </div>
 
       {/* Ba ô ký — mẫu cũ chỉ có hai. Có mã QR chuyển khoản thì mã đứng cột đầu, song song ba ô ký (chủ nhà 10/11/2026);
-          cạnh mã tính theo `em` nên giãn theo cỡ chữ của khổ giấy (A5 ≈ 26 mm). */}
+          cạnh mã tính theo `em` nên giãn theo cỡ chữ của khổ giấy. Chủ nhà 11/11/2026 "thu nhỏ mã qr": 7em → 5,5em (A5 ≈ 20 mm;
+          41 + 4 mô-đun → ~0,45 mm / mô-đun, ≥ 3 điểm ở máy in 203 dpi — nhỏ dưới ~17 mm là máy in nhiệt bắt đầu dính mô-đun). */}
       <div
         className={`mt-1.5 grid items-start text-center ${maQr ? "grid-cols-[auto_1fr_1fr_1fr] gap-3" : "grid-cols-3 gap-4"}`}
       >
         {maQr && (
           <div className="flex flex-col items-center" data-testid="qr-thanh-toan" data-vietqr={maQr}>
-            <QrSvg value={maQr} className="h-[7em] w-[7em]" nhan="Mã QR chuyển khoản" />
+            <QrSvg value={maQr} className="h-[5.5em] w-[5.5em]" nhan="Mã QR chuyển khoản" />
             <p className="font-bold leading-tight">Quét mã thanh toán</p>
           </div>
         )}

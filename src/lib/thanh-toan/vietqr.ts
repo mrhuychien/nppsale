@@ -18,6 +18,8 @@ export interface TaiKhoanNhan {
   /** Mã BIN ngân hàng của NAPAS, 6 số (Techcombank 970407). */
   bin: string
   soTaiKhoan: string
+  /** Tên chủ tài khoản (tuỳ chọn) — KHÔNG nằm trong mã, chỉ in trong câu "Lưu ý" mặc định (`cauLuuYMacDinh`). */
+  tenChuTk?: string
 }
 
 /** Nội dung chuyển khoản trên mã của hoá đơn — đúng lời chủ nhà "Thanh toán đến tài khoản", đã bỏ dấu. */
@@ -98,10 +100,17 @@ export function chuanSoTaiKhoan(s: string | null | undefined): string | null {
 }
 
 /** Tài khoản nhận tiền từ cài đặt: đủ BIN 6 số + số tài khoản hợp lệ, không thì null (tờ in không có mã). */
-export function taiKhoanNhanTu(bin: string | null | undefined, soTaiKhoan: string | null | undefined): TaiKhoanNhan | null {
+export function taiKhoanNhanTu(
+  bin: string | null | undefined,
+  soTaiKhoan: string | null | undefined,
+  tenChuTk?: string | null
+): TaiKhoanNhan | null {
   const b = (bin ?? "").trim()
   const tk = chuanSoTaiKhoan(soTaiKhoan)
-  return /^\d{6}$/.test(b) && tk ? { bin: b, soTaiKhoan: tk } : null
+  if (!/^\d{6}$/.test(b) || !tk) return null
+  /* Tên gộp khoảng trắng, bỏ dấu chấm cuối (câu Lưu ý tự thêm dấu chấm). */
+  const ten = (tenChuTk ?? "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "")
+  return ten ? { bin: b, soTaiKhoan: tk, tenChuTk: ten } : { bin: b, soTaiKhoan: tk }
 }
 
 /** Câu báo khi lưu cài đặt: đủ cả hai hoặc trống cả hai (không in mã); null = hợp lệ. */

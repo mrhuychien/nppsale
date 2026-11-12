@@ -1,14 +1,30 @@
 import type { Metadata, Viewport } from "next"
-import { Manrope } from "next/font/google"
+import localFont from "next/font/local"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/hooks/use-auth"
 import { ServiceWorkerRegister } from "@/components/offline/sw-register"
 import { GhiKhoMan } from "@/components/nav/ghi-kho-man"
 
-const manrope = Manrope({
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
+/**
+ * VÌ SAO FONT NẰM TRONG REPO (chủ nhà 12/11/2026: "Có lỗi gì mà font chữ thay đổi hết vậy")
+ *
+ * `next/font/google` tải Manrope từ Google LÚC BUILD, riêng cho phần máy chủ và phần trình duyệt; tên lớp
+ * (`__variable_<băm>`) băm từ CSS Google trả về. Google đổi tệp Manrope → bản build ceb2b87 trên Vercel: phần máy
+ * chủ tải mới (`__variable_08700a`), phần CSS dùng lại bộ nhớ build cũ (`.__variable_6c36b7`) → `--font-manrope`
+ * không có giá trị, cả app rơi về font mặc định. Tệp tự lưu thì băm chỉ theo nội dung tệp — hai phần luôn khớp,
+ * build không cần mạng. `scripts/kiem-font-build.mjs` chặn build nếu vẫn lệch.
+ *
+ * Tệp: Manrope[wght] 4.505 (github.com/google/fonts, OFL — `fonts/OFL.txt`) cắt đúng ba vùng Google phát cho
+ * trang tiếng Việt (latin + latin-ext + vietnamese), bỏ hinting, giữ trục đậm 200–800 và bộ tính năng của Google
+ * (`tnum` cho cột số). Đã so nét + độ rộng từng ký tự ở 6 độ đậm với tệp Google: y hệt. Cắt lại:
+ *   pyftsubset 'Manrope[wght].ttf' --unicodes=<ba vùng> --no-hinting --flavor=woff2
+ *     --layout-features=calt,dnom,frac,liga,locl,numr,pnum,tnum,kern
+ * `weight: "400 700"`: như bốn mặt 400/500/600/700 cũ — đậm hơn 700 vẫn vẽ 700, nhạt hơn 400 vẫn vẽ 400.
+ */
+const manrope = localFont({
+  src: "./fonts/manrope-latin-vi.woff2",
+  weight: "400 700",
   variable: "--font-manrope",
   display: "swap",
 })

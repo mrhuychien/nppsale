@@ -579,6 +579,17 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - Preview và production **dùng chung một DB Supabase** — migration chạy là chạy thật.
 - Supabase ở **Singapore** → function Vercel chạy **`sin1`** (`vercel.json` → `regions`, chủ nhà chốt
   25/09/2026). Không bỏ / đổi vùng: về `iad1` (Mỹ) là mọi lượt vẽ trang đi vòng VN → Mỹ → Singapore.
+- **Font Manrope TỰ LƯU trong repo — build không tải từ Google** (chủ nhà 12/11/2026: *"Có lỗi gì mà font chữ thay đổi hết
+  vậy"*): `next/font/google` tải font LÚC BUILD riêng cho phần máy chủ và phần trình duyệt, tên lớp băm từ CSS Google trả.
+  Google đổi tệp Manrope → bản ceb2b87 trên Vercel: phần máy chủ tải mới (`<html class="__variable_08700a">`), CSS dùng lại
+  bộ nhớ build cũ (chỉ có `.__variable_6c36b7`) → `--font-manrope` rỗng, cả app về font mặc định mà build vẫn xanh. Nay
+  `next/font/local` + `src/app/fonts/manrope-latin-vi.woff2` (Manrope[wght] 4.505 của google/fonts, OFL; cắt đúng ba vùng
+  latin + latin-ext + vietnamese, bỏ hinting, giữ trục 200–800 và tính năng của Google — có `tnum`; nét + độ rộng từng ký tự
+  y hệt tệp Google ở 6 độ đậm; một tệp 36 KB thay ba tệp ~48 KB) — **đừng quay lại `next/font/google`**. Cắt lại tệp: lệnh
+  trong chú thích `src/app/layout.tsx`. `npm run build` = `next build && node scripts/kiem-font-build.mjs`: lớp next/font trên
+  mọi trang dựng sẵn phải có trong CSS CHÍNH trang ấy nạp — lệch là build THẤT BẠI, Vercel giữ bản đang chạy. Test:
+  `tests/font-tu-luu.test.ts` (đọc thẳng cmap / GSUB / fvar của tệp WOFF2: đủ chữ tiếng Việt, có `tnum`, trục phủ 400–700),
+  `e2e/font-manrope.spec.ts` (biến có giá trị, mặt chữ tải được — bỏ `variable` là đỏ).
 - Commit message tiếng Việt. Không ghi tên / mã model vào bất cứ thứ gì đẩy lên repo.
 
 ## 3. Migration (`supabase/migrations/NNN_*.sql`)

@@ -59,9 +59,18 @@ export function laSuaPhieuNcc(pathname: string): boolean {
   return /^\/(purchasing\/receipts|purchase-returns)\/[^/]+\/edit$/.test(pathname)
 }
 
+/**
+ * Màn XUẤT HÀNG / SỬA HOÁ ĐƠN trên điện thoại (`InvoiceEditor`) — thanh đáy "Xuất hàng" / "Lập lại" riêng (`fixed inset-x-0
+ * bottom-0 z-30`), thanh nav (z-40) từng đè kín nó: nút lưu không bấm được (lộ ra 12/11/2026 khi làm Sửa HĐ đổi khách).
+ */
+export function laManHoaDonDienThoai(pathname: string): boolean {
+  return /^\/sales-invoices\/(new|[^/]+\/edit)$/.test(pathname)
+}
+
 export function showsBottomNav(pathname: string): boolean {
   if ((TASK_FLOW_ROUTES as readonly string[]).includes(pathname)) return false
   if (laSuaPhieuNcc(pathname)) return false
+  if (laManHoaDonDienThoai(pathname)) return false
   return !OWN_ACTION_BAR_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))
 }
 

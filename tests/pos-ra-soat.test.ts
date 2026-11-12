@@ -336,8 +336,9 @@ describe("ô không có cột thì không vẽ", () => {
     for (const id of ["e-giam", "e-thukhac", "e-han", "e-kho", "e-nvbh"]) {
       expect(s.includes(`id="${id}"`), `ô ${id} đã quay lại`).toBe(false)
     }
-    expect(/moTimKhach/.test(s), "vẫn cho đổi khách trên tờ lập lại").toBe(false)
-    expect(s).toMatch(/<PartnerCard[^>]*readOnly/)
+    /* Đổi khách khi Sửa HĐ: CÓ từ 12/11/2026 (chủ nhà: "E sửa phần sửa hoá đơn cho phép đổi khách hàng (cả trên đt và pos)",
+       mig 261) — nhưng Xuất hàng vẫn chỉ đọc, và tờ đã thu tiền thì khoá (xem tests/sua-hd-doi-khach.test.ts). */
+    expect(s).toContain("readOnly={!sua || !!khoaKhach}")
   })
 
   /** ⚠ Nhưng THUẾ thì lưu được — qua `vat_rate` của từng dòng. */

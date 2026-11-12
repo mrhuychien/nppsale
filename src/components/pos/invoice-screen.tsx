@@ -48,7 +48,7 @@ import {
   seedForNew, seedForReissue, makeAddedRow, toDraft, toDraftCoGiam, rowsOverOrdered,
   type EditorRow, type ReissueSeedLine,
 } from "@/lib/orders/invoice-editor"
-import { reissueLock, reissuePaymentNote } from "@/lib/pos/invoice-edit"
+import { cauDoiKhach, khachGuiLen, khoaDoiKhach, reissueLock, reissuePaymentNote } from "@/lib/pos/invoice-edit"
 import { dongHangDoi, giaTheoHeSo } from "@/lib/pos/invoice-exchange"
 import { conversionFor, sellableUnits, unitPriceFor } from "@/lib/sell/pricing"
 import { timXepHang } from "@/lib/search"
@@ -64,6 +64,7 @@ import { discountAmount, lineGross, switchUnit, type DiscountInput } from "@/lib
 import type { PosLine } from "@/lib/pos/types"
 import { MoneyRow, TotalsHero, PanelActions, PanelButton, DocDiscountRow } from "@/components/pos/money-panel"
 import { PartnerCard, type PosPartner } from "@/components/pos/partner-card"
+import { SearchDropdown, type SearchItem } from "@/components/pos/search-dropdown"
 import { KhachPosModal } from "@/components/pos/partner-info-modal"
 import { doiTacSauSua, metaKhach } from "@/lib/pos/doi-tac"
 import { PosProductSearchBox } from "@/components/pos/product-search-box"
@@ -146,7 +147,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   /* Tác vụ đơn: xuất / lập lại xong thì in rồi đóng POS (chủ nhà 05/11/2026 "In xong đóng luôn"). */
   const ketThuc = usePosKetThuc()
   const { toast } = useToast()
-  const { products, stockByProduct, warnings, productById, customerById, capNhatKhach } = usePosRefData()
+  const { products, customers, stockByProduct, warnings, productById, customerById, capNhatKhach } = usePosRefData()
   const { user } = useAuth()
   const { settings } = usePosSettings()
 
@@ -154,6 +155,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const [orderCode, setOrderCode] = useState<string | null>(null)
   const [invoiceCode, setInvoiceCode] = useState<string | null>(null)
   const [khach, setKhach] = useState<PosPartner | null>(null)
+  /**
+   * Khách của tờ lúc mở (Sửa HĐ). Chọn khách khác thì lưu gửi `customer_id` (chủ nhà 12/11/2026: "E sửa phần sửa hoá đơn cho
+   * phép đổi khách hàng (cả trên đt và pos)", mig 261) — tờ mới, đơn và hàng đổi trả sang khách mới.
+   */
+  const [khachGoc, setKhachGoc] = useState<PosPartner | null>(null)
+  const [moTimKhach, setMoTimKhach] = useState(false)
   /** Modal xem đủ + sửa hồ sơ khách (bấm vào thẻ khách — chủ nhà 21/10/2026). */
   const [xemKhach, setXemKhach] = useState(false)
   const [nguoi, setNguoi] = useState<{ taoId: string | null; ganId: string | null }>({ taoId: null, ganId: null })
@@ -410,11 +417,13 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           setNguoi((n) => ({ ...n, ganId: don.sales_user_id }))
           setGanCuaDon(don.sales_user_id)
         }
-        setKhach({
+        const khachDon: PosPartner = {
           id: don.customer_id,
           name: don.customer?.store_name || "Khách lẻ",
           meta: [don.customer?.phone, don.customer?.address].filter(Boolean).join(" · "),
-        })
+        }
+        setKhach(khachDon)
+        setKhachGoc(khachDon)
         /**
          * ⚠ DÒNG HÀNG ĐỔI KHÔNG NẰM TRONG BẢNG BÁN NỮA — nó dựng lại từ khối
          *   hàng đổi trả lúc lưu (`dongHangDoi`). Xem @/lib/pos/invoice-exchange.
@@ -576,14 +585,27 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   const khoa = sua
     ? reissueLock({ paidAmount: daThu, receiptCount: receiptErr ? 1 : receipts.length, eInvoiceIssued })
     : null
+  /** Sửa HĐ: lý do KHÔNG đổi được khách (đã thu tiền / chưa đọc được phiếu thu) — `null` = đổi được. Xuất hàng: khách theo đơn. */
+  const khoaKhach = sua ? khoaDoiKhach({ paidAmount: daThu, receiptCount: receipts.length, receiptErr: !!receiptErr }) : null
+  const doiKhach = sua && !!khachGoc && !!khach && khach.id !== khachGoc.id
+  const mucKhach = useMemo<SearchItem[]>(
+    () =>
+      customers.map((c) => ({
+        id: c.id,
+        title: c.store_name,
+        meta: [c.phone, c.address].filter(Boolean).join(" · "),
+        keywords: [c.phone, c.owner_name],
+      })),
+    [customers]
+  )
 
   const chuKy = useMemo(
     () => JSON.stringify([
       rows.map((r) => [r.key, r.unitName, r.qty, r.price, r.note ?? ""]),
       traSua, traDv, traGhi, traMoi.map((a) => [a.productId, a.unit, a.qty, a.price, a.isExchange, a.note, a.reason]), ghiChu, ngay, dieuKhoan,
-      rows.map((r) => r.vatRate), giamDonNhap, giamDong,
+      rows.map((r) => r.vatRate), giamDonNhap, giamDong, khach?.id ?? null,
     ]),
-    [rows, traSua, traDv, traGhi, traMoi, ghiChu, ngay, dieuKhoan, giamDonNhap, giamDong]
+    [rows, traSua, traDv, traGhi, traMoi, ghiChu, ngay, dieuKhoan, giamDonNhap, giamDong, khach?.id]
   )
   useEffect(() => {
     if (!dangTai && mocChuaLuu === null) setMocChuaLuu(chuKy)
@@ -775,11 +797,12 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
         })
         const w = invoiceWarnings(r)
         if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
+        if (r.canhBaoKhach) toast({ title: "Chưa đổi được khách", description: r.canhBaoKhach, variant: "destructive" })
         if (r.invoiceId) {
           /* ⚠ IN TẠI CHỖ (chủ nhà 24/09/2026) — khung ẩn, chỉ bật hộp thoại in.
              ⚠ TÁC VỤ ĐƠN (chủ nhà 05/11/2026 "In xong đóng luôn"): `ketThuc` tự bật in và đóng POS khi hộp in đóng. Có cảnh
              báo phải đọc (xuất thiếu, chưa gán được người phụ trách) hoặc tắt công tắc → in như cũ, ở lại trên tờ. */
-          if (!ketThuc({ docType: "INV", docId: r.invoiceId, loiBao: tieuDe, coCanhBao: !!w || ganLoi })) {
+          if (!ketThuc({ docType: "INV", docId: r.invoiceId, loiBao: tieuDe, coCanhBao: !!w || ganLoi || !!r.canhBaoKhach })) {
             inTaiCho(trangInHoaDon(r.invoiceId))
           }
           router.replace(`/pos/hoa-don/${r.invoiceId}`)
@@ -793,6 +816,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
               lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
               paymentTerms: dieuKhoan, returnEdits, returnAdds, discount: tong.discount,
               traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
+              customerId: khoaKhach ? null : khachGuiLen(khachGoc?.id, khach?.id),
             })
           : await postInvoice(createClient(), {
               orderId, lines: draft, notes: ghiChu.trim() || null, invoiceDate: ngay || null,
@@ -836,7 +860,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       setKiemLai(false)
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc, ketThuc])
+  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc, ketThuc, khoaKhach, khachGoc?.id, khach?.id])
 
   /* ⚠ ĐANG GHI SỔ MÀ ĐÓNG TAB / TẢI LẠI = mất câu trả lời và lệnh in đi kèm (chủ nhà 03/11/2026, khách NPP: "khi loát kém a
      thoát máy rồi vào lại thì nó đã ra hoàn thành"). Trình duyệt hỏi lại trước khi rời trang; chờ quá `CHO_LAU_MS` thì nút
@@ -859,6 +883,8 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   }, [dangLuu])
 
   usePosKeys({
+    /* Sửa HĐ: F4 đổi khách như màn đơn — tờ đã thu tiền thì không mở (khoaKhach). */
+    F4: () => { if (sua && !khoaKhach) setMoTimKhach(true) },
     F2: () => { setMoThemTra(false); focusPosPicker() },
     F3: () => { setMoThemTra(false); focusPosPicker() },
     F8: () => { setMoThemTra(true); focusPosPicker() },
@@ -1335,8 +1361,45 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
       {/* ---------------- cột phải ---------------- */}
       <div className="flex min-h-0 w-[400px] shrink-0 flex-col gap-3">
-        {/* ⚠ Khách của đơn đi theo hóa đơn — RPC không nhận khách khác. Hồ sơ khách thì vẫn xem / sửa được. */}
-        <PartnerCard partner={khach} readOnly onOpen={() => setXemKhach(true)} />
+        {/*
+          ⚠ Xuất hàng: khách theo ĐƠN, không đổi ở đây. Sửa HĐ: đổi được (chủ nhà 12/11/2026, mig 261) — trừ khi tờ đã thu
+            tiền (`khoaKhach`). Hồ sơ khách thì vẫn xem / sửa được.
+        */}
+        <div className="relative">
+          <PartnerCard
+            partner={khach}
+            readOnly={!sua || !!khoaKhach}
+            onPick={() => setMoTimKhach(true)}
+            onOpen={() => setXemKhach(true)}
+          />
+          {sua && !khoaKhach && (
+            <SearchDropdown
+              open={moTimKhach}
+              onClose={() => setMoTimKhach(false)}
+              title="Đổi khách của hóa đơn"
+              placeholder="Tên cửa hàng, SĐT, địa chỉ…"
+              items={mucKhach}
+              onPick={(it) => setKhach({ id: it.id, name: it.title, meta: it.meta })}
+              emptyHint="Không tìm thấy khách nào khớp."
+            />
+          )}
+        </div>
+        {doiKhach && khachGoc && khach && (
+          <div
+            data-testid="doi-khach"
+            className="rounded-[10px] bg-[var(--pos-warn-soft)] px-3 py-2.5 text-[12px] font-bold leading-relaxed text-[var(--pos-warn)]"
+          >
+            {cauDoiKhach(khachGoc.name, khach.name)}{" "}
+            <button type="button" onClick={() => setKhach(khachGoc)} className="underline underline-offset-2">
+              Giữ khách cũ
+            </button>
+          </div>
+        )}
+        {sua && khoaKhach && (
+          <p data-testid="khoa-doi-khach" className="px-1 text-[11.5px] leading-relaxed text-[var(--pos-muted)]">
+            {khoaKhach}
+          </p>
+        )}
         <KhachPosModal
           customerId={xemKhach ? khach?.id ?? null : null}
           onClose={() => setXemKhach(false)}

@@ -2723,8 +2723,11 @@ export default function OrderDetailPage() {
           <CardContent>
             <ul className="space-y-1.5 text-sm">
               {activityLog.map((a) => {
-                const actionLabel =
-                  a.action === "add_line"
+                /* Sửa HĐ đổi khách (chủ nhà 12/11/2026, mig 261) — máy chủ ghi tên khách cũ / mới + mã tờ cũ. */
+                const doiKhach = (a.changes as { doi_khach?: { from?: string | null; to?: string | null }; invoice_code?: string | null } | null)
+                const actionLabel = doiKhach?.doi_khach
+                  ? "Đổi khách"
+                  : a.action === "add_line"
                     ? "Thêm dòng"
                     : a.action === "remove_line"
                       ? "Xoá dòng"
@@ -2752,6 +2755,12 @@ export default function OrderDetailPage() {
                         {formatDate(a.created_at)}
                       </span>
                     </div>
+                    {doiKhach?.doi_khach && (
+                      <div className="mt-1 text-[11px] text-muted-foreground" data-testid="nhat-ky-doi-khach">
+                        {doiKhach.doi_khach.from || "—"} <span className="text-foreground">→</span> {doiKhach.doi_khach.to || "—"}
+                        {doiKhach.invoice_code ? ` · khi sửa hóa đơn ${doiKhach.invoice_code}` : ""}
+                      </div>
+                    )}
                     {changedKeys.length > 0 && a.action === "edit_line" && (
                       <div className="mt-1 text-[11px] text-muted-foreground space-y-0.5">
                         {changedKeys.map((k) => {

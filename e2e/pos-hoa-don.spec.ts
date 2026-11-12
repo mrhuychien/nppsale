@@ -221,8 +221,12 @@ test("xuất hàng: hàng đổi trên hóa đơn đi theo khối hàng đổi t
     await page.getByTestId("dong-tra-moi").getByRole("button", { name: "Đổi", exact: true }).click()
     await expect(doi).toHaveCount(2)
 
+    /* ⚠ CHỜ LỆNH MỚI CỦA CHÍNH BÀI NÀY — nhật ký máy chủ giả giữ lệnh post_invoice của các bài trước; "có lệnh nào chưa"
+       là đọc nhầm tải trọng cũ khi lệnh của bài này tới chậm một nhịp (lộ ra 12/11/2026). */
+    const soLenh = async () => (await nhatKy()).filter((r) => r.path.endsWith("/rpc/post_invoice")).length
+    const truoc = await soLenh()
     await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
-    await expect.poll(async () => !!(await goiCuoi("post_invoice"))).toBe(true)
+    await expect.poll(soLenh, "chưa gửi post_invoice").toBeGreaterThan(truoc)
     const p = ((await goiCuoi("post_invoice"))!.body as { p: { lines: Array<Record<string, unknown>>; return_edits: unknown[] } }).p
     const hangDoi = p.lines.filter((l) => l.is_exchange)
     expect(hangDoi.map((l) => `${l.unit_name}:${l.quantity}:${l.unit_price}`).sort()).toEqual(["hộp:1:0", "thùng:3:0"])

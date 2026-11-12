@@ -152,7 +152,7 @@ describe("nối dây ở các màn POS + kho tab", () => {
   })
   it("hoá đơn: ketThuc nhận việc in; không nhận (tắt / có cảnh báo) thì in như cũ — cảnh báo gồm xuất thiếu + gán hỏng", () => {
     const s = read("src/components/pos/invoice-screen.tsx")
-    expect(s).toContain('if (!ketThuc({ docType: "INV", docId: r.invoiceId, loiBao: tieuDe, coCanhBao: !!w || ganLoi })) {\n            inTaiCho(trangInHoaDon(r.invoiceId))')
+    expect(s).toContain('if (!ketThuc({ docType: "INV", docId: r.invoiceId, loiBao: tieuDe, coCanhBao: !!w || ganLoi || !!r.canhBaoKhach })) {\n            inTaiCho(trangInHoaDon(r.invoiceId))')
     expect(sau(s, "} catch (e) {\n            ganLoi = true", 200)).toContain("chưa gán được người phụ trách")
     /* Lần bấm TRƯỚC đã ghi (dải nhắc In) — không phải xong việc ở cửa sổ này. */
     expect(sau(s, "router.replace(duongTaiHoaDonDaCo(hd.id))", 10)).not.toContain("ketThuc")

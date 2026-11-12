@@ -12,7 +12,9 @@ const code = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
 
 /* Màn lập phiếu trả = trang (dữ liệu, trần giá, lưu) + phần vẽ điện thoại kiểu /sell (chủ nhà 07/10/2026). */
-const NEW = code(read("src/app/(dashboard)/returns/new/page.tsx") + "\n" + read("src/components/returns/phieu-tra-khach-mobile.tsx"))
+/* Hộp chọn khách tách ra tệp dùng chung (12/11/2026 — Sửa HĐ đổi khách dùng lại) — vẫn là MỘT hộp của phiếu trả. */
+const NEW = code(read("src/app/(dashboard)/returns/new/page.tsx") + "\n" + read("src/components/returns/phieu-tra-khach-mobile.tsx")
+  + "\n" + read("src/components/customers/chon-khach-sheet.tsx"))
 const MIG035 = read("supabase/migrations/035_return_exchange.sql")
 
 const r = (over: Partial<ReturnCartLine> = {}): ReturnCartLine => ({

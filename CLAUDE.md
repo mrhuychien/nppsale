@@ -85,6 +85,28 @@ trạng thái Đã hủy … đơn nào xuất xong coi như xong (hoàn thành)
 - **Huỷ HĐ** → đơn **Đã huỷ**, phiếu trả Nháp / Chờ xử lý của đơn và HĐ **Đã huỷ** (không về Nháp).
 - **Sửa HĐ** (`reissue_invoice`) KHÔNG huỷ đơn — cờ `npp.reissue_chuyen_thu` phân biệt hai đường.
 
+### Sửa hoá đơn đổi được khách hàng
+Chủ nhà 12/11/2026 (mig 261): *"E sửa phần sửa hoá đơn cho phép đổi khách hàng (cả trên đt và pos)"*.
+- Màn Sửa HĐ gửi `customer_id` chỉ khi đã chọn khách KHÁC (`khachGuiLen`, `src/lib/pos/invoice-edit.ts`): POS — thẻ khách có
+  "Đổi khách F4" + `SearchDropdown`; điện thoại — nút "Đổi khách" → `ChonKhachSheet` (`src/components/customers/chon-khach-sheet.tsx`,
+  dùng chung với phiếu trả; sổ khách tải lúc mở hộp). Xuất hàng vẫn theo khách của đơn (thẻ chỉ đọc).
+- Máy chủ (`_doi_khach_lap_lai_kiem` ngay sau `_mac_dinh_lap_lai`, `_doi_khach_lap_lai_ap` ngay trước `post_invoice`): tờ mới,
+  **đơn** (`trg_sales_orders_bump_edit` tăng số sửa — DH-…-n) và mọi phiếu trả sẽ bám tờ mới (theo đơn, tự lập gắn tờ, đã nhập kho
+  giữ nguyên — mig 210) sang khách mới. Phiếu bám hoá đơn phải cùng khách (`_phieu_tra_dung_khach_hoa_don`) nên đổi lúc chúng đang
+  KHÔNG bám tờ nào (tờ cũ đã huỷ) — đổi sớm hơn là INVOICE_CUSTOMER_MISMATCH. Tờ cũ giữ khách cũ. NV bán + người giữ nợ không đổi
+  (nhầm khách không đổi ai đã bán). Nhật ký đơn: `edit_after_complete` kèm `doi_khach` (tên cũ → mới) — trang đơn hiện "Đổi khách".
+- **Đã thu tiền thì KHÔNG đổi khách** (`REISSUE_DOI_KHACH_DA_THU`, cùng phép kiểm "đã thu" của `cancel_invoice`): mig 184 chuyển tiền
+  thu sang tờ mới — đổi khách là chuyển tiền người này sang nợ người khác; huỷ phiếu thu trước. Màn khoá trước bằng `khoaDoiKhach`
+  (đọc phiếu thu hỏng cũng khoá). Khách mới phải cùng NPP và người sửa NHÌN THẤY được (cùng điều kiện `customer_select` —
+  `REISSUE_KHACH_KHONG_HOP_LE`; hàm SECURITY DEFINER, RLS không tự chặn).
+- Dòng cũ giữ giá; dòng thêm / hàng trả thêm theo bảng giá nhóm của khách mới (như đổi khách ở màn đơn).
+- Sổ chưa chạy mig 261 thì `reissue_invoice` cũ lặng lẽ bỏ qua `customer_id` (preview và production chung sổ): `reissueInvoice`
+  hỏi lại khách của tờ mới, lệch → `canhBaoKhach` báo đỏ (POS không tự đóng).
+- Điện thoại: `/sales-invoices/new` + `/sales-invoices/:id/edit` KHÔNG có thanh nav (`laManHoaDonDienThoai`,
+  `src/lib/nav/mobile-chrome.ts`) — nav (z-40) từng đè kín thanh "Xuất hàng / Lập lại" (z-30), nút lưu không bấm được.
+- Bộ thử: `scripts/sql/thu-261-sua-hd-doi-khach.sql` (17 bước, luồng thật), `tests/sua-hd-doi-khach.test.ts`,
+  `e2e/sua-hd-doi-khach.spec.ts`.
+
 ### Chuyến giao
 Chủ nhà 24/09/2026: không dùng chuyến giao nữa — không làm thêm gì cho luồng chuyến giao.
 

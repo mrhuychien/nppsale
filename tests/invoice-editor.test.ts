@@ -400,7 +400,8 @@ describe("khối đầu đơn ở màn Xuất hàng", () => {
    * `src/lib/customers/address.ts`).
    */
   it("địa chỉ ghép bằng một chỗ ghép duy nhất của kho", () => {
-    expect(EDITOR).toContain("fullCustomerAddress(head.customer ?? {})")
+    /* Sửa HĐ đổi khách (mig 261): thẻ ghép địa chỉ của khách đang chọn — vẫn một chỗ ghép. */
+    expect(EDITOR).toContain("fullCustomerAddress((khachMoi ?? head.customer) ?? {})")
     for (const col of ["ward", "district", "province"]) {
       expect(headSelect, `ghép địa chỉ cần customers.${col}`).toContain(col)
     }

@@ -47,9 +47,8 @@ export function PartnerCard({
    */
   onOpen?: () => void
   /**
-   * ⚠ CHỨNG TỪ KHÔNG ĐỔI ĐƯỢC ĐỐI TÁC THÌ KHÔNG VẼ NÚT "ĐỔI". Hóa đơn
-   * đã ghi sổ và `reissue_invoice` không nhận khách mới — một nút
-   * "Đổi khách F4" ở đó là mời người dùng làm một việc sẽ không lưu.
+   * ⚠ CHỨNG TỪ KHÔNG ĐỔI ĐƯỢC ĐỐI TÁC THÌ KHÔNG VẼ NÚT "ĐỔI" — một nút "Đổi khách F4" ở đó là mời người dùng làm một việc
+   * sẽ không lưu. Xuất hàng: khách theo đơn. Sửa HĐ đổi được (mig 261) trừ khi tờ đã thu tiền (`khoaDoiKhach`).
    */
   readOnly?: boolean
 }) {

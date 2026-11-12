@@ -159,6 +159,11 @@ export interface PostInvoiceResult {
    * dòng nhắc nhẹ — đừng dựng cảnh báo đỏ hay chặn trên nó.
    */
   nearExpirySkipped: number
+  /**
+   * Sửa HĐ có đổi khách mà tờ mới VẪN mang khách cũ (sổ chưa chạy mig 261 — `reissue_invoice` cũ bỏ qua `customer_id`): câu
+   * báo cho màn hiện ĐỎ. Lập lại vẫn đã xong — chỉ khách chưa đổi. Không đổi khách thì không có.
+   */
+  canhBaoKhach?: string | null
   /** Trạng thái đơn sau khi ghi sổ — do RPC suy ra, không tự đoán. */
   orderStatus: string | null
 }
@@ -212,6 +217,13 @@ export function explainInvoiceError(message: string): string {
     )
   }
   if (m.includes("INVOICE_NOT_FOUND")) return "Không tìm thấy hóa đơn."
+  /* Sửa HĐ đổi khách (mig 261) — câu của máy chủ đã nói lý do + việc cần làm. */
+  if (m.includes("REISSUE_DOI_KHACH_DA_THU")) {
+    return m.replace(/^.*REISSUE_DOI_KHACH_DA_THU:\s*/, "Chưa đổi được khách: ")
+  }
+  if (m.includes("REISSUE_KHACH_KHONG_HOP_LE")) {
+    return m.replace(/^.*REISSUE_KHACH_KHONG_HOP_LE:\s*/, "Chưa đổi được khách: ")
+  }
   if (m.includes("LOCKED_HAS_PAYMENT")) {
     return m.replace(/^.*LOCKED_HAS_PAYMENT:\s*/, "")
   }
@@ -698,6 +710,11 @@ export async function reissueInvoice(
     returnAdds?: ReturnLineAdd[]
     /** Phiếu trả tự sinh đã nhập kho: Có = 'lam_lai', Không = 'giu' (mig 210). */
     traDaNhap?: CheDoTraDaNhap | null
+    /**
+     * Khách MỚI của tờ (chủ nhà 12/11/2026, mig 261) — chỉ gửi khi khác khách cũ (`khachGuiLen`). Tờ mới, đơn và phiếu trả
+     * bám tờ sang khách này; máy chủ chặn khi tờ đã thu tiền.
+     */
+    customerId?: string | null
   }
 ): Promise<PostInvoiceResult> {
   const lines = payload.lines.filter((l) => (Number(l.quantity) || 0) > 0)
@@ -725,6 +742,7 @@ export async function reissueInvoice(
         : {}),
       ...returnAddsPayload(payload.returnAdds),
       ...(payload.traDaNhap ? { tra_da_nhap: payload.traDaNhap } : {}),
+      ...(payload.customerId ? { customer_id: payload.customerId } : {}),
     },
   })
   if (error) throw new Error(explainInvoiceError(error.message || String(error)))
@@ -739,7 +757,7 @@ export async function reissueInvoice(
     order_status?: string | null
   }>(data)
 
-  return {
+  const ketQua: PostInvoiceResult = {
     invoiceId: row?.invoice_id ?? null,
     invoiceCode: row?.invoice_code ?? null,
     entryId: row?.entry_id ?? null,
@@ -748,4 +766,16 @@ export async function reissueInvoice(
     nearExpirySkipped: Number(row?.near_expiry_skipped ?? 0),
     orderStatus: row?.order_status ?? null,
   }
+  /* ⚠ SỔ CHƯA CHẠY MIG 261 thì `reissue_invoice` cũ lặng lẽ bỏ qua `customer_id` (preview và production dùng chung một sổ —
+     thử trên preview trước khi chạy migration là gặp): hỏi lại khách của tờ mới, lệch thì báo đỏ thay vì im. Đọc hỏng thì
+     thôi — tờ đã lập xong, đây chỉ là phép soát. */
+  if (payload.customerId && ketQua.invoiceId) {
+    const { data: hd, error: loiDoc } = await supabase
+      .from("sales_invoices").select("customer_id").eq("id", ketQua.invoiceId).maybeSingle()
+    if (!loiDoc && hd && (hd as { customer_id?: string | null }).customer_id !== payload.customerId) {
+      ketQua.canhBaoKhach =
+        "Hóa đơn đã lập lại nhưng máy chủ CHƯA đổi khách — cơ sở dữ liệu chưa chạy migration 261. Chạy migration rồi sửa lại hóa đơn để đổi khách."
+    }
+  }
+  return ketQua
 }

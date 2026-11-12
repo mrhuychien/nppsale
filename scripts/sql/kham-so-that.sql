@@ -1064,4 +1064,17 @@ SELECT 99, 'Mig 260 (Quyền xem khách tính một lần — ai thấy khách n
                  WHERE polname = 'customer_select' AND polrelid = 'public.customers'::regclass) AS q,
                (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
                  WHERE polname = 'View assignments in org' AND polrelid = 'public.customer_assignments'::regclass) AS pc) x
+UNION ALL
+-- 100. Mig 261 — Sửa hoá đơn đổi được khách (chủ nhà 12/11/2026: "E sửa phần sửa hoá đơn cho phép đổi khách hàng (cả trên đt
+--      và pos)"): reissue_invoice nhận customer_id — tờ mới, đơn và phiếu trả sang khách mới; đã thu tiền thì chặn.
+SELECT 100, 'Mig 261 (Sửa HĐ đổi được khách hàng)',
+  CASE WHEN to_regprocedure('public._doi_khach_lap_lai_kiem(uuid, jsonb)') IS NULL
+         OR to_regprocedure('public._doi_khach_lap_lai_ap(uuid, uuid[])') IS NULL
+         OR position('(mig 261)' IN pg_get_functiondef('public.reissue_invoice(uuid, jsonb)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 261 (Sửa HĐ chọn khách khác thì máy chủ báo lỗi / vẫn giữ khách cũ)'
+       WHEN has_function_privilege('authenticated', 'public._doi_khach_lap_lai_kiem(uuid, jsonb)', 'EXECUTE')
+         OR has_function_privilege('authenticated', 'public._doi_khach_lap_lai_ap(uuid, uuid[])', 'EXECUTE')
+       THEN 'LỆCH — hàm phụ đổi khách gọi thẳng được từ trình duyệt (thiếu REVOKE) — báo lại ngay'
+       ELSE 'OK — đã vá' END,
+  ''
 ) t ORDER BY stt;

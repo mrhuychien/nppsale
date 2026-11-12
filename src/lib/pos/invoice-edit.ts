@@ -76,6 +76,35 @@ export function reissuePaymentNote(i: { paidAmount: number; receiptRefs: readonl
 }
 
 /* ==================================================================
+ * ĐỔI KHÁCH KHI SỬA HÓA ĐƠN (chủ nhà 12/11/2026: "E sửa phần sửa hoá đơn cho phép đổi khách hàng (cả trên đt và pos)")
+ * ================================================================== */
+
+/**
+ * Đổi được khách của tờ đang sửa không — `null` = được. CÙNG LUẬT máy chủ (`_doi_khach_lap_lai_kiem`, mig 261): tờ đã thu
+ * tiền thì không đổi — phiếu thu là của khách cũ, lập lại thì tiền thu đi theo tờ mới (mig 184), đổi khách là chuyển tiền
+ * người này sang nợ người khác. Chưa đọc được phiếu thu thì cũng chưa cho đổi: không biết thì không đoán là "chưa thu".
+ */
+export function khoaDoiKhach(i: { paidAmount: number; receiptCount: number; receiptErr: boolean }): string | null {
+  if (i.receiptErr) {
+    return "Chưa đọc được phiếu thu của hóa đơn nên chưa đổi được khách — tải lại trang rồi thử lại."
+  }
+  if (Number(i.paidAmount) > 0 || i.receiptCount > 0) {
+    return "Hóa đơn đã thu tiền của khách này — muốn đổi khách thì huỷ phiếu thu trước rồi sửa lại hóa đơn."
+  }
+  return null
+}
+
+/** Khách gửi lên khi lập lại: chỉ khi đã chọn một khách KHÁC khách cũ — không thì `null` (máy chủ giữ khách của đơn). */
+export function khachGuiLen(khachGoc: string | null | undefined, khachMoi: string | null | undefined): string | null {
+  return khachMoi && khachMoi !== khachGoc ? khachMoi : null
+}
+
+/** Câu báo trên màn khi đã chọn khách khác — nói trước những gì sẽ đổi theo. */
+export function cauDoiKhach(tenCu: string, tenMoi: string): string {
+  return `Đổi khách: ${tenCu} → ${tenMoi}. Lưu thì hóa đơn mới, đơn hàng và hàng đổi trả của hóa đơn chuyển sang khách mới; công nợ ghi cho khách mới.`
+}
+
+/* ==================================================================
  * TIỀN
  * ================================================================== */
 

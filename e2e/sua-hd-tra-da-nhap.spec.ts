@@ -48,8 +48,12 @@ test("sửa HĐ có phiếu trả đã nhập kho: hỏi ngay; Không → giữ 
   await expect(page.getByTestId("dong-tra-cu")).toContainText("chỉ xem")
   await expect(soLuongTra(page)).toHaveCount(0)
 
+  /* ⚠ Chờ lệnh MỚI của bài này — nhật ký máy chủ giả còn lệnh reissue_invoice của bài chạy trước (12/11/2026: đọc nhầm tải
+     trọng của bài Sửa HĐ đổi khách). */
+  const soLenh = async () => (await nhatKy()).filter((r) => r.path.endsWith("/rpc/reissue_invoice")).length
+  const truoc = await soLenh()
   await page.getByRole("button", { name: /Huỷ HĐ & lập lại/ }).click()
-  await expect.poll(async () => !!(await goiCuoi("reissue_invoice"))).toBe(true)
+  await expect.poll(soLenh, "chưa gửi reissue_invoice").toBeGreaterThan(truoc)
   const p = ((await goiCuoi("reissue_invoice"))!.body as { p: Record<string, unknown> }).p
   expect(p.tra_da_nhap).toBe("giu")
   expect(p.return_edits, "Không mà vẫn gửi sửa dòng trả").toBeUndefined()

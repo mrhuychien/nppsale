@@ -30,6 +30,9 @@ import {
 } from "@/components/ui/select"
 import { DetailCustomerCard } from "@/components/detail/detail-chrome"
 import { fullCustomerAddress } from "@/lib/customers/address"
+import { ChonKhachSheet, type KhachChon } from "@/components/customers/chon-khach-sheet"
+import { cauDoiKhach, khachGuiLen, khoaDoiKhach } from "@/lib/pos/invoice-edit"
+import { loadSellCustomers } from "@/lib/sell/ref-data"
 import { shortTermLabel } from "@/lib/orders/list-summary"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -71,6 +74,8 @@ import { HoiTraDaNhap } from "@/components/returns/hoi-tra-da-nhap"
  * trống tên khách y như cũ.
  */
 interface OrderHeadRow {
+  /** Khách của đơn — so với khách chọn lại khi Sửa HĐ (mig 261). */
+  customer_id?: string | null
   notes: string | null
   order_date: string | null
   payment_terms: string | null
@@ -133,6 +138,32 @@ export function InvoiceEditor({
    * cùng một câu với hai nhãn khác nhau — xem `noteBlocksOf`.
    */
   const [head, setHead] = useState<OrderHeadRow | null>(null)
+  /**
+   * SỬA HĐ ĐỔI KHÁCH (chủ nhà 12/11/2026: "E sửa phần sửa hoá đơn cho phép đổi khách hàng (cả trên đt và pos)", mig 261).
+   * `khachMoi` = khách khác đã chọn (`null` = giữ khách của đơn). Sổ khách tải lúc mở hộp chọn (không tải khi chỉ sửa
+   * số lượng). Tờ đã thu tiền thì khoá (`khoaDoiKhach` — cùng luật máy chủ); chưa đọc xong phiếu thu thì chưa hiện nút.
+   */
+  const [khachMoi, setKhachMoi] = useState<(KhachChon & { group_id?: string | null }) | null>(null)
+  const [moChonKhach, setMoChonKhach] = useState(false)
+  const [soKhach, setSoKhach] = useState<Array<KhachChon & { group_id?: string | null }> | null>(null)
+  const [loiSoKhach, setLoiSoKhach] = useState<string | null>(null)
+  const [thuCuaTo, setThuCuaTo] = useState<{ daThu: number; soPhieu: number; loi: boolean } | null>(null)
+  const khoaKhach = reissueOf && thuCuaTo
+    ? khoaDoiKhach({ paidAmount: thuCuaTo.daThu, receiptCount: thuCuaTo.soPhieu, receiptErr: thuCuaTo.loi })
+    : null
+  /** Nhóm giá cho dòng thêm tay / hàng trả thêm: theo khách đang chọn (đổi khách là đổi bảng giá — dòng cũ giữ giá). */
+  const nhomGia = khachMoi ? (khachMoi.group_id ?? null) : priceGroupId
+  const moDoiKhach = () => {
+    setMoChonKhach(true)
+    if (soKhach) return
+    setLoiSoKhach(null)
+    void loadSellCustomers(supabase)
+      .then(({ customers, warnings }) => {
+        setSoKhach(customers)
+        if (customers.length === 0 && warnings.length > 0) setLoiSoKhach(warnings[0])
+      })
+      .catch((e: unknown) => setLoiSoKhach(`Không tải được danh sách khách: ${errorMessage(e)}`))
+  }
   /**
    * ⚠ TÁCH RIÊNG KHỎI `head`. `head === null` có HAI nghĩa — chưa đọc
    * xong, và đọc xong nhưng không ra dòng nào (RLS từ chối trả về 0 dòng
@@ -229,7 +260,7 @@ export function InvoiceEditor({
     supabase
       .from("sales_orders")
       .select(
-        "notes, order_date, payment_terms, customer:customers(store_name, phone, address, ward, district, province), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
+        "customer_id, notes, order_date, payment_terms, customer:customers(store_name, phone, address, ward, district, province), sales_user:users!sales_orders_sales_user_id_fkey(full_name)"
       )
       .eq("id", orderId)
       .maybeSingle()
@@ -241,6 +272,29 @@ export function InvoiceEditor({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId])
+
+  /** Sửa HĐ: phiếu thu còn hiệu lực của tờ — có thì không đổi được khách (mig 261). Đọc hỏng thì khoá, nói lý do. */
+  useEffect(() => {
+    const id = reissueOf?.invoiceId
+    if (!id) return
+    let huy = false
+    supabase
+      .from("cash_receipt_lines")
+      .select("amount, receipt:cash_receipts(status)")
+      .eq("invoice_id", id)
+      .then(({ data, error }) => {
+        if (huy) return
+        if (error) {
+          setThuCuaTo({ daThu: 0, soPhieu: 0, loi: true })
+          return
+        }
+        const con = ((data as unknown as Array<{ amount: number; receipt?: { status?: string | null } | null }>) ?? [])
+          .filter((x) => x.receipt?.status !== "voided")
+        setThuCuaTo({ daThu: con.reduce((t, x) => t + (Number(x.amount) || 0), 0), soPhieu: con.length, loi: false })
+      })
+    return () => { huy = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reissueOf?.invoiceId])
 
   /**
    * Đọc hàng đổi / trả còn hiệu lực của đơn.
@@ -459,7 +513,7 @@ export function InvoiceEditor({
   const addProduct = async (p: PricedProduct) => {
     const unit = addUnit[p.id] || p.base_unit
     seqRef.current += 1
-    const row = makeAddedRow(p, unit, priceGroupId, seqRef.current)
+    const row = makeAddedRow(p, unit, nhomGia, seqRef.current)
     setRows((prev) => [...prev, row])
     setTerm("")
 
@@ -498,7 +552,7 @@ export function InvoiceEditor({
         /* ⚠ GIÁ TRẢ LẤY THEO NHÓM GIÁ CỦA KHÁCH, y
            như dòng bán — trả theo giá bảng chung là
            hoàn cho khách nhiều hơn số họ đã trả. */
-        price: unitPriceFor(p, p.base_unit, priceGroupId),
+        price: unitPriceFor(p, p.base_unit, nhomGia),
         vatRate: Number(p.vat_rate ?? 0),
         isExchange: false,
       },
@@ -530,6 +584,7 @@ export function InvoiceEditor({
             /* ⚠ ĐI CÙNG MỘT GIAO DỊCH — xem `return_edits`, mig 149. */
             returnEdits: returnEdits,
             traDaNhap: phieuDaNhap.length > 0 ? cheDoTra : null,
+            customerId: khoaKhach ? null : khachGuiLen(head?.customer_id, khachMoi?.id),
             returnAdds: retAdds.map((a) => ({
               productId: a.productId, unitName: a.unit, quantity: a.qty,
               unitPrice: a.price, vatRate: a.vatRate, isExchange: a.isExchange,
@@ -552,6 +607,7 @@ export function InvoiceEditor({
       // ⚠ Cảnh báo đi TOAST RIÊNG. Nhét vào description của toast thành
       //   công là để nó đọc như một lời chúc mừng có chú thích.
       if (w) toast({ title: "Xuất thiếu hàng", description: w, variant: "destructive" })
+      if (r.canhBaoKhach) toast({ title: "Chưa đổi được khách", description: r.canhBaoKhach, variant: "destructive" })
       /**
        * ⚠ SANG THẲNG MÀN IN, và màn đó tự bật cửa sổ in (chủ nhà chốt).
        *   Việc tiếp theo sau khi xuất hàng LUÔN là in tờ giao cho tài
@@ -663,9 +719,9 @@ export function InvoiceEditor({
         <Skeleton className="h-[86px] rounded-2xl" />
       ) : head ? (
         <DetailCustomerCard
-          name={head.customer?.store_name || "Khách lẻ"}
+          name={khachMoi?.store_name || head.customer?.store_name || "Khách lẻ"}
           contact={
-            [head.customer?.phone, fullCustomerAddress(head.customer ?? {})]
+            [khachMoi ? khachMoi.phone : head.customer?.phone, fullCustomerAddress((khachMoi ?? head.customer) ?? {})]
               .filter(Boolean)
               .join(" · ") || null
           }
@@ -683,6 +739,41 @@ export function InvoiceEditor({
           ]}
         />
       ) : null}
+
+      {/* Sửa HĐ: đổi khách (mig 261) — nút dưới thẻ khách; đã thu tiền thì nói lý do không đổi được. */}
+      {reissueOf && head && thuCuaTo && (
+        khoaKhach ? (
+          <p data-testid="khoa-doi-khach" className="px-1 text-xs leading-relaxed text-muted-foreground">{khoaKhach}</p>
+        ) : (
+          <div className="space-y-2">
+            <Button type="button" variant="outline" size="sm" onClick={moDoiKhach} data-testid="nut-doi-khach">
+              {khachMoi ? "Chọn khách khác" : "Đổi khách"}
+            </Button>
+            {khachMoi && (
+              <div data-testid="doi-khach" className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-800">
+                {cauDoiKhach(head.customer?.store_name || "Khách lẻ", khachMoi.store_name)}{" "}
+                <button type="button" onClick={() => setKhachMoi(null)} className="font-semibold underline underline-offset-2">
+                  Giữ khách cũ
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      )}
+      <ChonKhachSheet
+        open={moChonKhach}
+        onClose={() => setMoChonKhach(false)}
+        customers={soKhach ?? []}
+        loading={!soKhach && !loiSoKhach}
+        loi={loiSoKhach}
+        title="Đổi khách của hóa đơn"
+        testIdDong="dong-chon-khach-hd"
+        onPick={(id) => {
+          const c = soKhach?.find((x) => x.id === id)
+          if (c) setKhachMoi(c.id === head?.customer_id ? null : c)
+          setMoChonKhach(false)
+        }}
+      />
 
       {loading ? (
         <div className="space-y-2">
@@ -1227,7 +1318,7 @@ export function InvoiceEditor({
           <LineEditSheet
             line={rowToCartLine(r)}
             product={catalog.find((p) => p.id === r.productId)}
-            groupId={priceGroupId}
+            groupId={nhomGia}
             canEditPrice
             maxIncreasePct={0}
             /* ⚠ NPP TOÀN QUYỀN SỬA GIÁ ở màn này — luật đã ghi từ đầu

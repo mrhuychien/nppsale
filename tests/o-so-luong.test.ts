@@ -44,8 +44,10 @@ describe("ô số lượng gõ được — phiếu trả hàng + phiếu nhập
     }
   })
   it("danh sách chọn khách: hiện địa chỉ (một luật ghép fullCustomerAddress), tìm được theo địa chỉ; trang đọc cột địa chỉ", () => {
-    const s = doc("src/components/returns/phieu-tra-khach-mobile.tsx")
+    /* Hộp chọn khách nằm ở tệp dùng chung từ 12/11/2026 (Sửa HĐ đổi khách dùng lại) — phiếu trả nhập nó. */
+    const s = doc("src/components/returns/phieu-tra-khach-mobile.tsx") + "\n" + doc("src/components/customers/chon-khach-sheet.tsx")
     expect(s).toContain("export interface KhachTra extends CustomerAddressParts")
+    expect(s).toContain('import { ChonKhachSheet } from "@/components/customers/chon-khach-sheet"')
     expect(s).toContain("customers.map((c) => ({ c, diaChi: fullCustomerAddress(c) }))")
     expect(s).toContain("viMatchAllWords(q, c.store_name, c.owner_name, c.phone, diaChi)")
     expect(s).toContain('data-testid="dia-chi-khach"')

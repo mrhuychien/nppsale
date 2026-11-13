@@ -157,6 +157,13 @@ export const THU_VN = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
 
 export type DoHat = "day" | "week" | "month"
 
+/** Nút "Xem theo" Ngày / Tuần / Tháng — Bán hàng của NVBH (chủ nhà 13/11/2026, `chiDoanhSoTong`). */
+export const DS_DO_HAT: ReadonlyArray<readonly [DoHat, string]> = [
+  ["day", "Ngày"],
+  ["week", "Tuần"],
+  ["month", "Tháng"],
+]
+
 /** ≤ 31 ngày: theo ngày · ≤ 120 ngày: theo tuần · dài hơn: theo tháng. */
 export function doHat(a: string, b: string): DoHat {
   const l = soNgay(a, b) + 1

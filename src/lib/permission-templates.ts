@@ -99,6 +99,9 @@ export function getTemplate(key: TemplateKey | string): PermissionTemplate | und
  *     hàng + đi tuyến, khuyến mãi, hoa hồng của mình.
  *   · Công nợ khách của mình (chỉ xem), báo cáo bán hàng của mình (RLS; không có màn lãi),
  *     phiếu lương của mình (/luong-cua-toi — luôn hiện, hàm `my_payslips`).
+ *   · ⚠ Chủ nhà 13/11/2026: "Sửa Nvbh chỉ được xem doanh số tổng bán (ngày,tuần,tháng)" — ô `reports.sales` của NVBH chỉ còn
+ *     doanh số theo Ngày / Tuần / Tháng ở Báo cáo tổng hợp › Bán hàng (`chiDoanhSoTong`); báo cáo cũ /reports/sales chặn theo
+ *     vai (`truVai`, đưa sang /bao-cao/ban-hang).
  *   · BỎ: kho, sản phẩm, trả hàng, thu tiền / phiếu thu, báo cáo đặt hàng / hàng hoá / khách,
  *     và mọi thứ của mẫu cũ đã bỏ (giá vốn, tổng quan NPP, mua hàng, nhân sự, cài đặt…).
  *   Tính năng KHÔNG có trong bảng = không quyền nào.

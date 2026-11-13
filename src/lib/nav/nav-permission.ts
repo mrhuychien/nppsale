@@ -38,6 +38,15 @@ export interface NavPermission {
   action?: Action
   /** Luôn hiện, không phụ thuộc quyền: Trang chủ và Trợ giúp. */
   always?: boolean
+  /**
+   * VAI BỊ CHẶN dù có quyền ô — kèm trang mà cửa vào đưa họ sang (thay cho /home). Luật theo VAI của chủ nhà, không phải ô
+   * quyền: quyền riêng từng người không mở lại được.
+   *
+   * ⚠ Chủ nhà 13/11/2026: "Sửa Nvbh chỉ được xem doanh số tổng bán (ngày,tuần,tháng)" — báo cáo bán hàng cũ (hoá đơn từng
+   *   ngày kèm khách, Giảm giá HĐ, Trả hàng, Nhân viên) không còn cho NVBH; NVBH xem doanh số ở Báo cáo tổng hợp › Bán hàng
+   *   (`chiDoanhSoTong`). Cùng ô `reports.sales` nên không chặn được bằng ô quyền.
+   */
+  truVai?: Partial<Record<Role, string>>
 }
 
 /**
@@ -190,11 +199,12 @@ export const NAV_PERMISSION: Record<string, NavPermission> = {
 
   // Báo cáo
   /* ⚠ Trang gộp /reports có tab Kho / Tài chính / Nhân sự — số liệu TOÀN NPP như Tổng quan, nên
-     đi cùng khoá `reports.dashboard`. NVBH (chủ nhà 26/09/2026) vào thẳng /reports/sales. */
+     đi cùng khoá `reports.dashboard`. NVBH xem doanh số ở /bao-cao/ban-hang (chỉ Ngày / Tuần / Tháng — chủ nhà 13/11/2026);
+     /reports/sales chặn NVBH theo vai (`truVai`). */
   "/reports": { module: "reports", feature: "reports.dashboard" },
   "/dashboard": { module: "reports", feature: "reports.dashboard" },
   "/reports/end-of-day": { module: "reports", feature: "reports.end_of_day" },
-  "/reports/sales": { module: "reports", feature: "reports.sales" },
+  "/reports/sales": { module: "reports", feature: "reports.sales", truVai: { sales: "/bao-cao/ban-hang" } },
   "/reports/orders": { module: "reports", feature: "reports.orders" },
   "/reports/products": { module: "reports", feature: "reports.products" },
   "/reports/customers": { module: "reports", feature: "reports.customers" },
@@ -421,6 +431,15 @@ export function duocVaoTrang(
   return canAccessModule(role, module)
 }
 
+/**
+ * Trang cửa vào đưa vai `role` sang khi họ bị chặn ở `pathname` theo `truVai` — `null` = không có, về /home như mọi trang
+ * không có quyền. NVBH gõ / bấm link cũ `/reports/sales` → sang thẳng Bán hàng của mình, không rơi về Trang chủ.
+ */
+export function trangThayChoVai(role: Role | null | undefined, pathname: string | null | undefined): string | null {
+  if (!role || !pathname) return null
+  return NAV_PERMISSION[pathname]?.truVai?.[role] ?? CUA_VAO[pathname]?.truVai?.[role] ?? null
+}
+
 export function canSeeHref(role: Role | null | undefined, href: string): boolean {
   /* Luồng cũ nay bị `canEnterHref` chặn thẳng, nên không cần lọc riêng
      ở đây nữa — ẩn khỏi menu là hệ quả của việc không vào được. */
@@ -449,6 +468,8 @@ export function canEnterHref(role: Role | null | undefined, href: string): boole
 /** Luật của MỘT khai quyền (menu hoặc cửa vào). */
 function kiemMuc(role: Role, p: NavPermission): boolean {
   if (p.always) return true
+  // ⚠ Vai bị chặn theo luật của chủ nhà — xét TRƯỚC quyền riêng từng người và trước lối tắt của chủ NPP (`truVai`).
+  if (p.truVai?.[role] !== undefined) return false
 
   // ⚠ QUYỀN RIÊNG CỦA NGƯỜI DÙNG ĐÈ LÊN QUYỀN VAI TRÒ, và phải xét TRƯỚC.
   // Quản lý thu hồi một mục của đúng một nhân viên thì mục đó phải biến

@@ -370,6 +370,23 @@ Chốt: cả hai kiểu; toàn bộ / theo tuyến / theo công ty; mốc 3 / 6 
   sản phẩm). Màn `/customers/hang-da-lay` (NVBH; chủ / QL / KT chọn NV, xuất Excel) + khối "Hàng đã lấy" ở chi tiết khách.
   Luật hiển thị: `src/lib/customers/ban-giao.ts`.
 
+### Báo cáo của NVBH: chỉ doanh số theo Ngày / Tuần / Tháng
+Chủ nhà 13/11/2026: *"Sửa Nvbh chỉ được xem doanh số tổng bán (ngày,tuần,tháng)"* — hỏi lại, chốt **"Chỉ sửa màn Báo cáo"**
+(trang chủ NVBH giữ nguyên: Doanh số của tôi Hôm nay / Tuần / Tháng / Quý, Top khách hàng tháng, Doanh thu theo kênh).
+- Báo cáo tổng hợp › Bán hàng (`/bao-cao/ban-hang` — nút Báo cáo ở thanh dưới của NVBH) khi vai `sales`: trạng thái ép qua
+  `chiDoanhSoTong` (`src/lib/bao-cao/trang-thai.ts`) — chỉ Thời gian, nguồn Hoá đơn, không lọc, không đào sâu. Ép ở TRẠNG THÁI,
+  không chỉ giấu nút: đường dẫn gõ tay / gửi Zalo (`xem=`, `nguon=ord`, `l_*`, `dao=`) cũng chỉ ra chừng ấy. "Xem theo" của NVBH
+  là **Ngày / Tuần / Tháng** (`DS_DO_HAT`, tham số `hat` trên đường dẫn; chưa chọn = theo độ dài kỳ, `doHat`). Thẻ chỉ Doanh thu
+  thuần + Hàng trả (`THE_NVBH`, không bấm); bảng Doanh thu / Hàng trả / DT thuần; dòng, cột biểu đồ không bấm đào sâu; không khối
+  hàng trả / giảm giá; không ô lọc (còn kỳ + so với kỳ trước + thẻ "Nhân viên: tôi"); không Xuất Excel — kể cả khi được cấp quyền
+  xuất riêng. Số của NVBH vẫn chỉ của chính mình (khoá nhân viên `khoaNV`, RLS).
+- Báo cáo bán hàng cũ `/reports/sales` (hoá đơn từng ngày kèm khách, Giảm giá HĐ, Trả hàng, Nhân viên) **chặn theo vai**: cùng ô
+  `reports.sales` với màn mới nên không chặn bằng ô quyền được → `NAV_PERMISSION` khai `truVai: { sales: "/bao-cao/ban-hang" }`:
+  `kiemMuc` từ chối vai ấy TRƯỚC quyền riêng từng người và lối tắt chủ NPP (menu ẩn, cửa vào chặn), `useRoleGuard` đưa sang
+  `trangThayChoVai` thay vì /home. Chỗ thay phải vào được (`tests/trang-dau-theo-vai.test.ts` duyệt mọi `truVai`).
+- Bộ thử: `tests/bao-cao-nvbh-chi-doanh-so.test.ts`, `e2e/bao-cao-nvbh-chi-doanh-so.spec.ts` (dữ liệu mẫu tháng 9: người đóng vai
+  NVBH thấy 900.000 — của riêng mình; chủ NPP 1.200.000).
+
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
 - **Ô quyền riêng** (chủ nhà 20/10/2026: *"Kiểm tra lại sao tk nhân viên bán hàng lại có bàn giao khách nhỉ"*): tính năng

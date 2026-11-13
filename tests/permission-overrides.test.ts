@@ -139,7 +139,9 @@ describe("Tính năng không thừa hưởng bừa từ mô-đun cha", () => {
     "/promotions",
     "/receivables",
     "/commissions",
-    "/reports/sales",
+    /* Báo cáo bán hàng của NVBH = Báo cáo tổng hợp › Bán hàng (chỉ doanh số Ngày / Tuần / Tháng — chủ nhà 13/11/2026);
+       báo cáo cũ /reports/sales chặn theo vai — tests/bao-cao-nvbh-chi-doanh-so.test.ts. */
+    "/bao-cao/ban-hang",
   ])("NVBH vẫn thấy %s", (href) => {
     expect(canSeeHref("sales", href)).toBe(true)
   })

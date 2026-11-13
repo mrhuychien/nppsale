@@ -26,10 +26,18 @@ describe("cổng vào trang không quay vòng", () => {
   it("không vào được thì về /home (luôn vào được), không về \"/\"", async () => {
     const { duocVaoTrang } = await import("../src/lib/nav/nav-permission")
     const g = doc("src/hooks/use-role-guard.ts")
-    expect(g).toContain('router.replace("/home")')
+    /* Trang chặn riêng một vai và chỉ chỗ thay (`truVai`, chủ nhà 13/11/2026) thì sang chỗ ấy; còn lại về /home. */
+    expect(g).toContain('router.replace(trangThayChoVai(user.role, pathname) ?? "/home")')
     expect(g).not.toContain('router.replace("/")')
     for (const r of ["owner", "manager", "accountant", "sales", "warehouse"] as const) {
       expect(duocVaoTrang(r, "/home", "orders"), r).toBe(true)
+    }
+    // Chỗ thay phải vào được — không thì đá qua lại giữa hai trang chặn.
+    const { NAV_PERMISSION, canEnterHref } = await import("../src/lib/nav/nav-permission")
+    for (const [href, p] of Object.entries(NAV_PERMISSION)) {
+      for (const [vai, ve] of Object.entries(p.truVai ?? {})) {
+        expect(canEnterHref(vai as "sales", ve!), `${href} → ${vai} → ${ve}`).toBe(true)
+      }
     }
   })
 })

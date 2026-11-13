@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "./use-auth"
 import { type Module, layQuyenDaNap, ngheQuyenDaNap } from "@/lib/permissions"
-import { duocVaoTrang } from "@/lib/nav/nav-permission"
+import { duocVaoTrang, trangThayChoVai } from "@/lib/nav/nav-permission"
 
 /**
  * Chặn ở CỬA VÀO trang, khớp đúng với phép lọc menu.
@@ -48,10 +48,11 @@ export function useRoleGuard(module: Module) {
       /* ⚠ VỀ /home, KHÔNG VỀ "/". "/" đẩy khối văn phòng sang /dashboard; ai không vào được
          /dashboard mà bị đẩy về "/" là quay vòng /dashboard ↔ "/" tới khi trình duyệt chặn
          ("history.replaceState() more than 100 times per 10 seconds" — chủ nhà 26/09/2026,
-         màn trắng ở /dashboard). /home ai cũng vào được (`always`). */
-      router.replace("/home")
+         màn trắng ở /dashboard). /home ai cũng vào được (`always`).
+         Trang chặn riêng một vai và chỉ chỗ thay (`truVai` — NVBH ở /reports/sales → Bán hàng của mình) thì sang chỗ ấy. */
+      router.replace(trangThayChoVai(user.role, pathname) ?? "/home")
     }
-  }, [user, loading, hasAccess, quyenChac, router])
+  }, [user, loading, hasAccess, quyenChac, router, pathname])
 
   /* Chưa chắc quyền mà đang thiếu quyền → coi như còn nạp (màn hiện khung chờ, không lộ nội dung). */
   return { user, loading: loading || (!hasAccess && !quyenChac), hasAccess }

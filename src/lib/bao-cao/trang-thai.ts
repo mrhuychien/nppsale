@@ -5,7 +5,7 @@
  * - Đào sâu thêm một bước = `router.push` → nút Quay lại của trình duyệt lùi đúng một bước
  *   (spec mục 2.5). Đổi kỳ / lọc / chế độ xem = `replace`, không làm dài lịch sử.
  */
-import { laMaKy, laNgay, type MaKy } from "./ky"
+import { laMaKy, laNgay, type DoHat, type MaKy } from "./ky"
 import { LOAI_LOC, type BoLoc, type LoaiLoc } from "./cong"
 
 export type GiaTriBuoc = string | boolean | [string, string]
@@ -32,6 +32,8 @@ export interface TrangThaiBC {
   den: string | null
   tab: string
   theoThang: boolean
+  /** Bán hàng của NVBH: gom theo Ngày / Tuần / Tháng do người xem chọn; `null` = theo độ dài kỳ (`doHat`). */
+  hat: DoHat | null
 }
 
 export const TRANG_THAI_GOC: TrangThaiBC = {
@@ -47,7 +49,10 @@ export const TRANG_THAI_GOC: TrangThaiBC = {
   den: null,
   tab: "",
   theoThang: false,
+  hat: null,
 }
+
+const laHat = (x: string | null): x is DoHat => x === "day" || x === "week" || x === "month"
 
 /**
  * Giá trị lọc nối bằng dấu phẩy trên đường dẫn → dấu phẩy NẰM TRONG một giá trị phải thoát (`%2C`, `%` → `%25`).
@@ -94,6 +99,7 @@ export function docTrangThai(sp: URLSearchParams, macDinh: Partial<TrangThaiBC> 
     den: laNgay(sp.get("den")) ? sp.get("den") : g.den,
     tab: sp.get("tab") || g.tab,
     theoThang: sp.get("tt") === "1",
+    hat: laHat(sp.get("hat")) ? (sp.get("hat") as DoHat) : g.hat,
   }
 }
 
@@ -118,7 +124,20 @@ export function ghiTrangThai(st: TrangThaiBC, macDinh: Partial<TrangThaiBC> = {}
   if (st.den && st.den !== g.den) p.set("den", st.den)
   if (st.tab && st.tab !== g.tab) p.set("tab", st.tab)
   if (st.theoThang) p.set("tt", "1")
+  if (st.hat && st.hat !== g.hat) p.set("hat", st.hat)
   return p.toString()
+}
+
+/**
+ * NVBH CHỈ XEM DOANH SỐ TỔNG THEO NGÀY / TUẦN / THÁNG (chủ nhà 13/11/2026: "Sửa Nvbh chỉ được xem doanh số tổng bán
+ * (ngày,tuần,tháng)" — chốt "Chỉ sửa màn Báo cáo", trang chủ giữ nguyên).
+ *
+ * Trạng thái Bán hàng của NVBH luôn về: chế độ Thời gian, nguồn Hoá đơn, không lọc, không đào sâu. ⚠ Ép ở TRẠNG THÁI, không
+ * chỉ giấu nút: đường dẫn gõ tay / gửi qua Zalo (`xem=prod`, `nguon=ord`, `l_cust=…`, `dao=…`) cũng chỉ ra đúng chừng ấy.
+ * Kỳ, so với kỳ trước và Ngày / Tuần / Tháng (`hat`) giữ nguyên.
+ */
+export function chiDoanhSoTong(st: TrangThaiBC): TrangThaiBC {
+  return { ...st, xem: "time", nguon: "inv", loc: {}, dao: [] }
 }
 
 export interface HieuLuc {

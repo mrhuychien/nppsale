@@ -46,10 +46,12 @@ const CAM_NVBH: Array<[string, Module]> = [
   ["/reports/orders", "reports"],
   ["/reports/products", "reports"],
   ["/reports/customers", "reports"],
+  /* Chủ nhà 13/11/2026: "Sửa Nvbh chỉ được xem doanh số tổng bán (ngày,tuần,tháng)" — báo cáo cũ chặn theo vai. */
+  ["/reports/sales", "reports"],
 ]
 const DUOC_NVBH: Array<[string, Module]> = [
   ["/sell", "orders"], ["/sell/cart", "orders"], ["/sell/drafts", "orders"], ["/orders/abc", "orders"],
-  ["/customers/new", "customers"], ["/reports/sales", "reports"], ["/receivables", "receivables"],
+  ["/customers/new", "customers"], ["/bao-cao/ban-hang", "reports"], ["/receivables", "receivables"],
   ["/receivables/by-customer", "receivables"], ["/luong-cua-toi", "orders"], ["/notifications", "orders"],
   ["/promotions", "promotions"], ["/sales/visits", "customers"], ["/commissions", "commissions"],
   ["/returns", "returns"],

@@ -8,7 +8,10 @@
  *   Thương hiệu, Nhóm khách, Tỉnh). Bấm dòng / cột / thanh = đào sâu; điểm cuối là chứng từ.
  * - ⚠ Không còn "Nhóm hàng" (`products.category`): chủ nhà 03/10/2026 "gộp Nhóm hàng vào NCC" →
  *   "Bỏ luôn trường nhóm hàng". Chỗ của nó là "Nhà cung cấp" (NCC chính của mặt hàng).
- * - NVBH: lọc nhân viên khoá vào chính mình, không có chế độ Nhân viên, không có cột lãi.
+ * - NVBH: lọc nhân viên khoá vào chính mình, không có cột lãi, và CHỈ doanh số theo Ngày / Tuần / Tháng (chủ nhà 13/11/2026:
+ *   "Sửa Nvbh chỉ được xem doanh số tổng bán (ngày,tuần,tháng)") — `chiDoanhSoTong`: chỉ chế độ Thời gian, nguồn Hoá đơn, thẻ
+ *   Doanh thu thuần + Hàng trả, cột Doanh thu / Hàng trả / DT thuần; không chiều khác, không Đơn đặt, không lọc, không bấm đào
+ *   sâu / xem chứng từ, không khối hàng trả / giảm giá, không xuất Excel.
  */
 import { useMemo, useRef, useState } from "react"
 import { useBaoCao } from "@/hooks/use-bao-cao"
@@ -23,8 +26,8 @@ import { chiTietBan, chiTietDat } from "@/lib/bao-cao/xuat-chi-tiet"
 import { createClient } from "@/lib/supabase/client"
 import { hienSLTheoDonVi } from "@/lib/analytics/sl-theo-don-vi"
 import { chenhThuan, chenhTra, thueLamTronNv, tongChenhLech } from "@/lib/analytics/chenh-lech"
-import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, cuaSoNap, type Ky } from "@/lib/bao-cao/ky"
-import { hieuLuc, MAC_DINH_MAN, type BuocDao } from "@/lib/bao-cao/trang-thai"
+import { kyTheoMa, chiTieuKy, congNgay, soNgay, doHat, chiaThoiGian, khoaThoiGian, nhanKhoang, tenKy, cuaSoNap, DS_DO_HAT, type Ky } from "@/lib/bao-cao/ky"
+import { chiDoanhSoTong, hieuLuc, MAC_DINH_MAN, type BuocDao } from "@/lib/bao-cao/trang-thai"
 import { congBan, gomBan, congDat, gomDat, quaLoc, maChuaCoGiaVon, hienSoLuong, chuaXuatDong, CHUA_CO, type DanhMucBC, type DongBan, type DongDat, type LoaiLoc, type NhomBan, type NhomDat } from "@/lib/bao-cao/cong"
 import { soGon, phanTram, soSanh, duongXuHuong, soDu } from "@/lib/bao-cao/so"
 import { napSoBan } from "@/lib/bao-cao/nap-ban-hang"
@@ -43,6 +46,8 @@ const CHIEU: Record<Exclude<Xem, "docs">, { label: string; loc?: LoaiLoc; tiep: 
   staff: { label: "Nhân viên", loc: "staff", tiep: "cust" },
 }
 const DS_XEM = Object.keys(CHIEU) as Exclude<Xem, "docs">[]
+/** Thẻ số NVBH còn thấy — chỉ doanh số (chủ nhà 13/11/2026). */
+const THE_NVBH = ["net", "ret"]
 
 function khoaChieu(xem: Exclude<Xem, "docs" | "time">, dm: DanhMucBC) {
   return (l: { kh: string; nv: string; sp: string }) => {
@@ -98,7 +103,10 @@ type NhomBC = DongBang & Partial<NhomBan> & Partial<NhomDat> & { k?: string; r?:
 
 export function ManBanHang() {
   const bc = useBaoCao("reports", MAC_DINH_MAN["/bao-cao/ban-hang"])
-  const { st, dat, daoThem, veBuoc, doiXem, homNay, khoaNV, xemGiaVon, orgId } = bc
+  const { dat, daoThem, veBuoc, doiXem, homNay, khoaNV, xemGiaVon, orgId } = bc
+  /** NVBH: chỉ doanh số tổng theo Ngày / Tuần / Tháng (chủ nhà 13/11/2026) — trạng thái ép ở `chiDoanhSoTong`. */
+  const chiTong = !!khoaNV
+  const st = chiTong ? chiDoanhSoTong(bc.st) : bc.st
   const nguon = st.nguon
   // Đường dẫn cũ `xem=brand|cgroup|province` (đã bỏ) → về Thời gian.
   const xemGoc = st.xem in CHIEU ? st.xem : "time"
@@ -111,6 +119,8 @@ export function ManBanHang() {
   const cs = cuaSoNap(ky, E.khoang, cmp && st.soSanh ? cmp : null)
   const [n0, n1] = cs.nay
   const kt = cs.truoc
+  /** Gom thời gian: theo độ dài kỳ; NVBH tự chọn Ngày / Tuần / Tháng (`hat`). */
+  const g = (chiTong && st.hat) || doHat(a, b)
 
   const nap = useNap<DuLieu>(
     orgId
@@ -169,9 +179,9 @@ export function ManBanHang() {
     const trong = <T extends { ngay: string }>(x: T, p: string, q: string) => x.ngay >= p && x.ngay <= q
     const loc = E.loc
     const qua = (x: { kh: string; nv: string; sp: string; trangThai?: string; nguoiTao?: string }) => quaLoc(x, loc, dm)
-    const g = doHat(a, b)
     const dsThoiGian = chiaThoiGian(a, b, g)
-    const onDong = (x: NhomBC) => () => {
+    /* NVBH chỉ xem tổng — dòng / cột không bấm đào sâu được (`undefined` = bảng, biểu đồ vẽ không bấm). */
+    const onDong = chiTong ? undefined : (x: NhomBC) => () => {
       if (view === "time") daoThem({ l: x._n, v: CHIEU.time.tiep, f: { range: x.r! } })
       else if (coChieu(view)) {
         const c = CHIEU[view]
@@ -192,7 +202,7 @@ export function ManBanHang() {
         for (const l of cur) v[soNgay(a, l.ngay)] += f(l)
         return duongXuHuong(v)
       }
-      const kpis: TheKpi[] = [
+      const kpisDu: TheKpi[] = [
         { id: "net", label: "Doanh thu thuần", value: soGon(T.net), info: GIAI_THICH.net, delta: soSanh(T.net, TP?.net, true), spark: theoNgay((l) => (l.loai > 0 ? l.tien : -l.tien)), onClick: () => doiXem("time") },
         { id: "ret", label: "Hàng trả", value: soGon(T.ret), info: GIAI_THICH.ret, delta: soSanh(T.ret, TP?.ret, false), spark: theoNgay((l) => (l.loai < 0 ? l.tien : 0)), onClick: () => doiXem("time") },
         ...(xemGiaVon
@@ -201,6 +211,8 @@ export function ManBanHang() {
         { id: "nInv", label: "Số hoá đơn", value: soDu(T.nInv), info: GIAI_THICH.nInv, delta: soSanh(T.nInv, TP?.nInv, true), onClick: () => daoThem({ l: "Hoá đơn", v: "docs" }) },
         { id: "avg", label: "TB / hoá đơn", value: soGon(T.avg), info: GIAI_THICH.avg, delta: soSanh(T.avg, TP?.avg, true), onClick: () => (setBatThem(["avg"]), doiXem("time")) },
       ]
+      // NVBH: chỉ thẻ doanh số (thuần + hàng trả), thẻ không bấm (Số hoá đơn bấm là mở danh sách chứng từ).
+      const kpis = chiTong ? kpisDu.filter((k) => THE_NVBH.includes(k.id)).map((k) => ({ ...k, onClick: undefined })) : kpisDu
       let bang: React.ReactNode = null
       let bieuDo: React.ReactNode = null
       let tenXuat = ""
@@ -294,7 +306,7 @@ export function ManBanHang() {
         let cot: CotBang<NhomBC>[]
         switch (view) {
           case "time":
-            cot = [M.rev, M.ret, M.net, M.nInv, M.gp, M.margin, phu(M.nCust), phu(M.avg)]
+            cot = chiTong ? [M.rev, M.ret, M.net] : [M.rev, M.ret, M.net, M.nInv, M.gp, M.margin, phu(M.nCust), phu(M.avg)]
             break
           case "prod":
             cot = [
@@ -383,7 +395,7 @@ export function ManBanHang() {
             chinh="net"
             onDong={onDong}
             xemGiaVon={xemGiaVon}
-            batThem={view === "time" ? batThem : undefined}
+            batThem={view === "time" && !chiTong ? batThem : undefined}
             xuatRef={xuatRef}
           />
         )
@@ -393,7 +405,7 @@ export function ManBanHang() {
             const mc = gomBan(prev, (l) => khoaThoiGian(g, l.ngay))
             cv = chiaThoiGian(cmp[0], cmp[1], g).map((t) => mc.get(t.k)?.net || 0)
           }
-          const cotBD: CotBD[] = nhom.map((x) => ({ label: x._n.replace("Tuần ", "").replace("Tháng ", "Th"), v: x.net || 0, title: `${x._n}: ${soDu(x.net || 0)}`, onClick: onDong(x) }))
+          const cotBD: CotBD[] = nhom.map((x) => ({ label: x._n.replace("Tuần ", "").replace("Tháng ", "Th"), v: x.net || 0, title: `${x._n}: ${soDu(x.net || 0)}`, onClick: onDong?.(x) }))
           bieuDo = (
             <BieuDoCot
               tieuDe={`Doanh thu thuần theo ${g === "day" ? "ngày" : g === "week" ? "tuần" : "tháng"}`}
@@ -408,7 +420,7 @@ export function ManBanHang() {
           bieuDo = (
             <BieuDoNgang
               tieuDe={`Top 10 ${c.label.toLowerCase()} theo doanh thu thuần`}
-              ds={[...xep.slice(0, 10).map((x) => ({ label: x._n, v: x.net || 0, onClick: onDong(x) })), ...(khac > 0 ? [{ label: `Khác (${xep.length - 10})`, v: khac, khac: true }] : [])]}
+              ds={[...xep.slice(0, 10).map((x) => ({ label: x._n, v: x.net || 0, onClick: onDong?.(x) })), ...(khac > 0 ? [{ label: `Khác (${xep.length - 10})`, v: khac, khac: true }] : [])]}
             />
           )
         }
@@ -453,8 +465,9 @@ export function ManBanHang() {
             }))}
           />
         ) : null,
+        // NVBH: không khối hàng trả (từng phiếu, từng khách) / giảm giá (theo nhân viên) — chỉ doanh số tổng.
         phu:
-          view === "docs" ? null : (
+          view === "docs" || chiTong ? null : (
             <>
               <KhoiGap
                 tieuDe="Hàng trả trong kỳ"
@@ -578,7 +591,7 @@ export function ManBanHang() {
           <BieuDoCot
             tieuDe={`Giá trị đặt theo ${g === "day" ? "ngày" : g === "week" ? "tuần" : "tháng"}`}
             chuGiai={[{ label: "Kỳ này", kieu: "cot" }, ...(cv ? [{ label: "Kỳ trước", kieu: "duong" as const }] : [])]}
-            cot={nhom.map((x) => ({ label: x._n.replace("Tuần ", "").replace("Tháng ", "Th"), v: x.val || 0, title: `${x._n}: ${soDu(x.val || 0)}`, onClick: onDong(x) }))}
+            cot={nhom.map((x) => ({ label: x._n.replace("Tuần ", "").replace("Tháng ", "Th"), v: x.val || 0, title: `${x._n}: ${soDu(x.val || 0)}`, onClick: onDong?.(x) }))}
             soSanh={cv}
           />
         )
@@ -588,7 +601,7 @@ export function ManBanHang() {
         bieuDo = (
           <BieuDoNgang
             tieuDe={`Top 10 ${c.label.toLowerCase()} theo giá trị đặt`}
-            ds={[...xep.slice(0, 10).map((x) => ({ label: x._n, v: x.val || 0, onClick: onDong(x) })), ...(khac > 0 ? [{ label: `Khác (${xep.length - 10})`, v: khac, khac: true }] : [])]}
+            ds={[...xep.slice(0, 10).map((x) => ({ label: x._n, v: x.val || 0, onClick: onDong?.(x) })), ...(khac > 0 ? [{ label: `Khác (${xep.length - 10})`, v: khac, khac: true }] : [])]}
           />
         )
       }
@@ -599,15 +612,20 @@ export function ManBanHang() {
       chiTiet: () => chiTietDat({ dong: donHien ? cur.filter((l) => donHien!.has(l.don)) : cur, dm, don: d.don }),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nap.data, noKhach.data, dm, a, b, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
+  }, [nap.data, noKhach.data, dm, a, b, g, chiTong, cmp?.[0], cmp?.[1], st.soSanh, JSON.stringify(E), view, nguon, xemGiaVon, batThem])
 
   // Đường đào sâu
   const tenGoc = `Bán hàng · Theo ${CHIEU[xemGoc as Exclude<Xem, "docs">].label.toLowerCase()}`
   const dao: MatDao[] = [{ label: tenGoc, onClick: () => veBuoc(0) }, ...st.dao.map((s: BuocDao, i: number) => ({ label: s.l, onClick: () => veBuoc(i + 1) }))]
-  const loai: LoaiLoc[] = ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
+  // NVBH: không ô lọc nào (lọc theo khách / hàng / NCC / kênh là xem chi tiết) — còn kỳ + so với kỳ trước + thẻ "Nhân viên: tôi".
+  const loai: LoaiLoc[] = chiTong ? [] : ["cust", "channel", ...(khoaNV ? [] : (["staff"] as LoaiLoc[])), "prod", "ncc", ...(nguon === "ord" ? (["ostatus"] as LoaiLoc[]) : [])]
   const nhanKy = `${tenKy(st.ky)} · ${nhanKhoang(ky.a, ky.b)}`
   const dangDao = st.dao.length > 0
-  const xemTheo = <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />
+  const xemTheo = chiTong ? (
+    <HangChon nhan="Xem theo" ds={DS_DO_HAT.map(([k, label]) => ({ k, label, on: k === g, onClick: () => dat({ hat: k }) }))} />
+  ) : (
+    <HangChon nhan="Xem theo" ds={cacXem.map((v) => ({ k: v, label: CHIEU[v].label, on: v === xemGoc && !st.dao.length, onClick: () => doiXem(v) }))} />
+  )
   const nhanView = view === "docs" ? (nguon === "inv" ? "Hoá đơn" : "Đơn đặt") : "Theo " + (CHIEU[view as Exclude<Xem, "docs">]?.label || "thời gian").toLowerCase()
 
   return (
@@ -616,7 +634,7 @@ export function ManBanHang() {
       role={bc.user?.role}
       dao={dao}
       onBoDao={() => veBuoc(0)}
-      onXuat={bc.xuatFile ? () => xuatExcel(`Bán hàng · ${nguon === "inv" ? "Hoá đơn" : "Đơn đặt"} · ${vm?.tenXuat || ""} · ${nhanKy}`, xuatRef.current?.(), vm ? [{ ten: "Chi tiết dòng", rows: vm.chiTiet() }] : []) : null}
+      onXuat={bc.xuatFile && !chiTong ? () => xuatExcel(`Bán hàng · ${nguon === "inv" ? "Hoá đơn" : "Đơn đặt"} · ${vm?.tenXuat || ""} · ${nhanKy}`, xuatRef.current?.(), vm ? [{ ten: "Chi tiết dòng", rows: vm.chiTiet() }] : []) : null}
       thanhLoc={
         <ThanhLoc
           che="range"
@@ -639,21 +657,24 @@ export function ManBanHang() {
     >
       {/* Đang đào sâu → bảng chi tiết ngay dưới đường đào sâu, không phải cuộn (chủ nhà 27/09/2026). */}
       {dangDao && vm && !nap.loi && !bc.loading && vm.bang}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <CongTacDoan
-          className="w-full lg:w-[220px]"
-          ds={[
-            { value: "inv", label: "Hoá đơn" },
-            { value: "ord", label: "Đơn đặt" },
-          ]}
-          value={nguon}
-          onChange={(v) => dat({ nguon: v as "inv" | "ord", dao: [] })}
-        />
-      </div>
+      {/* NVBH chỉ xem doanh số (hoá đơn) — không có nút Đơn đặt. */}
+      {!chiTong && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <CongTacDoan
+            className="w-full lg:w-[220px]"
+            ds={[
+              { value: "inv", label: "Hoá đơn" },
+              { value: "ord", label: "Đơn đặt" },
+            ]}
+            value={nguon}
+            onChange={(v) => dat({ nguon: v as "inv" | "ord", dao: [] })}
+          />
+        </div>
+      )}
       {nguon === "ord" && <BangHoPhach>Đây là số đơn đặt — không phải doanh thu</BangHoPhach>}
       {bc.loading || (nap.dangTai && !vm) ? (
         <KhungCho
-          the={nguon === "inv" ? ["Doanh thu thuần", "Hàng trả", ...(xemGiaVon ? ["Lãi gộp"] : []), "Số hoá đơn", "TB / hoá đơn"] : ["Số đơn", "Giá trị đặt", "Đã xuất hoá đơn", "Chưa xuất", "Tỷ lệ xuất"]}
+          the={chiTong ? ["Doanh thu thuần", "Hàng trả"] : nguon === "inv" ? ["Doanh thu thuần", "Hàng trả", ...(xemGiaVon ? ["Lãi gộp"] : []), "Số hoá đơn", "TB / hoá đơn"] : ["Số đơn", "Giá trị đặt", "Đã xuất hoá đơn", "Chưa xuất", "Tỷ lệ xuất"]}
           chon={xemTheo}
           bang={nhanView}
           bieuDo={view === "docs" ? null : view === "time" ? (nguon === "inv" ? "Doanh thu thuần theo thời gian" : "Giá trị đặt theo thời gian") : `Top 10 ${(CHIEU[view as Exclude<Xem, "docs">]?.label || "").toLowerCase()}`}

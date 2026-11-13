@@ -15,10 +15,12 @@ afterEach(() => { setPermissionsCache(null); setUserOverrides(null) })
 
 describe("NVBH chỉ còn module bán hàng", () => {
   it("menu của NVBH: đúng bán hàng + công nợ + báo cáo bán hàng + phiếu lương", () => {
+    /* Báo cáo bán hàng của NVBH là Báo cáo tổng hợp › Bán hàng (chỉ doanh số Ngày / Tuần / Tháng — chủ nhà 13/11/2026);
+       báo cáo cũ /reports/sales chặn theo vai (`truVai`). */
     for (const h of ["/sell", "/orders", "/customers", "/sales/visits", "/promotions", "/commissions",
-      "/receivables", "/reports/sales", "/luong-cua-toi", "/returns"]) expect(canSeeHref("sales", h), h).toBe(true)
+      "/receivables", "/bao-cao/ban-hang", "/luong-cua-toi", "/returns"]) expect(canSeeHref("sales", h), h).toBe(true)
     for (const h of ["/inventory", "/products", "/returns/new", "/finance/cash-receipts", "/receivables/collect",
-      "/reports/orders", "/reports/products", "/reports/customers", "/invoices", "/hr", "/settings"]) {
+      "/reports/sales", "/reports/orders", "/reports/products", "/reports/customers", "/invoices", "/hr", "/settings"]) {
       expect(canSeeHref("sales", h), h).toBe(false)
     }
   })

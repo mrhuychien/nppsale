@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Route } from "@playwright/test"
-import { dangNhap, nhatKy, mocDonDep, theoDoiIn, FAKE } from "./helpers"
+import { dangNhap, nhatKy, mocDonDep, tatTacVuDon, theoDoiIn, FAKE } from "./helpers"
 
 /**
  * ⚠ CHỦ NHÀ 03/11/2026 — khách NPP gửi ảnh (18:07–18:25): "Loát chậm quá" · "Đơn trên a chưa tạo mới bấm vào xuất hàng mà khi
@@ -66,6 +66,9 @@ const nutXuat = (page: Page) => page.getByRole("button", { name: /Xuất hàng &
 test("máy chủ chậm quá 60 giây mà ĐÃ ghi: không báo 'Chưa xuất được', tự kiểm lại sổ → in + mở đúng tờ như thường", async ({ page }) => {
   const donDep = await mocDonDep("sales_orders", "sales_order_lines", "sales_invoices")
   try {
+    /* ⚠ Bài đọc màn SAU khi xong (câu báo, địa chỉ tờ) → tắt Tác vụ đơn như mọi bài cần ở lại màn: bật thì in xong POS (mở
+       bằng tay) về /pos — chạy đua với các bước đọc bên dưới, lượt đủ bộ 13/11/2026 thua. Đường tự đóng: pos-tac-vu-don. */
+    await tatTacVuDon(page)
     await page.clock.install()
     await dangNhap(page)
     await taoDon()
@@ -96,9 +99,11 @@ test("máy chủ chậm quá 60 giây mà ĐÃ ghi: không báo 'Chưa xuất đ
 
     await expect.poll(inAn.khung).toContainEqual(expect.stringMatching(new RegExp(`/in/hoa-don/${HD}`)))
     expect(inAn.tabMoi(), "in mà vẫn mở tab mới").toBe(0)
-    await expect(page).toHaveURL(new RegExp(`/pos/hoa-don/${HD}$`))
+    /* Câu báo TRƯỚC, địa chỉ SAU: câu báo hiện cùng lúc bật in và tự tắt sau 5 giây; `next dev` lúc chạy đủ bộ có khi chuyển
+       trang lâu hơn thế — chờ địa chỉ trước là tới lúc đọc câu báo đã tắt. */
     await expect(page.getByText(`Đã xuất hóa đơn ${MA_HD}`, { exact: true })).toBeVisible()
     await expect(page.getByText(/^Máy chủ trả lời chậm — đã kiểm lại sổ: hoá đơn ĐÃ ghi/)).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/pos/hoa-don/${HD}$`))
     await expect(page.getByText("Chưa xuất được")).toHaveCount(0)
     expect(giu.length, "không gửi lại câu xuất hàng").toBe(1)
     expect(await chanRoiTrang(page), "xong rồi mà vẫn chặn rời trang").toBe(false)

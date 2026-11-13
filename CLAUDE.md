@@ -277,6 +277,10 @@ Chủ nhà 04/11/2026: *"tao muốn tác vụ đơn nghĩa là sau khi hoàn th�
   → huỷ in vẫn đóng (đã nói chủ nhà). Chromium không giao diện (e2e) bắn `beforeprint` / `afterprint` ngay khi gọi `print()` →
   bài e2e cũ cần ở lại màn sau khi xong thì tắt công tắc (`tatTacVuDon`, `e2e/helpers.ts`); bài của luật này:
   `e2e/pos-tac-vu-don.spec.ts`.
+- **E2E: đọc câu báo TRƯỚC, chờ địa chỉ SAU** (lượt đủ bộ 13/11/2026 hỏng 2 bài vì thế): toast thường tắt sau 5 giây, câu báo
+  thanh trên POS (`notice`) sau 6 giây — đếm từ lúc hiện, tức ngay lúc gọi chuyển trang; `next dev` lúc chạy đủ bộ có khi
+  chuyển trang lâu hơn thế (`/pos` = 2 câu RSC). Chờ `toHaveURL` trước là tới lúc đọc câu đã tắt. Tái hiện: làm chậm câu
+  `?_rsc=` của đường đích bằng `page.route`.
 
 ### Tờ in hoá đơn: hàng đổi / hàng trả
 Chủ nhà 13/10/2026: *"mẫu phiếu in hiện tại không in ra hàng đổi và hàng trả hóa đơn"*.

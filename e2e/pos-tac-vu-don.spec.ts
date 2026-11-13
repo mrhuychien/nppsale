@@ -131,9 +131,12 @@ test("POS mở bằng tay (gõ địa chỉ): trình duyệt chặn tự đóng 
   await page.goto("/pos/hoa-don/moi?order=o-e2e-1")
   await expect(page.getByTestId("dong-hoa-don")).toHaveCount(1)
   await page.getByRole("button", { name: /Xuất hàng & lập HĐ/ }).click()
-  await expect(page).toHaveURL(/\/pos$/)
+  /* ⚠ ĐỌC CÂU BÁO TRƯỚC, RỒI MỚI CHỜ ĐỊA CHỈ: câu báo hiện ở thanh trên NGAY lúc gọi `router.push("/pos")` (thanh nằm ở
+     layout POS, không chờ trang mới) và tự tắt sau 6 giây kể từ đó. `next dev` lúc chạy đủ bộ có khi mất hơn 6 giây mới
+     chuyển xong trang (POS nạp 3–15 giây ở lượt 13/11/2026) — chờ địa chỉ trước là tới lúc đọc thì câu đã tắt. */
   const bao = page.getByRole("status").filter({ hasText: "Ctrl + W" })
   await expect(bao).toContainText("Đã xuất hóa đơn HD-E2E-3")
+  await expect(page).toHaveURL(/\/pos$/)
   await expect(page.getByRole("heading", { name: "Mở chứng từ mới" })).toBeVisible()
 })
 

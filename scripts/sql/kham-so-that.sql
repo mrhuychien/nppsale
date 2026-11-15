@@ -1077,4 +1077,22 @@ SELECT 100, 'Mig 261 (Sửa HĐ đổi được khách hàng)',
        THEN 'LỆCH — hàm phụ đổi khách gọi thẳng được từ trình duyệt (thiếu REVOKE) — báo lại ngay'
        ELSE 'OK — đã vá' END,
   ''
+UNION ALL
+-- 101. Mig 262 — NVBH chỉ xem đơn của chính mình (chủ nhà 15/11/2026: "Kiểm tra lại quyền xem, sao nhân viên này lại xem được
+--      đơn hàng của nhân viên kia"): sales_order_select bỏ nhánh khách phân công + Xem tất cả KH; nhật ký đơn theo quyền xem
+--      đơn; get_invoiceable_lines kiểm đúng luật xem đơn.
+SELECT 101, 'Mig 262 (NVBH chỉ xem đơn của chính mình)',
+  CASE WHEN q IS NULL OR nk IS NULL THEN 'LỆCH — không thấy chính sách sales_order_select / org_iso_oal'
+       WHEN position('customer_assignments' IN q) > 0 OR position('customer.view_all' IN q) > 0
+         OR position('sales_orders' IN nk) = 0
+         OR position('(mig 262)' IN pg_get_functiondef('public.get_invoiceable_lines(uuid)'::regprocedure)) = 0
+       THEN 'CHƯA — chạy migration 262 (NVBH còn thấy đơn của NV khác qua khách làm chung / bàn giao / quyền Xem tất cả KH)'
+       WHEN position('user_role()' IN q) = 0 OR position('''draft''' IN q) = 0 OR position('driver_id' IN q) = 0
+       THEN 'LỆCH — sales_order_select thiếu vế (văn phòng / luật nháp / tài xế) — báo lại ngay'
+       ELSE 'OK — đã vá' END,
+  ''
+  FROM (SELECT (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
+                 WHERE polname = 'sales_order_select' AND polrelid = 'public.sales_orders'::regclass) AS q,
+               (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
+                 WHERE polname = 'org_iso_oal' AND polrelid = 'public.order_activity_log'::regclass) AS nk) x
 ) t ORDER BY stt;

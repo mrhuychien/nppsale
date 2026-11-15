@@ -99,7 +99,7 @@ const PACK3_SPEC_GROUPS: Array<{
     key: "customer",
     label: "Khách hàng",
     permissions: [
-      { key: "customer.view_all", label: "Xem tất cả KH (override row-level)" },
+      { key: "customer.view_all", label: "Xem tất cả KH — chỉ khách, không mở đơn hàng của NV khác" },
     ],
   },
 ]
@@ -613,7 +613,8 @@ export function PermissionMatrix({
           <CardTitle>Quyền đặc biệt (Pack3)</CardTitle>
           <p className="text-xs text-muted-foreground">
             Các quyền chỉ kích hoạt khi tick — không có mặc định theo vai trò.
-            Vd: <code>customer.view_all</code> override row-level RLS để xem mọi KH.
+            Vd: <code>customer.view_all</code> mở sổ mọi KH. Đơn hàng thì NVBH chỉ xem đơn đứng tên mình (chủ nhà
+            15/11/2026) — ai cần xem đơn của mọi người thì đặt vai Quản lý.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">

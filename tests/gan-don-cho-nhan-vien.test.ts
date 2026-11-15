@@ -139,6 +139,8 @@ describe("migration 161 — lùi lại, giữ nguyên luật nháp của mig 119
    * cắt quyền của một vai trò, và RLS từ chối thì màn hình chỉ thấy
    * danh sách ngắn đi chứ không thấy lỗi nào.
    */
+  /* Chốt này canh riêng TỆP 161 (đóng băng). Luật đang chạy: mig 262 đã bỏ nhánh khách phân công + "Xem tất cả KH" (chủ nhà
+     15/11/2026 — NVBH chỉ xem đơn của mình), xem tests/nvbh-chi-xem-don-cua-minh.test.ts. */
   it("giữ đủ năm nhánh quyền đọc của mig 119", () => {
     const pol = MIG.slice(MIG.indexOf("CREATE POLICY sales_order_select"))
     for (const nhanh of [

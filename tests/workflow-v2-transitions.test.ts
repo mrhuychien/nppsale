@@ -309,13 +309,20 @@ describe("119 — phân quyền hàng", () => {
   it("luật ĐANG CHẠY vẫn là luật của mig 119: nháp chỉ chủ đơn thấy", () => {
     const DIR = resolve(ROOT, "supabase/migrations")
     let cuoi = ""
-    for (const f of readdirSync(DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    /* ⚠ Đọc cả ALTER POLICY (mig 262 đổi biểu thức tại chỗ — NVBH chỉ đơn của mình): chỉ đọc CREATE thì chốt này soi một bản đã
+       bị thay mà vẫn xanh. Bọc (SELECT auth.uid()) (mig 250) là cùng một điều kiện. */
+    for (const f of readdirSync(DIR).filter((x) => /^\d+_.*\.sql$/.test(x)).sort()) {
       const s = readFileSync(resolve(DIR, f), "utf-8")
-      const i = s.indexOf("CREATE POLICY sales_order_select ON sales_orders")
-      if (i < 0) continue
-      cuoi = s.slice(i, s.indexOf("\n  );", i))
+      for (const [mo, dong] of [
+        ["CREATE POLICY sales_order_select ON sales_orders", "\n  );"],
+        ["ALTER POLICY sales_order_select ON public.sales_orders USING (", "\n);"],
+      ] as const) {
+        const i = s.indexOf(mo)
+        if (i >= 0) cuoi = s.slice(i, s.indexOf(dong, i)).replace(/\(SELECT auth\.uid\(\)\)/g, "auth.uid()")
+      }
     }
     expect(cuoi, "không migration nào định nghĩa chính sách đọc đơn").not.toBe("")
+    expect(cuoi, "bản cuối phải là của mig 262 (ALTER POLICY)").toContain("ALTER POLICY sales_order_select")
     /**
      * ⚠ CẮT TỪ CHỖ MỞ VẾ (khối `AND (` đầu tiên sau `USING (`), KHÔNG
      *   cắt từ chữ `status <> 'draft'`: neo vào một chữ nằm giữa thì

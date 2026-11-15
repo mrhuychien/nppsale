@@ -389,6 +389,16 @@ Chủ nhà 13/11/2026: *"Sửa Nvbh chỉ được xem doanh số tổng bán (n
 
 ### Quyền
 - Tiền, tồn kho, trạng thái chứng từ chỉ đổi qua **RPC** — không ghi thẳng từ trình duyệt.
+- **NVBH chỉ xem đơn ĐỨNG TÊN MÌNH** (chủ nhà 15/11/2026, mig 262: *"Kiểm tra lại quyền xem, sao nhân viên này lại xem được đơn
+  hàng của nhân viên kia"*): `sales_order_select` = văn phòng (chủ / QL / KT / kho) mọi đơn đã gửi · NVBH `sales_user_id = mình` ·
+  tài xế đơn trong chuyến của mình · nháp chỉ người đứng tên (mig 161). Đã bỏ nhánh **khách đang phân công** (khách làm chung,
+  khách vừa bàn giao, đơn chủ NPP bán cho khách của NV đều lộ sang máy NV) và quyền **"Xem tất cả KH"** (`customer.view_all` nay
+  chỉ mở KHÁCH — ai cần xem đơn của mọi người thì đặt vai Quản lý). Như hoá đơn (mig 124), phiếu trả (mig 198), công nợ, phiếu
+  thu. Dòng đơn + lịch sử trạng thái + **nhật ký đơn** (`org_iso_oal`, trước chỉ lọc NPP) theo quyền xem đơn;
+  `get_invoiceable_lines` (SECURITY DEFINER — RLS không tự chặn) kiểm **đúng biểu thức** của chính sách → `ORDER_NOT_FOUND`.
+  Sửa luật xem đơn thì sửa cả hai chỗ — bộ thử so MỌI cặp người × đơn: `scripts/sql/thu-262-nvbh-chi-xem-don-cua-minh.sql`
+  (bước 0 đưa sổ về bản cũ để tái hiện lỗi). Khách làm chung: mỗi NV chỉ thấy đơn MÌNH bán (chi tiết khách, hàng hay mua, Đặt
+  lại); "Hàng khách đã lấy" (mig 246, chỉ số lượng) không đổi.
 - **Ô quyền riêng** (chủ nhà 20/10/2026: *"Kiểm tra lại sao tk nhân viên bán hàng lại có bàn giao khách nhỉ"*): tính năng
   khai `defaultRoles` (Bàn giao khách, Công nợ NCC, Phiếu thu, `reports.*`…) **không** thừa hưởng mô-đun cha — dòng
   `role_permissions` của mô-đun và quyền riêng từng người ở mô-đun **không mở** được nó (thu cả mô-đun của một người thì

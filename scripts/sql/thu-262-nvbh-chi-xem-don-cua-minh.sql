@@ -191,6 +191,9 @@ BEGIN
     AND r.invoice_id IS NULL /* (mig 212) đã bám HĐ = đã xuất theo tờ ấy */ AND rl.is_exchange = true;
 END;
 $function$;
+-- Bản trước 262 giữ lại cho bước 17 (dựng lại với xuống dòng kiểu Windows).
+CREATE TEMP TABLE ham_cu ON COMMIT DROP AS
+  SELECT pg_get_functiondef('public.get_invoiceable_lines(uuid)'::regprocedure) AS def;
 
 -- ===================================== DỰNG SỔ (postgres, không phiên — trigger "không phiên thì để yên") =====================================
 \o /dev/null
@@ -384,7 +387,25 @@ INSERT INTO kq SELECT 16, 'NVBH A lập đơn cho khách làm chung K1 → A đ�
   (SELECT order_code FROM sales_orders WHERE id = m.v)
   FROM ctx m WHERE m.k = 'm12';
 
-INSERT INTO kq SELECT 99, 'Đủ 16 dòng kiểm', count(*) = 16, count(*) || ' dòng' FROM kq;
+-- ===================================== 17. SỔ THẬT LƯU THÂN HÀM BẰNG \r\n =====================================
+-- Chủ nhà chạy bản đầu 15/11/2026 → "chỗ vá 1/1/0 — cần 1/1/1": thân hàm trên sổ thật xuống dòng kiểu Windows, chỗ vá vắt qua
+-- dòng khớp nguyên văn thì trượt. Dựng lại bản trước 262 với \r\n, chạy migration: phải vá đúng 1 chỗ và chạy đúng luật.
+DO $crlf$ BEGIN EXECUTE replace((SELECT def FROM ham_cu), E'\n', E'\r\n'); END $crlf$;
+\o /dev/null
+SELECT set_config('npp.thu262_co_cr', (position(E'\r' IN (SELECT prosrc FROM pg_proc
+  WHERE oid = 'public.get_invoiceable_lines(uuid)'::regprocedure)) > 0)::text, true);
+\ir ../../supabase/migrations/262_nvbh_chi_xem_don_cua_minh.sql
+\o
+INSERT INTO kq SELECT 17, 'Thân hàm xuống dòng kiểu Windows (\r\n, như sổ thật): vá đúng 1 chỗ; A không đọc được dòng đơn của B, đọc được đơn mình; chủ không đọc nháp của B',
+  current_setting('npp.thu262_co_cr') = 'true'
+    AND (SELECT count(*) FROM regexp_matches(pg_get_functiondef('public.get_invoiceable_lines(uuid)'::regprocedure), '\(mig 262\)', 'g')) = 1
+    AND pg_temp.goi_rpc(:A, (SELECT v FROM ctx WHERE k = 'o02')) = 'ORDER_NOT_FOUND'
+    AND pg_temp.goi_rpc(:A, (SELECT v FROM ctx WHERE k = 'o01')) IS NULL
+    AND pg_temp.goi_rpc(:CHU, (SELECT v FROM ctx WHERE k = 'o07')) = 'ORDER_NOT_FOUND'
+    AND pg_temp.goi_rpc(:CHU, (SELECT v FROM ctx WHERE k = 'o02')) IS NULL,
+  'có \r trước khi vá: ' || current_setting('npp.thu262_co_cr');
+
+INSERT INTO kq SELECT 99, 'Đủ 17 dòng kiểm', count(*) = 17, count(*) || ' dòng' FROM kq;
 SELECT buoc, CASE WHEN ok THEN 'ĐẠT' ELSE 'SAI' END AS kq, ten, ghi FROM kq ORDER BY buoc;
 SELECT count(*) AS tong, count(*) FILTER (WHERE ok) AS dat, count(*) FILTER (WHERE NOT ok OR ok IS NULL) AS loi FROM kq;
 ROLLBACK;

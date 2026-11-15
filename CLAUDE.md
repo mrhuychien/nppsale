@@ -417,7 +417,7 @@ Chủ nhà 13/11/2026: *"Sửa Nvbh chỉ được xem doanh số tổng bán (n
   thu. Dòng đơn + lịch sử trạng thái + **nhật ký đơn** (`org_iso_oal`, trước chỉ lọc NPP) theo quyền xem đơn;
   `get_invoiceable_lines` (SECURITY DEFINER — RLS không tự chặn) kiểm **đúng biểu thức** của chính sách → `ORDER_NOT_FOUND`.
   Sửa luật xem đơn thì sửa cả hai chỗ — bộ thử so MỌI cặp người × đơn: `scripts/sql/thu-262-nvbh-chi-xem-don-cua-minh.sql`
-  (bước 0 đưa sổ về bản cũ để tái hiện lỗi). Khách làm chung: mỗi NV chỉ thấy đơn MÌNH bán (chi tiết khách, hàng hay mua, Đặt
+  (bước 0 đưa sổ về bản cũ để tái hiện lỗi; bước 17 thân hàm `\r\n` như sổ thật). Khách làm chung: mỗi NV chỉ thấy đơn MÌNH bán (chi tiết khách, hàng hay mua, Đặt
   lại); "Hàng khách đã lấy" (mig 246, chỉ số lượng) không đổi.
 - **Ô quyền riêng** (chủ nhà 20/10/2026: *"Kiểm tra lại sao tk nhân viên bán hàng lại có bàn giao khách nhỉ"*): tính năng
   khai `defaultRoles` (Bàn giao khách, Công nợ NCC, Phiếu thu, `reports.*`…) **không** thừa hưởng mô-đun cha — dòng
@@ -690,6 +690,12 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
   35,9 → 1,6 ms. Vá trên **bản đang chạy** (`pg_get_expr` → `ALTER POLICY`, như mig 250), đừng chép lại trọn chính sách từ tệp
   cũ (mig 154); kiểm bằng so TẬP DÒNG từng người thấy trước / sau (`scripts/sql/thu-260-rls-khach-tinh-mot-lan.sql`) — cắt
   chuỗi sai một ngoặc là ai cũng thấy hết khách mà mọi bài khác vẫn xanh.
+- **Vá thân hàm đang chạy: khớp bằng biểu thức chính quy `\s`, KHÔNG khớp chuỗi nhiều dòng** (chủ nhà 15/11/2026 chạy mig 262:
+  *"chỗ vá 1/1/0 — cần 1/1/1"*): sổ thật lưu thân hàm (`pg_get_functiondef`) xuống dòng kiểu Windows `\r\n` — hàm tạo từ SQL
+  Editor trên máy Windows — nên mốc `E'…;\n  END IF;'` không bao giờ khớp, còn sổ thử (LF) vẫn xanh. Đếm mốc bằng
+  `regexp_matches(…, 'g')`, thay bằng `regexp_replace` (giữ đoạn khớp qua `\1`); thiếu mốc thì báo kèm `có \r` + đoạn quanh mốc.
+  Bộ thử chạy cả bản thân hàm `\r\n` (bước 17 của `thu-262-…sql`). Bài vitest chạy bộ thử SQL chỉ BỎ QUA khi máy không có
+  Postgres thử — bộ thử ném lỗi phải ĐỎ (trước đây gộp chung một `null`, migration hỏng bị bỏ qua lặng lẽ).
 - **JIT tắt cho vai `authenticated`** (mig 251): bật thì mỗi câu danh sách mất ~0,9 giây biên dịch, trang chủ 4,9 giây.
   Đừng bật lại; câu nào thật sự cần thì `ALTER FUNCTION … SET jit = on` riêng hàm ấy. **Mig 252 tắt thêm ở vai đăng nhập
   `authenticator` + `anon`** (chủ nhà 24/10/2026, bảng `pg_stat_statements`: danh sách hoá đơn ~3 s/câu; tái hiện trên sổ

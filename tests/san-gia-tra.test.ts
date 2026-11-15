@@ -193,23 +193,39 @@ describe("mọi màn nhập giá trả báo + chặn lưu khi dưới sàn", () 
   })
 })
 
-function chayBoThu(tep: string): string | null {
+const KET_NOI = ["-h", process.env.PG_THU_HOST || "/tmp/pgtest", "-p", process.env.PG_THU_PORT || "55432", "-U", "postgres",
+  "-d", process.env.PG_THU_DB || "npp_tong"]
+/**
+ * ⚠ CHỈ BỎ QUA KHI MÁY KHÔNG CÓ POSTGRES THỬ. Bộ thử chạy hỏng (migration ném lỗi — như "chỗ vá 1/1/0" của mig 262 trên sổ
+ *   thật 15/11/2026) phải ĐỎ: gộp hai ca vào một `null` thì migration hỏng trông y như máy thiếu Postgres, bài lặng lẽ bỏ qua.
+ */
+function coPgThu(): boolean {
   try {
-    return execFileSync(
-      "psql",
-      ["-h", process.env.PG_THU_HOST || "/tmp/pgtest", "-p", process.env.PG_THU_PORT || "55432", "-U", "postgres",
-        "-d", process.env.PG_THU_DB || "npp_tong", "-q", "-At", "-f", resolve(ROOT, tep)],
-      { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 300000, env: { ...process.env, PGOPTIONS: "-c session_preload_libraries=safeupdate" } }
-    )
+    execFileSync("psql", [...KET_NOI, "-At", "-c", "select 1"], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000 })
+    return true
   } catch {
-    return null
+    return false
   }
 }
-const BO_THU = chayBoThu("scripts/sql/thu-263-san-gia-tra.sql")
-describe.skipIf(!BO_THU)("mig 263 trên Postgres thử", () => {
+function chayBoThu(tep: string): { ok: boolean; out: string } {
+  try {
+    const out = execFileSync("psql", [...KET_NOI, "-q", "-At", "-f", resolve(ROOT, tep)], {
+      encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 300000,
+      env: { ...process.env, PGOPTIONS: "-c session_preload_libraries=safeupdate" },
+    })
+    return { ok: true, out }
+  } catch (e) {
+    const x = e as { stdout?: string; stderr?: string; message?: string }
+    return { ok: false, out: `${x.stdout ?? ""}\n${x.stderr ?? x.message ?? ""}` }
+  }
+}
+const PG_THU = coPgThu()
+const BO_THU = PG_THU ? chayBoThu("scripts/sql/thu-263-san-gia-tra.sql") : null
+describe.skipIf(!PG_THU)("mig 263 trên Postgres thử", () => {
   it("12/12 dòng đạt (sàn đúng đơn vị + nhóm giá, hàng đổi, vai, gắn hoá đơn, sửa dòng, lập đơn kèm trả, Xuất hàng thêm trả)", () => {
-    const dong = BO_THU!.trim().split("\n")
-    expect(dong.filter((d) => d.includes("|SAI|")), BO_THU!).toEqual([])
+    expect(BO_THU!.ok, `bộ thử chạy hỏng (migration ném lỗi?):\n${BO_THU!.out}`).toBe(true)
+    const dong = BO_THU!.out.trim().split("\n")
+    expect(dong.filter((d) => d.includes("|SAI|")), BO_THU!.out).toEqual([])
     expect(dong.at(-1)).toBe("12|12|0")
   })
 })

@@ -79,23 +79,39 @@ describe("màn Phân quyền nói rõ: Xem tất cả KH không mở đơn hàng
   })
 })
 
-function chayBoThu(tep: string): string | null {
+const KET_NOI = ["-h", process.env.PG_THU_HOST || "/tmp/pgtest", "-p", process.env.PG_THU_PORT || "55432", "-U", "postgres",
+  "-d", process.env.PG_THU_DB || "npp_tong"]
+/**
+ * ⚠ CHỈ BỎ QUA KHI MÁY KHÔNG CÓ POSTGRES THỬ. Bộ thử chạy hỏng (migration ném lỗi — như "chỗ vá 1/1/0" của mig 262 trên sổ
+ *   thật 15/11/2026) phải ĐỎ: gộp hai ca vào một `null` thì migration hỏng trông y như máy thiếu Postgres, bài lặng lẽ bỏ qua.
+ */
+function coPgThu(): boolean {
   try {
-    return execFileSync(
-      "psql",
-      ["-h", process.env.PG_THU_HOST || "/tmp/pgtest", "-p", process.env.PG_THU_PORT || "55432", "-U", "postgres",
-        "-d", process.env.PG_THU_DB || "npp_tong", "-q", "-At", "-f", resolve(ROOT, tep)],
-      { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 300000, env: { ...process.env, PGOPTIONS: "-c session_preload_libraries=safeupdate" } }
-    )
+    execFileSync("psql", [...KET_NOI, "-At", "-c", "select 1"], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 20000 })
+    return true
   } catch {
-    return null
+    return false
   }
 }
-const BO_THU = chayBoThu("scripts/sql/thu-262-nvbh-chi-xem-don-cua-minh.sql")
-describe.skipIf(!BO_THU)("mig 262 trên Postgres thử", () => {
-  it("17/17 dòng đạt (tái hiện lỗi trên bản cũ → chạy 262 hai lần → NVBH chỉ đơn mình; văn phòng / tài xế giữ nguyên; dòng đơn, nhật ký, lịch sử, get_invoiceable_lines theo đúng quyền xem đơn)", () => {
-    const dong = BO_THU!.trim().split("\n")
-    expect(dong.filter((d) => d.includes("|SAI|")), BO_THU!).toEqual([])
-    expect(dong.at(-1)).toBe("17|17|0")
+function chayBoThu(tep: string): { ok: boolean; out: string } {
+  try {
+    const out = execFileSync("psql", [...KET_NOI, "-q", "-At", "-f", resolve(ROOT, tep)], {
+      encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 300000,
+      env: { ...process.env, PGOPTIONS: "-c session_preload_libraries=safeupdate" },
+    })
+    return { ok: true, out }
+  } catch (e) {
+    const x = e as { stdout?: string; stderr?: string; message?: string }
+    return { ok: false, out: `${x.stdout ?? ""}\n${x.stderr ?? x.message ?? ""}` }
+  }
+}
+const PG_THU = coPgThu()
+const BO_THU = PG_THU ? chayBoThu("scripts/sql/thu-262-nvbh-chi-xem-don-cua-minh.sql") : null
+describe.skipIf(!PG_THU)("mig 262 trên Postgres thử", () => {
+  it("18/18 dòng đạt (tái hiện lỗi trên bản cũ → chạy 262 hai lần → NVBH chỉ đơn mình; văn phòng / tài xế giữ nguyên; dòng đơn, nhật ký, lịch sử, get_invoiceable_lines theo đúng quyền xem đơn; thân hàm xuống dòng kiểu Windows vẫn vá được)", () => {
+    expect(BO_THU!.ok, `bộ thử chạy hỏng (migration ném lỗi?):\n${BO_THU!.out}`).toBe(true)
+    const dong = BO_THU!.out.trim().split("\n")
+    expect(dong.filter((d) => d.includes("|SAI|")), BO_THU!.out).toEqual([])
+    expect(dong.at(-1)).toBe("18|18|0")
   })
 })

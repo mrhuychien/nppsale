@@ -83,17 +83,19 @@ ALTER POLICY org_iso_oal ON public.order_activity_log USING (
 );
 
 -- 3) get_invoiceable_lines: cùng luật xem đơn — vá chuỗi bản đang chạy ----------------------------------------------------------
+-- ⚠ KHỚP BẰNG BIỂU THỨC CHÍNH QUY, khoảng trắng / xuống dòng tuỳ ý (`\s`). Bản đầu khớp NGUYÊN VĂN '…''P0001'';\n  END IF;'
+--   và hỏng trên sổ thật (chủ nhà chạy 15/11/2026: "chỗ vá 1/1/0 — cần 1/1/1"): thân hàm ở đó lưu xuống dòng kiểu Windows
+--   (\r\n) — chỗ vá nằm gọn một dòng thì khớp, chỗ vắt qua dòng thì trượt. Lệch nữa thì câu lỗi in kèm đoạn quanh ORG_MISMATCH.
 DO $va$
 DECLARE
   v_def text := pg_get_functiondef('public.get_invoiceable_lines(uuid)'::regprocedure);
-  a1 text := 'DECLARE v_org uuid;';
+  re1 text := 'DECLARE\s+v_org\s+uuid\s*;';
   b1 text := 'DECLARE v_org uuid; v_nv uuid; v_tt text; v_toi uuid := auth.uid();';
-  a2 text := 'SELECT org_id INTO v_org FROM sales_orders WHERE id = p_order_id;';
+  re2 text := 'SELECT\s+org_id\s+INTO\s+v_org\s+FROM\s+sales_orders\s+WHERE\s+id\s*=\s*p_order_id\s*;';
   b2 text := 'SELECT org_id, sales_user_id, status INTO v_org, v_nv, v_tt FROM sales_orders WHERE id = p_order_id;';
-  a3 text := $s$RAISE EXCEPTION 'ORG_MISMATCH' USING ERRCODE = 'P0001';
-  END IF;$s$;
-  b3 text := $s$RAISE EXCEPTION 'ORG_MISMATCH' USING ERRCODE = 'P0001';
-  END IF;
+  re3 text := '(RAISE\s+EXCEPTION\s+''ORG_MISMATCH''\s+USING\s+ERRCODE\s*=\s*''P0001''\s*;\s*END\s+IF\s*;)';
+  -- \1 = nguyên đoạn ORG_MISMATCH … END IF; của bản đang chạy (giữ nguyên xuống dòng của nó), khối mới chèn ngay sau.
+  b3 text := '\1' || $s$
   -- (mig 262) ĐÚNG BIỂU THỨC của chính sách xem đơn `sales_order_select` (chủ nhà 15/11/2026): nháp chỉ người đứng tên;
   --   NVBH chỉ đơn của mình; tài xế đơn trong chuyến của mình. COALESCE(…, false) = RLS coi NULL là không thấy (tài khoản
   --   bị khoá: user_org_id() NULL). Hàm SECURITY DEFINER: RLS không tự chặn. Không xem được thì như không có đơn — không
@@ -115,13 +117,15 @@ BEGIN
   IF position('(mig 262)' IN v_def) > 0 THEN
     RETURN;  -- đã vá
   END IF;
-  n1 := (length(v_def) - length(replace(v_def, a1, ''))) / length(a1);
-  n2 := (length(v_def) - length(replace(v_def, a2, ''))) / length(a2);
-  n3 := (length(v_def) - length(replace(v_def, a3, ''))) / length(a3);
+  n1 := (SELECT count(*) FROM regexp_matches(v_def, re1, 'g'));
+  n2 := (SELECT count(*) FROM regexp_matches(v_def, re2, 'g'));
+  n3 := (SELECT count(*) FROM regexp_matches(v_def, re3, 'g'));
   IF n1 <> 1 OR n2 <> 1 OR n3 <> 1 THEN
-    RAISE EXCEPTION '262: get_invoiceable_lines bản đang chạy khác dự kiến (chỗ vá %/%/% — cần 1/1/1), không vá', n1, n2, n3;
+    RAISE EXCEPTION '262: get_invoiceable_lines bản đang chạy khác dự kiến (chỗ vá %/%/% — cần 1/1/1; có \r: %), không vá. Đoạn quanh ORG_MISMATCH: %',
+      n1, n2, n3, position(E'\r' IN v_def) > 0,
+      replace(replace(substring(v_def FROM greatest(position('ORG_MISMATCH' IN v_def) - 120, 1) FOR 260), E'\r', '\r'), E'\n', '\n');
   END IF;
-  EXECUTE replace(replace(replace(v_def, a1, b1), a2, b2), a3, b3);
+  EXECUTE regexp_replace(regexp_replace(regexp_replace(v_def, re1, b1), re2, b2), re3, b3);
 END
 $va$;
 

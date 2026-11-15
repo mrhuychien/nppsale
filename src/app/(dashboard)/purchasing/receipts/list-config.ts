@@ -17,9 +17,13 @@ export const DEFAULT_PURCHASE_RECEIPT_COLUMNS: PurchaseReceiptColumnKey[] = ["su
 
 export const PURCHASE_RECEIPT_FILTERS = [
   { key: "search", label: "Tìm phiếu nhập", required: true },
+  /* Phiếu có mặt hàng — chủ nhà 15/11/2026 "Thêm cho tao bộ lọc sản phẩm"; bật sẵn (`adoptNewKeys` bật cả cho người đã chỉnh). */
+  { key: "product", label: "Sản phẩm" },
 ] as const satisfies readonly ListViewOption<string>[]
 
-export const DEFAULT_PURCHASE_RECEIPT_FILTERS = ["search"] as ("search")[]
+export type PurchaseReceiptFilterKey = (typeof PURCHASE_RECEIPT_FILTERS)[number]["key"]
+
+export const DEFAULT_PURCHASE_RECEIPT_FILTERS: PurchaseReceiptFilterKey[] = ["search", "product"]
 
 /** Hai kho theo CHECK warehouse_zone IN ('sale', 'date'). */
 export const ZONE_LABEL: Record<string, string> = { sale: "Kho hàng bán", date: "Kho hàng date" }

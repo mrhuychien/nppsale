@@ -84,7 +84,8 @@ describe("đếm chip trạng thái một lượt (mig 206)", () => {
       const s = readFileSync(`src/app/(dashboard)/${f}/page.tsx`, "utf8")
       /* Lọc tuyến: nhúng `customers!inner(channel)` (NHOM_TUYEN) — nhúng rỗng + count() là 400 (42703) trên PostgREST thật,
          màn lặng lẽ lùi về đếm từng trạng thái (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"). */
-      expect(s).toContain(`supabase.from("${bang}").select((routeFilter !== "all" ? \`status, count(), \${NHOM_TUYEN}\` : "status, count()") as string)`)
+      /* Bọc `kemSp(…)`: bộ lọc sản phẩm (chủ nhà 15/11/2026) nhúng bảng dòng vào CÙNG câu gộp — `@/lib/list/loc-san-pham`. */
+      expect(s).toContain(`supabase.from("${bang}").select(kemSp(routeFilter !== "all" ? \`status, count(), \${NHOM_TUYEN}\` : "status, count()") as string)`)
       expect(s).not.toContain("count(), customer:customers!inner()")
       expect(s).toMatch(/if \(nhom\) \{/)
     }

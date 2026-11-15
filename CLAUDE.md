@@ -187,6 +187,24 @@ Chủ nhà 08/11/2026: *"Phần công nợ NCC : Công nợ chưa có cột dư 
   ghi, khoản đã trả không phiếu, phiếu chi phí nghi là trả NCC (tên NCC / từ khoá), phiếu chi NCC lệch. Bộ thử:
   `scripts/sql/thu-kham-tra-tien-ncc.sql`.
 
+### Lọc chứng từ theo sản phẩm
+Chủ nhà 15/11/2026: *"Thêm cho tao bộ lọc sản phẩm trong Đơn hàng/Hóa đơn/Trả hàng/Nhập NCC/Trả NCC"*.
+- Ô "Sản phẩm" (`LocSanPham`, `src/components/ui/loc-san-pham.tsx` — gõ tên / mã / mã vạch, ✕ về tất cả): máy tính trên thanh
+  công cụ (ô lọc bật sẵn, tắt được ở bộ chọn ô lọc; Trả NCC không có bộ chọn → luôn hiện), điện thoại trong tấm lọc (Đơn hàng,
+  Hoá đơn, Nhập / Trả NCC) hoặc ngay dưới ô tìm (Trả hàng). Danh mục hàng chỉ tải khi chạm ô hoặc đang lọc (`useHangLoc`,
+  `nen:hang-nhe` — mở danh sách không kéo cả danh mục về).
+- Lọc TRÊN MÁY CHỦ bằng bảng dòng nhúng `!inner` (`src/lib/list/loc-san-pham.ts`): `kemLocSp(select, bảng, sp)` thêm
+  `loc_sp:<bảng dòng>!inner(product_id)` vào select, `apLocSp(q, sp)` đặt `loc_sp.product_id=eq.<id>` trong hàm lọc chung của màn
+  (`applyCommonFilters` / `applyFilters` / `apDungLoc`). Không cần migration. Hai hàm ĐI ĐÔI ở MỌI câu đi qua hàm lọc chung —
+  danh sách, số trên tab (`status, count()`), tổng tiền (`total.sum()`, `v_hoa_don_con_lai.con_lai.sum()`), thống kê ngày, Excel:
+  quên nhúng là 400 PGRST108 (câu gộp hỏng thì màn lùi về cách cũ — số vẫn đúng mà câu sai, chỉ bài kiểm câu gửi đi mới thấy);
+  nhúng mà không lọc là âm thầm bỏ chứng từ không có dòng nào. Nhúng CÓ cột, không `!inner()` rỗng (400 khi đi cùng câu gộp).
+  Đừng đổi sang tra id rồi `id=in.(…)`: hàng bán chạy nằm trong hàng nghìn tờ — vượt trần URL, phải cắt ngầm.
+- Khớp MỌI dòng của chứng từ, kể cả dòng hàng đổi. Nhập NCC / Trả NCC tải đủ rồi lọc tại chỗ → mặt hàng lọc ngay ở câu tải.
+- Sổ giả e2e nối thật bảng dòng CHỈ cho tên nhúng `loc_sp` (`noiDong`, `DONG_CUA`) và trả PGRST108 khi lọc `loc_sp.*` mà không
+  nhúng. Bộ thử: `tests/loc-san-pham.test.ts` (đếm số câu qua hàm lọc chung = số select qua `kemSp`), `e2e/loc-san-pham.spec.ts`
+  (5 màn + điện thoại, soát từng câu gửi đi).
+
 ### Thêm hàng ở POS
 Chủ nhà 13/10/2026: *"thêm sản phẩm thì sản phẩm xuất hiện đầu danh sách luôn"* · *"phần đổi trả dài quá ko có scroll
 … chỉ hiện hàng đổi trả không hiện phiếu đi"*.

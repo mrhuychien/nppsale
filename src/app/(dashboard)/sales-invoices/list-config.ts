@@ -50,10 +50,12 @@ export const INVOICE_FILTERS = [
   { key: "search", label: "Tìm số hóa đơn", required: true },
   { key: "date", label: "Ngày xuất" },
   { key: "customer", label: "Khách hàng" },
+  /* Hoá đơn có mặt hàng — chủ nhà 15/11/2026 "Thêm cho tao bộ lọc sản phẩm"; bật sẵn (`adoptNewKeys` bật cả cho người đã chỉnh). */
+  { key: "product", label: "Sản phẩm" },
   { key: "sales", label: "Tính cho NV" },
   { key: "amount", label: "Giá trị hóa đơn" },
 ] as const satisfies readonly ListViewOption<string>[]
 
 export type InvoiceFilterKey = (typeof INVOICE_FILTERS)[number]["key"]
 
-export const DEFAULT_INVOICE_FILTERS: InvoiceFilterKey[] = ["search", "date"]
+export const DEFAULT_INVOICE_FILTERS: InvoiceFilterKey[] = ["search", "date", "product"]

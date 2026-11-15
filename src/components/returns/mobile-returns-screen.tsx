@@ -48,6 +48,7 @@ export function MobileReturnsScreen({
   onSearch,
   reason,
   onReason,
+  productFilter,
   rows,
   codes,
   loading,
@@ -71,6 +72,8 @@ export function MobileReturnsScreen({
   onSearch: (v: string) => void
   reason: string
   onReason: (v: string) => void
+  /** Ô lọc sản phẩm (chủ nhà 15/11/2026) — trang dựng (`LocSanPham`), đứng dưới ô tìm. */
+  productFilter?: React.ReactNode
   rows: PhieuTraMobile[]
   codes: Map<string, string>
   loading: boolean
@@ -208,6 +211,7 @@ export function MobileReturnsScreen({
             ))}
           </select>
         </div>
+        {productFilter && <div data-testid="tra-loc-san-pham">{productFilter}</div>}
 
         {notice}
 

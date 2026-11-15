@@ -39,6 +39,8 @@ import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { useKhachLoc, cauTrongKhachLoc } from "@/hooks/use-khach-loc"
+import { LocSanPham } from "@/components/ui/loc-san-pham"
+import { apLocSp, kemLocSp, type BangLocSp } from "@/lib/list/loc-san-pham"
 import { useRoleGuard } from "@/hooks/use-role-guard"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
 import { usePagination } from "@/hooks/use-pagination"
@@ -176,6 +178,9 @@ export default function SalesInvoicesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [routeFilter, setRouteFilter] = useState("all")
   const [customerFilter, setCustomerFilter] = useState("all")
+  /** Mặt hàng đang lọc (chủ nhà 15/11/2026) — "all" = mọi hàng. Câu nào đi qua `applyFilters` thì `select` phải qua `kemSp`. */
+  const [productFilter, setProductFilter] = useState("all")
+  const kemSp = (select: string, bang: BangLocSp = "sales_invoices") => kemLocSp(select, bang, productFilter)
   const [salesFilter, setSalesFilter] = useState("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
@@ -292,6 +297,8 @@ export default function SalesInvoicesPage() {
       for (const f of fieldSearch.filters) x = x.or(f)
       for (const f of locNC.menhDe) x = x.or(f)
       if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
+      /* Hoá đơn có mặt hàng đang lọc — bảng dòng nhúng `!inner`, select đã `kemSp` (xem `@/lib/list/loc-san-pham`). */
+      x = apLocSp(x, productFilter)
       if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
       if (routeFilter !== "all" && !boTuyen) x = x.eq("customer.channel", routeFilter)
       if (dateFrom) x = x.gte("invoice_date", dateFrom)
@@ -307,7 +314,7 @@ export default function SalesInvoicesPage() {
       if (pFrom) x = x.gte("invoice_date", pFrom)
       return x
     },
-    [customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc,
+    [customerFilter, productFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc,
      listSearch, fieldSearch, locNC.menhDe]
   )
 
@@ -336,7 +343,7 @@ export default function SalesInvoicesPage() {
       let q = apSapXep(
         supabase
           .from("sales_invoices")
-          .select(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, dem ? { count: "exact" } : undefined),
+          .select(kemSp(`${BASE_COLS}, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`), dem ? { count: "exact" } : undefined),
         sort,
         INVOICE_SORT_COLUMNS,
         (x) => x.order("invoice_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
@@ -427,7 +434,7 @@ export default function SalesInvoicesPage() {
     /* ⚠ CỘNG TRÊN MÁY CHỦ, MỘT CÂU (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"): view
        `v_hoa_don_con_lai` (mig 257) có sẵn số CÒN LẠI sau hàng trả của từng tờ. Bản cũ ngay dưới tải id + tiền mọi tờ rồi tra
        hàng trả 200 tờ một câu — NVBH kỳ "Tất cả" 86 câu / 68 đợt. Sổ chưa có view → `null`, cộng theo cách cũ. */
-    let qGop = supabase.from("v_hoa_don_con_lai").select((routeFilter !== "all" ? `con_lai.sum(), ${NHOM_TUYEN}` : "con_lai.sum()") as string)
+    let qGop = supabase.from("v_hoa_don_con_lai").select(kemSp(routeFilter !== "all" ? `con_lai.sum(), ${NHOM_TUYEN}` : "con_lai.sum()", "v_hoa_don_con_lai") as string)
     qGop = status !== "all" ? locTrangThai(qGop, status) : qGop.neq("status", "cancelled")
     const gop = await gopMayChu(applyFilters(qGop as never) as typeof qGop, docTongGop, "sales-invoices")
     if (luot !== luotRef.current.tong) return
@@ -439,7 +446,7 @@ export default function SalesInvoicesPage() {
     const res = await fetchAllForAggregate<{ id: string; total: number | string }>((from, to) => {
       let q = supabase
         .from("sales_invoices")
-        .select(routeFilter !== "all" ? `id, total, ${cust}` : "id, total", { count: "exact" })
+        .select(kemSp(routeFilter !== "all" ? `id, total, ${cust}` : "id, total"), { count: "exact" })
       if (status !== "all") q = locTrangThai(q, status)
       // Tab "Tất cả": hóa đơn đã huỷ không vào tổng tiền.
       else q = q.neq("status", "cancelled")
@@ -477,7 +484,7 @@ export default function SalesInvoicesPage() {
       let q = apSapXep(
         supabase
           .from("sales_invoices")
-          .select(`${BASE_COLS}, subtotal, vat, notes, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`, { count: "exact" }),
+          .select(kemSp(`${BASE_COLS}, subtotal, vat, notes, ${cust}, ${SALES_EMBED}, order:sales_orders(order_code)`), { count: "exact" }),
         sort,
         INVOICE_SORT_COLUMNS,
         (x) => x.order("invoice_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
@@ -504,7 +511,7 @@ export default function SalesInvoicesPage() {
     const one = async (st: string | null) => {
       let q = supabase
         .from("sales_invoices")
-        .select(`id, ${cust}`, { count: "exact", head: true })
+        .select(kemSp(`id, ${cust}`), { count: "exact", head: true })
       if (st) q = q.eq("status", st)
       const { count, error } = await applyFilters(q as never) as unknown as { count: number | null; error: unknown }
       if (error) console.error("[sales-invoices] đếm lỗi")
@@ -516,7 +523,7 @@ export default function SalesInvoicesPage() {
     const nhom = docDemNhom(
       await (applyFilters(
         /* Lọc tuyến: nhúng `customers!inner(channel)` — nhúng rỗng đi cùng count() là 400 (42703) trên PostgREST thật. */
-        supabase.from("sales_invoices").select((routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string) as never
+        supabase.from("sales_invoices").select(kemSp(routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string) as never
       ) as unknown as PromiseLike<{ data: unknown; error: unknown }>)
     )
     if (luot !== luotRef.current.dem) return
@@ -555,7 +562,7 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     pg.setPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, customerFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key, sort])
+  }, [status, customerFilter, productFilter, salesFilter, routeFilter, dateFrom, dateTo, amountMin, amountMax, debouncedSearch, kyLoc, fieldSearch.key, locNC.key, sort])
 
   const routeNameByCode = useMemo(
     () => Object.fromEntries(routes.map((r) => [r.code, r.name])) as Record<string, string>,
@@ -574,7 +581,7 @@ export default function SalesInvoicesPage() {
     let huy = false
     ;(async () => {
       /* Đếm trên máy chủ, một câu (chủ nhà 01/11/2026) — bản cũ tải id mọi tờ (20 trang, chạm trần là đếm THIẾU). */
-      let qGop = supabase.from("sales_invoices").select(`count(), ${NHOM_TUYEN}` as string)
+      let qGop = supabase.from("sales_invoices").select(kemSp(`count(), ${NHOM_TUYEN}`) as string)
       qGop = locTrangThai(qGop, status)
       const gop = await gopMayChu(applyFilters(qGop as never, true) as typeof qGop, docDemTheoTuyen, "sales-invoices")
       if (huy) return
@@ -585,7 +592,7 @@ export default function SalesInvoicesPage() {
       const res = await fetchAllForAggregate<{ customer: { channel: string | null } | null }>((from, to) => {
         let q = supabase
           .from("sales_invoices")
-          .select("id, customer:customers!inner(channel)", { count: "exact" })
+          .select(kemSp("id, customer:customers!inner(channel)"), { count: "exact" })
         q = locTrangThai(q, status)
         return (applyFilters(q as never, true) as typeof q).order("id").range(from, to)
       })
@@ -623,7 +630,7 @@ export default function SalesInvoicesPage() {
         (from, to) => {
           let q = supabase
             .from("sales_invoices")
-            .select(routeFilter !== "all" ? `id, invoice_date, total, ${cust}` : "id, invoice_date, total", { count: "exact" })
+            .select(kemSp(routeFilter !== "all" ? `id, invoice_date, total, ${cust}` : "id, invoice_date, total"), { count: "exact" })
             .in("invoice_date", days)
           q = locTrangThai(q, status)
           return (applyFilters(q as never) as typeof q).order("id").range(from, to)
@@ -653,12 +660,12 @@ export default function SalesInvoicesPage() {
 
 
   const clearAdvanced = () => {
-    setCustomerFilter("all"); setSalesFilter("all"); setRouteFilter("all")
+    setCustomerFilter("all"); setProductFilter("all"); setSalesFilter("all"); setRouteFilter("all")
     setDateFrom(""); setDateTo(""); setAmountMin(""); setAmountMax("")
     setTruongTim({})
   }
   const activeFilterCount =
-    (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
+    (customerFilter !== "all" ? 1 : 0) + (productFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (routeFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) +
     (amountMin || amountMax ? 1 : 0) + soTruongDangTim(truongTim)
 
@@ -815,6 +822,10 @@ export default function SalesInvoicesPage() {
               <RouteFilter inline routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
             </div>
           )}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Sản phẩm</p>
+            <LocSanPham value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+          </div>
           {advancedFilterFields}
         </div>
       </MobileFilterBar>
@@ -839,6 +850,9 @@ export default function SalesInvoicesPage() {
             />
           )}
           <RouteFilter routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
+          {filterActive("product") && (
+            <LocSanPham id="inv-product" className="w-[240px]" value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+          )}
           <PeriodSelect
             value={dateFrom || dateTo ? "custom" : period}
             onChange={(k) => { setDateFrom(""); setDateTo(""); setPeriod(k) }}

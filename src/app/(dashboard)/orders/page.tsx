@@ -14,6 +14,8 @@ import { MATCH_CAP } from "@/lib/search/list-search"
 import { useListSearch } from "@/hooks/use-list-search"
 import { SearchSelect } from "@/components/ui/search-select"
 import { useKhachLoc, cauTrongKhachLoc } from "@/hooks/use-khach-loc"
+import { LocSanPham } from "@/components/ui/loc-san-pham"
+import { apLocSp, kemLocSp } from "@/lib/list/loc-san-pham"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -289,6 +291,9 @@ export default function OrdersPage() {
   /* Kỳ áp cho cả máy tính và điện thoại; hai ô ngày tự chọn thì ô ngày thắng. */
   const kyLoc = kyDangLoc(period, !!(dateFrom || dateTo))
   const [customerFilter, setCustomerFilter] = useState("all")
+  /** Mặt hàng đang lọc (chủ nhà 15/11/2026) — "all" = mọi hàng. Câu nào đi qua `applyCommonFilters` thì `select` phải qua `kemSp`. */
+  const [productFilter, setProductFilter] = useState("all")
+  const kemSp = (select: string) => kemLocSp(select, "sales_orders", productFilter)
   const [salesFilter, setSalesFilter] = useState("all")
   /**
    * Lọc theo TUYẾN bán hàng.
@@ -518,6 +523,8 @@ export default function OrdersPage() {
     // trống phần khách — danh sách đầy dòng "—" trông như dữ liệu hỏng.
     if (routeFilter !== "all") x = x.eq("customer.channel", routeFilter)
     if (customerFilter !== "all") x = x.eq("customer_id", customerFilter)
+    /* Đơn có mặt hàng đang lọc — bảng dòng nhúng `!inner`, select đã `kemSp` (xem `@/lib/list/loc-san-pham`). */
+    x = apLocSp(x, productFilter)
     if (salesFilter !== "all") x = x.eq("sales_user_id", salesFilter)
     if (dateFrom) x = x.gte("order_date", dateFrom)
     if (dateTo) x = x.lte("order_date", dateTo + "T23:59:59")
@@ -617,7 +624,7 @@ export default function OrdersPage() {
           // audit-ok: xem chú thích ngay trên — lỗi gộp vào `countErr`.
           supabase
             .from("sales_orders")
-            .select(routeFilter !== "all" ? COUNT_SELECT_WITH_ROUTE : "id", {
+            .select(kemSp(routeFilter !== "all" ? COUNT_SELECT_WITH_ROUTE : "id"), {
               count: "exact",
               head: true,
             })
@@ -628,7 +635,7 @@ export default function OrdersPage() {
          01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"). Thêm nhóm theo tuyến không đổi số: docDemNhom cộng dồn. */
       const nhom = docDemNhom(
         await applyCommonFilters(
-          supabase.from("sales_orders").select((routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string)
+          supabase.from("sales_orders").select(kemSp(routeFilter !== "all" ? `status, count(), ${NHOM_TUYEN}` : "status, count()") as string)
         )
       )
       if (cancelled) return
@@ -671,12 +678,12 @@ export default function OrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [sanSang, debouncedSearch, listSearch, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, debouncedSearch, listSearch, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset page về 1 mỗi khi filter / thứ tự xếp đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, effectiveStatus, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // List query — filter server-side, paginate.
   useEffect(() => {
@@ -684,7 +691,7 @@ export default function OrdersPage() {
     async function fetchOrders() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 đơn đầu vẽ ngay, phần còn lại của trang về sau.
          "Tải thêm" / đổi sang trang dài hơn cùng truy vấn: giữ danh sách đang hiện, không vẽ lại. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from, sort])
+      const khoa = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, pg.from, sort])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ KHÁCH. Giữ nguyên trạng thái "đang nạp" chứ
          không vẽ ra một danh sách thiếu rồi tự sửa. */
@@ -700,7 +707,7 @@ export default function OrdersPage() {
            `order_date`; xếp theo `created_at` thì đơn ghi lùi ngày (đơn nhập bù) rơi vào giữa nhóm ngày khác — cùng
            một ngày hiện thành hai nhóm tách rời. Như màn Hóa đơn (`invoice_date`, `created_at`). */
         const q = apSapXep(
-          supabase.from("sales_orders").select(select, dem ? { count: "exact" } : undefined),
+          supabase.from("sales_orders").select(kemSp(select), dem ? { count: "exact" } : undefined),
           sort,
           ORDER_SORT_COLUMNS,
           (x) => x.order("order_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
@@ -741,7 +748,7 @@ export default function OrdersPage() {
     }
     fetchOrders()
     return () => { cancelled = true }
-  }, [sanSang, pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, sort]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, pg.from, pg.to, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick, sort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Đầu nhóm ngày trên điện thoại ("N đơn · tổng") — đếm TRÊN MÁY CHỦ cho đúng những ngày đang hiện, cùng bộ lọc
@@ -750,7 +757,7 @@ export default function OrdersPage() {
   const [dayStatsRaw, setDayStats] = useState<{ khoa: string; data: ThongKeNgay | null } | null>(null)
   const ngayDangHien = cacNgayDangHien(orders, (o) => o.order_date).join(",")
   /* Số của bộ lọc CŨ không được dán lên danh sách của bộ lọc mới trong lúc chờ đọc lại. */
-  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick])
+  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick])
   const dayStats = dayStatsRaw?.khoa === khoaLocNgay ? dayStatsRaw.data : null
   useEffect(() => {
     if (laMay !== false || !searchReady || !ngayDangHien) return
@@ -764,7 +771,7 @@ export default function OrdersPage() {
             applyCommonFilters(
               supabase
                 .from("sales_orders")
-                .select(routeFilter !== "all" ? "id, order_date, total, customer:customers!inner(id)" : "id, order_date, total", { count: "exact" })
+                .select(kemSp(routeFilter !== "all" ? "id, order_date, total, customer:customers!inner(id)" : "id, order_date, total"), { count: "exact" })
                 .in("order_date", days)
                 .order("id")
                 .range(from, to)
@@ -791,7 +798,7 @@ export default function OrdersPage() {
       applyStatusFilter(
         applyCommonFilters(
           apSapXep(
-            supabase.from("sales_orders").select(chon, { count: "exact" }),
+            supabase.from("sales_orders").select(kemSp(chon), { count: "exact" }),
             sort,
             ORDER_SORT_COLUMNS,
             (x) => x.order("order_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
@@ -919,7 +926,7 @@ export default function OrdersPage() {
       /* ⚠ CỘNG TRÊN MÁY CHỦ, MỘT CÂU (chủ nhà 01/11/2026 "tìm kiếm trong danh sách … nhiều khi còn chậm"): kỳ "Tất cả" bản
          cũ tải 20 trang tiền rồi chạm trần (dải "—"). Máy chủ chưa gộp được thì `null` → cộng theo cách cũ ngay dưới. */
       let qGop = applyStatusFilter(
-        applyCommonFilters(supabase.from("sales_orders").select((routeFilter !== "all" ? `total.sum(), ${NHOM_TUYEN}` : "total.sum()") as string)),
+        applyCommonFilters(supabase.from("sales_orders").select(kemSp(routeFilter !== "all" ? `total.sum(), ${NHOM_TUYEN}` : "total.sum()") as string)),
         effectiveStatus
       )
       // Tab "Tất cả": đơn đã huỷ không vào tổng tiền (số đơn vẫn đếm cả) — như đường cũ ngay dưới.
@@ -936,7 +943,7 @@ export default function OrdersPage() {
             // audit-ok: lỗi đi vào nhánh `res.error` ngay dưới.
             supabase
               .from("sales_orders")
-              .select(routeFilter !== "all" ? TOTAL_SELECT_WITH_ROUTE : "total", { count: "exact" })
+              .select(kemSp(routeFilter !== "all" ? TOTAL_SELECT_WITH_ROUTE : "total"), { count: "exact" })
               .range(from, to)
           ),
           effectiveStatus
@@ -953,7 +960,7 @@ export default function OrdersPage() {
       setFilteredTotal(res.rows.reduce((a, r) => a + (Number(r.total) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [sanSang, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sanSang, debouncedSearch, listSearch, effectiveStatus, routeFilter, customerFilter, productFilter, salesFilter, dateFrom, dateTo, amountMin, amountMax, kyLoc, fieldSearch.key, locNC.key, isSales, focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ⚠ Bộ lọc pipeline đã bỏ (chủ nhà chốt 23/09/2026) — mọi lọc chạy ở máy chủ. */
   const filtered = orders
@@ -1223,6 +1230,7 @@ export default function OrdersPage() {
     setDateFrom("")
     setDateTo("")
     setCustomerFilter("all")
+    setProductFilter("all")
     setSalesFilter("all")
     setAmountMin("")
     setAmountMax("")
@@ -1310,7 +1318,7 @@ export default function OrdersPage() {
   const activeFilterCount =
     (statusIsFiltered ? 1 : 0) + (routeFilter !== "all" ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
-    (customerFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
+    (customerFilter !== "all" ? 1 : 0) + (productFilter !== "all" ? 1 : 0) + (salesFilter !== "all" ? 1 : 0) +
     (amountMin ? 1 : 0) + (amountMax ? 1 : 0) +
     soTruongDangTim(truongTim)
   /**
@@ -1329,7 +1337,7 @@ export default function OrdersPage() {
   const clearAdvancedFilters = () => {
     setRouteFilter("all")
     setDateFrom(""); setDateTo("")
-    setCustomerFilter("all"); setSalesFilter("all")
+    setCustomerFilter("all"); setProductFilter("all"); setSalesFilter("all")
     setAmountMin(""); setAmountMax("")
     setTruongTim({})
   }
@@ -1609,6 +1617,10 @@ export default function OrdersPage() {
               <RouteFilter inline routes={routes} counts={routeCounts} value={routeFilter} onChange={setRouteFilter} />
             </div>
           )}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Sản phẩm</p>
+            <LocSanPham value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+          </div>
           {advancedFilterFields}
         </div>
       </MobileFilterBar>
@@ -1649,6 +1661,9 @@ export default function OrdersPage() {
               ))}
             </SelectContent>
           </Select>
+        )}
+        {filterActive("product") && (
+          <LocSanPham id="ord-product" className="w-[240px]" value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
         )}
         <PeriodSelect
           value={dateFrom || dateTo ? "custom" : period}

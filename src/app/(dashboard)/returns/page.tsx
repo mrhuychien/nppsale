@@ -65,6 +65,8 @@ import { useKhoMay } from "@/hooks/use-is-desktop"
 import { hasPermission } from "@/lib/permissions"
 import { useToast } from "@/hooks/use-toast"
 import { docDemNhom, docDemNhomTheo, tongDem, type DemNhom } from "@/lib/list/dem-nhom"
+import { LocSanPham } from "@/components/ui/loc-san-pham"
+import { apLocSp, kemLocSp } from "@/lib/list/loc-san-pham"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong } from "@/lib/xuat-excel/nap"
 import {
@@ -126,6 +128,8 @@ export default function ReturnsPage() {
   const [reasonFilter, setReasonFilter] = useState("all")
   /** NV được tính khoản trừ: "all" · "none" (chưa gán) · id người dùng. */
   const [sellerFilter, setSellerFilter] = useState("all")
+  /** Mặt hàng đang lọc (chủ nhà 15/11/2026) — "all" = mọi hàng. */
+  const [productFilter, setProductFilter] = useState("all")
   const [nhanVien, setNhanVien] = useState<Array<{ id: string; full_name: string | null }>>([])
   /**
    * ⚠ MỞ RA Ở "CHỜ XỬ LÝ", không phải "Tất cả". Màn này là HÀNG ĐỢI VIỆC
@@ -167,6 +171,12 @@ export default function ReturnsPage() {
   )
   const show = (k: ReturnColumnKey) => visibleColumns.includes(k)
   const filterActive = (k: ReturnFilterKey) => activeFilters.includes(k)
+  /**
+   * Mặt hàng ÁP vào câu — như lý do / NV: máy tính tắt ô lọc thì thôi lọc; điện thoại luôn có ô. ⚠ `kemSp` và `apDungLoc`
+   * dùng CÙNG giá trị này: nhúng `!inner` mà không lọc là âm thầm bỏ phiếu không có dòng nào, lọc mà không nhúng là 400.
+   */
+  const spLoc = filterActive("product") || laDienThoai ? productFilter : "all"
+  const kemSp = (select: string) => kemLocSp(select, "returns", spLoc)
 
   // Stats: count theo reason (mount 1 lần, toàn tổng).
   useEffect(() => {
@@ -215,7 +225,7 @@ export default function ReturnsPage() {
   // Reset page khi filter đổi.
   useEffect(() => {
     pg.reset()
-  }, [debouncedSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, reasonFilter, sellerFilter, productFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TÌM CHÉO BỐN BẢNG. Phiếu trả tra theo tên điểm bán, tên người đề
@@ -258,6 +268,8 @@ export default function ReturnsPage() {
     if (ttChon) x = ttChon.length === 1 ? x.eq("status", ttChon[0]) : x.in("status", ttChon)
     if (filterActive("seller") && sellerFilter === "none") x = x.is("sales_user_id", null)
     else if (filterActive("seller") && sellerFilter !== "all") x = x.eq("sales_user_id", sellerFilter)
+    /* Phiếu có mặt hàng đang lọc — bảng dòng nhúng `!inner`, select đã `kemSp` (xem `@/lib/list/loc-san-pham`). */
+    x = apLocSp(x, spLoc)
     return x
   }
 
@@ -279,7 +291,7 @@ export default function ReturnsPage() {
     async function fetch() {
       /* Tải HAI NHỊP (chủ nhà 26/09/2026): 20 phiếu đầu vẽ ngay, phần còn lại về sau. Tải thêm
          cùng truy vấn: giữ danh sách đang hiện. */
-      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, pg.from, laMay, taiLai])
+      const khoa = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, productFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, pg.from, laMay, taiLai])
       if (!laTaiThem(khoaTaiRef, khoa, pg.to, false)) setLoading(true)
       /* ⚠ CHỜ LƯỢT TRA MÃ — xem `useListSearch`. Chờ cả biết khổ màn (lọc lý do khác nhau). */
       if (!searchReady) return
@@ -288,7 +300,7 @@ export default function ReturnsPage() {
         const q = supabase
           .from("returns")
           .select(
-            "id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, invoice_id, order_id, destination_zone, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)",
+            kemSp("id, created_at, return_date, reason, status, credit_note_amount, credit_with_invoice, invoice_id, order_id, destination_zone, customer:customers(store_name), requester:users!returns_requested_by_fkey(full_name), seller:users!returns_sales_user_id_fkey(full_name), order:sales_orders(order_code), invoice:sales_invoices(invoice_code)"),
             dem ? { count: "exact" } : undefined
           )
           /* ⚠ NGÀY CHỨNG TỪ (mig 188) — sửa ngày phiếu thì danh sách xếp theo ngày mới. */
@@ -341,7 +353,7 @@ export default function ReturnsPage() {
     }
     fetch()
     return () => { cancelled = true }
-  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pg.from, pg.to, debouncedSearch, listSearch, reasonFilter, sellerFilter, productFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⚠ TỔNG KHOẢN CÓ CỦA CẢ BỘ LỌC, KHÔNG PHẢI CỦA TRANG ĐANG XEM (23/09/2026).
@@ -357,7 +369,7 @@ export default function ReturnsPage() {
    */
   const [dayStatsRaw, setDayStats] = useState<{ khoa: string; data: ThongKeNgay | null } | null>(null)
   const ngayDangHien = returns.every((r) => !!(r as { return_date?: string | null }).return_date) ? cacNgayDangHien(returns as Array<{ return_date?: string | null; created_at: string }>, ngayNhomTra).join(",") : ""
-  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, taiLai])
+  const khoaLocNgay = JSON.stringify([debouncedSearch, listSearch, reasonFilter, sellerFilter, productFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, taiLai])
   const dayStats = dayStatsRaw?.khoa === khoaLocNgay ? dayStatsRaw.data : null
   useEffect(() => {
     if (laMay !== false || !searchReady || !ngayDangHien) return
@@ -370,7 +382,7 @@ export default function ReturnsPage() {
           apDungLoc(
             supabase
               .from("returns")
-              .select("id, return_date, credit_note_amount", { count: "exact" })
+              .select(kemSp("id, return_date, credit_note_amount"), { count: "exact" })
               .in("return_date", days)
               .order("id")
               .range(from, to)
@@ -394,7 +406,7 @@ export default function ReturnsPage() {
         const q = apDungLoc(
           supabase
             .from("returns")
-            .select("credit_note_amount", { count: "exact" })
+            .select(kemSp("credit_note_amount"), { count: "exact" })
             .order("created_at", { ascending: false })
             .order("id")
             .range(from, to)
@@ -411,7 +423,7 @@ export default function ReturnsPage() {
       setTongKhoanCo(res.rows.reduce((a, r) => a + (Number(r.credit_note_amount) || 0), 0))
     })()
     return () => { cancelled = true }
-  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, listSearch, reasonFilter, sellerFilter, productFilter, ttHieuLuc, activeFilters, fieldSearch.key, locNC.key, laMay, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ĐIỆN THOẠI — SỐ TRÊN TỪNG TAB (mẫu 27/09/2026), cùng bộ lọc tìm / lý do nhưng BỎ trạng thái.
@@ -424,7 +436,7 @@ export default function ReturnsPage() {
     ;(async () => {
       setDemTab(null)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const qDem = supabase.from("returns").select("status, count()" as string) as any
+      const qDem = supabase.from("returns").select(kemSp("status, count()") as string) as any
       const nhom = docDemNhom(await apDungLoc(qDem, true))
       let d = nhom
       if (!d) {
@@ -433,7 +445,7 @@ export default function ReturnsPage() {
         await Promise.all(
           TAB_TRA_MOBILE.filter((t) => t.key !== "all").map(async (t) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const qHead = supabase.from("returns").select("id", { count: "exact", head: true }) as any
+            const qHead = supabase.from("returns").select(kemSp("id"), { count: "exact", head: true }) as any
             const { count, error } = (await apDungLoc(qHead, true).eq("status", t.key)) as { count: number | null; error: unknown }
             if (error) hong = true
             cu[t.key] = count ?? 0
@@ -445,7 +457,7 @@ export default function ReturnsPage() {
       if (!huy) setDemTab(d)
     })()
     return () => { huy = true }
-  }, [laDienThoai, searchReady, debouncedSearch, listSearch, reasonFilter, fieldSearch.key, locNC.key, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [laDienThoai, searchReady, debouncedSearch, listSearch, reasonFilter, productFilter, fieldSearch.key, locNC.key, taiLai]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ĐIỆN THOẠI — THẺ "CHỜ XỬ LÝ · N PHIẾU" + tổng tiền: mọi phiếu đang chờ (không theo tab / ô
@@ -491,7 +503,7 @@ export default function ReturnsPage() {
       apDungLoc(
         supabase
           .from("returns")
-          .select(CHON_PHIEU_TRA_KHACH, { count: "exact" })
+          .select(kemSp(CHON_PHIEU_TRA_KHACH), { count: "exact" })
           .order("return_date", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .order("id")
@@ -546,6 +558,7 @@ export default function ReturnsPage() {
           onSearch={setSearch}
           reason={reasonFilter}
           onReason={setReasonFilter}
+          productFilter={<LocSanPham value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />}
           rows={filtered}
           codes={maPhieu}
           loading={loading}
@@ -695,13 +708,17 @@ export default function ReturnsPage() {
                 </SelectContent>
               </Select>
             )}
-            {(reasonFilter !== "all" || sellerFilter !== "all" || search.trim() !== "" || statusFilter !== MAC_DINH_TRANG_THAI) && (
+            {filterActive("product") && (
+              <LocSanPham id="ret-product" className="w-full sm:w-60" value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+            )}
+            {(reasonFilter !== "all" || sellerFilter !== "all" || productFilter !== "all" || search.trim() !== "" || statusFilter !== MAC_DINH_TRANG_THAI) && (
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => {
                   setReasonFilter("all")
                   setSellerFilter("all")
+                  setProductFilter("all")
                   setSearch("")
                   setStatusFilter(MAC_DINH_TRANG_THAI)
                 }}

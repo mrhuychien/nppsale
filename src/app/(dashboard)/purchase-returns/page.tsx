@@ -46,6 +46,8 @@ import { DocQuickView } from "@/components/ui/doc-quick-view"
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong, napTenNguoi } from "@/lib/xuat-excel/nap"
 import { DONG_TRA_NCC, xuatTraHangNcc, type DongTraNcc } from "@/lib/xuat-excel/cac-man"
+import { LocSanPham } from "@/components/ui/loc-san-pham"
+import { apLocSp, kemLocSp } from "@/lib/list/loc-san-pham"
 import {
   PURCHASE_RETURN_COLUMNS,
   DEFAULT_PURCHASE_RETURN_COLUMNS,
@@ -103,6 +105,11 @@ export default function PurchaseReturnsPage() {
   const [maCu, setMaCu] = useState<Map<string, string>>(new Map())
   /* ⚠ LỌC NÂNG CAO — trường bất kỳ (chủ nhà 24/09/2026). */
   const locNC = useAdvancedFilter("purchase-returns", LOC_TRA_HANG_NCC)
+  /**
+   * Mặt hàng đang lọc (chủ nhà 15/11/2026) — "all" = mọi hàng. Lọc NGAY ở câu tải (bảng dòng nhúng `!inner`,
+   * `@/lib/list/loc-san-pham`) như lọc nâng cao: dải trạng thái, tổng tiền, Excel theo cùng tập.
+   */
+  const [productFilter, setProductFilter] = useState("all")
   const {
     columns: visibleColumns,
     setColumns,
@@ -126,11 +133,12 @@ export default function PurchaseReturnsPage() {
         let q = supabase
           .from("supplier_returns")
           /* subtotal · vat · discount · created_by: cho tệp Excel (chủ nhà 05/10/2026). */
-          .select("id, return_code, return_date, warehouse_zone, subtotal, vat, discount, total, status, reason, notes, created_by, supplier:suppliers(id, name, code)", { count: "exact" })
+          .select(kemLocSp("id, return_code, return_date, warehouse_zone, subtotal, vat, discount, total, status, reason, notes, created_by, supplier:suppliers(id, name, code)", "supplier_returns", productFilter), { count: "exact" })
           .eq("org_id", user.org_id)
           .order("created_at", { ascending: false })
           .order("id")
         for (const f of locNC.menhDe) q = q.or(f)
+        q = apLocSp(q, productFilter)
         return q.range(from, to)
       })
       if (res.error) console.error("[purchase-returns] truy vấn lỗi:", res.error)
@@ -140,7 +148,7 @@ export default function PurchaseReturnsPage() {
       void docMaCuTraNcc(supabase, res.rows.map((r) => r.id)).then(setMaCu)
     }
     fetch()
-  }, [user?.org_id, locNC.key]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, locNC.key, productFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Mọi bộ lọc TRỪ trạng thái — để dải trạng thái đếm đúng. */
   const locRows = useMemo(() => {
@@ -253,7 +261,8 @@ export default function PurchaseReturnsPage() {
         toolbar={
           <>
             <DocListSearch value={search} onChange={setSearch} placeholder="Mã phiếu, tên NCC…" />
-            <XoaLocButton show={!!search.trim()} onClick={() => setSearch("")} />
+            <LocSanPham id="tncc-product" className="w-[240px]" value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+            <XoaLocButton show={!!search.trim() || productFilter !== "all"} onClick={() => { setSearch(""); setProductFilter("all") }} />
           </>
         }
         toolbarEnd={
@@ -275,11 +284,19 @@ export default function PurchaseReturnsPage() {
           searchPlaceholder: "Mã phiếu, tên NCC…",
           chips: { chips, active: filter, onPick: setFilter, multi: true },
           filter: {
-            activeCount: locNC.soDangAp,
-            onClear: locNC.xoa,
+            activeCount: locNC.soDangAp + (productFilter !== "all" ? 1 : 0),
+            onClear: () => { locNC.xoa(); setProductFilter("all") },
             open: filterSheet,
             onOpenChange: setFilterSheet,
-            sheet: <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+            sheet: (
+              <div className="grid gap-4">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Sản phẩm</p>
+                  <LocSanPham value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+                </div>
+                <AdvancedFilter truong={LOC_TRA_HANG_NCC} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
           },
           actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
@@ -288,7 +305,7 @@ export default function PurchaseReturnsPage() {
         empty={
           <EmptyState
             icon={<RotateCcw className="h-8 w-8 text-muted-foreground" />}
-            title={locNC.soDangAp || search.trim() ? "Không có phiếu nào khớp bộ lọc" : "Chưa có phiếu trả NCC nào"}
+            title={locNC.soDangAp || search.trim() || productFilter !== "all" ? "Không có phiếu nào khớp bộ lọc" : "Chưa có phiếu trả NCC nào"}
             description='Bấm "Tạo phiếu trả" để hoàn trả hàng cho NCC. Khi gửi phiếu hệ thống tự xuất kho và giảm công nợ.'
           />
         }

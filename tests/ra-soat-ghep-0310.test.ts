@@ -13,7 +13,8 @@ describe("rà soát 03/10/2026 — phần ghép", () => {
   it("Trả hàng: đầu nhóm ngày đọc trên máy chủ cùng bộ lọc và truyền xuống màn điện thoại", () => {
     const s = doc("src/app/(dashboard)/returns/page.tsx")
     expect(s).toMatch(/docThongKeNgay</)
-    expect(s).toMatch(/apDungLoc\(\s*supabase\s*\.from\("returns"\)\s*\.select\("id, return_date, credit_note_amount"/)
+    // `kemSp(…)`: bộ lọc sản phẩm nhúng bảng dòng vào cùng câu (chủ nhà 15/11/2026).
+    expect(s).toMatch(/apDungLoc\(\s*supabase\s*\.from\("returns"\)\s*\.select\(kemSp\("id, return_date, credit_note_amount"\)/)
     expect(s).toMatch(/\.in\("return_date", days\)/)
     expect(s).toMatch(/dayStats=\{dayStats\}/)
   })

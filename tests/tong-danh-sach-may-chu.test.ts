@@ -82,7 +82,8 @@ describe("hai màn danh sách: cộng / đếm trên máy chủ TRƯỚC, hỏng
     expect(hd.slice(i)).toContain("traTheoHoaDon(supabase, res.rows.map((r) => r.id))")
   })
   it("Hoá đơn: số tờ theo tuyến = count() nhóm theo tuyến, BỎ bộ lọc tuyến (applyFilters(q, true)); lỗi → cách cũ", () => {
-    expect(hd).toMatch(/select\(`count\(\), \$\{NHOM_TUYEN\}` as string\)\s*qGop = locTrangThai\(qGop, status\)\s*const gop = await gopMayChu\(applyFilters\(qGop as never, true\)/)
+    // `kemSp(…)`: bộ lọc sản phẩm nhúng bảng dòng vào cùng câu gộp (chủ nhà 15/11/2026).
+    expect(hd).toMatch(/select\(kemSp\(`count\(\), \$\{NHOM_TUYEN\}`\) as string\)\s*qGop = locTrangThai\(qGop, status\)\s*const gop = await gopMayChu\(applyFilters\(qGop as never, true\)/)
     expect(hd).toMatch(/if \(gop !== null\) \{\s*setRouteCounts\(gop\)\s*return\s*\}/)
   })
 })

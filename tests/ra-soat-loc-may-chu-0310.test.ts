@@ -200,7 +200,8 @@ describe("#5 hóa đơn: số hóa đơn theo tuyến đếm trên máy chủ", 
   it("không đếm từ `rows`; cùng bộ lọc (bỏ chính bộ lọc tuyến)", () => {
     const s = code(read("src/app/(dashboard)/sales-invoices/page.tsx"))
     expect(s).not.toMatch(/routeCounts = useMemo\([\s\S]{0,120}for \(const r of rows\)/)
-    expect(s).toContain('.select("id, customer:customers!inner(channel)", { count: "exact" })')
+    // `kemSp(…)`: bộ lọc sản phẩm nhúng bảng dòng vào cùng câu (chủ nhà 15/11/2026).
+    expect(s).toContain('.select(kemSp("id, customer:customers!inner(channel)"), { count: "exact" })')
     expect(s).toContain("applyFilters(q as never, true)")
     expect(s).toContain('if (routeFilter !== "all" && !boTuyen) x = x.eq("customer.channel", routeFilter)')
   })

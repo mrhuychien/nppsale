@@ -38,6 +38,8 @@ export const ORDER_FILTERS = [
   { key: "specialStatus", label: "Lọc trạng thái đặc biệt" },
   { key: "date", label: "Ngày đặt" },
   { key: "customer", label: "Khách hàng" },
+  /* Đơn có mặt hàng — chủ nhà 15/11/2026 "Thêm cho tao bộ lọc sản phẩm"; bật sẵn (`adoptNewKeys` bật cả cho người đã chỉnh). */
+  { key: "product", label: "Sản phẩm" },
   { key: "sales", label: "Tính cho NV" },
   { key: "amount", label: "Giá trị đơn" },
 ] as const satisfies readonly ListViewOption<string>[]
@@ -47,4 +49,5 @@ export type OrderFilterKey = (typeof ORDER_FILTERS)[number]["key"]
 export const DEFAULT_ORDER_FILTERS: OrderFilterKey[] = [
   "search",
   "specialStatus",
+  "product",
 ]

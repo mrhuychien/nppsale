@@ -183,6 +183,38 @@ function hoaDonConLai(db) {
 }
 const VIEW_GIA = { v_hoa_don_con_lai: hoaDonConLai }
 
+/* Bảng DÒNG của chứng từ → khoá ngoại về `id` chứng từ. Câu nhúng `loc_sp:<bảng dòng>!inner(cột)` (bộ lọc sản phẩm của
+   danh sách — `@/lib/list/loc-san-pham`, chủ nhà 15/11/2026) trên bảng chứng từ thì NỐI THẬT sang bảng dòng như PostgREST
+   (dữ liệu mẫu không dựng sẵn mảng dòng trong từng chứng từ).
+   ⚠ CHỈ tên nhúng `loc_sp`: các màn khác nhúng `lines:return_lines(…, product:products(…))` (lồng) và bài e2e của chúng dựng
+   sẵn mảng trong dòng mẫu — nối thật cho mọi nhúng là đổi kết quả của cả loạt bài không liên quan. */
+const DONG_CUA = {
+  sales_orders: { sales_order_lines: "order_id" },
+  sales_invoices: { sales_invoice_lines: "invoice_id" },
+  v_hoa_don_con_lai: { sales_invoice_lines: "invoice_id" },
+  returns: { return_lines: "return_id" },
+  purchase_invoices: { purchase_invoice_lines: "invoice_id" },
+  supplier_returns: { supplier_return_lines: "return_id" },
+}
+/** Dòng chứng từ kèm mảng dòng nhúng (bản sao — không đụng sổ); câu không nhúng bảng dòng nào thì trả nguyên mảng. */
+function noiDong(db, table, sel, rows) {
+  const can = []
+  for (const m of sel.matchAll(/(\w+):(\w+)(?:!inner|!left)?\(([^)]*)\)/g)) {
+    if (m[1] !== "loc_sp") continue
+    const fk = DONG_CUA[table]?.[m[2]]
+    if (fk) can.push({ alias: m[1], bang: m[2], fk, cot: m[3].split(",").map((c) => c.trim()).filter(Boolean) })
+  }
+  if (!can.length) return rows
+  return rows.map((r) => {
+    const o = { ...r }
+    for (const n of can) {
+      if (Object.hasOwn(r, n.alias)) continue
+      o[n.alias] = (db[n.bang] ?? []).filter((l) => l[n.fk] === r.id).map((l) => (n.cot.length ? Object.fromEntries(n.cot.map((c) => [c, l[c] ?? null])) : {}))
+    }
+    return o
+  })
+}
+
 /** Tách `select` ở cấp ngoài cùng (dấu phẩy trong ngoặc của bảng nhúng không tính). */
 function tachSelect(sel) {
   const out = []
@@ -396,6 +428,13 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
        loại (anti-join) như PostgREST — vd khách "Chưa phân công" (customers × customer_assignments). */
     const nhung = new Map()
     for (const m of (url.searchParams.get("select") || "").matchAll(/(\w+):\w+(!inner|!left)?\(/g)) nhung.set(m[1], { inner: m[2] === "!inner", loc: [], rong: null })
+    /* Như PostgREST thật: lọc theo bảng nhúng mà `select` không nhúng nó → 400 PGRST108 (màn quên `kemLocSp` ở một câu là
+       câu ấy hỏng — đừng để sổ giả lặng lẽ bỏ qua). Chỉ chốt tên nhúng của bộ lọc sản phẩm. */
+    for (const k of url.searchParams.keys()) {
+      if (k.startsWith("loc_sp.") && !nhung.has("loc_sp")) {
+        return send(res, 400, { code: "PGRST108", details: null, hint: "Verify that 'loc_sp' is included in the 'select' query parameter.", message: "'loc_sp' is not an embedded resource in this request" })
+      }
+    }
     for (const [k, v] of url.searchParams) {
       if (RESERVED.has(k)) continue
       const cham = k.indexOf(".")
@@ -466,7 +505,9 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
       return send(res, 200, hit)
     }
 
-    let out = rows.filter(match)
+    /* Đọc: nối bảng dòng nhúng (nếu câu có) rồi mới lọc / gộp — `quaNhung` xét mảng dòng thật. */
+    const rowsDoc = noiDong(db, table, url.searchParams.get("select") || "", rows)
+    let out = rowsDoc.filter(match)
     const order = url.searchParams.get("order")
     if (order) {
       /* Xếp theo ĐỦ các khoá như PostgREST (`a.desc.nullslast,b.desc,id.asc`) — chỉ xét khoá đầu thì các dòng
@@ -503,7 +544,7 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
          lùi về đếm từng trạng thái mỗi khi lọc tuyến (chủ nhà 01/11/2026). Nhóm theo tuyến thì nhúng `(channel)`. */
       const rong = tachSelect(sel).map((x) => /^(\w+):\w+(?:!\w+)?\(\s*\)$/.exec(x)?.[1]).find(Boolean)
       if (rong) return send(res, 400, { code: "42703", message: `column "${rong}" does not exist`, details: null, hint: null })
-      return send(res, 200, gopDong(sel, rows.filter(match)))
+      return send(res, 200, gopDong(sel, rowsDoc.filter(match)))
     }
     if ((req.headers.accept || "").includes("vnd.pgrst.object")) {
       if (out.length !== 1) return send(res, 406, { code: "PGRST116", message: `JSON object requested, ${out.length} rows returned` }, headers)

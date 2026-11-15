@@ -46,6 +46,7 @@ import { trangThaiCuaChon, tachTrangThai } from "@/lib/list/status-multi"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { viMatchAllWords } from "@/lib/search"
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus"
+import { useKhoMay } from "@/hooks/use-is-desktop"
 import { AdvancedFilter } from "@/components/ui/advanced-filter"
 import { useAdvancedFilter } from "@/hooks/use-advanced-filter"
 import { khopLoc } from "@/lib/search/advanced-filter"
@@ -56,6 +57,8 @@ import {
 import { XuatExcelButton, type KetQuaXuat } from "@/components/ui/xuat-excel-button"
 import { napDong, napTenNguoi } from "@/lib/xuat-excel/nap"
 import { DONG_NHAP, xuatPhieuNhap, type DongNhap } from "@/lib/xuat-excel/cac-man"
+import { LocSanPham } from "@/components/ui/loc-san-pham"
+import { apLocSp, kemLocSp } from "@/lib/list/loc-san-pham"
 
 interface Row {
   id: string
@@ -106,6 +109,11 @@ export default function PurchaseReceiptsPage() {
   const locNC = useAdvancedFilter("purchasing-receipts", LOC_HOA_DON_MUA)
   const [filterSheet, setFilterSheet] = useState(false)
   const [xemId, setXemId] = useState<string | null>(null)
+  /**
+   * Mặt hàng đang lọc (chủ nhà 15/11/2026) — "all" = mọi hàng. Màn tải ĐỦ rồi lọc tại chỗ, nên mặt hàng lọc NGAY ở câu
+   * tải (bảng dòng nhúng `!inner`, `@/lib/list/loc-san-pham`): số trên dải trạng thái, tổng tiền, Excel theo cùng tập.
+   */
+  const [productFilter, setProductFilter] = useState("all")
   const {
     columns: visibleColumns, filters: activeFilters,
     setColumns, setFilters, resetColumns, resetFilters,
@@ -116,6 +124,9 @@ export default function PurchaseReceiptsPage() {
     PURCHASE_RECEIPT_COLUMNS,
     PURCHASE_RECEIPT_FILTERS
   )
+  /* Máy tính tắt ô lọc thì thôi lọc; điện thoại (tấm lọc) luôn có ô. */
+  const laMay = useKhoMay()
+  const spLoc = activeFilters.includes("product") || laMay === false ? productFilter : "all"
 
   const load = useCallback(async () => {
     if (!user?.org_id) return
@@ -125,10 +136,13 @@ export default function PurchaseReceiptsPage() {
        hụt theo — không có gì báo. */
     const res = await fetchAllForAggregate<Row>((from, to) =>
       // audit-ok: lỗi đi vào `res.error` ngay dưới.
-      supabase
-        .from("purchase_invoices")
-        .select("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, subtotal, vat, vat_override, discount, notes, created_by, created_at, completed_at, supplier:suppliers(name, code)", { count: "exact" })
-        .eq("org_id", user.org_id)
+      apLocSp(
+        supabase
+          .from("purchase_invoices")
+          .select(kemLocSp("id, receipt_code, invoice_number, invoice_date, status, total, warehouse_zone, subtotal, vat, vat_override, discount, notes, created_by, created_at, completed_at, supplier:suppliers(name, code)", "purchase_invoices", spLoc), { count: "exact" })
+          .eq("org_id", user.org_id),
+        spLoc
+      )
         .order("created_at", { ascending: false })
         .order("id")
         .range(from, to)
@@ -137,7 +151,7 @@ export default function PurchaseReceiptsPage() {
     setCanhBao(res.error ? `Không đọc được danh sách phiếu nhập — ${res.error}` : res.truncated ? truncationWarning() : null)
     setRows(res.rows)
     setLoading(false)
-  }, [user?.org_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.org_id, spLoc]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load, focusTick])
 
@@ -257,7 +271,10 @@ export default function PurchaseReceiptsPage() {
         toolbar={
           <>
             <DocListSearch value={q} onChange={setQ} placeholder="Mã phiếu, số hoá đơn, tên NCC…" />
-            <XoaLocButton show={!!q.trim()} onClick={() => setQ("")} />
+            {activeFilters.includes("product") && (
+              <LocSanPham id="pn-product" className="w-[240px]" value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+            )}
+            <XoaLocButton show={!!q.trim() || productFilter !== "all"} onClick={() => { setQ(""); setProductFilter("all") }} />
           </>
         }
         toolbarEnd={
@@ -275,11 +292,19 @@ export default function PurchaseReceiptsPage() {
           searchPlaceholder: "Mã phiếu, số hoá đơn, tên NCC…",
           chips: { chips, active: tab || "all", onPick: setTab, multi: true },
           filter: {
-            activeCount: locNC.soDangAp,
-            onClear: locNC.xoa,
+            activeCount: locNC.soDangAp + (productFilter !== "all" ? 1 : 0),
+            onClear: () => { locNC.xoa(); setProductFilter("all") },
             open: filterSheet,
             onOpenChange: setFilterSheet,
-            sheet: <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />,
+            sheet: (
+              <div className="grid gap-4">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Sản phẩm</p>
+                  <LocSanPham value={productFilter} onChange={(id) => setProductFilter(id ?? "all")} />
+                </div>
+                <AdvancedFilter truong={LOC_HOA_DON_MUA} value={locNC.dieuKien} onApply={locNC.apDung} className="w-full justify-start" />
+              </div>
+            ),
           },
           actions: <>{nutTao}{nutXuat("h-11")}</>,
         }}
@@ -295,8 +320,8 @@ export default function PurchaseReceiptsPage() {
             icon={<PackagePlus className="h-8 w-8 text-muted-foreground" />}
             /* ⚠ "Chưa có phiếu nào" là một KẾT LUẬN màn hình không có cơ sở để rút ra: 0 dòng
                cũng là thứ ta nhận được khi RLS chặn. */
-            title={q.trim() || tab || locNC.soDangAp ? "Không có phiếu nào khớp bộ lọc." : "Chưa thấy phiếu nhập nào."}
-            description={q.trim() || tab || locNC.soDangAp ? "Sửa hoặc bỏ bớt điều kiện lọc." : "Bấm Tạo phiếu để bắt đầu."}
+            title={q.trim() || tab || locNC.soDangAp || spLoc !== "all" ? "Không có phiếu nào khớp bộ lọc." : "Chưa thấy phiếu nhập nào."}
+            description={q.trim() || tab || locNC.soDangAp || spLoc !== "all" ? "Sửa hoặc bỏ bớt điều kiện lọc." : "Bấm Tạo phiếu để bắt đầu."}
           />
         }
         pg={pg}

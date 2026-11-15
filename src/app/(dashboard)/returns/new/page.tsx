@@ -21,8 +21,11 @@ import { lapPhieuTraMotLan } from "@/lib/sell/create-return"
 import { mayChuThieuCot } from "@/lib/db/co-rpc"
 import { userPriceRulesFrom } from "@/lib/pricing"
 import {
+  GIAM_TOI_DA_GIA_TRA_PCT,
   addReturnLine,
+  giaDaBanThapNhat,
   returnCreditOf,
+  returnFloorFor,
   returnPriceViolation,
   toReturnLine,
   boCotMoiCuaDongTra,
@@ -304,15 +307,25 @@ export default function NewReturnPage() {
     const sold = giaDaBan(productId, unit)
     return sold ? Number(sold.unit_price) || 0 : giaBangTra(productById(productId), unit, groupId)
   }
-  /** ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền — trần như màn cũ (`returnPriceViolation`). */
+  /**
+   * ⚠ Trả CAO hơn giá đã bán / giá bảng là một đường rút tiền — trần như màn cũ (`returnPriceViolation`).
+   * ⚠ Trả THẤP hơn giá niêm yết quá 20% cũng chặn (chủ nhà 15/11/2026) — sàn theo giá bảng của nhóm khách; hàng bán rẻ hơn
+   *   thế trên hoá đơn gắn phiếu thì sàn là giá đã bán (`sanGiaTra`, cùng luật máy chủ mig 263).
+   */
+  const dongHdDaBan = invoiceLines.map((o) => ({ productId: o.product_id, unit: o.unit_name, price: Number(o.unit_price) }))
   const tranGia = (l: ReturnCartLine) => {
     const sold = giaDaBan(l.productId, l.unit)
-    const ceiling = sold ? Number(sold.unit_price) : giaBangTra(productById(l.productId), l.unit, groupId)
-    return { ceiling, sold: !!sold, bad: returnPriceViolation(l, ceiling, priceRules) !== null }
+    const niemYet = giaBangTra(productById(l.productId), l.unit, groupId)
+    const ceiling = sold ? Number(sold.unit_price) : niemYet
+    const daBan = giaDaBanThapNhat(dongHdDaBan, l.productId, l.unit)
+    const issue = returnPriceViolation(l, ceiling, priceRules, { niemYet, daBan })
+    return { ceiling, sold: !!sold, bad: issue !== null, issue, floor: returnFloorFor(niemYet, priceRules, daBan) }
   }
 
   const credit = returnCreditOf(lines)
-  const priceBad = lines.filter((l) => tranGia(l).bad).length
+  const priceIssues = lines.map((l) => tranGia(l).issue)
+  const priceBad = priceIssues.filter((x) => x !== null).length
+  const priceLow = priceIssues.filter((x) => x === "below_floor").length
 
   const blocked =
     !customerId
@@ -324,7 +337,11 @@ export default function NewReturnPage() {
             // biết phải nhận lại cái gì. Đó chính là lỗi của bản trước.
             "Thêm ít nhất một mặt hàng"
           : priceBad > 0
-            ? "Có dòng trả vượt trần giá"
+            ? priceLow === 0
+              ? "Có dòng trả vượt trần giá"
+              : priceLow === priceBad
+                ? `Có dòng trả dưới giá tối thiểu (giá niêm yết − ${GIAM_TOI_DA_GIA_TRA_PCT}%)`
+                : "Có dòng trả sai giá (vượt trần / dưới giá tối thiểu)"
             : null
 
   const handleSubmit = async (e?: React.FormEvent) => {

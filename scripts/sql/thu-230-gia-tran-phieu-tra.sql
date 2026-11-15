@@ -42,8 +42,9 @@ DO $t$ DECLARE e text; BEGIN
   PERFORM pg_temp.ghi('1a', 'NVBH không quyền: trả đúng giá bảng → lập được', e = 'OK', e);
   e := pg_temp.tra(pg_temp.bang() + 2000);
   PERFORM pg_temp.ghi('1b', 'NVBH không quyền: trả cao hơn giá bảng 2.000 → bị chặn', e LIKE 'RETURN_PRICE_OVER_CEILING%', e);
-  e := pg_temp.tra(round(pg_temp.bang() / 2));
-  PERFORM pg_temp.ghi('1c', 'hạ giá trả (hàng hư) → luôn được', e = 'OK', e);
+  -- ⚠ Từ mig 263 (chủ nhà 15/11/2026) hạ giá có SÀN 80% giá niêm yết — hạ 10% vẫn được; sàn kiểm ở thu-263.
+  e := pg_temp.tra(round(pg_temp.bang() * 0.9));
+  PERFORM pg_temp.ghi('1c', 'hạ giá trả 10% (hàng hư, trong sàn mig 263) → được', e = 'OK', e);
   e := pg_temp.tra(pg_temp.bang() * 5, true);
   PERFORM pg_temp.ghi('1d', 'dòng HÀNG ĐỔI giá cao (không tính tiền) → không kiểm', e = 'OK', e);
 END $t$;

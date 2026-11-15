@@ -63,6 +63,7 @@ import { useToast } from "@/hooks/use-toast"
 import { buildOrderPayload } from "@/lib/sell/create-order"
 import { generateOrderCode } from "@/lib/utils"
 import { cartTotals, priceViolation, ceilingFor, giaTruocGiamTuSo } from "@/lib/sell/cart"
+import { GIAM_TOI_DA_GIA_TRA_PCT, duoiSanGiaTra, returnFloorFor } from "@/lib/sell/returns"
 import { unitPriceFor, conversionFor, sellableUnits, stockInUnit } from "@/lib/sell/pricing"
 import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom } from "@/lib/pricing"
 import { isSaleLineOverstock } from "@/lib/orders/stock-check"
@@ -349,6 +350,29 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     [lines, productById, groupId, stockLines, products, stockByProduct, canEditPrice, maxIncreasePct]
   )
   const coGiaXau = rows.some((r) => r.xauGia !== null)
+
+  /**
+   * SÀN GIÁ TRẢ (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết") — một luật với máy chủ (mig 263).
+   * Hàng trả kèm đơn chưa gắn hoá đơn: sàn = 80% giá bảng đúng đơn vị theo nhóm khách. Chủ NPP / kế toán không sàn;
+   * dòng đổi không tính tiền — không kiểm.
+   */
+  const giaTuDo = !!rules.free
+  const sanTraDon = useCallback(
+    (l: PosLine) => {
+      const p = productById(l.productId)
+      const niemYet = p ? unitPriceFor(p, l.unit, groupId) : 0
+      return {
+        duoi: duoiSanGiaTra(l, niemYet, { free: giaTuDo }),
+        san: returnFloorFor(niemYet, { maxIncreasePct: 0, free: giaTuDo }),
+      }
+    },
+    [productById, groupId, giaTuDo]
+  )
+  const soTraDuoiSan = useMemo(
+    () => retLines.filter((l) => l.productId && l.qty > 0 && sanTraDon(l).duoi).length,
+    [retLines, sanTraDon]
+  )
+  const cauTraDuoiSan = `${soTraDuoiSan} dòng hàng trả dưới giá tối thiểu (không được dưới giá niêm yết quá ${GIAM_TOI_DA_GIA_TRA_PCT}%) — sửa giá các ô tô đỏ`
 
   /**
    * CỘT CỦA BẢNG — dựng theo drawer thiết lập.
@@ -780,10 +804,10 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
     /* ⚠ PHÍM PHẢI THEO ĐÚNG ĐIỀU KIỆN CỦA NÚT. Nút mờ mà phím vẫn chạy
        thì cái mờ ấy chỉ là trang trí — xem `donHo`. */
     /* ⚠ Đơn ĐÃ GỬI không có "Lưu nháp" — F6 lúc ấy là kéo đơn về nháp. */
-    F6: () => { if (!dangLuu && lines.length > 0 && !donHo && !daGui) void luuDon(true) },
+    F6: () => { if (!dangLuu && lines.length > 0 && !donHo && !daGui && soTraDuoiSan === 0) void luuDon(true) },
     F8: () => setRetLines((c) => themLenDau(c, emptyReturnLine(false))),
     F9: () => {
-      if (dangLuu || lines.length === 0 || !khach || coGiaXau) return
+      if (dangLuu || lines.length === 0 || !khach || coGiaXau || soTraDuoiSan > 0) return
       /* Đơn đã gửi: F9 = nút "Lưu", chỉ chạy khi có thay đổi. */
       if (daGui && !chuaLuuThayDoi) return
       void luuDon(false)
@@ -937,6 +961,8 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
       if (!user?.org_id || !user.id) return
       if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
       if (lines.length === 0) { toast({ title: "Đơn chưa có mặt hàng nào", variant: "destructive" }); return }
+      /* Sàn giá trả chặn cả lưu nháp — máy chủ kiểm mọi dòng trả ghi xuống (mig 263). */
+      if (soTraDuoiSan > 0) { toast({ title: "Giá hàng trả thấp quá", description: cauTraDuoiSan, variant: "destructive" }); return }
       /* ⚠ DÒNG SỐ LƯỢNG 0 KHÔNG ĐI XUỐNG SỔ (mig 226: SL > 0). Stepper sửa đơn cho về 0 (sàn = số
          đã xuất); để nguyên là máy chủ từ chối cả đơn — nói ra dòng nào, để người dùng xoá. */
       {
@@ -1104,7 +1130,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
        là `luuDon` giữ bản `totals` của lần vẽ trước: thêm một dòng
        hàng trả rồi bấm F9 ngay là đơn ghi xuống bằng con số CŨ — sai
        tiền, và sai đúng kiểu không ai nhìn ra. */
-    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.gross, totals.returnCredit, vuotHanMuc, giamDonGoc, quyenGiam, ketThuc]
+    [user, khach, lines, retLines, retReason, heldReturnId, chuKy, orderCode, dieuKhoan, ngayGiao, nvbh, orderId, productById, coGiaXau, canEditPrice, maxIncreasePct, router, toast, totals.docDiscount, totals.gross, totals.returnCredit, vuotHanMuc, giamDonGoc, quyenGiam, ketThuc, soTraDuoiSan, cauTraDuoiSan]
   )
 
   /**
@@ -1264,6 +1290,11 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                 {coGiaXau && (
                   <div className="shrink-0 bg-[var(--pos-danger-soft)] px-4 py-2 text-[11.5px] text-[var(--pos-danger)]">
                     Có dòng đặt giá ngoài hạn mức của bạn — sửa lại trước khi lưu.
+                  </div>
+                )}
+                {soTraDuoiSan > 0 && (
+                  <div data-testid="dai-san-gia-tra" className="shrink-0 bg-[var(--pos-danger-soft)] px-4 py-2 text-[11.5px] text-[var(--pos-danger)]">
+                    {cauTraDuoiSan}.
                   </div>
                 )}
                 {/*
@@ -1561,6 +1592,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     <div ref={cuonTraDon} data-testid="cuon-hang-tra" className="min-h-0 overflow-y-auto">
                       {retLines.map((l, i) => {
                         const tien = l.isExchange ? 0 : Math.round(l.qty * l.price)
+                        const sdTra = l.qty > 0 ? sanTraDon(l) : { duoi: false, san: 0 }
                         const sua = (p: Partial<PosLine>) =>
                           setRetLines((c) => c.map((x) => (x.key === l.key ? { ...x, ...p } : x)))
                         return (
@@ -1623,14 +1655,26 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                               />
                             </div>
 
-                            <MoneyInput
-                              showSuffix={false}
-                              className="w-[104px] justify-self-end"
-                              inputClassName="n h-[38px] rounded-[10px] border-[1.5px] border-[var(--pos-line)] bg-white px-2 text-right text-[14px] font-bold text-[var(--pos-ink)] outline-none py-0 lg:h-[38px] focus-visible:ring-1 focus-visible:ring-offset-0"
-                              aria-label={`Đơn giá trả dòng ${i + 1}`}
-                              value={l.price}
-                              onChange={(v) => sua({ price: v })}
-                            />
+                            {/* ⚠ Ô GIÁ MANG CẢ SÀN (mig 263): viền đỏ + dòng chữ nói đúng giá tối thiểu. */}
+                            <div className="w-[104px] justify-self-end">
+                              <MoneyInput
+                                showSuffix={false}
+                                inputClassName={`n h-[38px] rounded-[10px] border-[1.5px] px-2 text-right text-[14px] font-bold outline-none py-0 lg:h-[38px] focus-visible:ring-1 focus-visible:ring-offset-0 ${
+                                  sdTra.duoi
+                                    ? "border-[var(--pos-danger)] bg-[var(--pos-danger-soft)] text-[var(--pos-danger)]"
+                                    : "border-[var(--pos-line)] bg-white text-[var(--pos-ink)]"
+                                }`}
+                                aria-label={`Đơn giá trả dòng ${i + 1}`}
+                                aria-invalid={sdTra.duoi || undefined}
+                                value={l.price}
+                                onChange={(v) => sua({ price: v })}
+                              />
+                              {sdTra.duoi && (
+                                <div data-testid="san-gia-tra" className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
+                                  ≥ {formatCurrency(sdTra.san)}
+                                </div>
+                              )}
+                            </div>
 
                             {/* ⚠ TRẢ / ĐỔI LÀ HAI CHIỀU TIỀN KHÁC NHAU: dòng ĐỔI
                                 không trừ đồng nào. Hai nút cạnh nhau, nút đang
@@ -1966,14 +2010,16 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
               </PanelButton>
               <PanelButton
                 variant="primary"
-                disabled={!chuaLuuThayDoi || lines.length === 0 || !khach || coGiaXau || dangLuu}
+                disabled={!chuaLuuThayDoi || lines.length === 0 || !khach || coGiaXau || soTraDuoiSan > 0 || dangLuu}
                 onClick={() => luuDon(false)}
                 title={
                   !chuaLuuThayDoi
                     ? "Chưa có thay đổi nào để lưu"
                     : coGiaXau
                       ? "Có dòng đặt giá ngoài hạn mức của bạn"
-                      : "Lưu thay đổi của đơn đã gửi"
+                      : soTraDuoiSan > 0
+                        ? cauTraDuoiSan
+                        : "Lưu thay đổi của đơn đã gửi"
                 }
               >
                 {dangLuu ? "Đang lưu…" : "Lưu (F9)"}
@@ -1983,10 +2029,12 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             <PanelActions>
             <PanelButton
               width={150}
-              disabled={dangLuu || lines.length === 0 || donHo}
+              disabled={dangLuu || lines.length === 0 || donHo || soTraDuoiSan > 0}
               onClick={() => luuDon(true)}
               title={
-                donHo
+                soTraDuoiSan > 0
+                  ? cauTraDuoiSan
+                  : donHo
                   ? "Đơn này đứng tên nhân viên khác nên không lưu nháp được — nháp là sổ tay riêng của người đứng tên, bạn sẽ không mở lại được. Bấm Gửi đơn."
                   : lines.length === 0
                     ? "Chưa có mặt hàng nào trong đơn"
@@ -1997,7 +2045,7 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
             </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={lines.length === 0 || !khach || coGiaXau || dangLuu}
+              disabled={lines.length === 0 || !khach || coGiaXau || soTraDuoiSan > 0 || dangLuu}
               onClick={() => luuDon(false)}
               title={
                 lines.length === 0
@@ -2006,7 +2054,9 @@ export function OrderScreen({ mode, orderId = null }: OrderScreenProps) {
                     ? "Chưa chọn khách hàng"
                     : coGiaXau
                       ? "Có dòng đặt giá ngoài hạn mức của bạn"
-                      : "Gửi đơn sang Phiếu tạm — xuất hàng ở màn Xuất hàng"
+                      : soTraDuoiSan > 0
+                        ? cauTraDuoiSan
+                        : "Gửi đơn sang Phiếu tạm — xuất hàng ở màn Xuất hàng"
               }
             >
               {dangLuu ? "Đang gửi…" : mode === "sua" ? "Lưu thay đổi" : "Gửi đơn (F9)"}

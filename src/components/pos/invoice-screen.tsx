@@ -27,7 +27,8 @@
  *   BÁN, tính tiền khách — và không có khối hàng trả nào để xem hay sửa.
  */
 
-import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom } from "@/lib/pricing"
+import { kepGiamGia, kiemGiamGia, nhanTranGiamGia, userDiscountRulesFrom, userPriceRulesFrom } from "@/lib/pricing"
+import { GIAM_TOI_DA_GIA_TRA_PCT, duoiSanGiaTra, giaDaBanThapNhat, returnFloorFor } from "@/lib/sell/returns"
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { MoneyInput } from "@/components/ui/money-input"
@@ -522,6 +523,38 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
   /** Giá dòng trả cũ theo quy cách đang chọn — CÙNG phép máy chủ (mig 181). */
   const giaTraCu = (l: DongTraCu) =>
     dvTraCu(l) === l.unit ? l.unitPrice : giaTheoHeSo(l.unitPrice, heSo(l.productId, l.unit), heSo(l.productId, dvTraCu(l)))
+
+  /**
+   * SÀN GIÁ TRẢ (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết") — một luật với máy chủ (mig 263).
+   * Hàng trả thêm ở đây gắn vào CHÍNH tờ đang lập, nên ngoại lệ "giá đã bán" lấy theo dòng bán của tờ (`rows`). Kiểm:
+   * dòng trả MỚI (sửa được giá) và dòng trả CŨ đổi đơn vị (máy chủ coi là dòng mới — giá theo hệ số có thể dưới sàn).
+   * Chủ NPP / kế toán không sàn.
+   */
+  const giaTuDo = !!userPriceRulesFrom(user).free
+  const dongBanTo = useMemo(
+    () => rows.filter((r) => r.qty > 0).map((r) => ({ productId: r.productId, unit: r.unitName, price: r.price })),
+    [rows]
+  )
+  const sanTra = useCallback(
+    (productId: string, unit: string, price: number, isExchange: boolean) => {
+      const p = productById(productId)
+      const niemYet = p ? unitPriceFor(p, unit, groupId) : 0
+      const daBan = giaDaBanThapNhat(dongBanTo, productId, unit)
+      return {
+        duoi: duoiSanGiaTra({ price, isExchange }, niemYet, { free: giaTuDo }, daBan),
+        san: returnFloorFor(niemYet, { maxIncreasePct: 0, free: giaTuDo }, daBan),
+      }
+    },
+    [productById, groupId, dongBanTo, giaTuDo]
+  )
+  const sanTraCu = (l: DongTraCu) =>
+    l.suaDuoc && soTraCu(l) > 0 && dvTraCu(l) !== l.unit
+      ? sanTra(l.productId, dvTraCu(l), giaTraCu(l), l.isExchange)
+      : { duoi: false, san: 0 }
+  const soTraDuoiSan =
+    traMoi.filter((a) => a.qty > 0 && sanTra(a.productId, a.unit, a.price, a.isExchange).duoi).length +
+    traCu.filter((l) => sanTraCu(l).duoi).length
+  const cauTraDuoiSan = `${soTraDuoiSan} dòng hàng trả dưới giá tối thiểu (không được dưới giá niêm yết quá ${GIAM_TOI_DA_GIA_TRA_PCT}%) — sửa giá các ô tô đỏ`
   /**
    * Hàng đổi xuất theo tờ này = dòng ĐỔI của phiếu trả đi cùng tờ (đã sửa) +
    * dòng đổi vừa thêm + dòng đổi cũ không có phiếu tương ứng.
@@ -729,6 +762,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
 
   const luu = useCallback(async () => {
     if (dangLuu || khoa || soDong === 0 || !orderId) return
+    if (soTraDuoiSan > 0) { toast({ title: "Giá hàng trả thấp quá", description: cauTraDuoiSan, variant: "destructive" }); return }
     /* (mig 210) Phiếu trả đã nhập kho: chưa chọn Có / Không thì hỏi lại, không đoán. */
     if (invoiceId && phieuDaNhap.length > 0 && !cheDoTra) { setHoiTra(true); return }
     {
@@ -860,7 +894,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
       setKiemLai(false)
       setDangLuu(false)
     }
-  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc, ketThuc, khoaKhach, khachGoc?.id, khach?.id])
+  }, [dangLuu, khoa, soDong, orderId, orderCode, phieuDaNhap.length, cheDoTra, traMoi, traCu, traSua, traDv, traGhi, invoiceId, draft, ghiChu, ngay, dieuKhoan, chuKy, invoiceCode, router, toast, nguoi.ganId, ganCuaDon, tong.discount, rows, giamDong, giamDon, tienSauGiamDong, quyenGiam, giamDonGoc, ketThuc, khoaKhach, khachGoc?.id, khach?.id, soTraDuoiSan, cauTraDuoiSan])
 
   /* ⚠ ĐANG GHI SỔ MÀ ĐÓNG TAB / TẢI LẠI = mất câu trả lời và lệnh in đi kèm (chủ nhà 03/11/2026, khách NPP: "khi loát kém a
      thoát máy rồi vào lại thì nó đã ra hoàn thành"). Trình duyệt hỏi lại trước khi rời trang; chờ quá `CHO_LAU_MS` thì nút
@@ -1188,6 +1222,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 {traMoi.map((a, i) => {
                   const doiA = (p: Partial<DongTraMoi>) =>
                     setTraMoi((c) => c.map((x) => (x.key === a.key ? { ...x, ...p } : x)))
+                  const sdA = a.qty > 0 ? sanTra(a.productId, a.unit, a.price, a.isExchange) : { duoi: false, san: 0 }
                   return (
                     <div
                       key={a.key}
@@ -1255,13 +1290,26 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                       <div className="justify-self-center">
                         <QtyStepper label={`số lượng trả mới ${i + 1}`} value={a.qty} min={1} onChange={(v) => doiA({ qty: Math.max(1, v) })} />
                       </div>
-                      <MoneyInput
-                        showSuffix={false}
-                        inputClassName="n h-[30px] w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[13px] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0"
-                        aria-label={`Đơn giá trả mới ${i + 1}`}
-                        value={a.price}
-                        onChange={(v) => doiA({ price: Math.max(0, v) })}
-                      />
+                      {/* ⚠ Ô GIÁ MANG CẢ SÀN (mig 263): viền đỏ + dòng chữ nói đúng giá tối thiểu. */}
+                      <div>
+                        <MoneyInput
+                          showSuffix={false}
+                          inputClassName={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0 ${
+                            sdA.duoi
+                              ? "border-[var(--pos-danger)] bg-[var(--pos-danger-soft)] text-[var(--pos-danger)]"
+                              : "border-[var(--pos-edge)]"
+                          }`}
+                          aria-label={`Đơn giá trả mới ${i + 1}`}
+                          aria-invalid={sdA.duoi || undefined}
+                          value={a.price}
+                          onChange={(v) => doiA({ price: Math.max(0, v) })}
+                        />
+                        {sdA.duoi && (
+                          <div data-testid="san-gia-tra" className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
+                            ≥ {formatCurrency(sdA.san)}
+                          </div>
+                        )}
+                      </div>
                       <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
                         {a.isExchange ? "—" : `− ${formatCurrency(tienTru(a.qty, a.price, a.vatRate, false))}`}
                       </span>
@@ -1270,6 +1318,7 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                 })}
                 {traCu.map((l, i) => {
                   const sl = soTraCu(l)
+                  const sdCu = sanTraCu(l)
                   return (
                     <div
                       key={l.id}
@@ -1346,7 +1395,20 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
                           <span className="n text-[14px] font-bold text-[var(--pos-ink)]">{sl}</span>
                         )}
                       </div>
-                      <span className="n text-right text-[13px] text-[var(--pos-ink)]" aria-label={`Đơn giá trả dòng ${i + 1}`}>{formatCurrency(giaTraCu(l))}</span>
+                      {/* Đổi đơn vị dòng cũ là dòng mới với máy chủ (mig 263) — giá theo hệ số dưới sàn thì nói ra. */}
+                      <span className="text-right">
+                        <span
+                          className={`n text-[13px] ${sdCu.duoi ? "font-bold text-[var(--pos-danger)]" : "text-[var(--pos-ink)]"}`}
+                          aria-label={`Đơn giá trả dòng ${i + 1}`}
+                        >
+                          {formatCurrency(giaTraCu(l))}
+                        </span>
+                        {sdCu.duoi && (
+                          <span data-testid="san-gia-tra" className="block text-[9.5px] font-semibold text-[var(--pos-danger)]">
+                            ≥ {formatCurrency(sdCu.san)} — đổi lại đơn vị
+                          </span>
+                        )}
+                      </span>
                       <span className="n text-right text-[13.5px] font-extrabold text-[var(--pos-warn)]">
                         {l.isExchange ? "—" : `− ${formatCurrency(tienTru(sl, giaTraCu(l), l.vatRate, false))}`}
                       </span>
@@ -1555,9 +1617,9 @@ export function InvoiceScreen({ orderId: orderIdProp = null, invoiceId = null }:
           )}
           <PanelButton
             variant="primary"
-            disabled={!!khoa || soDong === 0 || dangLuu || dangTai || !!loi}
+            disabled={!!khoa || soDong === 0 || dangLuu || dangTai || !!loi || soTraDuoiSan > 0}
             onClick={() => void luu()}
-            title={khoa ? khoa.message : soDong === 0 ? "Chưa có dòng nào có số lượng" : undefined}
+            title={khoa ? khoa.message : soDong === 0 ? "Chưa có dòng nào có số lượng" : soTraDuoiSan > 0 ? cauTraDuoiSan : undefined}
           >
             {dangLuu ? nhanDangGhi({ kiemLai, choLau }) : sua ? "Huỷ HĐ & lập lại (F9)" : "Xuất hàng & lập HĐ (F9)"}
           </PanelButton>

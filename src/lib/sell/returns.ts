@@ -160,39 +160,130 @@ export function boCotMoiCuaDongTra(l: OfflineReturnLine): OfflineReturnLine {
  * người dùng nhớ hai luật cho một việc, và cái nào chặt hơn thì trông như
  * lỗi.
  *
- * ⚠ HẠ GIÁ THÌ LUÔN ĐƯỢC, kể cả xuống 0. Hàng hư hỏng, hàng cận date, hàng
- * đã bóc lẻ — mỗi ca một mức bù khác nhau, và bắt trả đúng giá bảng là ép
- * công ty trả tiền cho thứ không bán lại được. Đây cũng là chiều AN TOÀN:
- * hạ giá là công ty chi ít đi.
+ * ⚠ CÓ SÀN: KHÔNG THẤP HƠN GIÁ NIÊM YẾT QUÁ 20% (chủ nhà 15/11/2026: "giá trả
+ * không được thấp quá 20% giá niêm yết" — thay luật cũ "hạ giá thì luôn
+ * được, kể cả xuống 0"). Trả rẻ không phải chiều an toàn: tiền trả thấp làm
+ * hàng trả trừ ít đi ở doanh số thuần và đẩy "chênh lệch trả" của nhân viên
+ * lên (chênh trả = giá niêm yết − giá trả). Sàn = `sanGiaTra`; máy chủ chặn
+ * cùng luật (mig 263, `_chot_gia_san_dong_tra`).
  */
-export type ReturnPriceIssue = "above_ceiling" | "negative"
+export type ReturnPriceIssue = "above_ceiling" | "below_floor" | "negative"
 
 export interface ReturnPriceRules {
   /** % được nâng so với giá tham chiếu — CÙNG con số với giá bán. */
   maxIncreasePct: number
-  /** Chủ / kế toán: không trần. Xem `userPriceRulesFrom`. */
+  /** Chủ / kế toán: không trần, không sàn. Xem `userPriceRulesFrom`. */
   free?: boolean
 }
 
+/** Giá trả thấp nhất được phép, tính bằng % giảm so với giá niêm yết (chủ nhà 15/11/2026: "không được thấp quá 20%"). */
+export const GIAM_TOI_DA_GIA_TRA_PCT = 20
+
+/**
+ * SÀN GIÁ TRẢ của một dòng (0 = không có sàn).
+ *   · `niemYet` — giá bảng ĐÚNG đơn vị của dòng, theo nhóm giá của khách (`unitPriceFor`; máy chủ `_gia_bang_don_vi`).
+ *     Chưa có giá (0) thì không có sàn — như trần.
+ *   · `daBan` — giá đã bán THẤP NHẤT của mặt hàng + đơn vị trên hoá đơn gắn phiếu (đơn giá sau giảm dòng, trước thuế,
+ *     bỏ dòng hàng đổi). Thấp hơn sàn (khuyến mãi, NPP giảm sâu) thì sàn là giá đã bán: khách trả lại đúng số tiền đã
+ *     trả, công ty không phải bù hơn số đã thu.
+ * ⚠ Cùng phép tính với máy chủ: round(niêm yết × 80 / 100) — số nguyên × 80 / 100 không bao giờ rơi đúng ,5.
+ */
+export function sanGiaTra(niemYet: number, daBan?: number | null): number {
+  const ny = Number(niemYet)
+  if (!Number.isFinite(ny) || ny <= 0) return 0
+  const san = Math.round((ny * (100 - GIAM_TOI_DA_GIA_TRA_PCT)) / 100)
+  const db = daBan == null ? NaN : Number(daBan)
+  return Number.isFinite(db) && db >= 0 && db < san ? db : san
+}
+
+/**
+ * Giá đã bán THẤP NHẤT của (mặt hàng, đơn vị) trên các dòng hoá đơn gắn phiếu — bỏ dòng hàng đổi (0đ, không phải giá
+ * bán). Không có dòng nào → null. Cùng phép `min(unit_price)` của máy chủ (mig 263).
+ */
+export function giaDaBanThapNhat(
+  dong: ReadonlyArray<{ productId: string; unit: string; price: number; isExchange?: boolean | null }>,
+  productId: string,
+  unit: string
+): number | null {
+  let min: number | null = null
+  for (const d of dong) {
+    if (d.isExchange || d.productId !== productId || d.unit !== unit) continue
+    const g = Number(d.price)
+    if (!Number.isFinite(g)) continue
+    if (min === null || g < min) min = g
+  }
+  return min
+}
+
+/** Giá tham chiếu cho SÀN khi khác giá tham chiếu của trần (phiếu gắn hoá đơn: trần theo giá đã bán, sàn theo niêm yết). */
+export interface ThamChieuSanTra {
+  /** Giá niêm yết đúng đơn vị (nhóm giá của khách). Thiếu → dùng `listPrice` của `returnPriceViolation`. */
+  niemYet?: number
+  /** Giá đã bán thấp nhất trên hoá đơn gắn phiếu — xem `sanGiaTra`. */
+  daBan?: number | null
+}
+
 export function returnPriceViolation(
-  line: Pick<ReturnCartLine, "price">,
+  line: Pick<ReturnCartLine, "price"> & { isExchange?: boolean },
   listPrice: number,
-  rules: ReturnPriceRules = { maxIncreasePct: 0 }
+  rules: ReturnPriceRules = { maxIncreasePct: 0 },
+  thamChieuSan: ThamChieuSanTra = {}
 ): ReturnPriceIssue | null {
   const p = Number(line.price)
   if (!Number.isFinite(p) || p < 0) return "negative"
   if (rules.free) return null
+  // ⚠ Dòng HÀNG ĐỔI không trừ đồng nào — không trần, không sàn (máy chủ cũng bỏ qua dòng đổi).
+  if (line.isExchange) return null
   // ⚠ Chưa tra ra giá tham chiếu (bằng 0) thì KHÔNG lấy 0 làm trần — làm
   // vậy là chặn mọi dòng trả của mặt hàng chưa có giá, trong khi khách vẫn
   // đang đứng đó với hàng trên tay.
-  if (listPrice <= 0) return null
-  if (p > ceilingFor(listPrice, rules.maxIncreasePct)) return "above_ceiling"
+  if (listPrice > 0 && p > ceilingFor(listPrice, rules.maxIncreasePct)) return "above_ceiling"
+  // Dung sai 1 đồng như máy chủ.
+  const san = sanGiaTra(thamChieuSan.niemYet ?? listPrice, thamChieuSan.daBan)
+  if (san > 0 && p < san - 1) return "below_floor"
   return null
 }
 
 /** Trần giá trả — hiện lên màn hình để người dùng biết mình đi tới đâu. */
 export function returnCeilingFor(listPrice: number, rules: ReturnPriceRules): number {
   return rules.free ? Infinity : ceilingFor(listPrice, rules.maxIncreasePct)
+}
+
+/**
+ * CHỈ KIỂM SÀN — cho màn POS: trần ở đó do máy chủ chốt theo giá đã bán trên hoá đơn (mig 230), màn không có đủ dữ liệu
+ * để kiểm trần mà không chặt hơn máy chủ. `true` = giá dưới sàn (dòng đổi, chủ / kế toán, chưa có giá niêm yết: luôn `false`).
+ */
+export function duoiSanGiaTra(
+  line: Pick<ReturnCartLine, "price"> & { isExchange?: boolean },
+  niemYet: number,
+  rules: Pick<ReturnPriceRules, "free">,
+  daBan?: number | null
+): boolean {
+  return returnPriceViolation(line, 0, { maxIncreasePct: 0, free: rules.free }, { niemYet, daBan }) === "below_floor"
+}
+
+/** Sàn giá trả theo quyền (chủ / kế toán: 0 — không sàn). */
+export function returnFloorFor(niemYet: number, rules: ReturnPriceRules, daBan?: number | null): number {
+  return rules.free ? 0 : sanGiaTra(niemYet, daBan)
+}
+
+/**
+ * Câu báo dưới ô giá / ở chốt chặn lưu — nói ĐÚNG con số dừng ở đâu (người đọc phải sửa được ngay, không đoán).
+ */
+export function cauGiaTraSai(
+  issue: ReturnPriceIssue,
+  gioiHan: { tran?: number; san?: number },
+  dinhDang: (n: number) => string
+): string {
+  if (issue === "negative") return "Đơn giá không được âm"
+  if (issue === "above_ceiling") {
+    return gioiHan.tran != null && Number.isFinite(gioiHan.tran)
+      ? `Giá trả vượt trần — tối đa ${dinhDang(gioiHan.tran)}`
+      : "Giá trả vượt trần"
+  }
+  return gioiHan.san != null && gioiHan.san > 0
+    ? `Giá trả thấp quá — tối thiểu ${dinhDang(gioiHan.san)} (không dưới giá niêm yết quá ${GIAM_TOI_DA_GIA_TRA_PCT}%)`
+    : `Giá trả không được dưới giá niêm yết quá ${GIAM_TOI_DA_GIA_TRA_PCT}%`
 }
 
 /**

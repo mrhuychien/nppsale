@@ -301,12 +301,14 @@ describe("Luật giá của dòng trả NGƯỢC với dòng bán", () => {
   })
 
   /**
-   * ⚠ HẠ GIÁ THÌ LUÔN ĐƯỢC, kể cả xuống 0. Hàng hư hỏng, cận date, đã bóc
-   * lẻ — mỗi ca một mức bù khác nhau. Đây cũng là chiều AN TOÀN: công ty
-   * chi ít đi.
+   * ⚠ HẠ GIÁ CÓ SÀN: không dưới giá niêm yết quá 20% (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm
+   * yết" — thay luật cũ "hạ giá luôn được, kể cả xuống 0"). Từ 80% tới trần thì hợp lệ.
    */
-  it.each([0, 1_000, 99_999, 100_000])("trả %s (≤ trần) thì hợp lệ", (p) => {
+  it.each([80_000, 99_999, 100_000])("trả %s (từ sàn 80% tới trần) thì hợp lệ", (p) => {
     expect(returnPriceViolation({ price: p }, 100_000)).toBeNull()
+  })
+  it.each([0, 1_000, 79_998])("trả %s (dưới 80% giá bảng) thì bị chặn", (p) => {
+    expect(returnPriceViolation({ price: p }, 100_000)).toBe("below_floor")
   })
 
   it("giá âm bị chặn, kể cả người được miễn trần", () => {
@@ -331,7 +333,8 @@ describe("Giá trả sai thì KHÔNG gửi được đơn", () => {
 
   /** Tô đỏ ở màn hàng trả mà vẫn gửi được thì vệt đỏ đó chỉ là trang trí. */
   it("màn giỏ đếm dòng trả sai giá và nói ra", () => {
-    expect(CART).toContain("const returnPriceBad = useMemo(")
+    expect(CART).toContain("const returnPriceIssues = useMemo(")
+    expect(CART).toContain("const returnPriceBad = returnPriceIssues.filter((x) => x !== null).length")
     expect(CART).toContain("returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0, {")
     // ⚠ Chốt chặn gửi phải dùng CÙNG trần với màn hàng trả — hai trần khác
     // nhau thì tô đỏ một đằng, chặn một nẻo.
@@ -339,6 +342,9 @@ describe("Giá trả sai thì KHÔNG gửi được đơn", () => {
     expect(CART).toContain("free: rules.free,")
     expect(CART).toContain("dòng trả vượt trần giá")
     expect(CART).toContain('"Giá hàng trả quá cao"')
+    // Sàn (chủ nhà 15/11/2026): đếm riêng, nói riêng — "quá cao" cho một dòng quá THẤP là bảo người ta hạ thêm.
+    expect(CART).toContain("dòng trả dưới giá niêm yết quá {GIAM_TOI_DA_GIA_TRA_PCT}%")
+    expect(CART).toContain('"Giá hàng trả quá thấp"')
   })
 
   /**
@@ -347,10 +353,14 @@ describe("Giá trả sai thì KHÔNG gửi được đơn", () => {
    * độ thì câu đó chỉ sai đường: đọc nó xong người ta hạ về giá bảng, bỏ
    * mất phần mình được phép, và số tiền trả cho khách thấp hơn thực tế.
    */
-  it("màn hàng trả tô đỏ đúng dòng và nói trần ở đâu", () => {
+  it("màn hàng trả tô đỏ đúng dòng và nói trần / sàn ở đâu", () => {
     expect(RET).toContain("const priceBadOf =")
-    expect(RET).toContain("const ceiling = returnCeilingFor(listPriceOf(r), priceRules)")
-    expect(RET).toContain("Giá trả vượt trần — tối đa ${formatCurrency(ceiling)}")
+    expect(RET).toContain("tran: returnCeilingFor(listPriceOf(r), priceRules)")
+    expect(RET).toContain("san: returnFloorFor(listPriceOf(r), priceRules)")
+    expect(RET).toContain("cauGiaTraSai(")
+    const LIB = code(read("src/lib/sell/returns.ts"))
+    expect(LIB).toContain("Giá trả vượt trần — tối đa ${dinhDang(gioiHan.tran)}")
+    expect(LIB).toContain("Giá trả thấp quá — tối thiểu ${dinhDang(gioiHan.san)}")
     expect(RET, "câu cũ nói sai trần").not.toContain("Giá trả cao hơn giá bảng")
   })
 })

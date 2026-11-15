@@ -192,6 +192,13 @@ export function explainInvoiceError(message: string): string {
     // Thông điệp của RPC đã nói rõ thiếu bao nhiêu, sản phẩm nào.
     return m.replace(/^.*INSUFFICIENT_STOCK:\s*/, "Không đủ tồn: ")
   }
+  /* Hàng trả thêm ở Xuất hàng / Sửa HĐ chạm trần (mig 230) / sàn (mig 263, chủ nhà 15/11/2026) — câu máy chủ đã nói đủ số. */
+  if (m.includes("RETURN_PRICE_BELOW_FLOOR")) {
+    return m.replace(/^.*RETURN_PRICE_BELOW_FLOOR:\s*/, "Hàng trả: ")
+  }
+  if (m.includes("RETURN_PRICE_OVER_CEILING")) {
+    return m.replace(/^.*RETURN_PRICE_OVER_CEILING:\s*/, "Hàng trả: ")
+  }
   if (m.includes("ORDER_NOT_INVOICEABLE")) {
     return m.replace(
       /^.*ORDER_NOT_INVOICEABLE:\s*/,

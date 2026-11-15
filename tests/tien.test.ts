@@ -139,11 +139,12 @@ describe("Luật giá bán và luật giá trả dùng CHUNG một biên độ",
   })
 
   /**
-   * ⚠ ĐÂY LÀ CHỖ HAI LUẬT KHÁC NHAU, và nó có chủ đích: dòng bán có SÀN
-   * (bán rẻ là mất tiền), dòng trả KHÔNG có sàn (bù ít cho hàng hư là
-   * chiều an toàn — công ty chi ít đi).
+   * ⚠ ĐÂY LÀ CHỖ HAI LUẬT KHÁC NHAU, và nó có chủ đích: dòng bán có SÀN là
+   * giá bảng (bán rẻ là mất tiền); dòng trả có SÀN THẤP HƠN — 80% giá niêm
+   * yết (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết").
    */
-  it("bán dưới giá bảng bị chặn, trả dưới giá bảng thì không", () => {
+  it("bán dưới giá bảng bị chặn, trả dưới giá bảng tới 20% thì không (quá 20% mới chặn)", () => {
+    expect(returnPriceViolation({ price: 79_000 }, 100_000, { maxIncreasePct: 5 })).toBe("below_floor")
     expect(
       priceViolation({ price: 80_000, listPrice: 100_000 }, {
         canEditPrice: true,

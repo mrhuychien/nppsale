@@ -91,12 +91,15 @@ describe("Giá trả bám theo giá ĐÃ BÁN", () => {
     expect(NEW).toContain("price: p.giaGoiY(x.id, unit)")
   })
 
-  /** Trần giá cũng là giá đã bán khi có đơn, chứ không phải giá bảng. */
-  it("trần giá lấy theo đơn khi phiếu gắn đơn", () => {
-    expect(NEW).toContain(
-      "const ceiling = sold ? Number(sold.unit_price) : giaBangTra(productById(l.productId), l.unit, groupId)"
-    )
-    expect(NEW).toContain("returnPriceViolation(l, ceiling, priceRules)")
+  /**
+   * Trần giá cũng là giá đã bán khi có đơn, chứ không phải giá bảng. SÀN (chủ nhà 15/11/2026, mig 263) thì theo giá
+   * niêm yết, trừ khi hoá đơn gắn phiếu bán rẻ hơn — `{ niemYet, daBan }`.
+   */
+  it("trần giá lấy theo đơn khi phiếu gắn đơn; sàn theo giá niêm yết + giá đã bán thấp nhất", () => {
+    expect(NEW).toContain("const niemYet = giaBangTra(productById(l.productId), l.unit, groupId)")
+    expect(NEW).toContain("const ceiling = sold ? Number(sold.unit_price) : niemYet")
+    expect(NEW).toContain("const daBan = giaDaBanThapNhat(dongHdDaBan, l.productId, l.unit)")
+    expect(NEW).toContain("returnPriceViolation(l, ceiling, priceRules, { niemYet, daBan })")
     // ⚠ Trần giá trả = trần giá bán của chính người đó, ở CẢ hai màn lập
     // phiếu trả. Hai màn hai trần là mở đường cho người ta chọn màn dễ hơn.
     expect(NEW).toContain("const priceRules = (() => {")

@@ -20,12 +20,22 @@ import { MoneyInput } from "@/components/ui/money-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { chamTheHang, docChonNhieu, ghiChonNhieu, roiManSauKhiThem } from "@/lib/sell/pick-mode"
 import { sellableUnits, unitPriceFor, type PricedProduct } from "@/lib/sell/pricing"
-import { RETURN_REASONS, findReturnLine, type ReturnCartLine } from "@/lib/sell/returns"
+import { RETURN_REASONS, findReturnLine, type ReturnCartLine, type ReturnPriceIssue } from "@/lib/sell/returns"
 import { timXepHang } from "@/lib/search"
 import { cn, formatCurrency, formatDate } from "@/lib/utils"
 import { fullCustomerAddress, type CustomerAddressParts } from "@/lib/customers/address"
 import { OSoLuong } from "@/components/ui/o-so-luong"
 import { ChonKhachSheet } from "@/components/customers/chon-khach-sheet"
+
+/** Trần / sàn giá trả của một dòng + lỗi (nếu có) — trang /returns/new tính (`tranGia`), thẻ dòng chỉ hiện. */
+export interface GioiHanGiaTra {
+  ceiling: number
+  sold: boolean
+  bad: boolean
+  issue?: ReturnPriceIssue | null
+  /** Giá trả thấp nhất được phép (0 = không có sàn). */
+  floor?: number
+}
 
 const RENDER_CAP = 60
 
@@ -73,8 +83,8 @@ export interface PhieuTraKhachMobileProps {
   onSeller: (id: string) => void
   lines: ReturnCartLine[]
   onLines: (fn: (prev: ReturnCartLine[]) => ReturnCartLine[]) => void
-  /** Trần giá của một dòng (giá đã bán trên HĐ gắn kèm, không thì giá bảng) + dòng có vượt trần không. */
-  tranGia: (l: ReturnCartLine) => { ceiling: number; sold: boolean; bad: boolean }
+  /** Trần giá của một dòng (giá đã bán trên HĐ gắn kèm, không thì giá bảng) + sàn (chủ nhà 15/11/2026) + lỗi giá của dòng. */
+  tranGia: (l: ReturnCartLine) => GioiHanGiaTra
   /** Giá trả gợi ý khi thêm / đổi ĐVT: giá đã bán trên HĐ gắn kèm, không thì giá bảng của nhóm khách. */
   giaGoiY: (productId: string, unit: string) => number
   credit: number
@@ -463,7 +473,7 @@ function DongTra({
   stt: number
   line: ReturnCartLine
   product: PricedProduct | undefined
-  tran: { ceiling: number; sold: boolean; bad: boolean }
+  tran: GioiHanGiaTra
   onPatch: (p: Partial<ReturnCartLine>) => void
   onUnit: (u: string) => void
   onRemove: () => void
@@ -538,7 +548,13 @@ function DongTra({
           />
         </div>
       </div>
-      {tran.bad && <p className="text-[12px] font-bold text-destructive">Giá trả vượt trần so với {tran.sold ? "giá đã bán" : "giá bảng"}</p>}
+      {tran.bad && (
+        <p className="text-[12px] font-bold text-destructive">
+          {tran.issue === "below_floor"
+            ? `Giá trả thấp quá — tối thiểu ${formatCurrency(tran.floor ?? 0)}`
+            : `Giá trả vượt trần so với ${tran.sold ? "giá đã bán" : "giá bảng"}`}
+        </p>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

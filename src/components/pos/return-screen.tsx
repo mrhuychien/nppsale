@@ -25,6 +25,8 @@ import { MoneyInput } from "@/components/ui/money-input"
 import { CompactSelect } from "@/components/ui/compact-select"
 import { donViCuaSanPham, donViHienThi, doiDonViDongTra } from "@/lib/pos/units"
 import { unitPriceFor } from "@/lib/sell/pricing"
+import { userPriceRulesFrom } from "@/lib/pricing"
+import { GIAM_TOI_DA_GIA_TRA_PCT, duoiSanGiaTra, giaDaBanThapNhat, returnFloorFor } from "@/lib/sell/returns"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { errorMessage } from "@/lib/errors"
@@ -129,6 +131,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
   const [thoiDiem, setThoiDiem] = useState(homNay)
   /** Giá khách đã mua theo mặt hàng — từ hóa đơn gốc, chỉ để đối chiếu. */
   const [giaGoc, setGiaGoc] = useState<Record<string, number>>({})
+  /** Dòng của hoá đơn gốc (mặt hàng + ĐÚNG đơn vị + giá đã bán) — ngoại lệ của sàn giá trả (`sanGiaTra`, mig 263). */
+  const [dongHdGoc, setDongHdGoc] = useState<Array<{ productId: string; unit: string; price: number }>>([])
   const [daNap, setDaNap] = useState(!returnId)
   /** Phiếu đã huỷ thì chỉ xem — máy chủ cũng từ chối (RETURN_LOCKED, mig 190). */
   const [daHuy, setDaHuy] = useState(false)
@@ -195,6 +199,31 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
     }
     return s
   }, [traLines, giaGoc, productById])
+
+  /**
+   * SÀN GIÁ TRẢ (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết") — một luật với máy chủ (mig 263):
+   * 80% giá bảng ĐÚNG đơn vị theo nhóm giá của khách; phiếu gắn hoá đơn mà tờ ấy bán rẻ hơn thì sàn là giá đã bán.
+   * Chủ NPP / kế toán không sàn (`free`). Dòng đổi không tính tiền — không kiểm.
+   */
+  const giaTuDo = !!userPriceRulesFrom(user).free
+  const sanDong = useCallback(
+    (l: PosLine) => {
+      const p = productById(l.productId)
+      const niemYet = p ? unitPriceFor(p, l.unit, groupId) : 0
+      const daBan = invoiceId ? giaDaBanThapNhat(dongHdGoc, l.productId, l.unit) : null
+      return {
+        duoi: duoiSanGiaTra(l, niemYet, { free: giaTuDo }, daBan),
+        san: returnFloorFor(niemYet, { maxIncreasePct: 0, free: giaTuDo }, daBan),
+      }
+    },
+    [productById, groupId, invoiceId, dongHdGoc, giaTuDo]
+  )
+  /* Dòng SL 0 (nạp từ hoá đơn, chưa nhập số trả) không lưu xuống — không tính. */
+  const soDuoiSan = useMemo(
+    () => traLines.filter((l) => l.productId && l.qty > 0 && sanDong(l).duoi).length,
+    [traLines, sanDong]
+  )
+  const cauDuoiSan = `${soDuoiSan} dòng trả dưới giá tối thiểu (không được dưới giá niêm yết quá ${GIAM_TOI_DA_GIA_TRA_PCT}%) — sửa giá các ô tô đỏ`
 
   usePosDocLabel("RET", returnId, slipCode)
   const chuKy = useMemo(
@@ -316,10 +345,18 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setTraLines(ds.filter((x) => !x.isExchange))
         setDoiLines(ds.filter((x) => x.isExchange))
         if (r.invoice_id) {
-          const { data: hd, error: hdErr } = await sb.from("sales_invoices").select("invoice_code").eq("id", r.invoice_id).maybeSingle()
+          /* Dòng hoá đơn gốc đọc CÙNG ĐỢT: sàn giá trả cho trả đúng giá đã bán khi hoá đơn bán rẻ hơn sàn (mig 263) —
+             thiếu chúng thì màn chặt hơn máy chủ, chặn nhầm phiếu đúng. */
+          const [{ data: hd, error: hdErr }, dongGoc] = await Promise.all([
+            sb.from("sales_invoices").select("invoice_code").eq("id", r.invoice_id).maybeSingle(),
+            loadInvoiceLinesForReturn(sb, r.invoice_id),
+          ])
           // Hỏng thì ném (→ "không nạp được"): thiếu mã, phiếu trả theo hoá đơn trông như phiếu tự lập.
           if (hdErr) throw hdErr
-          if (!huy) setInvoiceCode(((hd as unknown) as { invoice_code?: string } | null)?.invoice_code ?? null)
+          if (!huy) {
+            setInvoiceCode(((hd as unknown) as { invoice_code?: string } | null)?.invoice_code ?? null)
+            setDongHdGoc(dongGoc.map((x) => ({ productId: x.productId, unit: x.unitName, price: x.unitPrice })))
+          }
         }
         setDaNap(true)
       } catch (e) {
@@ -395,6 +432,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         }
         /* ⚠ GIÁ GỐC THEO ĐƠN VỊ CƠ SỞ — dòng trả đổi được đơn vị. */
         setGiaGoc(Object.fromEntries(ds.map((x) => [x.productId, x.unitPrice / (x.conversion || 1)])))
+        setDongHdGoc(ds.map((x) => ({ productId: x.productId, unit: x.unitName, price: x.unitPrice })))
         setTraLines(
           ds.map((x) => ({
             key: newKey(),
@@ -451,6 +489,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
       if (!khach) { toast({ title: "Chưa chọn khách hàng", variant: "destructive" }); return }
       const dong = [...traLines, ...doiLines].filter((l) => l.productId && l.qty > 0)
       if (dong.length === 0) { toast({ title: "Phiếu chưa có dòng hàng nào", variant: "destructive" }); return }
+      if (soDuoiSan > 0) { toast({ title: "Giá trả thấp quá", description: cauDuoiSan, variant: "destructive" }); return }
       setDangLuu(true)
       try {
         const r = await savePosReturn(createClient(), {
@@ -497,7 +536,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         setDangLuu(false)
       }
     },
-    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, thoiDiem, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId, ketThuc]
+    [user, khach, traLines, doiLines, returnId, invoiceId, lyDo, ghiChu, thoiDiem, zone, tenKhoNhan, chuKy, router, toast, nguoi.ganId, ketThuc, soDuoiSan, cauDuoiSan]
   )
 
   /**
@@ -665,6 +704,7 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
         )}
         {lines.map((l, i) => {
           const tien = lineGross(l.qty, l.price)
+          const sd = doi ? { duoi: false, san: 0 } : sanDong(l)
           return (
             <div
               key={l.key}
@@ -737,13 +777,26 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                 value={l.qty}
                 onChange={(v) => patch(l.key, { qty: v })}
               />
-              <MoneyInput
-                showSuffix={false}
-                inputClassName="n h-[30px] w-full rounded-md border border-[var(--pos-edge)] px-1.5 text-right text-[13px] text-[var(--pos-ink)] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0"
-                aria-label={`Đơn giá dòng ${i + 1}`}
-                value={l.price}
-                onChange={(v) => patch(l.key, { price: v })}
-              />
+              {/* ⚠ Ô GIÁ MANG CẢ SÀN (mig 263): viền đỏ + dòng chữ nói đúng giá tối thiểu. */}
+              <div>
+                <MoneyInput
+                  showSuffix={false}
+                  inputClassName={`n h-[30px] w-full rounded-md border px-1.5 text-right text-[13px] py-0 lg:h-[30px] focus-visible:ring-1 focus-visible:ring-offset-0 ${
+                    sd.duoi
+                      ? "border-[var(--pos-danger)] bg-[var(--pos-danger-soft)] text-[var(--pos-danger)]"
+                      : "border-[var(--pos-edge)] text-[var(--pos-ink)]"
+                  }`}
+                  aria-label={`Đơn giá dòng ${i + 1}`}
+                  aria-invalid={sd.duoi || undefined}
+                  value={l.price}
+                  onChange={(v) => patch(l.key, { price: v })}
+                />
+                {sd.duoi && (
+                  <div data-testid="san-gia-tra" className="mt-px text-right text-[9.5px] font-semibold text-[var(--pos-danger)]">
+                    ≥ {formatCurrency(sd.san)}
+                  </div>
+                )}
+              </div>
               <div className="text-right">
                 {doi ? (
                   <>
@@ -1078,14 +1131,15 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
             </PanelButton>
             <PanelButton
               width={96}
-              disabled={dangLuu || ((tuSinh || daHuy) && mode !== "sua")}
+              disabled={dangLuu || ((tuSinh || daHuy) && mode !== "sua") || (mode !== "sua" && soDuoiSan > 0)}
+              title={mode !== "sua" && soDuoiSan > 0 ? cauDuoiSan : undefined}
               onClick={() => (mode === "sua" ? router.back() : luuPhieu(false))}
             >
               {mode === "sua" ? "Huỷ" : dangLuu ? "Đang lưu…" : "Lưu nháp"}
             </PanelButton>
             <PanelButton
               variant="primary"
-              disabled={dangLuu || daHuy || tuSinh || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach}
+              disabled={dangLuu || daHuy || tuSinh || (t.returnLineCount === 0 && t.exchangeLineCount === 0) || !khach || soDuoiSan > 0}
               onClick={() => luuPhieu(true)}
               title={
                 daHuy
@@ -1096,6 +1150,8 @@ export function ReturnScreen({ mode, returnId = null, badge, sourceInvoiceId = n
                   ? "Chưa có dòng hàng nào trong phiếu"
                   : !khach
                     ? "Chưa chọn khách hàng"
+                  : soDuoiSan > 0
+                    ? cauDuoiSan
                     : `Nhập hàng trả vào ${tenKhoNhan} và giảm công nợ — một giao dịch`
               }
             >

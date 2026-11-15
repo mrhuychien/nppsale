@@ -15,7 +15,9 @@ import { ReturnPriceInput } from "@/components/sell/return-price-input"
 import { Stepper } from "@/components/sell/line-edit-sheet"
 import {
   RETURN_REASONS,
+  cauGiaTraSai,
   returnCeilingFor,
+  returnFloorFor,
   returnPriceViolation,
   type ReturnPriceRules,
 } from "@/lib/sell/returns"
@@ -76,19 +78,26 @@ export default function SellReturnsPage() {
     const list = listPriceOf(r)
     return list > 0 && r.price !== list
   }
-  /** ⚠ Trả CAO hơn trần là một đường rút tiền — tô đỏ ngay trên dòng. */
-  const priceBadOf = (r: { productId: string; unit: string; price: number }) =>
-    returnPriceViolation(r, listPriceOf(r), priceRules) !== null
+  type DongGia = { productId: string; unit: string; price: number; isExchange?: boolean }
+  /**
+   * ⚠ Trả CAO hơn trần là một đường rút tiền; trả THẤP hơn sàn (dưới giá niêm yết quá 20% — chủ nhà 15/11/2026) cũng
+   * chặn. Tô đỏ ngay trên dòng.
+   */
+  const priceIssueOf = (r: DongGia) => returnPriceViolation(r, listPriceOf(r), priceRules)
+  const priceBadOf = (r: DongGia) => priceIssueOf(r) !== null
   /**
    * Câu báo lỗi phải nói con số DỪNG Ở ĐÂU. "Cao hơn giá bảng" là sai kể
    * từ khi có biên độ — người được nâng 5% đọc câu đó rồi hạ về đúng giá
    * bảng, tức là bỏ mất phần mình được phép.
    */
-  const priceBadText = (r: { productId: string; unit: string; price: number }) => {
-    const ceiling = returnCeilingFor(listPriceOf(r), priceRules)
-    return Number.isFinite(ceiling)
-      ? `Giá trả vượt trần — tối đa ${formatCurrency(ceiling)}`
-      : "Đơn giá không được âm"
+  const priceBadText = (r: DongGia) => {
+    const issue = priceIssueOf(r)
+    if (!issue) return ""
+    return cauGiaTraSai(
+      issue,
+      { tran: returnCeilingFor(listPriceOf(r), priceRules), san: returnFloorFor(listPriceOf(r), priceRules) },
+      formatCurrency
+    )
   }
 
 

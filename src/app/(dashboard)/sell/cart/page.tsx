@@ -12,7 +12,7 @@ import {
   kiemQuyenGiamGia, lineDiscountAmountOf, netPriceOf, priceViolation, switchUnit, tienGopOf, vatChungCuaDong,
   type DiscountInput,
 } from "@/lib/sell/cart"
-import { returnPriceViolation } from "@/lib/sell/returns"
+import { GIAM_TOI_DA_GIA_TRA_PCT, returnPriceViolation } from "@/lib/sell/returns"
 import { toStockLines, toStockReturnLines } from "@/lib/sell/stock"
 import { isReturnLineOverstock, isSaleLineOverstock } from "@/lib/orders/stock-check"
 import { useCommittedStock } from "@/hooks/use-committed-stock"
@@ -281,19 +281,21 @@ export default function SellCartPage() {
    * bán — `returnCredit` trừ thẳng vào số khách phải trả. Tô đỏ ở màn hàng
    * trả mà vẫn gửi đơn được thì vệt đỏ đó chỉ là trang trí.
    */
-  const returnPriceBad = useMemo(
+  /* ⚠ …và từ 15/11/2026 giá trả quá THẤP cũng chặn — không dưới giá niêm yết quá 20% (chủ nhà). Đếm riêng hai chiều để
+     câu báo nói đúng phải nâng hay hạ. */
+  const returnPriceIssues = useMemo(
     () =>
-      cart.returnLines.filter((r) => {
+      cart.returnLines.map((r) => {
         const p = productById(r.productId)
-        return (
-          returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0, {
-            maxIncreasePct,
-            free: rules.free,
-          }) !== null
-        )
-      }).length,
+        return returnPriceViolation(r, p ? unitPriceFor(p, r.unit, groupId) : 0, {
+          maxIncreasePct,
+          free: rules.free,
+        })
+      }),
     [cart.returnLines, productById, groupId, maxIncreasePct, rules.free]
   )
+  const returnPriceBad = returnPriceIssues.filter((x) => x !== null).length
+  const returnPriceLow = returnPriceIssues.filter((x) => x === "below_floor").length
   const staleCount = rows.filter((r) => r.staleList).length
 
   const projectedOver = useMemo(() => {
@@ -676,8 +678,13 @@ export default function SellCartPage() {
               {exchangeOver > 0 && (
                 <span className="text-[12px] font-semibold text-error">{exchangeOver} dòng đổi hàng vượt tồn kho</span>
               )}
-              {returnPriceBad > 0 && (
-                <span className="text-[12px] font-semibold text-error">{returnPriceBad} dòng trả vượt trần giá</span>
+              {returnPriceBad - returnPriceLow > 0 && (
+                <span className="text-[12px] font-semibold text-error">{returnPriceBad - returnPriceLow} dòng trả vượt trần giá</span>
+              )}
+              {returnPriceLow > 0 && (
+                <span className="text-[12px] font-semibold text-error">
+                  {returnPriceLow} dòng trả dưới giá niêm yết quá {GIAM_TOI_DA_GIA_TRA_PCT}%
+                </span>
               )}
             </span>
             {cart.returnCredit > 0 && (
@@ -838,7 +845,9 @@ export default function SellCartPage() {
                 : hasPriceBad
                   ? "Giá ngoài hạn mức"
                   : returnPriceBad > 0
-                    ? "Giá hàng trả quá cao"
+                    ? returnPriceLow === returnPriceBad
+                      ? "Giá hàng trả quá thấp"
+                      : "Giá hàng trả quá cao"
                     : editing
                       ? "Lưu thay đổi"
                       : "Gửi đơn"}

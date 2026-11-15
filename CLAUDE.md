@@ -138,6 +138,26 @@ Chủ nhà chốt 25/09/2026 (mig 191).
   dư có đã dùng: nợ tự tăng lại. Không cấn trừ phiếu trả ở phiếu thu nữa (trừ hai lần).
 - Luật ở giao diện: `hanhDongPhieuTra` (`src/lib/returns/loai-phieu.ts`). Quét sổ: `scripts/sql/kiem-phieu-tra.sql`.
 
+### Giá hàng trả: trần + SÀN
+Chủ nhà 15/11/2026 (mig 263): *"Em xử lý thêm phần hàng trả lại, giá trả không được thấp quá 20% giá niêm yết"* — thay luật cũ
+"hạ giá trả luôn được, kể cả xuống 0" (trả rẻ làm hàng trả trừ ít ở doanh số thuần và đẩy chênh lệch trả của NV lên).
+- **Sàn** = round(80% × giá niêm yết ĐÚNG đơn vị theo nhóm giá của khách) — `sanGiaTra` / `GIAM_TOI_DA_GIA_TRA_PCT`
+  (`src/lib/sell/returns.ts`), máy chủ `_gia_bang_don_vi` trong trigger `_chot_gia_san_dong_tra`. Phiếu gắn hoá đơn mà tờ ấy bán
+  mặt hàng + đơn vị RẺ hơn sàn → sàn = giá đã bán thấp nhất (`giaDaBanThapNhat`, bỏ dòng hàng đổi 0đ). **Trần** (mig 230) giữ
+  nguyên. Dung sai 1đ cả hai đầu.
+- Miễn: dòng HÀNG ĐỔI; chủ NPP / kế toán (`free`); máy chủ không phiên; chưa có giá niêm yết. Sửa dòng mà KHÔNG hạ giá (đổi SL)
+  thì cho qua — dòng cũ dưới sàn vẫn đổi SL được; đổi đơn vị / chuyển ĐỔI → TRẢ là dòng mới → kiểm.
+- Máy chủ chặn mọi đường ghi dòng trả (`trg_gia_san_dong_tra`, lỗi `RETURN_PRICE_BELOW_FLOOR` — dịch ở `errors.ts` +
+  `explainInvoiceError`). Màn: POS trả hàng / đơn hàng / hoá đơn tô đỏ ô giá + "≥ X" + khoá lưu (kể cả F6 / F9) — POS chỉ kiểm
+  SÀN (`duoiSanGiaTra`; trần ở đó do máy chủ chốt theo giá đã bán); điện thoại qua `returnPriceViolation` (giỏ / Hàng trả / tấm
+  sửa dòng của /sell, `/returns/new`). Xuất hàng / Sửa HĐ điện thoại không sửa được giá hàng trả (luôn giá bảng).
+- Lưu POS trả hàng / đơn POS là xoá rồi chèn lại dòng: phiếu / đơn cũ có dòng dưới sàn phải nâng giá mới lưu lại được (câu
+  SELECT cuối mig 263 đếm số dòng như thế trên sổ thật).
+- ⚠ Còn hở (đã báo chủ nhà 15/11/2026): ô "Credit Note" sửa tay ở chi tiết phiếu trả Nháp (`/returns/[id]`, chủ / quản lý) đặt
+  tổng tiền trả không qua giá dòng.
+- Bộ thử: `scripts/sql/thu-263-san-gia-tra.sql` (12 dòng, gồm lập đơn kèm trả + Xuất hàng thêm trả), `tests/san-gia-tra.test.ts`,
+  `e2e/san-gia-tra.spec.ts` (đóng vai quản lý — e2e mặc định là chủ NPP, được miễn).
+
 ### Màn POS phiếu nhập / phiếu trả NCC
 Chủ nhà 13/10/2026: *"Sao sửa phiếu nháp -> ra màn post lại hiện trạng thái đã xuất kho và ko có nút lưu nháp tiếp"*.
 - Nhãn + nút theo **trạng thái thật** của phiếu (`manPhieuNcc`, `src/lib/pos/purchase.ts`), không theo đường dẫn `/sua` —

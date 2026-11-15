@@ -94,6 +94,12 @@ const CONSTRAINT_VI: Array<[RegExp, string]> = [
     "Máy chủ từ chối: bạn chưa được bật quyền giảm giá (bán dưới giá bảng cũng là giảm giá). Bỏ giảm giá, hoặc nhờ chủ NPP bật quyền ở cài đặt nhân viên.",
   ],
   [/DISCOUNT_OVER_LIMIT/, "Máy chủ từ chối: khoản giảm giá vượt mức tối đa chủ NPP đặt cho bạn."],
+  /* Sàn giá trả (mig 263, chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết"). Câu gốc của máy chủ (đi kèm
+     phía sau) đã nói đủ giá tối thiểu. */
+  [
+    /RETURN_PRICE_BELOW_FLOOR/,
+    "Máy chủ từ chối: giá trả thấp hơn mức tối thiểu — không được dưới giá niêm yết quá 20% (hàng bán rẻ hơn trên hoá đơn gắn phiếu thì tối thiểu là giá đã bán). Nâng giá trả, hoặc nhờ chủ NPP / kế toán lập phiếu.",
+  ],
   /* Giá trần phiếu trả (mig 230). ⚠ PHẢI đứng TRƯỚC mẫu PRICE_OVER_CEILING — mã này chứa chuỗi ấy. */
   [
     /RETURN_PRICE_OVER_CEILING/,

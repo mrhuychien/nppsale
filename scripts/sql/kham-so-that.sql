@@ -1095,4 +1095,14 @@ SELECT 101, 'Mig 262 (NVBH chỉ xem đơn của chính mình)',
                  WHERE polname = 'sales_order_select' AND polrelid = 'public.sales_orders'::regclass) AS q,
                (SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
                  WHERE polname = 'org_iso_oal' AND polrelid = 'public.order_activity_log'::regclass) AS nk) x
+UNION ALL
+-- 102. Mig 263 — sàn giá trả (chủ nhà 15/11/2026: "giá trả không được thấp quá 20% giá niêm yết"): trigger trên return_lines.
+SELECT 102, 'Mig 263 (Sàn giá trả: không dưới giá niêm yết quá 20%)',
+  CASE WHEN NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_gia_san_dong_tra'
+                         AND tgrelid = 'public.return_lines'::regclass)
+       THEN 'CHƯA — chạy migration 263 (máy chủ còn nhận giá trả thấp tuỳ ý — chỉ màn hình chặn)'
+       WHEN has_function_privilege('authenticated', 'public._chot_gia_san_dong_tra()', 'EXECUTE')
+       THEN 'LỆCH — hàm trigger sàn gọi thẳng được từ trình duyệt (thiếu REVOKE) — báo lại ngay'
+       ELSE 'OK — đã vá' END,
+  ''
 ) t ORDER BY stt;

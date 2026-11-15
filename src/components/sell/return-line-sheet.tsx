@@ -4,7 +4,9 @@ import { useEffect, useState } from "react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn, formatCurrency, formatInt } from "@/lib/utils"
 import {
+  GIAM_TOI_DA_GIA_TRA_PCT,
   returnCeilingFor,
+  returnFloorFor,
   returnPriceViolation,
   type ReturnCartLine,
   type ReturnPriceRules,
@@ -22,9 +24,9 @@ import { Stepper } from "@/components/sell/line-edit-sheet"
  * thì số tiền trừ vào đơn sai — sai thẳng vào số khách phải trả, và không
  * có đường nào chữa ngoài việc bỏ dòng đó ra.
  *
- * ⚠ LUẬT GIÁ NGƯỢC VỚI DÒNG BÁN. Dòng bán chặn giá THẤP (bán rẻ là mất
- * tiền); dòng trả chặn giá CAO, vì tiền đi RA khỏi công ty. Xem
- * `returnPriceViolation`.
+ * ⚠ LUẬT GIÁ CỦA DÒNG TRẢ: chặn giá CAO (tiền đi RA khỏi công ty) và từ
+ * 15/11/2026 chặn cả giá quá THẤP — không dưới giá niêm yết quá 20% (chủ
+ * nhà). Xem `returnPriceViolation`.
  */
 export function ReturnLineSheet({
   line,
@@ -68,18 +70,25 @@ export function ReturnLineSheet({
   const listPrice = unitPriceFor(product, line.unit, groupId)
   const bad = returnPriceViolation(line, listPrice, priceRules)
   const ceiling = returnCeilingFor(listPrice, priceRules)
+  const floor = returnFloorFor(listPrice, priceRules)
 
   const hint = !canEditPrice
     ? `Bạn không có quyền sửa giá (giá bảng ${formatCurrency(listPrice)})`
-    : bad === "above_ceiling"
-      ? `Tối đa ${formatCurrency(ceiling)} (giá bảng ${formatCurrency(listPrice)}${priceRules.maxIncreasePct > 0 ? ` +${priceRules.maxIncreasePct}%` : ""})`
-      : bad === "negative"
-        ? "Đơn giá không được âm"
-        : listPrice <= 0
-          ? "Mặt hàng này chưa có giá bảng để đối chiếu"
-          : Number.isFinite(ceiling)
-            ? `Tối đa ${formatCurrency(ceiling)} · hạ xuống bao nhiêu cũng được`
-            : "Hạ hay nâng bao nhiêu cũng được"
+    : line.isExchange
+      ? "Dòng đổi hàng không trừ tiền — giá chỉ để ghi"
+      : bad === "above_ceiling"
+        ? `Tối đa ${formatCurrency(ceiling)} (giá bảng ${formatCurrency(listPrice)}${priceRules.maxIncreasePct > 0 ? ` +${priceRules.maxIncreasePct}%` : ""})`
+        : bad === "below_floor"
+          ? `Tối thiểu ${formatCurrency(floor)} (giá bảng ${formatCurrency(listPrice)} − ${GIAM_TOI_DA_GIA_TRA_PCT}%)`
+          : bad === "negative"
+            ? "Đơn giá không được âm"
+            : listPrice <= 0
+              ? "Mặt hàng này chưa có giá bảng để đối chiếu"
+              : Number.isFinite(ceiling)
+                ? floor > 0
+                  ? `Từ ${formatCurrency(floor)} đến ${formatCurrency(ceiling)}`
+                  : `Tối đa ${formatCurrency(ceiling)}`
+                : "Hạ hay nâng bao nhiêu cũng được"
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>

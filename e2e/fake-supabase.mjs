@@ -183,6 +183,29 @@ function hoaDonConLai(db) {
 }
 const VIEW_GIA = { v_hoa_don_con_lai: hoaDonConLai }
 
+/* Ràng buộc UNIQUE như sổ thật — chỉ những cái bài e2e cần. Chèn vi phạm là CẢ câu hỏng, không dòng nào vào (409 + 23505 như
+   PostgREST). Thiếu nó thì "mã NCC tự đánh trùng mã đã có" (chủ nhà 22/11/2026, `@/lib/suppliers/ma-ncc`) lọt mọi bài thử. NULL
+   không trùng nhau (như Postgres). */
+const KHOA_DUY_NHAT = {
+  suppliers: [{ ten: "suppliers_org_id_code_key", cot: ["org_id", "code"] }],
+}
+function viPhamKhoa(table, rows, input, upsert) {
+  for (const k of KHOA_DUY_NHAT[table] ?? []) {
+    const da = new Set(rows.map((r) => JSON.stringify(k.cot.map((c) => r[c] ?? null))))
+    for (const r of input) {
+      if (upsert && r.id && rows.some((x) => x.id === r.id)) continue
+      const v = k.cot.map((c) => r[c] ?? null)
+      if (v.some((x) => x == null)) continue
+      const khoa = JSON.stringify(v)
+      if (da.has(khoa)) {
+        return { code: "23505", details: `Key (${k.cot.join(", ")})=(${v.join(", ")}) already exists.`, hint: null, message: `duplicate key value violates unique constraint "${k.ten}"` }
+      }
+      da.add(khoa)
+    }
+  }
+  return null
+}
+
 /* Bảng DÒNG của chứng từ → khoá ngoại về `id` chứng từ. Câu nhúng `loc_sp:<bảng dòng>!inner(cột)` (bộ lọc sản phẩm của
    danh sách — `@/lib/list/loc-san-pham`, chủ nhà 15/11/2026) trên bảng chứng từ thì NỐI THẬT sang bảng dòng như PostgREST
    (dữ liệu mẫu không dựng sẵn mảng dòng trong từng chứng từ).
@@ -481,6 +504,8 @@ export function createFakeSupabase({ tables, rpc = {}, users }) {
     if (req.method === "POST") {
       const input = Array.isArray(json) ? json : [json]
       const upsert = (req.headers.prefer || "").includes("resolution=merge-duplicates")
+      const trung = viPhamKhoa(table, rows, input, upsert)
+      if (trung) return send(res, 409, trung)
       const out = input.map((r) => {
         if (upsert && r.id) {
           const i = rows.findIndex((x) => x.id === r.id)

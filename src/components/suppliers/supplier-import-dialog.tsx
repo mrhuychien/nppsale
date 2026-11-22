@@ -18,6 +18,7 @@ import {
   type ParsedSupplierRow,
 } from "@/lib/suppliers/import-parse"
 import { errorMessage } from "@/lib/errors"
+import { maNccTuSo, soLonNhatMaNcc } from "@/lib/suppliers/ma-ncc"
 
 interface SupplierImportDialogProps {
   open: boolean
@@ -103,11 +104,12 @@ export function SupplierImportDialog({ open, onOpenChange, onImported }: Supplie
       )
 
       // 2. Số sequence để gen mã tự động cho NCC không có code.
-      let nextSeq = existingCodes.size + 1
+      /* Bắt đầu từ mã "NCC-<số>" LỚN NHẤT + 1, không phải "số NCC + 1" (chủ nhà 22/11/2026 — `@/lib/suppliers/ma-ncc`). */
+      let nextSeq = soLonNhatMaNcc(existingCodes) + 1
       const usedCodes = new Set(existingCodes)
       const genCode = (): string => {
         while (true) {
-          const code = `NCC-${String(nextSeq).padStart(4, "0")}`
+          const code = maNccTuSo(nextSeq)
           nextSeq++
           if (!usedCodes.has(code)) {
             usedCodes.add(code)

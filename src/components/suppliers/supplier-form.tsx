@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { SupplierFields } from "@/components/suppliers/supplier-fields"
 import { nccFormRong, nccPayload, type NccForm } from "@/lib/suppliers/form"
+import { cauTrungMaNcc, laTrungMaNcc, maNccTiepTheo, SO_LAN_DANH_LAI_MA_NCC } from "@/lib/suppliers/ma-ncc"
+import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 import { errorMessage } from "@/lib/errors"
 
 /** NCC vừa tạo — đủ cho ô chọn NCC hiện ra và tự chọn. */
@@ -55,19 +57,32 @@ export function SupplierForm({
     setLoading(true)
 
     try {
-      // Auto-gen code if empty
+      /* Ô Mã NCC trống → tự đánh: số đuôi LỚN NHẤT của các mã "NCC-<số>" + 1, KHÔNG phải "số NCC + 1" (chủ nhà 22/11/2026 —
+         xoá một NCC là số đếm trùng mã đã dùng, không tạo được NCC nào nữa). Xem `@/lib/suppliers/ma-ncc`. */
       let code = form.code.trim()
-      if (!code) {
-        const { count, error: cntErr } = await supabase
-          .from("suppliers")
-          .select("id", { count: "exact", head: true })
-        if (cntErr) console.error("[suppliers/new] đếm NCC lỗi:", cntErr.message)
-        const nextNum = (count || 0) + 1
-        code = `NCC-${String(nextNum).padStart(4, "0")}`
+      const tuDanh = !code
+      const daCo: string[] = []
+      if (tuDanh) {
+        /* Đọc MỌI mã (sổ NCC nhỏ) — `maNccTiepTheo` tự bỏ mã khác dạng. Không lọc `ilike` ở đây: ô tìm mới đi qua lib/search. */
+        const res = await fetchAllForAggregate<{ code: string | null }>((from, to) =>
+          supabase.from("suppliers").select("code", { count: "exact" }).order("id").range(from, to)
+        )
+        // Đọc hỏng vẫn thử ghi: máy chủ báo trùng thì vòng dưới đánh mã tiếp.
+        if (res.error) console.error("[suppliers/new] đọc mã NCC đang có lỗi:", res.error)
+        for (const r of res.rows) if (r.code) daCo.push(r.code)
+        code = maNccTiepTheo(daCo)
       }
 
       const payload = { ...duLieu, name: form.name.trim(), org_id: user?.org_id, code }
-      const { data, error } = await supabase.from("suppliers").insert(payload).select("id, code, name").single()
+      let { data, error } = await supabase.from("suppliers").insert(payload).select("id, code, name").single()
+      /* Mã tự đánh vẫn trùng (NCC vừa tạo ở máy khác cùng lúc) → đánh mã kế tiếp, vài lần. */
+      for (let lan = 0; tuDanh && error && laTrungMaNcc(error) && lan < SO_LAN_DANH_LAI_MA_NCC; lan++) {
+        daCo.push(payload.code)
+        payload.code = maNccTiepTheo(daCo)
+        ;({ data, error } = await supabase.from("suppliers").insert(payload).select("id, code, name").single())
+      }
+      code = payload.code
+      if (error && !tuDanh && laTrungMaNcc(error)) throw new Error(cauTrungMaNcc(code))
       if (error) throw error
 
       toast({ title: "Đã tạo nhà cung cấp mới" })

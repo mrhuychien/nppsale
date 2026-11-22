@@ -187,6 +187,17 @@ Chủ nhà 08/11/2026: *"Phần công nợ NCC : Công nợ chưa có cột dư 
   ghi, khoản đã trả không phiếu, phiếu chi phí nghi là trả NCC (tên NCC / từ khoá), phiếu chi NCC lệch. Bộ thử:
   `scripts/sql/thu-kham-tra-tien-ncc.sql`.
 
+### Mã NCC tự đánh
+Chủ nhà 22/11/2026 (tạo NCC trên điện thoại): *"Kiểm tra lại phần tạo nhà cung cấp mới bị lỗi"* — duplicate key
+`suppliers_org_id_code_key` (23505).
+- Ô Mã NCC trống → mã = số đuôi **LỚN NHẤT** của các mã `NCC-<số>` + 1 (`maNccTiepTheo`, `src/lib/suppliers/ma-ncc.ts`) — đừng
+  quay lại "số NCC + 1": chủ NPP xoá được NCC (mig 233), xoá một cái là số đếm rơi đúng một mã đang dùng và LẦN NÀO bấm cũng
+  trùng (không tạo được NCC nào nếu không tự gõ mã). Máy chủ vẫn báo trùng (máy khác vừa tạo) → đánh mã kế tiếp, tối đa
+  `SO_LAN_DANH_LAI_MA_NCC` lần (`SupplierForm` — trang `/suppliers/new` + khung tạo nhanh NCC). Mã GÕ TAY trùng thì không tự đổi:
+  báo `cauTrungMaNcc`. Nhập Excel bắt đầu từ `soLonNhatMaNcc + 1`.
+- Sổ giả e2e chặn UNIQUE(org_id, code) của NCC (409 + 23505 — `KHOA_DUY_NHAT`). Bộ thử: `tests/ma-ncc.test.ts`,
+  `e2e/tao-ncc-ma-tu-danh.spec.ts` (bài 1 soát cả lần ghi ĐẦU đã đúng mã — vòng đánh lại che được cách cũ).
+
 ### Lọc chứng từ theo sản phẩm
 Chủ nhà 15/11/2026: *"Thêm cho tao bộ lọc sản phẩm trong Đơn hàng/Hóa đơn/Trả hàng/Nhập NCC/Trả NCC"*.
 - Ô "Sản phẩm" (`LocSanPham`, `src/components/ui/loc-san-pham.tsx` — gõ tên / mã / mã vạch, ✕ về tất cả): máy tính trên thanh

@@ -23,6 +23,9 @@ import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import type { Customer, CustomerGroup } from "@/types"
 import { errorMessage } from "@/lib/errors"
 import { ghiPhaiTrungDong } from "@/lib/db/must-write"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { canRepinStore, repinQuestion, type Fix } from "@/lib/customers/photos"
+import { cauSaiSo, docViTriTotNhat } from "@/lib/customers/vi-tri"
 
 interface CustomerFormProps {
   customer?: Customer
@@ -81,6 +84,11 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
   /** Chống bấm Lưu 2 lần — `loading` chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt (chủ nhà 01/10/2026). */
   const dangLuu = useRef(false)
   const [gpsLoading, setGpsLoading] = useState(false)
+  /** Lần đọc vừa lấy — hiện sai số cạnh toạ độ (sai số không lưu vào sổ). */
+  const [viTriVuaDoc, setViTriVuaDoc] = useState<Fix | null>(null)
+  /** Sửa khách: vị trí vừa đọc, chờ đồng ý ghim / dời. */
+  const [hoiGhim, setHoiGhim] = useState<{ fix: Fix; movedMeters: number | null } | null>(null)
+  const [dangGhim, setDangGhim] = useState(false)
   const [pjpRoutes, setPjpRoutes] = useState<PjpRouteDisplay[]>([])
   const [salesRoutes, setSalesRoutes] = useState<Array<{ code: string; name: string }>>([])
   /** Khung tạo nhanh tuyến đang mở (kèm chữ đã gõ ở ô tìm tuyến). */
@@ -147,48 +155,59 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
     fetchPjp()
   }, [customer?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleGetGps = () => {
-    if (!navigator.geolocation) {
-      toast({ title: "Lỗi", description: "Trình duyệt không hỗ trợ định vị GPS", variant: "destructive" })
+  /* "Định vị" — chủ nhà 23/11/2026 (Ghé thăm "Chị Nga 81" báo cách điểm bán 75,82 km): bản cũ GHI ĐÈ vị trí điểm bán ngay
+     khi bấm, không hỏi, không xét sai số — bấm ở văn phòng / trên máy tính (định vị theo mạng, lệch hàng chục km) là điểm
+     bán dời đi mà không ai biết. Nay cùng luật với khối Ảnh điểm bán: đọc bằng `docViTriTotNhat`, sai số quá
+     `MAX_PIN_ACCURACY_M` thì không nhận (`canRepinStore`), sửa khách thì HỎI trước (dời bao xa — `repinQuestion`). */
+  const handleGetGps = async () => {
+    setGpsLoading(true)
+    let fix: Fix
+    try {
+      fix = await docViTriTotNhat(typeof navigator !== "undefined" ? navigator.geolocation : null)
+    } catch (err) {
+      toast({ title: "Không lấy được vị trí", description: errorMessage(err), variant: "destructive" })
+      return
+    } finally {
+      setGpsLoading(false)
+    }
+    const daLuu = { lat: form.gps_lat ? Number(form.gps_lat) : null, lng: form.gps_lng ? Number(form.gps_lng) : null }
+    const r = canRepinStore(customer ? daLuu : { lat: null, lng: null }, fix)
+    if (!r.ok) {
+      toast({ title: "Chưa lấy được vị trí điểm bán", description: r.reason, variant: "destructive" })
       return
     }
-    setGpsLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude.toString()
-        const lng = position.coords.longitude.toString()
+    if (customer) {
+      setHoiGhim({ fix, movedMeters: r.movedMeters })
+      return
+    }
+    setViTriVuaDoc(fix)
+    setForm((prev) => ({ ...prev, gps_lat: String(fix.lat), gps_lng: String(fix.lng) }))
+  }
 
-        // Save immediately if editing
-        if (customer) {
-          /* ⚠ GHI XONG MỚI ĐẶT VÀO FORM. Vị trí đã duyệt (mig 244) thì database chặn NV dời — để toạ độ bị chặn nằm lại
-             trên form là bấm "Lưu" sau đó bị chặn cả form (gửi kèm toạ độ khác toạ độ đã duyệt). */
-          const { error } = await supabase
-            .from("customers")
-            .update({ gps_lat: parseFloat(lat), gps_lng: parseFloat(lng) })
-            .eq("id", customer.id)
-          if (error) {
-            toast({
-              title: "Không lưu được tọa độ GPS",
-              description: /VI_TRI_DA_DUYET/.test(error.message)
-                ? "Vị trí điểm bán đã được duyệt — dời vị trí ở khối Ảnh điểm bán (gửi chủ NPP duyệt)."
-                : errorMessage(error),
-              variant: "destructive",
-            })
-          } else {
-            setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
-            toast({ title: "Đã lưu tọa độ GPS" })
-          }
-        } else {
-          setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))
-        }
-        setGpsLoading(false)
-      },
-      (err) => {
-        toast({ title: "Lỗi", description: `Không thể lấy vị trí: ${err.message}`, variant: "destructive" })
-        setGpsLoading(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+  /** Sửa khách, người dùng đã đồng ý → ghi vị trí điểm bán. */
+  const ghiViTriDiemBan = async (fix: Fix) => {
+    if (!customer) return
+    setDangGhim(true)
+    try {
+      /* ⚠ GHI XONG MỚI ĐẶT VÀO FORM. Vị trí đã duyệt (mig 244) thì database chặn NV dời — để toạ độ bị chặn nằm lại
+         trên form là bấm "Lưu" sau đó bị chặn cả form (gửi kèm toạ độ khác toạ độ đã duyệt). */
+      await ghiPhaiTrungDong(supabase.from("customers").update({ gps_lat: fix.lat, gps_lng: fix.lng }).eq("id", customer.id))
+      setHoiGhim(null)
+      setViTriVuaDoc(fix)
+      setForm((prev) => ({ ...prev, gps_lat: String(fix.lat), gps_lng: String(fix.lng) }))
+      toast({ title: "Đã lưu tọa độ GPS" })
+    } catch (err) {
+      const msg = errorMessage(err)
+      toast({
+        title: "Không lưu được tọa độ GPS",
+        description: /VI_TRI_DA_DUYET/.test(msg)
+          ? "Vị trí điểm bán đã được duyệt — dời vị trí ở khối Ảnh điểm bán (gửi chủ NPP duyệt)."
+          : msg,
+        variant: "destructive",
+      })
+    } finally {
+      setDangGhim(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -436,7 +455,13 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
               {hasGps && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 text-primary" />
-                  <span>{parseFloat(form.gps_lat).toFixed(6)}, {parseFloat(form.gps_lng).toFixed(6)}</span>
+                  <span data-testid="cf-toa-do">
+                    {parseFloat(form.gps_lat).toFixed(6)}, {parseFloat(form.gps_lng).toFixed(6)}
+                    {/* Sai số chỉ biết khi toạ độ là lần đọc vừa lấy — sổ không lưu sai số. */}
+                    {viTriVuaDoc && String(viTriVuaDoc.lat) === form.gps_lat && String(viTriVuaDoc.lng) === form.gps_lng && cauSaiSo(viTriVuaDoc.accuracy)
+                      ? ` (${cauSaiSo(viTriVuaDoc.accuracy)})`
+                      : ""}
+                  </span>
                   <a
                     href={`https://maps.google.com/?q=${form.gps_lat},${form.gps_lng}`}
                     target="_blank"
@@ -582,15 +607,34 @@ export function CustomerForm({ customer, groups, nextHref, initialPhone, initial
     />
   )
 
+  /** Sửa khách: hỏi trước khi ghim / dời vị trí điểm bán (cùng câu với khối Ảnh điểm bán). */
+  const hopGhim = (
+    <ConfirmDialog
+      open={!!hoiGhim}
+      onOpenChange={(o) => !o && !dangGhim && setHoiGhim(null)}
+      title={hoiGhim?.movedMeters != null ? "Cập nhật vị trí điểm bán?" : "Ghim vị trí điểm bán?"}
+      description={
+        hoiGhim
+          ? `${repinQuestion(hoiGhim.fix, hoiGhim.movedMeters)} Chỉ đồng ý khi bạn đang đứng tại cửa hàng.`
+          : ""
+      }
+      confirmLabel="Cập nhật vị trí"
+      loading={dangGhim}
+      onConfirm={() => {
+        if (hoiGhim) ghiViTriDiemBan(hoiGhim.fix)
+      }}
+    />
+  )
+
   // Trong hộp thoại (tạo nhanh / sửa ở POS): hộp thoại đã có tiêu đề — không lồng thêm một thẻ.
-  if (trongHop) return <>{bieuMau}{khungTuyen}</>
+  if (trongHop) return <>{bieuMau}{khungTuyen}{hopGhim}</>
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{customer ? "Cập nhật khách hàng" : "Thêm khách hàng mới"}</CardTitle>
       </CardHeader>
-      <CardContent>{bieuMau}{khungTuyen}</CardContent>
+      <CardContent>{bieuMau}{khungTuyen}{hopGhim}</CardContent>
     </Card>
   )
 }

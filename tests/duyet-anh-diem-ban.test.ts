@@ -238,14 +238,17 @@ describe("Khối ảnh điểm bán", () => {
 describe("Form khách: nút Định vị", () => {
   it("chỉ đặt toạ độ vào form SAU khi database nhận; vị trí đã duyệt thì nói rõ phải gửi duyệt", () => {
     const s = read("src/components/customers/customer-form.tsx")
-    const fn = s.slice(s.indexOf("const handleGetGps"), s.indexOf("const handleSubmit"))
-    const sua = fn.indexOf('.update({ gps_lat: parseFloat(lat), gps_lng: parseFloat(lng) })')
-    const dat = fn.indexOf("setForm((prev) => ({ ...prev, gps_lat: lat, gps_lng: lng }))")
+    // Chủ nhà 23/11/2026 (lệch toạ độ): bấm Định vị chỉ ĐỌC rồi hỏi — ghi ở `ghiViTriDiemBan`, sau khi người dùng đồng ý.
+    const bam = s.slice(s.indexOf("const handleGetGps"), s.indexOf("const ghiViTriDiemBan"))
+    expect(bam).not.toContain(".update(")
+    const fn = s.slice(s.indexOf("const ghiViTriDiemBan"), s.indexOf("const handleSubmit"))
+    const sua = fn.indexOf('await ghiPhaiTrungDong(supabase.from("customers").update({ gps_lat: fix.lat, gps_lng: fix.lng })')
+    const dat = fn.indexOf("setForm((prev) => ({ ...prev, gps_lat: String(fix.lat), gps_lng: String(fix.lng) }))")
     expect(sua).toBeGreaterThan(0)
     expect(dat).toBeGreaterThan(sua)
     // Ghi được thì mới đặt vào form, ngay trước lời báo "Đã lưu".
-    expect(fn).toMatch(/\} else \{\s*setForm\(\(prev\) => \(\{ \.\.\.prev, gps_lat: lat, gps_lng: lng \}\)\)\s*toast\(\{ title: "Đã lưu tọa độ GPS" \}\)/)
-    expect(fn).toContain("/VI_TRI_DA_DUYET/.test(error.message)")
+    expect(fn).toMatch(/setForm\(\(prev\) => \(\{ \.\.\.prev, gps_lat: String\(fix\.lat\), gps_lng: String\(fix\.lng\) \}\)\)\s*toast\(\{ title: "Đã lưu tọa độ GPS" \}\)/)
+    expect(fn).toContain("/VI_TRI_DA_DUYET/.test(msg)")
   })
   it("lưu SỬA khách không gửi lại toạ độ (nút Định vị đã ghi ngay) — không đè vị trí người duyệt vừa dời", () => {
     const s = read("src/components/customers/customer-form.tsx")
@@ -263,12 +266,12 @@ describe("Đi tuyến: check-in không chụp ảnh", () => {
     expect(D).not.toContain("Ảnh cửa hàng")
     expect(D).not.toMatch(/type="file"/)
     expect(D).not.toContain("photo_url")
-    expect(D).toContain("check_in_lat: coords?.lat ?? null")
+    expect(D).toContain("check_in_lat: fix?.lat ?? null")
   })
   it("lịch tuyến (PJP) check-in cũng chỉ ghi vị trí", () => {
     const p = read("src/app/(dashboard)/sales/pjp/page.tsx")
     const fn = p.slice(p.indexOf("const handleCheckIn"), p.indexOf("// Check-out"))
-    expect(fn).toContain("check_in_lat: position.coords.latitude")
+    expect(fn).toContain("check_in_lat: viTri.lat")
     expect(fn).not.toMatch(/photo|storage/)
   })
 })

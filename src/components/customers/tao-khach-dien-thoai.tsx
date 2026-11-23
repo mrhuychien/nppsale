@@ -21,6 +21,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { errorMessage } from "@/lib/errors"
+import { canRepinStore, type Fix } from "@/lib/customers/photos"
+import { cauSaiSo, docViTriTotNhat } from "@/lib/customers/vi-tri"
 import { cn, formatCurrency } from "@/lib/utils"
 import {
   KhachDaCo, LUA_CHON_PHUONG_XA, cauNhanKhach, chuanHoaSdt, coLoi, dinhDangSdt, khachChoPhieu, laSdtHopLe, loiKhachMoi,
@@ -128,7 +130,7 @@ export function TaoKhachDienThoai({
   const [vat, setVat] = useState(false)
   const [moBan, setMoBan] = useState(false)
   const [daThu, setDaThu] = useState(false)
-  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null)
+  const [gps, setGps] = useState<Fix | null>(null)
   const [dangDinhVi, setDangDinhVi] = useState(false)
   const [dangLuu, setDangLuu] = useState(false)
   /** Khoá chống bấm 2 lần — state chưa kịp vẽ lại thì cú bấm thứ hai vẫn lọt qua `disabled`. */
@@ -189,17 +191,21 @@ export function TaoKhachDienThoai({
     }
   }
 
-  const dinhVi = () => {
-    if (!navigator.geolocation) {
-      toast({ title: "Máy không hỗ trợ định vị", variant: "destructive" })
-      return
-    }
+  /* Vị trí điểm bán lúc tạo — chủ nhà 23/11/2026 (lệch toạ độ): đọc bằng `docViTriTotNhat` (lấy lần sai số nhỏ nhất), sai
+     số quá `MAX_PIN_ACCURACY_M` thì KHÔNG nhận (cùng luật khối Ảnh điểm bán — `canRepinStore`): bản cũ nhận mọi lần đọc,
+     kể cả định vị theo mạng lệch vài km. */
+  const dinhVi = async () => {
     setDangDinhVi(true)
-    navigator.geolocation.getCurrentPosition(
-      (p) => { setGps({ lat: p.coords.latitude, lng: p.coords.longitude }); setDangDinhVi(false) },
-      (e) => { toast({ title: "Không lấy được vị trí", description: e.message, variant: "destructive" }); setDangDinhVi(false) },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+    try {
+      const fix = await docViTriTotNhat(typeof navigator !== "undefined" ? navigator.geolocation : null)
+      const r = canRepinStore({ lat: null, lng: null }, fix)
+      if (r.ok) setGps(fix)
+      else toast({ title: "Chưa lấy được vị trí điểm bán", description: r.reason, variant: "destructive" })
+    } catch (e) {
+      toast({ title: "Không lấy được vị trí", description: errorMessage(e), variant: "destructive" })
+    } finally {
+      setDangDinhVi(false)
+    }
   }
 
   const luu = async () => {
@@ -372,7 +378,11 @@ export function TaoKhachDienThoai({
               className="flex h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 text-sm font-semibold text-primary"
             >
               <MapPin className="h-[18px] w-[18px]" />
-              {dangDinhVi ? "Đang lấy vị trí…" : gps ? "Đã lấy vị trí · bấm để lấy lại" : "Lấy vị trí hiện tại"}
+              {dangDinhVi
+                ? "Đang lấy vị trí…"
+                : gps
+                  ? `Đã lấy vị trí${cauSaiSo(gps.accuracy) ? ` (${cauSaiSo(gps.accuracy)})` : ""} · bấm để lấy lại`
+                  : "Lấy vị trí hiện tại"}
             </button>
             <input data-testid="tk-street" value={f.address} onChange={(e) => set("address", e.target.value)} placeholder="Số nhà, tên đường" className={oNhap(loi.address)} />
             <SearchSelect

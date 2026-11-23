@@ -32,6 +32,9 @@ import { SearchSelect } from "@/components/ui/search-select"
 import { TaoNhanhKhach } from "@/components/tao-nhanh/tao-nhanh-khach"
 import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
+import { vnDateKey } from "@/lib/orders/status-tone"
+import type { Fix } from "@/lib/customers/photos"
+import { cauSaiSoLon, docViTriTotNhat, saiSoLon } from "@/lib/customers/vi-tri"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 interface PjpRoute {
@@ -130,7 +133,8 @@ export default function PjpPage() {
   // Fetch today visit logs for sales user
   const fetchTodayVisits = useCallback(async () => {
     if (!selectedUserId) return
-    const todayStr = new Date().toISOString().slice(0, 10)
+    // Ngày theo giờ VN — cùng luật lúc ghi lượt ghé (`toISOString()` là ngày UTC: trước 7 giờ sáng ra hôm qua).
+    const todayStr = vnDateKey(new Date())
     const { data, error: dataErr } = await supabase
       .from("visit_logs")
       .select("id, customer_id, check_in_at, check_out_at, result")
@@ -236,28 +240,36 @@ export default function PjpPage() {
     fetchRoutes()
   }
 
-  // Check-in for sales rep
+  /* Check-in đi tuyến. Vị trí đọc bằng `docViTriTotNhat` như hộp Ghé thăm (chủ nhà 23/11/2026, lệch toạ độ): bản cũ gọi
+     `getCurrentPosition` KHÔNG bật `enableHighAccuracy` — điện thoại trả vị trí theo mạng, lệch vài trăm mét tới vài km. */
   const handleCheckIn = async (customerId: string) => {
     setCheckingIn(customerId)
+    let viTri: Fix
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
-      })
-      const todayStr = new Date().toISOString().slice(0, 10)
+      viTri = await docViTriTotNhat(navigator.geolocation)
+    } catch (err) {
+      toast({ title: "Không lấy được vị trí", description: errorMessage(err), variant: "destructive" })
+      setCheckingIn(null)
+      return
+    }
+    try {
+      const now = new Date()
       await supabase.from("visit_logs").insert({
         org_id: user!.org_id,
         sales_user_id: user!.id,
         customer_id: customerId,
-        visit_date: todayStr,
-        check_in_at: new Date().toISOString(),
-        check_in_lat: position.coords.latitude,
-        check_in_lng: position.coords.longitude,
+        visit_date: vnDateKey(now),
+        check_in_at: now.toISOString(),
+        check_in_lat: viTri.lat,
+        check_in_lng: viTri.lng,
         result: null,
       }).throwOnError()
+      if (saiSoLon(viTri)) {
+        toast({ title: "Đã check-in — vị trí chưa chính xác", description: cauSaiSoLon(viTri.accuracy as number), variant: "destructive" })
+      }
       await fetchTodayVisits()
     } catch (err) {
-      console.error("Check-in error:", err)
-      alert("Không thể lấy vị trí GPS. Vui lòng bật định vị.")
+      toast({ title: "Không ghi được check-in", description: errorMessage(err), variant: "destructive" })
     }
     setCheckingIn(null)
   }

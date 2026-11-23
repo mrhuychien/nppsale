@@ -123,7 +123,7 @@ describe("CustomerForm sửa trong hộp thoại (onDaSua)", () => {
   })
   it("trong hộp thoại: không khung thẻ, không link rời trang, không nút Định vị (máy POS ở văn phòng)", () => {
     expect(F).toContain("const trongHop = !!onDaTao || !!onDaSua")
-    expect(F).toContain("if (trongHop) return <>{bieuMau}{khungTuyen}</>")
+    expect(F).toContain("if (trongHop) return <>{bieuMau}{khungTuyen}{hopGhim}</>")
     expect(F.match(/\{!trongHop && /g) ?? []).toHaveLength(2)
     expect(F).toMatch(/\{onDaSua \? \(\s*<span[^>]*>Vị trí điểm bán dời ở hồ sơ khách<\/span>\s*\) : \(\s*<Button/)
   })

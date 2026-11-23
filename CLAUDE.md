@@ -672,6 +672,30 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - Trang chủ NVBH có nút **"Cập nhật ảnh điểm bán"** (chủ nhà 20/10/2026) ngay dưới Đi tuyến / Thu công nợ →
   `/customers/missing-photos`; chỉ hiện khi vào được màn ấy (`anhDiemBan` của `SalesHome`).
 
+### Vị trí: đọc có sai số, đối chiếu vị trí điểm bán ĐANG LƯU
+Chủ nhà 23/11/2026 (Ghé thăm "Chị Nga 81": check-in 20.916420, 106.341170 "Cách điểm bán 75.82 km"; ghim Google Maps 20.848420,
+106.678727 Lê Chân "1 giờ 20 phút"): *"Kiểm tra tại sao toạ độ vị trí trên google maps và trên app lại lệch nhau?"*
+- Toạ độ check-in = chỗ MÁY đứng; khoảng cách đo tới vị trí điểm bán ĐANG LƯU (`customers.gps_lat/gps_lng`), không phải tới chỗ
+  Google tìm. Ảnh ấy: ghim Google cách chỗ check-in 35,9 km, còn 75,82 km là tới vị trí đang lưu — vị trí lưu nằm chỗ khác hẳn.
+  Google báo "1 giờ 20 phút" = chính Google cũng thấy máy ở xa ghim (máy đọc đúng chỗ nó đứng).
+- MỌI chỗ đọc vị trí để GHI (Ghé thăm, Check-in Đi tuyến `/sales/pjp`, nút Định vị form khách + tạo nhanh điện thoại) đi qua
+  `docViTriTotNhat` (`src/lib/customers/vi-tri.ts`): `watchPosition` bật GPS chính xác, `maximumAge: 0`, sai số ≤ 30 m thì dừng,
+  quá 10 giây lấy lần sai số NHỎ NHẤT; lỗi nói tiếng Việt (`cauLoiViTri`). Đừng quay lại `getCurrentPosition` một lần: lần đọc
+  đầu của điện thoại hay là định vị theo mạng (±vài trăm m – vài km); `/sales/pjp` cũ còn không bật `enableHighAccuracy`. Chỉ khối
+  Ảnh điểm bán còn `getCurrentPosition` (đã chặn sai số riêng) — bài test quét cả `src/`.
+- Hộp Ghé thăm hiện ±sai số, dòng "Điểm bán đã lưu" + link Bản đồ của CẢ HAI điểm, nút "Lấy lại vị trí" (đọc mới, bỏ số cũ).
+  Đối chiếu `danhGiaCheckIn`: sai số > 100 m (`SAI_SO_TOI_DA_M` = `MAX_PIN_ACCURACY_M`) thì không nói "Đúng vị trí" (`chua-ro`)
+  trừ khi xa hơn cả sai số (`xa`); xa / chưa rõ thì hỏi trước khi ghi (`cauHoiCheckIn`, trừ "Chưa ghé"). Xa mà lần đọc tin được →
+  nhắc vị trí đang lưu có thể sai, sửa ở khối Ảnh điểm bán.
+- **Nút "Định vị" ở form Sửa khách KHÔNG ghi thẳng nữa**: bản cũ ghi đè vị trí điểm bán ngay khi bấm, không hỏi, không xét sai số
+  (bấm ở văn phòng / trên máy tính định vị theo IP là điểm bán dời đi mà không ai biết) — nguồn ghim sai khả dĩ nhất. Nay cùng
+  luật khối Ảnh điểm bán: `canRepinStore` (sai số ≤ 100 m) → hộp hỏi `repinQuestion` (dời bao xa) → đồng ý mới ghi
+  (`ghiViTriDiemBan`, `ghiPhaiTrungDong`). Tạo khách (form máy tính + tạo nhanh điện thoại) cũng chặn sai số > 100 m, hiện ±sai số.
+- `visit_date` = `vnDateKey` (giờ VN) ở cả hai đường check-in — `toISOString().slice(0, 10)` ghé trước 7 giờ sáng là hôm qua.
+- Sổ KHÔNG lưu sai số của lượt ghé (`visit_logs` không có cột) — muốn soát lượt ghé cũ đọc chính xác tới đâu thì phải thêm cột.
+- Bộ thử: `tests/vi-tri-check-in.test.ts`, `e2e/vi-tri-check-in.spec.ts` (Playwright `setGeolocation` đẩy lần đọc mới vào
+  `watchPosition` đang chạy — bài "GPS bắt sóng" dựa vào đó; ghim đồng hồ SAU `dangNhap`, vì `dangNhap` đặt 30/09/2026).
+
 ## 2. Git / phát hành
 - Chủ nhà chốt 25/09/2026: *"tạo branch mới upv2 để tao phát triển tiếp các tính năng, thử nghiệm kỹ
   trên branch preview rồi mới đẩy lên production"*.

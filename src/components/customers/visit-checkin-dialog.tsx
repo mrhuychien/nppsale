@@ -13,8 +13,13 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { MapPin, Loader2, Check, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { MapPin, Loader2, Check, AlertTriangle, CheckCircle2, ExternalLink, RotateCw, Store } from "lucide-react"
 import { errorMessage } from "@/lib/errors"
+import { distanceText, type Fix } from "@/lib/customers/photos"
+import {
+  cauHoiCheckIn, cauSaiSoLon, danhGiaCheckIn, docViTriTotNhat, linkBanDo, saiSoLon, toaDoText,
+} from "@/lib/customers/vi-tri"
+import { vnDateKey } from "@/lib/orders/status-tone"
 
 interface VisitCheckinDialogProps {
   open: boolean
@@ -23,29 +28,6 @@ interface VisitCheckinDialogProps {
   customerName: string
   onSuccess?: () => void
 }
-
-// Haversine distance in metres between two lat/lng points.
-function haversineMeters(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371000 // metres
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-// Threshold in metres: warn the rep if their check-in is further than this
-// from the customer's stored location.
-const PROXIMITY_WARN_METERS = 100
-const PROXIMITY_BLOCK_METERS = 500
 
 type VisitResult = "order_placed" | "no_order" | "closed" | "not_visited"
 
@@ -61,6 +43,11 @@ const RESULT_OPTIONS: { value: VisitResult; label: string }[] = [
  *
  * ⚠ KHÔNG CHỤP ẢNH — chủ nhà 12/10/2026: "Khi đi tuyến chỉ cần checkin ko cần chụp ảnh". Ảnh điểm bán là hồ sơ của
  *   cửa hàng (khối "Ảnh điểm bán", có duyệt), không phải việc của mỗi lượt ghé. Lượt ghé cũ có ảnh vẫn hiện ở lịch sử.
+ *
+ * ⚠ VỊ TRÍ (chủ nhà 23/11/2026: "Kiểm tra tại sao toạ độ vị trí trên google maps và trên app lại lệch nhau?"): đọc bằng
+ *   `docViTriTotNhat` (theo dõi vài giây, lấy lần sai số nhỏ nhất — lần đọc đầu của điện thoại hay là định vị theo mạng),
+ *   hiện SAI SỐ, hiện vị trí điểm bán ĐANG LƯU kèm link bản đồ của cả hai điểm (khoảng cách đo tới điểm ấy, không phải tới
+ *   chỗ Google tìm theo địa chỉ), sai số lớn thì nói thẳng + nút Lấy lại vị trí. Luật: `@/lib/customers/vi-tri`.
  */
 export function VisitCheckinDialog({
   open,
@@ -73,9 +60,12 @@ export function VisitCheckinDialog({
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+  /** Lần đọc tốt nhất tới giờ (đang tinh chỉnh thì vẫn hiện). */
+  const [fix, setFix] = useState<Fix | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [gpsError, setGpsError] = useState<string | null>(null)
+  /** Tăng để đọc lại vị trí (nút "Lấy lại vị trí"). */
+  const [luotDoc, setLuotDoc] = useState(0)
   const [result, setResult] = useState<VisitResult>("no_order")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
@@ -103,58 +93,49 @@ export function VisitCheckinDialog({
     return () => { cancelled = true }
   }, [open, customerId, supabase])
 
-  // Capture GPS when dialog opens
+  // Reset khi đóng
   useEffect(() => {
-    if (!open) {
-      // Reset when closing
-      setCoords(null)
-      setGpsError(null)
-      setResult("no_order")
-      setNotes("")
-      setCustomerCoords(null)
-      return
-    }
-    if (!navigator.geolocation) {
-      setGpsError("Trình duyệt không hỗ trợ định vị")
-      return
-    }
-    setGpsLoading(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        setGpsLoading(false)
-      },
-      (err) => {
-        setGpsError(err.message || "Không thể lấy vị trí")
-        setGpsLoading(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+    if (open) return
+    setFix(null)
+    setGpsError(null)
+    setGpsLoading(false)
+    setResult("no_order")
+    setNotes("")
+    setCustomerCoords(null)
+    setLuotDoc(0)
   }, [open])
 
-  const distanceMeters =
-    coords && customerCoords
-      ? haversineMeters(coords.lat, coords.lng, customerCoords.lat, customerCoords.lng)
-      : null
+  // Đọc vị trí khi mở hộp và mỗi lần bấm "Lấy lại vị trí" — đọc MỚI, bỏ số cũ (người đã đi chỗ khác).
+  useEffect(() => {
+    if (!open) return
+    const huy = new AbortController()
+    setFix(null)
+    setGpsError(null)
+    setGpsLoading(true)
+    docViTriTotNhat(typeof navigator !== "undefined" ? navigator.geolocation : null, { onDoc: setFix, signal: huy.signal })
+      .then((f) => {
+        if (huy.signal.aborted) return
+        setFix(f)
+        setGpsLoading(false)
+      })
+      .catch((e) => {
+        if (huy.signal.aborted) return
+        setGpsError(errorMessage(e, "Không lấy được vị trí"))
+        setGpsLoading(false)
+      })
+    return () => huy.abort()
+  }, [open, luotDoc])
+
+  const danhGia = fix ? danhGiaCheckIn(fix, customerCoords) : null
 
   const handleSubmit = async () => {
     if (!user?.org_id || !user.id) {
       toast({ title: "Chưa đăng nhập", variant: "destructive" })
       return
     }
-    // Block obvious mismatches (>500m) unless the rep explicitly chose
-    // "not_visited" (used for off-route notes).
-    if (
-      distanceMeters != null &&
-      distanceMeters > PROXIMITY_BLOCK_METERS &&
-      result !== "not_visited"
-    ) {
-      const km = (distanceMeters / 1000).toFixed(2)
-      const ok = window.confirm(
-        `Bạn đang cách điểm bán ${km} km — vẫn ghi nhận?`
-      )
-      if (!ok) return
-    }
+    // Xa điểm bán (hoặc sai số lớn tới mức chưa biết có ở cửa hàng không) thì hỏi — trừ "Chưa ghé" (ghi chú ngoài tuyến).
+    const hoi = danhGia && result !== "not_visited" ? cauHoiCheckIn(danhGia) : null
+    if (hoi && !window.confirm(hoi)) return
     setSaving(true)
     try {
       // 1. Insert visit_log row
@@ -163,10 +144,11 @@ export function VisitCheckinDialog({
         org_id: user.org_id,
         sales_user_id: user.id,
         customer_id: customerId,
-        visit_date: now.toISOString().slice(0, 10),
+        // Ngày theo giờ VN — `toISOString()` là ngày UTC: ghé trước 7 giờ sáng ghi thành hôm qua.
+        visit_date: vnDateKey(now),
         check_in_at: now.toISOString(),
-        check_in_lat: coords?.lat ?? null,
-        check_in_lng: coords?.lng ?? null,
+        check_in_lat: fix?.lat ?? null,
+        check_in_lng: fix?.lng ?? null,
         result,
         notes: notes.trim() || null,
       })
@@ -228,49 +210,101 @@ export function VisitCheckinDialog({
 
         <div className="space-y-4">
           {/* GPS */}
-          <div className="rounded-xl border p-3 bg-muted/20 space-y-2">
+          <div className="rounded-xl border p-3 bg-muted/20 space-y-2" data-testid="vi-tri-check-in">
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Vị trí check-in</p>
+              {!gpsLoading && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto h-7 px-2 text-xs"
+                  onClick={() => setLuotDoc((n) => n + 1)}
+                >
+                  <RotateCw className="mr-1 h-3 w-3" /> Lấy lại vị trí
+                </Button>
+              )}
             </div>
-            {gpsLoading ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Loader2 className="h-3 w-3 animate-spin" /> Đang lấy vị trí...
+            {fix ? (
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                <span className="font-mono" data-testid="toa-do-check-in">{toaDoText(fix)}</span>
+                <a
+                  href={linkBanDo(fix.lat, fix.lng)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 font-semibold text-primary hover:underline"
+                >
+                  Bản đồ <ExternalLink className="h-3 w-3" />
+                </a>
               </p>
-            ) : coords ? (
-              <p className="text-xs font-mono text-muted-foreground">
-                {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
-              </p>
-            ) : (
+            ) : !gpsLoading ? (
               <p className="text-xs text-destructive">{gpsError || "Chưa có"}</p>
+            ) : null}
+            {gpsLoading && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" /> {fix ? "Đang lấy vị trí chính xác hơn..." : "Đang lấy vị trí..."}
+              </p>
             )}
 
-            {/* Proximity check */}
-            {coords && !customerCoords && (
+            {/* Vị trí điểm bán ĐANG LƯU — khoảng cách đo tới điểm này. */}
+            {customerCoords ? (
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground" data-testid="diem-ban-da-luu">
+                <Store className="h-3 w-3 shrink-0" />
+                <span>
+                  Điểm bán đã lưu:{" "}
+                  <span className="font-mono">{customerCoords.lat.toFixed(6)}, {customerCoords.lng.toFixed(6)}</span>
+                </span>
+                <a
+                  href={linkBanDo(customerCoords.lat, customerCoords.lng)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 font-semibold text-primary hover:underline"
+                >
+                  Bản đồ <ExternalLink className="h-3 w-3" />
+                </a>
+              </p>
+            ) : fix ? (
               <p className="text-[11px] text-muted-foreground">
                 Điểm bán chưa lưu vị trí → không thể đối chiếu khoảng cách.
               </p>
+            ) : null}
+
+            {fix && saiSoLon(fix) && (
+              <div className="rounded-lg border border-[#fdb022]/40 bg-[#fff4ed] p-2 text-xs text-[#b54708] flex items-start gap-1.5" data-testid="sai-so-lon">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{cauSaiSoLon(fix.accuracy as number)}</span>
+              </div>
             )}
-            {coords && customerCoords && distanceMeters != null && (
-              distanceMeters <= PROXIMITY_WARN_METERS ? (
+
+            {/* Đối chiếu với vị trí điểm bán đang lưu */}
+            {danhGia && danhGia.loai !== "chua-luu" && (
+              danhGia.loai === "dung" ? (
                 <div className="rounded-lg border border-tertiary/40 bg-[#ecfdf3] p-2 text-xs text-tertiary flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    Đúng vị trí điểm bán ({Math.round(distanceMeters)} m)
-                  </span>
+                  <span>Đúng vị trí điểm bán ({distanceText(danhGia.cachM)})</span>
                 </div>
-              ) : distanceMeters <= PROXIMITY_BLOCK_METERS ? (
+              ) : danhGia.loai === "gan" ? (
                 <div className="rounded-lg border border-[#fdb022]/40 bg-[#fff4ed] p-2 text-xs text-[#b54708] flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>
-                    Cách điểm bán {Math.round(distanceMeters)} m — kiểm tra lại bạn có đang ở đúng cửa hàng không.
+                    Cách điểm bán {distanceText(danhGia.cachM)} — kiểm tra lại bạn có đang ở đúng cửa hàng không.
+                  </span>
+                </div>
+              ) : danhGia.loai === "chua-ro" ? (
+                <div className="rounded-lg border border-[#fdb022]/40 bg-[#fff4ed] p-2 text-xs text-[#b54708] flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Chưa xác định được bạn có ở điểm bán không — cách vị trí đã lưu {distanceText(danhGia.cachM)}, sai số
+                    lớn hơn thế. Bấm Lấy lại vị trí.
                   </span>
                 </div>
               ) : (
-                <div className="rounded-lg border border-error/40 bg-error-container p-2 text-xs text-error flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <div className="rounded-lg border border-error/40 bg-error-container p-2 text-xs text-error flex items-start gap-1.5" data-testid="check-in-xa">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    Cách điểm bán {(distanceMeters / 1000).toFixed(2)} km — quá xa, hệ thống sẽ yêu cầu xác nhận.
+                    Cách điểm bán {distanceText(danhGia.cachM)} — quá xa, hệ thống sẽ yêu cầu xác nhận.
+                    {!saiSoLon(fix) && " Nếu bạn đang đứng ở cửa hàng thì vị trí điểm bán đang lưu bị sai — bấm Bản đồ ở dòng “Điểm bán đã lưu” để xem, rồi cập nhật ở khối Ảnh điểm bán."}
                   </span>
                 </div>
               )
@@ -312,10 +346,19 @@ export function VisitCheckinDialog({
           >
             Hủy
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={saving} className="flex-1">
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving || (gpsLoading && !fix)}
+            className="flex-1"
+          >
             {saving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Đang lưu
+              </>
+            ) : gpsLoading && !fix ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Đang lấy vị trí
               </>
             ) : (
               <>

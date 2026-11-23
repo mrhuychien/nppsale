@@ -17,7 +17,7 @@ import { MapPin, Loader2, Check, AlertTriangle, CheckCircle2, ExternalLink, Rota
 import { errorMessage } from "@/lib/errors"
 import { distanceText, type Fix } from "@/lib/customers/photos"
 import {
-  cauHoiCheckIn, cauSaiSoLon, danhGiaCheckIn, docViTriTotNhat, linkBanDo, saiSoLon, toaDoText,
+  cauHoiCheckIn, cauSaiSoLon, danhGiaCheckIn, docViTriTotNhat, linkBanDo, mayDangDung, saiSoLon, toaDoText,
 } from "@/lib/customers/vi-tri"
 import { vnDateKey } from "@/lib/orders/status-tone"
 
@@ -273,7 +273,7 @@ export function VisitCheckinDialog({
             {fix && saiSoLon(fix) && (
               <div className="rounded-lg border border-[#fdb022]/40 bg-[#fff4ed] p-2 text-xs text-[#b54708] flex items-start gap-1.5" data-testid="sai-so-lon">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{cauSaiSoLon(fix.accuracy as number)}</span>
+                <span>{cauSaiSoLon(fix.accuracy as number, mayDangDung())}</span>
               </div>
             )}
 

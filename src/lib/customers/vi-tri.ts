@@ -140,11 +140,57 @@ export function saiSoLon(f: Fix | null | undefined): boolean {
   return f?.accuracy != null && Number.isFinite(f.accuracy) && f.accuracy > SAI_SO_TOI_DA_M
 }
 
-/** Câu báo khi lần đọc sai số lớn — nói vì sao và làm gì. */
-export function cauSaiSoLon(saiSoM: number): string {
+/**
+ * Sai số từ mức này trở lên = máy chỉ cho vị trí GẦN ĐÚNG, không phải GPS. Chủ nhà 23/11/2026 (cùng một iPhone, cách một phút):
+ * *"Vị trí check in chính là toạ độ vị trí hiện tại trên app ấy. Nó đang bị lệch so với vị trí hiện tại trên gmaps"* — Google
+ * Maps và trang web xin vị trí qua HAI quyền riêng của iOS; "Trang web Safari" tắt "Vị trí chính xác" thì iOS chỉ đưa cho
+ * MỌI trang web một điểm đại diện của cả vùng (Apple chia sẵn vùng, không cộng nhiễu nhỏ — điểm ấy có thể ở thành phố khác),
+ * kèm sai số cỡ km. Android tắt "Dùng vị trí chính xác" tương tự (~2 km); máy tính định vị theo mạng (hàng chục km).
+ * Không có API web nào cho biết người dùng đang để chính xác hay gần đúng — chỉ đoán qua sai số.
+ */
+export const SAI_SO_GAN_DUNG_M = 1000
+
+/** Máy / trình duyệt đang mở app — để chỉ đúng chỗ bật "Vị trí chính xác". */
+export type MayDung = { ua: string; touch?: number }
+
+export function mayDangDung(): MayDung {
+  if (typeof navigator === "undefined") return { ua: "" }
+  return { ua: navigator.userAgent || "", touch: navigator.maxTouchPoints || 0 }
+}
+
+/** iPhone / iPad (iPad mới báo là Macintosh nhưng có cảm ứng), Android, hay máy tính. */
+export function loaiMay({ ua, touch = 0 }: MayDung): "ios" | "android" | "may-tinh" {
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && touch > 1)) return "ios"
+  return /Android/.test(ua) ? "android" : "may-tinh"
+}
+
+/** Chỗ bật "Vị trí chính xác" theo máy + trình duyệt đang mở app (đọc user agent). */
+export function cachBatViTriChinhXac(may: MayDung): string {
+  const { ua } = may
+  const zalo = /Zalo/i.test(ua)
+  const loai = loaiMay(may)
+  if (loai === "ios") {
+    if (zalo) return "Mở app trong Zalo: Cài đặt → Zalo → Vị trí → bật Vị trí chính xác (hoặc mở app bằng Safari)."
+    if (/CriOS/.test(ua)) return "iPhone dùng Chrome: Cài đặt → Chrome → Vị trí → bật Vị trí chính xác."
+    return "iPhone: Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → Trang web Safari → bật Vị trí chính xác."
+  }
+  if (loai === "android") {
+    const app = zalo ? "Zalo" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : "Chrome"
+    return `Android: Cài đặt → Ứng dụng → ${app} → Quyền → Vị trí → bật Dùng vị trí chính xác; bật cả Vị trí (GPS) của máy.`
+  }
+  return "Máy tính định vị theo mạng nên có thể lệch hàng chục km — check-in bằng điện thoại."
+}
+
+/** Câu báo khi lần đọc sai số lớn — nói vì sao và làm gì (gần đúng thì chỉ thẳng chỗ bật theo máy đang dùng). */
+export function cauSaiSoLon(saiSoM: number, may: MayDung = { ua: "" }): string {
+  const ss = cauSaiSo(saiSoM)
+  if (saiSoM < SAI_SO_GAN_DUNG_M) {
+    return `Vị trí đọc được chưa chính xác (sai số ${ss}) — ra chỗ thoáng, bật GPS rồi bấm Lấy lại vị trí.`
+  }
+  if (loaiMay(may) === "may-tinh") return `Vị trí GẦN ĐÚNG (sai số ${ss}). ${cachBatViTriChinhXac(may)}`
   return (
-    `Vị trí đọc được chưa chính xác (sai số ${cauSaiSo(saiSoM)}). Điện thoại: bật GPS và "Vị trí chính xác" cho trình ` +
-    `duyệt, ra chỗ thoáng rồi bấm Lấy lại vị trí. Máy tính định vị theo mạng nên có thể lệch hàng chục km.`
+    `Máy chỉ cho vị trí GẦN ĐÚNG (sai số ${ss}) — thường do đang tắt "Vị trí chính xác"; toạ độ ấy có thể nằm ở ` +
+    `quận / thành phố khác. ${cachBatViTriChinhXac(may)} Bật xong bấm Lấy lại vị trí.`
   )
 }
 

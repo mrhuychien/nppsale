@@ -34,7 +34,7 @@ import { NHAN_TAO_NHANH, duocTaoNhanh } from "@/lib/tao-nhanh/quyen"
 import { gopVuaTao } from "@/lib/tao-nhanh/vua-tao"
 import { vnDateKey } from "@/lib/orders/status-tone"
 import type { Fix } from "@/lib/customers/photos"
-import { cauSaiSoLon, docViTriTotNhat, saiSoLon } from "@/lib/customers/vi-tri"
+import { cauSaiSoLon, docViTriTotNhat, mayDangDung, saiSoLon } from "@/lib/customers/vi-tri"
 import { fetchAllForAggregate } from "@/lib/supabase/aggregate"
 
 interface PjpRoute {
@@ -265,7 +265,7 @@ export default function PjpPage() {
         result: null,
       }).throwOnError()
       if (saiSoLon(viTri)) {
-        toast({ title: "Đã check-in — vị trí chưa chính xác", description: cauSaiSoLon(viTri.accuracy as number), variant: "destructive" })
+        toast({ title: "Đã check-in — vị trí chưa chính xác", description: cauSaiSoLon(viTri.accuracy as number, mayDangDung()), variant: "destructive" })
       }
       await fetchTodayVisits()
     } catch (err) {

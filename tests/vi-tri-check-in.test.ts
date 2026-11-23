@@ -12,7 +12,9 @@ import {
   CHECK_IN_XA_M,
   CHO_VI_TRI_MS,
   LoiViTri,
+  SAI_SO_GAN_DUNG_M,
   SAI_SO_TOI_DA_M,
+  cachBatViTriChinhXac,
   cauHoiCheckIn,
   cauLoiViTri,
   cauSaiSo,
@@ -182,8 +184,40 @@ describe("câu chữ", () => {
     expect(saiSoLon({ lat: 0, lng: 0, accuracy: 101 })).toBe(true)
     expect(saiSoLon({ lat: 0, lng: 0, accuracy: 100 })).toBe(false)
     expect(saiSoLon({ lat: 0, lng: 0, accuracy: null })).toBe(false)
-    expect(cauSaiSoLon(25_000)).toContain("sai số ±25,0 km")
-    expect(cauSaiSoLon(25_000)).toContain("Máy tính định vị theo mạng")
+    // Máy tính: không có "Vị trí chính xác" để bật — chỉ nói định vị theo mạng, check-in bằng điện thoại.
+    expect(cauSaiSoLon(25_000)).toBe("Vị trí GẦN ĐÚNG (sai số ±25,0 km). Máy tính định vị theo mạng nên có thể lệch hàng chục km — check-in bằng điện thoại.")
+  })
+  it("sai số cỡ km = máy chỉ cho vị trí GẦN ĐÚNG → chỉ đúng chỗ bật Vị trí chính xác theo máy đang dùng", () => {
+    // Chủ nhà 23/11/2026: cùng một iPhone, Google Maps một vị trí, app (trang web) một vị trí cách 36 km.
+    const IPHONE_SAFARI = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+    const IPHONE_CHROME = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.6778.73 Mobile/15E148 Safari/604.1"
+    const IPHONE_ZALO = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Zalo iOS/582 ZaloTheme/light ZaloLanguage/vn"
+    const IPAD_MOI = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+    const ANDROID = "Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    const ANDROID_SAMSUNG = "Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36"
+    const ANDROID_ZALO = "Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Zalo android/12345 ZaloTheme/light"
+    const SAFARI = "iPhone: Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → Trang web Safari → bật Vị trí chính xác."
+    expect(cachBatViTriChinhXac({ ua: IPHONE_SAFARI, touch: 5 })).toBe(SAFARI)
+    expect(cachBatViTriChinhXac({ ua: IPAD_MOI, touch: 5 }), "iPad mới báo là Macintosh nhưng có cảm ứng").toBe(SAFARI)
+    expect(cachBatViTriChinhXac({ ua: IPAD_MOI, touch: 0 }), "Mac thật").toMatch(/^Máy tính định vị theo mạng/)
+    expect(cachBatViTriChinhXac({ ua: IPHONE_CHROME })).toBe("iPhone dùng Chrome: Cài đặt → Chrome → Vị trí → bật Vị trí chính xác.")
+    expect(cachBatViTriChinhXac({ ua: IPHONE_ZALO })).toMatch(/^Mở app trong Zalo: Cài đặt → Zalo → Vị trí → bật Vị trí chính xác/)
+    expect(cachBatViTriChinhXac({ ua: ANDROID })).toMatch(/^Android: Cài đặt → Ứng dụng → Chrome → Quyền → Vị trí → bật Dùng vị trí chính xác/)
+    expect(cachBatViTriChinhXac({ ua: ANDROID_SAMSUNG })).toContain("→ Samsung Internet →")
+    expect(cachBatViTriChinhXac({ ua: ANDROID_ZALO })).toContain("→ Zalo →")
+    expect(cachBatViTriChinhXac({ ua: "" })).toMatch(/^Máy tính định vị theo mạng/)
+
+    // Ngưỡng: từ 1 km là "gần đúng" (kèm chỗ bật); dưới 1 km chỉ là GPS chưa bắt sóng.
+    expect(SAI_SO_GAN_DUNG_M).toBe(1000)
+    const ganDung = cauSaiSoLon(3500, { ua: IPHONE_SAFARI, touch: 5 })
+    expect(ganDung).toBe(
+      'Máy chỉ cho vị trí GẦN ĐÚNG (sai số ±3,5 km) — thường do đang tắt "Vị trí chính xác"; toạ độ ấy có thể nằm ở quận / thành phố khác. ' +
+        SAFARI + " Bật xong bấm Lấy lại vị trí."
+    )
+    expect(cauSaiSoLon(1000, { ua: ANDROID })).toContain("GẦN ĐÚNG (sai số ±1,0 km)")
+    const chuaBat = cauSaiSoLon(999, { ua: IPHONE_SAFARI, touch: 5 })
+    expect(chuaBat).toBe("Vị trí đọc được chưa chính xác (sai số ±999m) — ra chỗ thoáng, bật GPS rồi bấm Lấy lại vị trí.")
+    expect(chuaBat).not.toContain("Trang web Safari")
   })
 })
 

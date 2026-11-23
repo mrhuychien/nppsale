@@ -85,17 +85,27 @@ test("ảnh chủ nhà: check-in cách vị trí điểm bán ĐANG LƯU 36 km �
   expect((await luotGhe()).map((v) => [v.check_in_lat, v.check_in_lng])).toEqual([[20.91642, 106.34117]])
 })
 
-test("sai số lớn (định vị theo mạng ±2,5 km): nói thẳng chưa chính xác, không báo 'Đúng vị trí'; GPS bắt sóng thì tự cập nhật; Lấy lại vị trí đọc mới", async ({ page }) => {
-  await moKhach(page, { latitude: 20.85, longitude: 106.68, accuracy: 2500 })
+test("iPhone tắt Vị trí chính xác (ca chủ nhà: app ra điểm phía Hải Dương, Google Maps ở Lê Chân): báo GẦN ĐÚNG + chỉ chỗ bật trên iPhone; không đổ cho vị trí điểm bán; bật xong GPS tự cập nhật; Lấy lại vị trí đọc mới", async ({ browser }) => {
+  // Chủ nhà 23/11/2026: "Vị trí check in chính là toạ độ vị trí hiện tại trên app ấy. Nó đang bị lệch so với vị trí hiện tại
+  // trên gmaps" — cùng một iPhone; trang web chỉ nhận điểm đại diện của vùng (±km) khi "Trang web Safari" tắt Vị trí chính xác.
+  const ctx = await browser.newContext({
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+  })
+  const page = await ctx.newPage()
+  await moKhach(page, { latitude: 20.91642, longitude: 106.34117, accuracy: 4000 })
   await page.getByRole("button", { name: "Ghé thăm" }).first().click()
   const viTri = page.getByRole("dialog").getByTestId("vi-tri-check-in")
-  await expect(viTri.getByTestId("toa-do-check-in")).toHaveText("20.850000, 106.680000 (±2,5 km)")
-  await expect(viTri.getByTestId("sai-so-lon")).toContainText("Vị trí đọc được chưa chính xác (sai số ±2,5 km)")
-  await expect(viTri).toContainText("Chưa xác định được bạn có ở điểm bán không")
+  await expect(viTri.getByTestId("toa-do-check-in")).toHaveText("20.916420, 106.341170 (±4,0 km)")
+  const ganDung = viTri.getByTestId("sai-so-lon")
+  await expect(ganDung).toContainText("Máy chỉ cho vị trí GẦN ĐÚNG (sai số ±4,0 km)")
+  await expect(ganDung).toContainText("iPhone: Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → Trang web Safari → bật Vị trí chính xác.")
   await expect(viTri).toContainText("Đang lấy vị trí chính xác hơn")
+  // Xa thật (36 km, hơn cả sai số) nhưng lần đọc không tin được → không đổ cho "vị trí điểm bán đang lưu bị sai".
+  await expect(viTri.getByTestId("check-in-xa")).toContainText("Cách điểm bán 36,0 km — quá xa")
+  await expect(viTri.getByTestId("check-in-xa")).not.toContainText("vị trí điểm bán đang lưu bị sai")
   await expect(viTri.getByText(/Đúng vị trí điểm bán/)).toHaveCount(0)
 
-  // GPS bắt sóng (máy báo lần đọc tốt hơn trong lúc đang chờ) → hộp theo ngay, thôi chờ.
+  // Bật Vị trí chính xác / GPS bắt sóng (máy báo lần đọc tốt hơn trong lúc đang chờ) → hộp theo ngay, thôi chờ.
   await page.context().setGeolocation({ latitude: 20.8501, longitude: 106.6801, accuracy: 6 })
   await expect(viTri.getByTestId("toa-do-check-in")).toHaveText("20.850100, 106.680100 (±6m)")
   await expect(viTri).toContainText("Đúng vị trí điểm bán (15m)")
@@ -107,6 +117,25 @@ test("sai số lớn (định vị theo mạng ±2,5 km): nói thẳng chưa ch�
   await viTri.getByRole("button", { name: "Lấy lại vị trí" }).click()
   await expect(viTri.getByTestId("toa-do-check-in")).toHaveText("20.860000, 106.690000 (±5m)")
   await expect(viTri.getByTestId("check-in-xa")).toContainText("Cách điểm bán 1,5 km — quá xa")
+  await ctx.close()
+})
+
+test("sai số vài trăm mét (GPS chưa bắt sóng): chưa nói được 'Đúng vị trí' — hỏi trước khi ghi nhận", async ({ page }) => {
+  await moKhach(page, { latitude: 20.85, longitude: 106.68, accuracy: 400 })
+  await page.getByRole("button", { name: "Ghé thăm" }).first().click()
+  const hop = page.getByRole("dialog")
+  const viTri = hop.getByTestId("vi-tri-check-in")
+  await expect(viTri.getByTestId("toa-do-check-in")).toHaveText("20.850000, 106.680000 (±400m)")
+  await expect(viTri.getByTestId("sai-so-lon")).toHaveText("Vị trí đọc được chưa chính xác (sai số ±400m) — ra chỗ thoáng, bật GPS rồi bấm Lấy lại vị trí.")
+  await expect(viTri).toContainText("Chưa xác định được bạn có ở điểm bán không")
+  await expect(viTri.getByText(/Đúng vị trí điểm bán/)).toHaveCount(0)
+  let hoi = ""
+  page.once("dialog", (d) => { hoi = d.message(); void d.dismiss() })
+  await hop.getByRole("button", { name: "Ghi nhận" }).click()
+  await expect.poll(() => hoi).toBe(
+    "Vị trí đọc được sai số ±400m nên chưa biết bạn có đang ở điểm bán không (cách vị trí điểm bán đã lưu 0m) — vẫn ghi nhận?"
+  )
+  expect(await luotGhe()).toHaveLength(0)
 })
 
 test("Định vị ở form Sửa thông tin: sai số lớn không ghi; sai số tốt thì HỎI (dời bao xa) — Huỷ không đổi, đồng ý mới ghi", async ({ page }) => {

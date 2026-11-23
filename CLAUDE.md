@@ -691,6 +691,14 @@ Chủ nhà 23/11/2026 (Ghé thăm "Chị Nga 81": check-in 20.916420, 106.341170
   (bấm ở văn phòng / trên máy tính định vị theo IP là điểm bán dời đi mà không ai biết) — nguồn ghim sai khả dĩ nhất. Nay cùng
   luật khối Ảnh điểm bán: `canRepinStore` (sai số ≤ 100 m) → hộp hỏi `repinQuestion` (dời bao xa) → đồng ý mới ghi
   (`ghiViTriDiemBan`, `ghiPhaiTrungDong`). Tạo khách (form máy tính + tạo nhanh điện thoại) cũng chặn sai số > 100 m, hiện ±sai số.
+- **Cùng một iPhone mà app lệch Google Maps** (chủ nhà 23/11/2026, cùng lượt: *"Vị trí check in chính là toạ độ vị trí hiện tại
+  trên app ấy. Nó đang bị lệch so với vị trí hiện tại trên gmaps"*): Google Maps và trang web xin vị trí qua HAI quyền riêng
+  của iOS. "Trang web Safari" tắt "Vị trí chính xác" (MỘT công tắc cho mọi trang web) thì iOS chỉ đưa điểm đại diện của cả vùng
+  (Apple chia vùng sẵn, không cộng nhiễu nhỏ — điểm ấy có thể ở thành phố khác), sai số cỡ km; Android tắt "Dùng vị trí chính
+  xác" tương tự. Không có API web nào cho biết đang chính xác hay gần đúng — chỉ đoán qua sai số: ≥ `SAI_SO_GAN_DUNG_M` (1 km)
+  thì `cauSaiSoLon` nói "GẦN ĐÚNG" + chỉ ĐÚNG chỗ bật theo máy (`cachBatViTriChinhXac` / `loaiMay`: iPhone Safari / Chrome
+  `CriOS` / Zalo, Android Chrome / Samsung / Zalo; máy tính thì bảo check-in bằng điện thoại). Lần đọc gần đúng mà xa thì KHÔNG
+  đổ cho vị trí điểm bán đang lưu.
 - `visit_date` = `vnDateKey` (giờ VN) ở cả hai đường check-in — `toISOString().slice(0, 10)` ghé trước 7 giờ sáng là hôm qua.
 - Sổ KHÔNG lưu sai số của lượt ghé (`visit_logs` không có cột) — muốn soát lượt ghé cũ đọc chính xác tới đâu thì phải thêm cột.
 - Bộ thử: `tests/vi-tri-check-in.test.ts`, `e2e/vi-tri-check-in.spec.ts` (Playwright `setGeolocation` đẩy lần đọc mới vào

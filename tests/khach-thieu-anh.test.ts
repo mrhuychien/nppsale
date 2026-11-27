@@ -113,27 +113,29 @@ describe("ghepTrang — nối trang không lặp id (ranh giới trang dịch kh
 
 describe("page.tsx — đường RPC trước, lùi về cách cũ CHỈ khi sổ chưa có hàm", () => {
   it("tải qua taiRpc; lỗi 'chưa có hàm' lần đầu → taiCachCu; lỗi khác → báo lỗi", () => {
-    expect(PAGE).toMatch(/await taiRpc\(t\)\s+cheDo\.current = "rpc"\s+setRpc\(true\)/)
+    expect(PAGE).toMatch(/await taiRpc\(t, nvLoc, conHieuLuc\)\s+cheDo\.current = "rpc"\s+setRpc\(true\)/)
+    // Đang lọc NV mà sổ báo "chưa có hàm" là sổ thiếu mig 264, không phải thiếu 253 — không lùi về cách cũ (cách cũ không lọc NV).
     expect(PAGE).toMatch(
-      /if \(cheDo\.current === null && chuaCoRpc\(err\)\) \{\s+cheDo\.current = "cu"\s+setRpc\(false\)\s+await taiCachCu\(\)\s+\} else \{\s+setError\(errorMessage\(err\)\)/
+      /if \(cheDo\.current === null && chuaCoRpc\(err\) && !nvLoc\) \{\s+cheDo\.current = "cu"\s+setRpc\(false\)\s+await taiCachCu\(\)\s+\} else \{\s+setError\(errorMessage\(err\)\)/
     )
   })
 
   it("trang đầu của tab đang xem 50 dòng; tab khác chỉ hỏi tổng (p_limit 1); người duyệt hỏi thêm Chờ duyệt 1 dòng", () => {
-    expect(PAGE).toContain("docTrangThieuAnh(supabase, t, 0),")
-    expect(PAGE).toContain("...khac.map((k) => docTrangThieuAnh(supabase, k, 0, 1)),")
-    expect(PAGE).toContain("canApprove ? docTrangChoDuyet(supabase, 0, 1) : Promise.resolve(null),")
-    expect(PAGE).toContain(
-      "const [kq, ...dem] = await Promise.all([docTrangChoDuyet(supabase, 0), ...TAB_THIEU.map((k) => docTrangThieuAnh(supabase, k, 0, 1))])"
+    // Mọi câu mang người đang lọc (mig 264 — `nvLoc`; null thì không gửi p_nv, câu y như bản 253).
+    expect(PAGE).toContain("docTrangThieuAnh(supabase, t, 0, TRANG_THIEU_ANH, nvLoc),")
+    expect(PAGE).toContain("...khac.map((k) => docTrangThieuAnh(supabase, k, 0, 1, nvLoc)),")
+    expect(PAGE).toContain("canApprove ? docTrangChoDuyet(supabase, 0, 1, nvLoc) : Promise.resolve(null),")
+    expect(PAGE).toMatch(
+      /const \[kq, \.\.\.dem\] = await Promise\.all\(\[\s+docTrangChoDuyet\(supabase, 0, TRANG_THIEU_ANH, nvLoc\),\s+\.\.\.TAB_THIEU\.map\(\(k\) => docTrangThieuAnh\(supabase, k, 0, 1, nvLoc\)\),\s+\]\)/
     )
-    expect(PAGE).toContain("useEffect(() => { load(tab) }, [load, tab])")
+    expect(PAGE).toContain("useEffect(() => { load(tab, nvDangLoc) }, [load, tab, nvDangLoc])")
     expect(PAGE).toMatch(/const demTab = \(t: Tab\): number \| undefined =>\s+rpc\s+\? tong\[t\]/)
   })
 
   it("Tải thêm: chỉ ở đường RPC khi tổng > đã hiện; nối trang từ offset = số dòng đang có, qua ghepTrang", () => {
     expect(PAGE).toContain("const conThem = rpc === true && (tong[tab] ?? 0) > shown.length")
-    expect(PAGE).toContain("docTrangThieuAnh(supabase, tab, rows.length)")
-    expect(PAGE).toContain("docTrangChoDuyet(supabase, choDuyetRpc.length)")
+    expect(PAGE).toContain("docTrangThieuAnh(supabase, tab, rows.length, TRANG_THIEU_ANH, nvDangLoc)")
+    expect(PAGE).toContain("docTrangChoDuyet(supabase, choDuyetRpc.length, TRANG_THIEU_ANH, nvDangLoc)")
     expect(dem(PAGE, "ghepTrang(cu, kq.rows)")).toBe(2)
     expect(PAGE).toContain("{!loading && conThem && (")
     expect(PAGE).toContain("Tải thêm ${Math.min(50, (tong[tab] ?? 0) - shown.length)} điểm bán")
@@ -185,8 +187,8 @@ describe("mig 253 — hai RPC lọc + đếm + phân trang trên máy chủ, RLS
     expect(SCHEMA).toContain("CREATE OR REPLACE FUNCTION public.khach_thieu_anh(")
     expect(SCHEMA).toContain("CREATE OR REPLACE FUNCTION public.khach_cho_duyet_anh(")
     const FIX = read("e2e/fixture.mjs")
-    expect(FIX).toContain("khach_thieu_anh: ({ p_tab, p_offset, p_limit }, { db, user }) =>")
-    expect(FIX).toContain("khach_cho_duyet_anh: ({ p_offset, p_limit }, { db, user }) =>")
+    expect(FIX).toContain("khach_thieu_anh: ({ p_tab, p_offset, p_limit, p_nv }, { db, user }) =>")
+    expect(FIX).toContain("khach_cho_duyet_anh: ({ p_offset, p_limit, p_nv }, { db, user }) =>")
     const FAKE = read("e2e/fake-supabase.mjs")
     expect(FAKE).toContain('if (url.pathname === "/__tat_rpc") {')
     expect(FAKE).toContain('if (rpcTat.has(fn)) {')

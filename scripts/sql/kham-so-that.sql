@@ -1105,4 +1105,18 @@ SELECT 102, 'Mig 263 (Sàn giá trả: không dưới giá niêm yết quá 20%)
        THEN 'LỆCH — hàm trigger sàn gọi thẳng được từ trình duyệt (thiếu REVOKE) — báo lại ngay'
        ELSE 'OK — đã vá' END,
   ''
+UNION ALL
+-- 103. Mig 264 — Điểm bán cần cập nhật lọc + đếm theo NV chính (chủ nhà 27/11/2026: "thêm lọc theo nhân viên bán hàng để xem
+--      nhân viên bán hàng nào còn bao nhiêu điểm chưa cập nhật"). Chưa có thì màn ẩn ô Nhân viên, không sai số. Còn HAI bản
+--      cùng tên (bản 3 / 2 tham số của mig 253 sót lại) thì PostgREST báo PGRST203 — cả màn hỏng.
+SELECT 103, 'Mig 264 (Điểm bán cần cập nhật: lọc + đếm theo nhân viên)',
+  CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'khach_thieu_anh') > 1
+         OR (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'khach_cho_duyet_anh') > 1
+       THEN 'LỆCH — còn hai bản hàm cùng tên (màn Điểm bán cần cập nhật báo lỗi PGRST203) — chạy lại migration 264'
+       WHEN NOT EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'khach_thieu_anh_theo_nv')
+       THEN 'CHƯA — chạy migration 264 (màn Điểm bán cần cập nhật chưa lọc / đếm được theo nhân viên)'
+       ELSE 'OK — đã vá' END,
+  coalesce((SELECT string_agg(proname || '(' || pg_get_function_identity_arguments(oid) || ')', '; ' ORDER BY proname)
+              FROM pg_proc WHERE pronamespace = 'public'::regnamespace
+               AND proname IN ('khach_thieu_anh', 'khach_cho_duyet_anh', 'khach_thieu_anh_theo_nv')), '')
 ) t ORDER BY stt;

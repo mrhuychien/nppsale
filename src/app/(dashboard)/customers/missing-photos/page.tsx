@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "@/components/ui/link"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SegmentedScroller } from "@/components/ui/segmented-scroller"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Camera, MapPin, Navigation, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react"
 import { MAX_PHOTOS, linkAnhDiemBan } from "@/lib/customers/photos"
 import { truncationWarning } from "@/lib/supabase/aggregate"
@@ -18,8 +19,12 @@ import { errorMessage } from "@/lib/errors"
 import { canDuyet, demAnhTheoKhach, docDuyetAnh, docKhachDangBan } from "./doc-anh"
 import { canApprovePhotos, chuaCoDuyetAnh } from "@/lib/customers/photo-approval"
 import {
-  TAB_THIEU, chuaCoRpc, docTrangChoDuyet, docTrangThieuAnh, ghepTrang, type DongChoDuyet, type DongThieuAnh, type TabThieu,
+  TAB_THIEU, TRANG_THIEU_ANH, chuaCoRpc, docDemTheoNv, docTrangChoDuyet, docTrangThieuAnh, ghepTrang,
+  type DongChoDuyet, type DongThieuAnh, type LocNv, type TabThieu,
 } from "./rpc-thieu-anh"
+import {
+  duongDanVoiNv, luaChonNhanVien, nvTuDuongDan, type DemNv, type NguoiNv,
+} from "@/lib/customers/diem-ban-theo-nv"
 
 type Row = DongThieuAnh
 
@@ -42,8 +47,10 @@ type Duyet = { approved: Set<string>; pending: Map<string, number> }
  * kèm nút chỉ đường tới nơi. Không có màn này thì thông báo "12 điểm bán
  * chưa có ảnh" chỉ là một lời trách, không phải một việc làm được.
  *
- * RLS tự lọc: NVBH chỉ thấy khách mình phụ trách, nên không cần (và
- * không được) lọc theo người ở đây.
+ * RLS tự lọc: NVBH chỉ thấy khách mình phụ trách, nên KHÔNG có ô lọc nhân viên.
+ * Người khác (chủ / quản lý…) có ô "Nhân viên phụ trách" — chủ nhà 27/11/2026: "thêm lọc theo nhân viên bán hàng để xem nhân
+ * viên bán hàng nào còn bao nhiêu điểm chưa cập nhật": mỗi NV kèm số điểm theo tab đang xem (máy chủ đếm, mig 264), chọn
+ * một người thì danh sách + số trên tab chỉ còn điểm bán của người ấy (NV chính — như bộ lọc Nhân viên của danh sách khách).
  *
  * ⚠ HAI ĐƯỒNG ĐỌC (chủ nhà 23/10/2026 "tốc độ load trang chậm lắm"): sổ có RPC mig 253 thì máy chủ lọc + đếm + phân
  *   trang, máy chỉ nhận trang đang xem; sổ chưa có thì lùi về cách cũ (kéo cả sổ khách + cả bảng ảnh về lọc trên máy).
@@ -69,6 +76,48 @@ export default function MissingPhotosPage() {
   const [tong, setTong] = useState<Partial<Record<Tab, number>>>({})
   const [choDuyetRpc, setChoDuyetRpc] = useState<DongChoDuyet[]>([])
   const [dangThem, setDangThem] = useState(false)
+
+  /* ---------------- Lọc theo nhân viên (mig 264) — không cho NVBH (RLS: chỉ thấy khách mình) ---------------- */
+  const laNvbh = user?.role === "sales"
+  /** NV đang lọc (`null` = tất cả). Ghi trên đường dẫn `?nv=` — mở hồ sơ khách rồi lùi về vẫn giữ người đang xem. */
+  const [nv, setNv] = useState<LocNv>(() => (typeof window === "undefined" ? null : nvTuDuongDan(window.location.search)))
+  /** Số điểm bán theo NV; `null` = sổ chưa chạy 264 hoặc chưa đọc được → ẩn ô. */
+  const [demNv, setDemNv] = useState<Map<string, DemNv> | null>(null)
+  const [nguoiNv, setNguoiNv] = useState<NguoiNv[]>([])
+  const [loiNv, setLoiNv] = useState<string | null>(null)
+  const [lanDocNv, setLanDocNv] = useState(0)
+  const chonNv = (v: LocNv) => {
+    setNv(v)
+    try {
+      window.history.replaceState(window.history.state, "", duongDanVoiNv(window.location.href, v))
+    } catch {
+      /* không ghi được đường dẫn thì thôi — lọc vẫn chạy */
+    }
+  }
+  const chonNvRef = useRef(chonNv)
+  chonNvRef.current = chonNv
+  useEffect(() => {
+    if (!user?.org_id || laNvbh) return
+    let bo = false
+    ;(async () => {
+      try {
+        const [dem, nguoi] = await Promise.all([
+          docDemTheoNv(supabase),
+          supabase.from("users").select("id, full_name, role, is_active").order("full_name"),
+        ])
+        if (bo) return
+        if (nguoi.error) throw nguoi.error
+        setNguoiNv((nguoi.data as NguoiNv[]) || [])
+        setDemNv(dem)
+        setLoiNv(null)
+        /* Sổ chưa chạy 264: bỏ lọc cũ trên đường dẫn — gửi p_nv lên hàm cũ là lỗi. */
+        if (!dem) chonNvRef.current(null)
+      } catch (err) {
+        if (!bo) setLoiNv(errorMessage(err))
+      }
+    })()
+    return () => { bo = true }
+  }, [user?.org_id, laNvbh, lanDocNv]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- Đường cũ: sổ chưa có RPC mig 253 ---------------- */
   const taiCachCu = useCallback(async () => {
@@ -112,9 +161,13 @@ export default function MissingPhotosPage() {
   }, [canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- Đường RPC: trang đầu của tab đang xem + tổng của các tab còn lại (1 dòng mỗi câu) ---------------- */
-  const taiRpc = useCallback(async (t: Tab) => {
+  const taiRpc = useCallback(async (t: Tab, nvLoc: LocNv, conHieuLuc: () => boolean) => {
     if (t === "approval") {
-      const [kq, ...dem] = await Promise.all([docTrangChoDuyet(supabase, 0), ...TAB_THIEU.map((k) => docTrangThieuAnh(supabase, k, 0, 1))])
+      const [kq, ...dem] = await Promise.all([
+        docTrangChoDuyet(supabase, 0, TRANG_THIEU_ANH, nvLoc),
+        ...TAB_THIEU.map((k) => docTrangThieuAnh(supabase, k, 0, 1, nvLoc)),
+      ])
+      if (!conHieuLuc()) return
       setChoDuyetRpc(kq.rows)
       setDuyet({ approved: new Set(kq.rows.filter((r) => r.daDuyet).map((r) => r.id)), pending: new Map(kq.rows.map((r) => [r.id, r.soYeuCau])) })
       setTong({ approval: kq.tong ?? 0, all: dem[0].tong ?? 0, no_photo: dem[1].tong ?? 0, no_gps: dem[2].tong ?? 0 })
@@ -122,10 +175,11 @@ export default function MissingPhotosPage() {
     }
     const khac = TAB_THIEU.filter((k) => k !== t)
     const [kq, ...conLai] = await Promise.all([
-      docTrangThieuAnh(supabase, t, 0),
-      ...khac.map((k) => docTrangThieuAnh(supabase, k, 0, 1)),
-      canApprove ? docTrangChoDuyet(supabase, 0, 1) : Promise.resolve(null),
+      docTrangThieuAnh(supabase, t, 0, TRANG_THIEU_ANH, nvLoc),
+      ...khac.map((k) => docTrangThieuAnh(supabase, k, 0, 1, nvLoc)),
+      canApprove ? docTrangChoDuyet(supabase, 0, 1, nvLoc) : Promise.resolve(null),
     ])
+    if (!conHieuLuc()) return
     setRows(kq.rows)
     const tongMoi: Partial<Record<Tab, number>> = { [t]: kq.tong ?? 0 }
     khac.forEach((k, i) => { tongMoi[k] = conLai[i]?.tong ?? 0 })
@@ -138,18 +192,23 @@ export default function MissingPhotosPage() {
     setTong(tongMoi)
   }, [canApprove]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const load = useCallback(async (t: Tab) => {
+  /** Lượt tải mới nhất — đổi tab / người lọc giữa chừng thì kết quả lượt cũ bỏ đi, không đè lên lượt mới. */
+  const luotTai = useRef(0)
+  const load = useCallback(async (t: Tab, nvLoc: LocNv) => {
     if (!user?.org_id) return
     /* Đường cũ đã tải đủ một lần — đổi tab chỉ lọc trên máy. */
     if (cheDo.current === "cu") return
+    const luot = ++luotTai.current
+    const conHieuLuc = () => luot === luotTai.current
     setLoading(true)
     setError(null)
     try {
-      await taiRpc(t)
+      await taiRpc(t, nvLoc, conHieuLuc)
       cheDo.current = "rpc"
       setRpc(true)
     } catch (err) {
-      if (cheDo.current === null && chuaCoRpc(err)) {
+      if (!conHieuLuc()) return
+      if (cheDo.current === null && chuaCoRpc(err) && !nvLoc) {
         cheDo.current = "cu"
         setRpc(false)
         await taiCachCu()
@@ -157,10 +216,12 @@ export default function MissingPhotosPage() {
         setError(errorMessage(err))
       }
     }
-    setLoading(false)
+    if (conHieuLuc()) setLoading(false)
   }, [user?.org_id, taiRpc, taiCachCu])
 
-  useEffect(() => { load(tab) }, [load, tab])
+  /* NVBH không lọc theo người (RLS đã chỉ còn khách mình) — `?nv=` dán từ máy khác cũng bỏ qua. */
+  const nvDangLoc: LocNv = laNvbh ? null : nv
+  useEffect(() => { load(tab, nvDangLoc) }, [load, tab, nvDangLoc])
 
   const choDuyet: Row[] = rpc ? choDuyetRpc : duyet ? canDuyet(allRows, duyet) : []
   const shown: Row[] =
@@ -187,7 +248,7 @@ export default function MissingPhotosPage() {
     setDangThem(true)
     try {
       if (tab === "approval") {
-        const kq = await docTrangChoDuyet(supabase, choDuyetRpc.length)
+        const kq = await docTrangChoDuyet(supabase, choDuyetRpc.length, TRANG_THIEU_ANH, nvDangLoc)
         setChoDuyetRpc((cu) => ghepTrang(cu, kq.rows))
         setDuyet((cu) => ({
           approved: new Set([...Array.from(cu?.approved ?? []), ...kq.rows.filter((r) => r.daDuyet).map((r) => r.id)]),
@@ -195,7 +256,7 @@ export default function MissingPhotosPage() {
         }))
         if (kq.tong != null) setTong((cu) => ({ ...cu, approval: kq.tong ?? 0 }))
       } else {
-        const kq = await docTrangThieuAnh(supabase, tab, rows.length)
+        const kq = await docTrangThieuAnh(supabase, tab, rows.length, TRANG_THIEU_ANH, nvDangLoc)
         setRows((cu) => ghepTrang(cu, kq.rows))
         if (kq.tong != null) setTong((cu) => ({ ...cu, [tab]: kq.tong ?? 0 }))
       }
@@ -203,7 +264,12 @@ export default function MissingPhotosPage() {
       setError(errorMessage(err))
     }
     setDangThem(false)
-  }, [tab, rows.length, choDuyetRpc.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, rows.length, choDuyetRpc.length, nvDangLoc]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Lựa chọn của ô Nhân viên — số theo tab đang xem, nhiều trước. */
+  const luaChonNv = useMemo(() => (demNv ? luaChonNhanVien(demNv, nguoiNv, tab) : []), [demNv, nguoiNv, tab])
+  const coLocNv = !laNvbh && rpc === true && demNv !== null
+  const tenNvDangLoc = nvDangLoc ? luaChonNv.find((o) => o.id === nvDangLoc)?.ten ?? null : null
 
   if (authLoading) return <Skeleton className="h-96" />
 
@@ -214,6 +280,29 @@ export default function MissingPhotosPage() {
         description="Tạo danh sách trước, chụp ảnh và lấy vị trí khi tới nơi."
         backHref="/customers"
       />
+
+      {coLocNv && (
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3" data-testid="loc-nv-diem-ban">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nhân viên phụ trách</span>
+          <Select value={nvDangLoc ?? "all"} onValueChange={(v) => chonNv(v === "all" ? null : v)}>
+            <SelectTrigger aria-label="Nhân viên phụ trách" className="h-11 w-full rounded-xl font-semibold sm:w-80">
+              <SelectValue placeholder="Tất cả nhân viên" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả nhân viên</SelectItem>
+              {luaChonNv.map((o) => (
+                <SelectItem key={o.id} value={o.id}>{o.nhan}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {!laNvbh && loiNv && (
+        <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-error" data-testid="loi-nv-diem-ban">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Chưa đọc được số điểm bán theo nhân viên: {loiNv}
+          <Button variant="outline" size="sm" className="h-8" onClick={() => setLanDocNv((n) => n + 1)}>Thử lại</Button>
+        </p>
+      )}
 
       <SegmentedScroller
         segments={tabs.map((t) => ({ key: t, label: TAB_LABEL[t], count: demTab(t) }))}
@@ -239,7 +328,10 @@ export default function MissingPhotosPage() {
       ) : shown.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 className="h-8 w-8 text-tertiary" />}
-          title={tab === "approval" ? "Không có điểm bán nào chờ duyệt" : "Không còn điểm bán nào thiếu"}
+          title={
+            (tab === "approval" ? "Không có điểm bán nào chờ duyệt" : "Không còn điểm bán nào thiếu") +
+            (tenNvDangLoc ? ` — ${tenNvDangLoc}` : "")
+          }
           description={
             tab === "approval"
               ? "Ảnh + vị trí của mọi điểm bán đã được duyệt, không có yêu cầu đổi nào đang chờ."

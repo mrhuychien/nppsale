@@ -672,6 +672,24 @@ Chủ nhà 12/10/2026: *"phần cập nhật ảnh kèm định vị cho điểm
 - Trang chủ NVBH có nút **"Cập nhật ảnh điểm bán"** (chủ nhà 20/10/2026) ngay dưới Đi tuyến / Thu công nợ →
   `/customers/missing-photos`; chỉ hiện khi vào được màn ấy (`anhDiemBan` của `SalesHome`).
 
+### Điểm bán cần cập nhật: lọc + đếm theo nhân viên
+Chủ nhà 27/11/2026 (mig 264): *"Phần bán hàng > Điểm bán cần cập nhật thêm lọc theo nhân viên bán hàng để xem nhân viên bán
+hàng nào còn bao nhiêu điểm chưa cập nhật"*.
+- Ô "Nhân viên phụ trách" ở `/customers/missing-photos` — KHÔNG có cho NVBH (RLS chỉ còn khách mình; `?nv=` dán vào cũng bỏ qua):
+  "Chưa phân công" + mọi NV còn việc (kể cả chủ NPP đứng tên khách, người đã nghỉ chưa giao lại khách — "(đã nghỉ)") + mọi NVBH
+  đang làm (xong → 0); mỗi người kèm số của TAB ĐANG XEM, nhiều trước (`luaChonNhanVien`, `src/lib/customers/diem-ban-theo-nv.ts`).
+  Chọn một người → danh sách, số trên tab, Tải thêm chỉ còn của người ấy (`p_nv`); người đang lọc ghi `?nv=` (mở hồ sơ khách
+  rồi lùi về vẫn giữ). Đổi người / tab giữa chừng thì kết quả lượt cũ bỏ đi (`luotTai`).
+- NV = NV CHÍNH ĐANG LÀM (role 'primary', status 'active') — cùng nghĩa bộ lọc Nhân viên của danh sách khách (`loc-nhan-vien.ts`),
+  RLS mig 154, bàn giao mig 246. `'_none'` = chưa có NV chính (phân công đã thôi cũng tính là chưa); hai NV chính (dữ liệu lệch)
+  đếm cho cả hai.
+- Máy chủ (mig 264, SECURITY INVOKER — RLS tự lọc): `khach_thieu_anh(…, p_nv)` / `khach_cho_duyet_anh(…, p_nv)` — DROP bản 3 / 2
+  tham số TRƯỚC khi tạo (để lại là hai hàm trùng tên → PostgREST PGRST203, cả màn hỏng; khám sổ dòng 103 báo LỆCH);
+  `khach_thieu_anh_theo_nv()` đếm 4 tab theo ĐÚNG luật lọc của hai hàm ấy (bộ thử so từng nhóm với tổng danh sách lọc cùng NV:
+  `scripts/sql/thu-264-diem-ban-theo-nv.sql`). App chỉ gửi `p_nv` khi đang lọc (câu không lọc y như bản 253); sổ chưa chạy 264 →
+  `docDemTheoNv` trả null → ẩn ô, bỏ `?nv=`. Hàm đếm gọi GET (chỉ đọc).
+- Bộ thử: `tests/diem-ban-theo-nv.test.ts`, `e2e/diem-ban-theo-nv.spec.ts` (hàm giả: `e2e/fixture.mjs`).
+
 ### Vị trí: đọc có sai số, đối chiếu vị trí điểm bán ĐANG LƯU
 Chủ nhà 23/11/2026 (Ghé thăm "Chị Nga 81": check-in 20.916420, 106.341170 "Cách điểm bán 75.82 km"; ghim Google Maps 20.848420,
 106.678727 Lê Chân "1 giờ 20 phút"): *"Kiểm tra tại sao toạ độ vị trí trên google maps và trên app lại lệch nhau?"*

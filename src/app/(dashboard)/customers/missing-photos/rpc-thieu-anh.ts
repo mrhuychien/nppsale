@@ -8,6 +8,7 @@
  */
 import { chuaCoRpc } from "@/lib/supabase/chua-co-rpc"
 import { ghepTrang } from "@/lib/list/ghep-trang"
+import { bangDemNv, type DemNv } from "@/lib/customers/diem-ban-theo-nv"
 
 export { chuaCoRpc, ghepTrang }
 
@@ -31,7 +32,9 @@ export interface DongChoDuyet extends DongThieuAnh {
 }
 
 type LoiRpc = { message?: string; code?: string } | null
-type Rpc = { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: LoiRpc }> }
+type Rpc = {
+  rpc: (fn: string, args: Record<string, unknown>, opts?: { get?: boolean }) => PromiseLike<{ data: unknown; error: LoiRpc }>
+}
 type DongTho = {
   id: string
   store_name: string
@@ -69,12 +72,32 @@ async function goi(sb: Rpc, fn: string, args: Record<string, unknown>): Promise<
   return { rows: ds.map(dong), tong: ds.length > 0 ? Number(ds[0].total_count) || ds.length : args.p_offset === 0 ? 0 : null }
 }
 
+/**
+ * Lọc theo NV CHÍNH (mig 264): `null` = mọi khách người xem thấy; `CHUA_PHAN_CONG` = chưa có NV chính; còn lại = mã NV.
+ * ⚠ Chỉ gửi `p_nv` khi ĐANG lọc: không lọc thì câu gọi y như bản mig 253 — sổ chưa chạy 264 vẫn chạy được.
+ */
+export type LocNv = string | null
+const theoNv = (nv: LocNv) => (nv ? { p_nv: nv } : {})
+
 /** Một trang điểm bán còn thiếu của một tab. */
-export function docTrangThieuAnh(sb: Rpc, tab: TabThieu, offset: number, limit = TRANG_THIEU_ANH) {
-  return goi(sb, "khach_thieu_anh", { p_tab: tab, p_offset: offset, p_limit: limit })
+export function docTrangThieuAnh(sb: Rpc, tab: TabThieu, offset: number, limit = TRANG_THIEU_ANH, nv: LocNv = null) {
+  return goi(sb, "khach_thieu_anh", { p_tab: tab, p_offset: offset, p_limit: limit, ...theoNv(nv) })
 }
 
 /** Một trang điểm bán chờ duyệt (mig 244) — kèm `daDuyet`, `soYeuCau`. */
-export function docTrangChoDuyet(sb: Rpc, offset: number, limit = TRANG_THIEU_ANH) {
-  return goi(sb, "khach_cho_duyet_anh", { p_offset: offset, p_limit: limit })
+export function docTrangChoDuyet(sb: Rpc, offset: number, limit = TRANG_THIEU_ANH, nv: LocNv = null) {
+  return goi(sb, "khach_cho_duyet_anh", { p_offset: offset, p_limit: limit, ...theoNv(nv) })
+}
+
+/**
+ * Số điểm bán cần cập nhật theo NV chính (mig 264) — cùng luật lọc hai hàm trên. `null` = sổ chưa chạy 264 (màn ẩn ô Nhân
+ * viên, không phải lỗi); lỗi khác thì NÉM. Hàm STABLE → gọi GET (hết giờ được thử lại, không bị coi là câu ghi).
+ */
+export async function docDemTheoNv(sb: Rpc): Promise<Map<string, DemNv> | null> {
+  const { data, error } = await sb.rpc("khach_thieu_anh_theo_nv", {}, { get: true })
+  if (error) {
+    if (chuaCoRpc(error)) return null
+    throw Object.assign(new Error(error.message || "khach_thieu_anh_theo_nv"), { code: error.code })
+  }
+  return bangDemNv((Array.isArray(data) ? data : []) as Parameters<typeof bangDemNv>[0])
 }

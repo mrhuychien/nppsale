@@ -436,6 +436,18 @@ function khachThieuAnh(db, user) {
     /* So sánh thô như bảng giả xếp `order=store_name,id` — hai đường (RPC / đọc bảng) ra cùng thứ tự, như trên sổ thật. */
     .sort((a, b) => (a.store_name > b.store_name ? 1 : a.store_name < b.store_name ? -1 : a.id > b.id ? 1 : a.id < b.id ? -1 : 0))
 }
+/* Mig 264 — NV CHÍNH đang làm (role primary, status active; trống = mặc định của cột như sổ thật). */
+const nvChinhCua = (db, cid) =>
+  (db.customer_assignments || [])
+    .filter((a) => a.customer_id === cid && (a.role ?? "primary") === "primary" && (a.status ?? "active") === "active")
+    .map((a) => a.user_id)
+/** Lọc theo `p_nv` như hàm thật: null = mọi khách; '_none' = chưa có NV chính; mã NV (không phân biệt hoa thường). */
+function locTheoNv(db, ds, p_nv) {
+  if (p_nv == null || p_nv === "") return ds
+  if (p_nv === "_none") return ds.filter((c) => nvChinhCua(db, c.id).length === 0)
+  const ma = String(p_nv).toLowerCase()
+  return ds.filter((c) => nvChinhCua(db, c.id).some((u) => String(u).toLowerCase() === ma))
+}
 function trangKhach(ds, p_offset, p_limit) {
   const tu = Math.max(Number(p_offset) || 0, 0)
   const n = Math.min(Math.max(Number(p_limit) || 50, 1), 200)
@@ -652,8 +664,8 @@ export const rpc = {
   ban_giao_khach: banGiaoKhach,
   hang_khach_da_lay: hangKhachDaLay,
   /* Mig 253 — điểm bán thiếu ảnh / chờ duyệt lọc + phân trang trên máy chủ. RLS giả: NVBH chỉ khách mình phụ trách. */
-  khach_thieu_anh: ({ p_tab, p_offset, p_limit }, { db, user }) => {
-    const ds = khachThieuAnh(db, user).filter((c) =>
+  khach_thieu_anh: ({ p_tab, p_offset, p_limit, p_nv }, { db, user }) => {
+    const ds = locTheoNv(db, khachThieuAnh(db, user), p_nv).filter((c) =>
       p_tab === "no_photo" ? c.photo_count === 0 : p_tab === "no_gps" ? c.gps_lat == null || c.gps_lng == null
         : c.photo_count === 0 || c.gps_lat == null || c.gps_lng == null)
     return trangKhach(ds, p_offset, p_limit)
@@ -696,9 +708,28 @@ export const rpc = {
       sum_total_qty: tong.sale_qty + tong.date_qty, sum_total_value: tong.sale_value + tong.date_value,
     }))
   },
-  khach_cho_duyet_anh: ({ p_offset, p_limit }, { db, user }) => {
-    const ds = khachThieuAnh(db, user).filter((c) => c.so_yeu_cau > 0 || (!c.da_duyet && (c.photo_count > 0 || (c.gps_lat != null && c.gps_lng != null))))
+  khach_cho_duyet_anh: ({ p_offset, p_limit, p_nv }, { db, user }) => {
+    const ds = locTheoNv(db, khachThieuAnh(db, user), p_nv)
+      .filter((c) => c.so_yeu_cau > 0 || (!c.da_duyet && (c.photo_count > 0 || (c.gps_lat != null && c.gps_lng != null))))
     return trangKhach(ds, p_offset, p_limit)
+  },
+  /* Mig 264 — số điểm bán cần cập nhật theo NV chính (nv_id null = chưa phân công); chỉ nhóm còn việc. */
+  khach_thieu_anh_theo_nv: (_p, { db, user }) => {
+    const nhom = new Map()
+    for (const c of khachThieuAnh(db, user)) {
+      const thieu = c.photo_count === 0 || c.gps_lat == null || c.gps_lng == null
+      const choDuyet = c.so_yeu_cau > 0 || (!c.da_duyet && (c.photo_count > 0 || (c.gps_lat != null && c.gps_lng != null)))
+      const nvs = nvChinhCua(db, c.id)
+      for (const nv of nvs.length ? nvs : [null]) {
+        const d = nhom.get(nv) ?? { nv_id: nv, so_thieu: 0, so_chua_anh: 0, so_chua_vi_tri: 0, so_cho_duyet: 0 }
+        if (thieu) d.so_thieu++
+        if (c.photo_count === 0) d.so_chua_anh++
+        if (c.gps_lat == null || c.gps_lng == null) d.so_chua_vi_tri++
+        if (choDuyet) d.so_cho_duyet++
+        nhom.set(nv, d)
+      }
+    }
+    return Array.from(nhom.values()).filter((d) => d.so_thieu > 0 || d.so_cho_duyet > 0)
   },
   bao_cao_so_ban: baoCaoSoBan,
   /* Mig 257: tồn kho bán theo mặt hàng — như `docLoBan` + `stockMapFrom` (chỉ lô KHO BÁN còn hàng). */
